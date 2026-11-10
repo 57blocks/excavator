@@ -100,14 +100,15 @@ describe('the history route and link', () => {
     expect(routeHash({ name: 'history' }, 'technical')).toBe('#/technical/history');
   });
 
-  it('has the sidebar link right before the coverage link in both views, with the heading from the ui table', () => {
+  // Since handbook-deep-entry D11 the code health opens the health group, before the findings.
+  it('has the sidebar link right before the findings link in both views, with the heading from the ui table', () => {
     for (const view of ['product', 'technical']) {
       const html = render(dataFor(), `#/${view}`);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       const links = Array.from(rail.matchAll(/href="([^"]*)"/g), (match) => match[1]);
       const at = links.indexOf(`#/${view}/history`);
       expect(at, view).toBeGreaterThan(-1);
-      expect(links[at + 1]).toBe(`#/${view}/coverage`);
+      expect(links[at + 1]).toBe(`#/${view}/findings`);
       expect(rail).toContain(marked['md.history.heading']);
     }
   });

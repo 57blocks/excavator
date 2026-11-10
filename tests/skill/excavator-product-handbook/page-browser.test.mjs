@@ -190,13 +190,17 @@ suite('page in a browser (O8)', () => {
         } else {
           expect(await page.evaluate("getComputedStyle(document.querySelector('.rail')).visibility")).toBe('visible');
         }
-        expect(await page.evaluate("document.querySelectorAll('.rail-feature').length")).toBe(5);
-        await page.evaluate("document.querySelector('.rail-feature').click()");
-        await page.waitFor('document.querySelector(\'[data-view="feature"][data-feature="F1"]\')', 'F1 from the sidebar');
+        // The rail lists the domains, not the features (design D11 of handbook-deep-entry); a feature is one click further, on its domain's page.
+        expect(await page.evaluate("document.querySelectorAll('.rail a[href*=\"/feature/\"]').length")).toBe(0);
+        const domain = await page.evaluate("document.querySelector('.rail-link[data-domain]').getAttribute('data-domain')");
+        await page.evaluate("document.querySelector('.rail-link[data-domain]').click()");
+        await page.waitFor('document.querySelector(\'[data-view="domain"]\')', 'the domain from the sidebar');
         if (width < 900) {
           await page.waitFor("document.querySelector('.rail[data-open=\"false\"]')", 'the drawer closed after a choice');
         }
-        expect(await page.evaluate("document.querySelector('.rail-feature[aria-current=\"page\"] .rail-feature-name').textContent")).toBe('Orders');
+        await page.evaluate("document.querySelector('main a[href*=\"/feature/\"]').click()");
+        await page.waitFor('document.querySelector(\'[data-view="feature"]\')', 'a feature from its domain page');
+        expect(await page.evaluate("document.querySelector('.rail-link[aria-current=\"true\"]').getAttribute('data-domain')")).toBe(domain);
         // The two tables are in the navigation too.
         for (const [view, hash] of [['notifications', '#/notifications'], ['jobs', '#/jobs']]) {
           if (width < 900) await page.evaluate("document.querySelector('.menu-btn').click()");
@@ -264,9 +268,8 @@ suite('page in a browser (O8)', () => {
         expect(await page.evaluate("document.querySelector('[data-view=\"feature\"]').getAttribute('data-feature')")).toBe('F1');
         expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]').textContent")).toMatch(/src\/forms\/order-form\.js:\s?\d+/);
         await fits(page, width, 'the technical feature page');
-        // The technical rail is by application: the application, then its domains, then their features.
+        // The technical rail adds the applications, one link each.
         expect(await page.evaluate("document.querySelectorAll('.rail [data-application]').length")).toBeGreaterThan(0);
-        expect(await page.evaluate("(() => { const app = document.querySelector('.rail [data-application]'); return app.querySelector('.rail-domain .rail-feature') !== null; })()")).toBe(true);
         // The other way: the entity stays too.
         await page.evaluate("document.querySelector('[data-view-link=\"product\"]').click()");
         await page.waitFor('document.querySelector(\'[data-view="feature"][data-feature="F1"]\')', 'F1 in the product view');

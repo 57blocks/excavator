@@ -127,45 +127,17 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
   background: var(--surface); border-right: 1px solid var(--line);
 }
 @supports (height: 100dvh) { .rail { height: calc(100dvh - var(--topbar-h)); } }
-.rail-top { display: grid; gap: 2px; padding: 14px 12px 8px; border-bottom: 1px solid var(--line); }
+.rail-scroll { box-sizing: border-box; height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px 24px; }
+/* Two levels (design D11): a group name, then its links; nothing folds, nothing is numbered. */
+.rail-group { display: grid; gap: 1px; padding: 12px 0 10px; }
+.rail-group + .rail-group { border-top: 1px solid var(--line); }
+.rail-group-name { margin: 0; padding: 0 10px 6px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
 .rail-link {
-  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
-  color: var(--text-2); font-size: 14.5px; font-weight: 500; text-decoration: none;
+  display: block; padding: 6px 10px; border-radius: 6px;
+  color: var(--text-2); font-size: 14px; line-height: 1.4; text-decoration: none; overflow-wrap: anywhere;
 }
-.rail-link:hover, .rail-feature:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
-.rail-link[aria-current="page"], .rail-feature[aria-current="page"] { background: var(--accent-bg); color: var(--accent-text); }
-.rail-scroll { box-sizing: border-box; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
-.rail-body { padding: 6px 12px 20px; }
-.rail-area { padding-top: 6px; }
-.rail-area-name { min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--text-2); }
-/* Folding groups and domains (design D11): native details, a drawn chevron, no script state. */
-.rail-group-name, .rail-area-summary {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px;
-  list-style: none; cursor: pointer; user-select: none;
-}
-.rail-group-name::-webkit-details-marker, .rail-area-summary::-webkit-details-marker { display: none; }
-.rail-group-name::before, .rail-area-summary::before {
-  content: ""; flex: none; width: 6px; height: 6px; margin: 0 2px;
-  border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3);
-  transform: rotate(-45deg); transition: transform 0.15s ease;
-}
-details[open] > .rail-group-name::before, details[open] > .rail-area-summary::before { transform: rotate(45deg); }
-.rail-group-name:hover, .rail-area-summary:hover { background: var(--surface-2); }
-.rail-group-name { margin-top: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
-.rail-group-links { display: grid; gap: 2px; padding: 2px 0 6px 10px; }
-.rail-count { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-3); }
-.rail-feature {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 8px;
-  color: var(--text-2); font-size: 14.5px; line-height: 1.4; text-decoration: none;
-}
-.rail-feature-name { min-width: 0; }
-.rail-empty { padding: 0 10px; font-size: 13.5px; color: var(--text-3); }
-.rail-key { padding: 12px 22px 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--text-3); }
-.rail-key-title { margin-bottom: 6px; font-weight: 600; }
-.rail-key ul { display: grid; gap: 4px; }
-.rail-key li { display: flex; align-items: center; gap: 8px; }
-
-.reach-dot { flex: none; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--reach-color, var(--reach-operator)); }
+.rail-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+.rail-link[aria-current] { background: var(--accent-bg); color: var(--accent-text); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
 [data-reach="menu"] { --reach-color: var(--reach-menu); }
 [data-reach="link"] { --reach-color: var(--reach-link); }
 [data-reach="automated"] { --reach-color: var(--reach-automated); }
@@ -322,13 +294,6 @@ details[open] > .rail-group-name::before, details[open] > .rail-area-summary::be
 .view-switch-link { padding: 3px 14px; border-radius: 999px; color: var(--text-2); font-size: 13.5px; font-weight: 600; line-height: 1.5; text-decoration: none; white-space: nowrap; }
 .view-switch-link:hover { color: var(--text); text-decoration: none; }
 .view-switch-link[aria-current="page"] { background: var(--surface); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--line-strong); }
-.rail-area-link { color: inherit; text-decoration: none; }
-.rail-area-link:hover { color: var(--text); text-decoration: underline; }
-.rail-area-link[aria-current="page"] { color: var(--accent-text); }
-.rail-domain { padding: 4px 0 6px; }
-.rail-domain-name { display: block; padding: 2px 10px 4px; font-size: 13px; font-weight: 600; color: var(--text-2); text-decoration: none; }
-.rail-domain-name:hover { color: var(--text); text-decoration: underline; }
-.rail-domain-name[aria-current="page"] { color: var(--accent-text); }
 .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px 16px; margin: 0 0 20px; }
 .facts div { padding: 2px 0 2px 12px; border-left: 2px solid var(--line-strong); }
 .facts dt { font-size: 12.5px; font-weight: 600; color: var(--text-3); }

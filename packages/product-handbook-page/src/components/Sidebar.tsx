@@ -1,14 +1,10 @@
-import { isValidElement, useEffect, useRef } from 'react';
-import type { ReactElement, ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 
-import { REACHES } from '../lib/types';
-import type { Feature, PageData } from '../lib/types';
+import type { PageData } from '../lib/types';
 import { useLinks, useView } from '../lib/links';
 import type { Route } from '../lib/route';
-import { technicalNav } from '../lib/views';
 import { useText } from '../lib/text';
-import { BellIcon, ClockIcon, CoverageIcon, OverviewIcon } from './Icons';
-import { ReachDot } from './ReachBadge';
 
 interface Props {
   data: PageData;
@@ -17,108 +13,16 @@ interface Props {
   onNavigate: () => void;
 }
 
-function FeatureLink({ feature, current }: { feature: Feature; current: boolean }) {
-  const nav = useLinks();
-  return (
-    <a className="rail-feature" href={nav.feature(feature.id)} aria-current={current ? 'page' : undefined}>
-      <span className="rail-feature-name">{feature.name}</span>
-      <ReachDot reach={feature.reach} />
-    </a>
-  );
-}
-
-/** The product view's navigation: the domains, each folding over its features and open only when it holds the current page. */
-function ByDomain({ data, route }: { data: PageData; route: Route }) {
-  const t = useText();
-  const nav = useLinks();
-  const currentId = route.name === 'feature' ? route.id : '';
-  return (
-    <>
-      {data.domains.map((domain) => {
-        const inDomain = data.features.filter((feature) => feature.domain === domain.id);
-        return (
-          <details className="rail-area" key={domain.id} open={(route.name === 'domain' && route.id === domain.id) || inDomain.some((feature) => feature.id === currentId)}>
-            <summary className="rail-area-summary">
-              <h2 className="rail-area-name">
-                <a className="rail-area-link" href={nav.domain(domain.id)} aria-current={route.name === 'domain' && route.id === domain.id ? 'page' : undefined}>{domain.name}</a>
-              </h2>
-              <span className="rail-count">{inDomain.length}</span>
-            </summary>
-            {inDomain.length === 0 && <p className="rail-empty">{t('md.areas.noFeatures')}</p>}
-            {inDomain.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
-          </details>
-        );
-      })}
-    </>
-  );
-}
-
-/** The technical view's navigation: the applications, in each the domains whose features have quoted passages in it, and under each domain those features; then the features that fall in no application. Each application folds and is open only when it holds the current page. */
-function ByApplication({ data, route }: { data: PageData; route: Route }) {
-  const t = useText();
-  const nav = useLinks();
-  const currentId = route.name === 'feature' ? route.id : '';
-  const { applications, unplaced } = technicalNav(data);
-  return (
-    <>
-      {applications.map((application) => {
-        const features = new Set(application.domains.flatMap((domain) => domain.features.map((feature) => feature.id)));
-        const open = (route.name === 'application' && route.dir === application.dir)
-          || (route.name === 'domain' && application.domains.some((domain) => domain.id === route.id))
-          || features.has(currentId);
-        return (
-        <details className="rail-area" key={application.dir} aria-label={application.label} data-application={application.dir} open={open}>
-          <summary className="rail-area-summary">
-            <h2 className="rail-area-name">
-              <a className="rail-area-link" href={nav.application(application.dir)} aria-current={route.name === 'application' && route.dir === application.dir ? 'page' : undefined}>{application.label}</a>
-            </h2>
-            <span className="rail-count">{features.size}</span>
-          </summary>
-          {application.domains.length === 0 && <p className="rail-empty">{t('md.none')}</p>}
-          {application.domains.map((domain) => (
-            <div className="rail-domain" key={domain.id} data-domain={domain.id}>
-              <a className="rail-domain-name" href={nav.domain(domain.id)} aria-current={route.name === 'domain' && route.id === domain.id ? 'page' : undefined}>{domain.name}</a>
-              {domain.features.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
-            </div>
-          ))}
-        </details>
-        );
-      })}
-      {unplaced.length > 0 && (
-        <details className="rail-area" aria-label={t('page.nav.unplaced')} data-part="unplaced" open={unplaced.some((feature) => feature.id === currentId)}>
-          <summary className="rail-area-summary">
-            <h2 className="rail-area-name">{t('page.nav.unplaced')}</h2>
-            <span className="rail-count">{unplaced.length}</span>
-          </summary>
-          {unplaced.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
-        </details>
-      )}
-      {(data.technical?.integrations.length ?? 0) > 0 && (
-        <details className="rail-area" aria-label={t('md.entities.systems.heading')} data-part="systems" open={route.name === 'system'}>
-          <summary className="rail-area-summary">
-            <h2 className="rail-area-name">{t('md.entities.systems.heading')}</h2>
-            <span className="rail-count">{data.technical?.integrations.length}</span>
-          </summary>
-          {data.technical?.integrations.map((item) => (
-            <a className="rail-feature rail-system" key={item.system} href={nav.system(item.system)} aria-current={route.name === 'system' && route.system === item.system ? 'page' : undefined}>
-              <span className="rail-feature-name">{item.system}</span>
-            </a>
-          ))}
-        </details>
-      )}
-    </>
-  );
-}
+type Group = 'system' | 'applications' | 'domains' | 'systems' | 'topics' | 'health' | 'appendix';
 
 /**
- * The navigation (openspec change handbook-deep-entry, design D11): the overview alone at the top; then three folding
- * groups of page links, product (the roles and, in the technical view, the applications matrices, the two cross-cutting
- * tables and, in the technical view, the data and dictionaries pages), assessment (the findings, the recommendations,
- * the cross-cutting topics, the code health) and appendix (coverage, the open questions, the glossary, the sources and
- * scope); then, in the product view, the domains with their features, or, in the technical view, the applications with
- * their domains and features, each folding; and a key to the marks. Only the group and the domain or application that
- * hold the current page are open.
- * Below 900px it is a drawer that the top bar's button opens.
+ * The navigation (openspec change handbook-deep-entry, design D11): two levels, a group name and its links, all shown,
+ * none folding or numbered. The groups are the system (the overview, the roles matrix and, in the technical view, the
+ * applications matrix, the data and the dictionaries pages), in the technical view the applications, the business
+ * domains (named areas when the map has no domains file), in the technical view the external systems, the
+ * cross-cutting pages, health and findings, and the appendix. No feature is listed: a feature is reached from its
+ * domain's page, and on a feature page the link of its domain is marked as the current place. Below 900px it is a
+ * drawer that the top bar's button opens.
  */
 export function Sidebar({ data, route, open, onNavigate }: Props) {
   const t = useText();
@@ -126,28 +30,23 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
   const view = useView();
   const routeKey = JSON.stringify(route);
   const scroller = useRef<HTMLDivElement>(null);
-  // Keep the current item in view inside the rail's one scroll container.
+  // Keep the current link in view inside the rail's one scroll container.
   useEffect(() => {
-    const current = scroller.current?.querySelector('[aria-current="page"]');
+    const current = scroller.current?.querySelector('[aria-current]');
     if (current instanceof HTMLElement && typeof current.scrollIntoView === 'function') current.scrollIntoView({ block: 'nearest' });
   }, [routeKey]);
-  const used = REACHES.filter((reach) => data.features.some((feature) => feature.reach === reach));
-  const link = (href: string, name: Route['name'], label: string, icon?: ReactNode) => (
-    <a className="rail-link" key={name} href={href} aria-current={route.name === name ? 'page' : undefined}>
-      {icon}
-      <span>{label}</span>
-    </a>
+  const technical = view === 'technical';
+  const currentDomain = route.name === 'feature' ? data.features.find((feature) => feature.id === route.id)?.domain : undefined;
+  const link = (href: string, name: Route['name'], label: string) => (
+    <a className="rail-link" key={name} href={href} aria-current={route.name === name ? 'page' : undefined}>{label}</a>
   );
-  /** A folding group of page links, open only when it holds the current page. */
-  const group = (name: 'product' | 'assessment' | 'appendix', links: (ReactNode | false)[]) => {
-    const shown = links.filter((item): item is ReactElement => isValidElement(item));
-    return (
-      <details className="rail-group" data-group={name} open={shown.some((item) => item.key === route.name)}>
-        <summary className="rail-group-name">{t(`page.nav.group.${name}`)}</summary>
-        <div className="rail-group-links">{shown}</div>
-      </details>
-    );
-  };
+  const group = (name: Group, links: ReactNode[], label = t(`page.nav.group.${name}`)) => (
+    <section className="rail-group" data-group={name} aria-labelledby={`rail-group-${name}`}>
+      <h2 className="rail-group-name" id={`rail-group-${name}`}>{label}</h2>
+      {links}
+    </section>
+  );
+  const integrations = data.technical?.integrations ?? [];
   return (
     <nav
       className="rail"
@@ -160,43 +59,41 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
       }}
     >
       <div className="rail-scroll" ref={scroller}>
-      <div className="rail-top">
-        {link(nav.overview, 'overview', t('page.nav.overview'), <OverviewIcon />)}
-        {group('product', [
-          link(nav.rolesMatrix, 'roles-matrix', t('md.matrix.roleFeature.heading'), <OverviewIcon />),
-          view === 'technical' && link(nav.applicationsMatrix, 'applications-matrix', t('md.matrix.applicationDomain.heading'), <OverviewIcon />),
-          link(nav.notifications, 'notifications', t('page.nav.notifications'), <BellIcon />),
-          link(nav.jobs, 'jobs', t('page.nav.jobs'), <ClockIcon />),
-          view === 'technical' && link(nav.data, 'data', t('md.data.heading'), <OverviewIcon />),
-          view === 'technical' && link(nav.dictionaries, 'dictionaries', t('md.dict.heading'), <OverviewIcon />),
+        {group('system', [
+          link(nav.overview, 'overview', t('page.nav.overview')),
+          link(nav.rolesMatrix, 'roles-matrix', t('md.matrix.roleFeature.heading')),
+          technical && link(nav.applicationsMatrix, 'applications-matrix', t('md.matrix.applicationDomain.heading')),
+          technical && link(nav.data, 'data', t('md.data.heading')),
+          technical && link(nav.dictionaries, 'dictionaries', t('md.dict.heading')),
         ])}
-        {group('assessment', [
-          link(nav.findings, 'findings', t('page.nav.findings'), <CoverageIcon />),
-          link(nav.recommendations, 'recommendations', t('page.nav.recommendations'), <CoverageIcon />),
-          link(nav.topics, 'topics', t('page.nav.topics'), <CoverageIcon />),
-          link(nav.history, 'history', t('md.history.heading'), <CoverageIcon />),
+        {technical && group('applications', data.system.applications.map((application) => (
+          <a className="rail-link" key={application.dir} data-application={application.dir} href={nav.application(application.dir)} aria-current={route.name === 'application' && route.dir === application.dir ? 'page' : undefined}>
+            {application.name ?? application.dir}
+          </a>
+        )))}
+        {group('domains', data.domains.map((domain) => {
+          const current = route.name === 'domain' && route.id === domain.id ? 'page' : currentDomain === domain.id ? 'true' : undefined;
+          return <a className="rail-link" key={domain.id} data-domain={domain.id} href={nav.domain(domain.id)} aria-current={current}>{domain.name}</a>;
+        }), t(data.domainBasis === 'areas' ? 'page.nav.group.areas' : 'page.nav.group.domains'))}
+        {technical && integrations.length > 0 && group('systems', integrations.map((item) => (
+          <a className="rail-link" key={item.system} data-system={item.system} href={nav.system(item.system)} aria-current={route.name === 'system' && route.system === item.system ? 'page' : undefined}>{item.system}</a>
+        )))}
+        {group('topics', [
+          link(nav.notifications, 'notifications', t('page.nav.notifications')),
+          link(nav.jobs, 'jobs', t('page.nav.jobs')),
+          link(nav.topics, 'topics', t('page.nav.topics')),
+        ])}
+        {group('health', [
+          link(nav.history, 'history', t('md.history.heading')),
+          link(nav.findings, 'findings', t('page.nav.findings')),
+          link(nav.recommendations, 'recommendations', t('page.nav.recommendations')),
+          link(nav.openQuestions, 'open-questions', t('md.appendix.openHeading')),
         ])}
         {group('appendix', [
-          link(nav.coverage, 'coverage', t('page.nav.coverage'), <CoverageIcon />),
-          link(nav.openQuestions, 'open-questions', t('md.appendix.openHeading'), <CoverageIcon />),
-          link(nav.glossary, 'glossary', t('md.appendix.glossaryHeading'), <CoverageIcon />),
-          link(nav.sources, 'sources', t('md.appendix.sourcesHeading'), <CoverageIcon />),
+          link(nav.glossary, 'glossary', t('md.appendix.glossaryHeading')),
+          link(nav.sources, 'sources', t('md.appendix.sourcesHeading')),
+          link(nav.coverage, 'coverage', t('page.nav.coverage')),
         ])}
-      </div>
-      <div className="rail-body">
-        {view === 'technical' ? <ByApplication data={data} route={route} /> : <ByDomain data={data} route={route} />}
-      </div>
-      <div className="rail-key" aria-label={t('page.nav.key')} role="group">
-        <p className="rail-key-title">{t('page.nav.key')}</p>
-        <ul>
-          {used.map((reach) => (
-            <li key={reach}>
-              <span className="reach-dot" data-reach={reach} aria-hidden="true" />
-              <span>{t(`md.reach.${reach}`)}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
       </div>
     </nav>
   );

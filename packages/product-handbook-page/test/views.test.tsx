@@ -222,7 +222,7 @@ describe('the technical view is navigated by application', () => {
     expect(nav.unplaced.map((item) => item.id)).toEqual(['F2', 'F4']);
   });
 
-  it('draws that tree in the rail, in the order application, domain, feature', () => {
+  it('lists the applications in the rail, one link each, in the order of the overview, then the domains and the external systems', () => {
     const html = render(data, '#/technical');
     const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
     expect(rail).toContain('data-view-nav="technical"');
@@ -233,26 +233,18 @@ describe('the technical view is navigated by application', () => {
     expect(svc).toBeGreaterThan(0);
     expect(admin).toBeGreaterThan(svc);
     expect(ghost).toBeGreaterThan(admin);
-    const adminPart = rail.slice(admin, ghost);
-    expect(adminPart.indexOf('data-domain="D1"')).toBeGreaterThanOrEqual(0);
-    expect(adminPart.indexOf('data-domain="D2"')).toBeGreaterThan(adminPart.indexOf('data-domain="D1"'));
-    expect(adminPart.indexOf('href="#/technical/feature/F3"')).toBeGreaterThan(adminPart.indexOf('data-domain="D2"'));
-    expect(rail).toContain('data-part="unplaced"');
-    expect(rail.indexOf('href="#/technical/feature/F2"', rail.indexOf('data-part="unplaced"'))).toBeGreaterThan(0);
-    expect(rail).toContain('data-part="systems"');
+    expect(at('data-domain="D1"')).toBeGreaterThan(ghost);
+    expect(at(`data-system="${SLACK}"`)).toBeGreaterThan(at('data-domain="D2"'));
+    expect(rail).not.toContain('/feature/');
   });
 
-  it('the rail is one scroll container that holds the page links, the feature list and the key', () => {
+  it('the rail is one scroll container that holds every group', () => {
     for (const hash of ['#/technical', '#/product']) {
       const html = render(data, hash);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       expect(rail.match(/class="rail-scroll"/g)).toHaveLength(1);
-      const open = rail.indexOf('class="rail-scroll"');
-      expect(rail.indexOf('class="rail-top"')).toBeGreaterThan(open);
-      expect(rail.indexOf('class="rail-feature"')).toBeGreaterThan(open);
-      expect(rail.indexOf('class="rail-key"')).toBeGreaterThan(rail.indexOf('class="rail-feature"'));
-      expect(rail).toMatch(/^<nav class="rail"[^>]*><div class="rail-scroll">/);
-      expect(rail.endsWith('</ul></div></div>')).toBe(true);
+      expect(rail).toMatch(/^<nav class="rail"[^>]*><div class="rail-scroll"><section class="rail-group"/);
+      expect(rail.endsWith('</a></section></div>')).toBe(true);
     }
   });
 
@@ -383,18 +375,15 @@ describe('the page groups the features by business domain', () => {
   const data = dataFor(['product']);
   const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
 
-  it('draws the navigation by domain: a feature is under its domain, whatever area it sits in', () => {
+  it('draws the navigation by domain: on a feature page the link of its domain is marked, whatever area the feature sits in', () => {
     const rail = railOf(render(data, '#/'));
     const one = rail.indexOf('href="#/domain/D1"');
     const two = rail.indexOf('href="#/domain/D2"');
     expect(one).toBeGreaterThan(0);
     expect(two).toBeGreaterThan(one);
     expect(rail).not.toContain('href="#/domain/A1"');
-    const first = rail.slice(one, two);
-    // F2 is in area A2 and F1 in A1, and both are in D1.
-    expect(first).toContain('href="#/feature/F1"');
-    expect(first).toContain('href="#/feature/F2"');
-    expect(first).not.toContain('href="#/feature/F3"');
+    // F2 is in area A2 and in domain D1.
+    expect(railOf(render(data, '#/feature/F2'))).toContain('<a class="rail-link" data-domain="D1" href="#/domain/D1" aria-current="true">');
   });
 
   it('the overview count line gives the area count and the business domain count', () => {
@@ -496,75 +485,58 @@ describe('without business domains the page groups by area and says so', () => {
   }
 });
 
-// O6 of openspec change handbook-deep-entry (design D11): the overview stands alone at the top of the rail; the other
-// page links fall in three folding groups, product, assessment and appendix, named from the ui table; each domain (in
-// the technical view each application) folds and gives its feature count; only the group and the domain that hold the
-// current page are open.
-describe('the rail groups its links and folds each domain', () => {
+// O6 of openspec change handbook-deep-entry (design D11): the rail has two levels, a group name and its links, all
+// shown, none folding or numbered: the system, (technical) the applications, the business domains, (technical) the
+// external systems, the cross-cutting pages, health and findings, and the appendix. No feature is in the rail; on a
+// feature page the link of its domain is marked as the current place.
+describe('the rail is two levels: groups and their links', () => {
   const product = dataFor(['product']);
   const both = dataFor(BOTH);
   const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
   const groupOf = (rail: string, name: string) => {
     const start = rail.indexOf(`data-group="${name}"`);
-    return start < 0 ? '' : rail.slice(start, rail.indexOf('</details>', start));
+    return start < 0 ? '' : rail.slice(start, rail.indexOf('</section>', start));
   };
-  const openTag = (rail: string, attribute: string) => {
-    const start = rail.lastIndexOf('<details', rail.indexOf(attribute));
-    return rail.slice(start, rail.indexOf('>', start) + 1);
-  };
+  const order = (rail: string) => Array.from(rail.matchAll(/data-group="([a-z]+)"/g), (match) => match[1]);
 
-  it('puts the overview first and then the three groups in order, each named from the ui table', () => {
+  it('has the groups in order, each named from the ui table', () => {
     const rail = railOf(render(product, '#/'));
-    const top = rail.slice(rail.indexOf('class="rail-top"'), rail.indexOf('class="rail-body"'));
-    expect(top.indexOf('href="#/"')).toBeLessThan(top.indexOf('<details'));
-    const at = ['product', 'assessment', 'appendix'].map((name) => top.indexOf(`data-group="${name}"`));
-    expect(at[0]).toBeGreaterThan(0);
-    expect(at[1]).toBeGreaterThan(at[0]);
-    expect(at[2]).toBeGreaterThan(at[1]);
-    expect(groupOf(rail, 'product')).toContain(`<summary class="rail-group-name">${marked['page.nav.group.product']}</summary>`);
-    expect(groupOf(rail, 'assessment')).toContain(`<summary class="rail-group-name">${marked['page.nav.group.assessment']}</summary>`);
-    expect(groupOf(rail, 'appendix')).toContain(`<summary class="rail-group-name">${marked['page.nav.group.appendix']}</summary>`);
+    expect(order(rail)).toEqual(['system', 'domains', 'topics', 'health', 'appendix']);
+    for (const name of order(rail)) expect(groupOf(rail, name), name).toContain(`<h2 class="rail-group-name" id="rail-group-${name}">${marked[`page.nav.group.${name}`]}</h2>`);
+    expect(order(railOf(render(both, '#/technical')))).toEqual(['system', 'applications', 'domains', 'systems', 'topics', 'health', 'appendix']);
   });
 
-  it('puts each page link in its group, and the three technical pages in the product group of the technical view', () => {
+  it('puts each page link in its group, and the three technical pages in the system group of the technical view', () => {
     const rail = railOf(render(product, '#/'));
-    for (const href of ['#/matrix/roles', '#/notifications', '#/jobs']) expect(groupOf(rail, 'product'), href).toContain(`href="${href}"`);
-    for (const href of ['#/findings', '#/recommendations', '#/topics', '#/history']) expect(groupOf(rail, 'assessment'), href).toContain(`href="${href}"`);
-    for (const href of ['#/coverage', '#/open-questions', '#/glossary', '#/sources']) expect(groupOf(rail, 'appendix'), href).toContain(`href="${href}"`);
-    expect(groupOf(rail, 'product')).not.toContain('#/data');
+    for (const href of ['#/', '#/matrix/roles']) expect(groupOf(rail, 'system'), href).toContain(`href="${href}"`);
+    for (const href of ['#/domain/D1', '#/domain/D2']) expect(groupOf(rail, 'domains'), href).toContain(`href="${href}"`);
+    for (const href of ['#/notifications', '#/jobs', '#/topics']) expect(groupOf(rail, 'topics'), href).toContain(`href="${href}"`);
+    for (const href of ['#/history', '#/findings', '#/recommendations', '#/open-questions']) expect(groupOf(rail, 'health'), href).toContain(`href="${href}"`);
+    for (const href of ['#/glossary', '#/sources', '#/coverage']) expect(groupOf(rail, 'appendix'), href).toContain(`href="${href}"`);
+    expect(groupOf(rail, 'system')).not.toContain('#/data');
     const technical = railOf(render(both, '#/technical'));
-    for (const href of ['#/technical/matrix/applications', '#/technical/data', '#/technical/dictionaries']) expect(groupOf(technical, 'product'), href).toContain(`href="${href}"`);
+    for (const href of ['#/technical/matrix/applications', '#/technical/data', '#/technical/dictionaries']) expect(groupOf(technical, 'system'), href).toContain(`href="${href}"`);
+    expect(groupOf(technical, 'systems')).toContain(`data-system="${SLACK}"`);
   });
 
-  it('from the overview every group and every domain is folded, and each domain gives its feature count', () => {
-    const rail = railOf(render(product, '#/'));
-    expect(rail).not.toMatch(/<details[^>]* open=""/);
-    expect(rail).toMatch(/<summary class="rail-area-summary">.*?href="#\/domain\/D1".*?<span class="rail-count">2<\/span><\/summary>/);
+  it('folds nothing, numbers nothing and lists no feature', () => {
+    for (const rail of [railOf(render(product, '#/feature/F3')), railOf(render(both, '#/technical/feature/F3'))]) {
+      expect(rail).not.toContain('<details');
+      expect(rail).not.toContain('/feature/');
+      expect(rail).not.toContain('rail-key');
+      expect(rail).not.toContain('rail-count');
+    }
   });
 
-  it('opens only the domain of the current feature, or the current domain, and only the group of the current page', () => {
+  it('marks the current page, and on a feature page the link of its domain', () => {
+    expect(railOf(render(product, '#/findings'))).toContain('<a class="rail-link" href="#/findings" aria-current="page">');
+    expect(railOf(render(product, '#/domain/D2'))).toContain('<a class="rail-link" data-domain="D2" href="#/domain/D2" aria-current="page">');
     const onFeature = railOf(render(product, '#/feature/F3'));
-    expect(openTag(onFeature, 'href="#/domain/D2"')).toContain('open=""');
-    expect(openTag(onFeature, 'href="#/domain/D1"')).not.toContain('open=""');
-    expect(onFeature.match(/ open=""/g)).toHaveLength(1);
-    const onDomain = railOf(render(product, '#/domain/D1'));
-    expect(openTag(onDomain, 'href="#/domain/D1"')).toContain('open=""');
-    expect(onDomain.match(/ open=""/g)).toHaveLength(1);
-    const onFindings = railOf(render(product, '#/findings'));
-    expect(openTag(onFindings, 'data-group="assessment"')).toContain('open=""');
-    expect(onFindings.match(/ open=""/g)).toHaveLength(1);
+    expect(onFeature).toContain('<a class="rail-link" data-domain="D2" href="#/domain/D2" aria-current="true">');
+    expect(onFeature.match(/aria-current=/g)).toHaveLength(1);
   });
 
-  it('in the technical view folds each application and opens the ones that hold the current feature', () => {
-    const rail = railOf(render(both, '#/technical/feature/F3'));
-    expect(openTag(rail, `data-application="${ADMIN}"`)).toContain('open=""');
-    expect(openTag(rail, `data-application="${SVC}"`)).not.toContain('open=""');
-    expect(openTag(rail, 'data-part="unplaced"')).not.toContain('open=""');
-    const onUnplaced = railOf(render(both, '#/technical/feature/F2'));
-    expect(openTag(onUnplaced, 'data-part="unplaced"')).toContain('open=""');
-  });
-
-  it('every text of the grouped rail comes from the ui table', () => {
+  it('every text of the rail comes from the ui table', () => {
     for (const hash of ['#/', '#/feature/F3', '#/findings']) expect(unmarked(railOf(render(product, hash))), hash).toEqual([]);
     for (const hash of ['#/technical', '#/technical/feature/F3']) expect(unmarked(railOf(render(both, hash))), hash).toEqual([]);
   });

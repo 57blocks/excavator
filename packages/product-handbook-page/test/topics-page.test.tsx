@@ -100,12 +100,13 @@ describe('the topics route and link', () => {
     expect(routeHash({ name: 'topics' }, 'technical')).toBe('#/technical/topics');
   });
 
-  it('both views have the sidebar link right after the recommendations link', () => {
+  // Since handbook-deep-entry D11 the topics close the cross-cutting group, after the two tables.
+  it('both views have the sidebar link right after the jobs link', () => {
     for (const view of ['product', 'technical']) {
       const html = render(dataFor(), `#/${view}`);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       const links = Array.from(rail.matchAll(/href="([^"]*)"/g), (match) => match[1]);
-      const at = links.indexOf(`#/${view}/recommendations`);
+      const at = links.indexOf(`#/${view}/jobs`);
       expect(at, view).toBeGreaterThan(-1);
       expect(links[at + 1]).toBe(`#/${view}/topics`);
       expect(rail).toContain(marked['page.nav.topics']);

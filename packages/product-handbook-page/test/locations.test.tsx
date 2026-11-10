@@ -68,8 +68,7 @@ describe('the stylesheet', () => {
   it('makes .rail-scroll the only scrolling container of the rail', () => {
     expect(rule('.rail-scroll')).toMatch(/overflow-y:\s*auto/);
     expect(rule('.rail')).not.toMatch(/overflow(-y)?:\s*(auto|scroll)/);
-    expect(rule('.rail-top')).not.toMatch(/overflow/);
-    expect(rule('.rail-key')).not.toMatch(/overflow/);
+    expect(rule('.rail-group')).not.toMatch(/overflow/);
   });
   it('gives text columns a minimum width and short-value columns no wrapping', () => {
     expect(css).toMatch(/\[data-col="text"\][^{]*\{[^}]*min-width:\s*16em/);
