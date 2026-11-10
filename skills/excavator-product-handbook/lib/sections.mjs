@@ -28,6 +28,10 @@ const TABLE = Object.freeze([
   // The cross-cutting topics (openspec change handbook-topics) gather the verified entries and findings by a question that crosses features,
   // so they run after the trace and after the remedies: the third AFTER_TRACE= line; they need no map and no stage file.
   Object.freeze({ id: 'topics', stages: Object.freeze([]), file: 'sections/topics.md', afterTrace: true }),
+  // The outline (openspec change handbook-outline) places the blocks of the handbook into the parts and chapters of this project, so it runs
+  // after everything that writes a block: the fourth AFTER_TRACE= line. It needs the map but no stage file, since the map is already in
+  // `$OUT` by then, and its file is a stage file only in name: nothing else reads it.
+  Object.freeze({ id: 'outline', stages: Object.freeze([]), file: 'stages/outline.md', afterTrace: true }),
 ]);
 
 export const SECTIONS = Object.freeze(TABLE.map((row) => row.id));

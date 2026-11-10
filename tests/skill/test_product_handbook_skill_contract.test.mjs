@@ -634,7 +634,8 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
   });
 
   it('says the handbook and the page hold two tables across features that the script writes, and the model writes nothing for them', () => {
-    expect(p).toContain('between the feature sections and the coverage section it has two tables across features, every notification of the verified entries and one row for every scheduled-job candidate with the schedule its registration line gives, which the script writes from the verified entries and the source, so you write nothing for them');
+    expect(p).toContain('every notification of the verified entries; one row for every scheduled-job candidate with the schedule its registration line gives; ');
+    expect(p).toContain('each chapter is one block, computed by the script from the verified entries, the facts of the run and the records of the checks, so you write nothing for it');
     expect(p).toContain('`page` writes `$OUT/handbook.html`, one page that opens from disk with a double click, with the same two tables on pages of their own');
   });
 
@@ -687,7 +688,7 @@ describe('excavator-product-handbook skill: --views (openspec change handbook-en
     expect(p.indexOf(`${HANDBOOK} assemble`)).toBeGreaterThan(-1);
     expect(p).toContain('`assemble` writes `$OUT/handbook.md` for the product view and `$OUT/handbook-technical.md` for the technical view');
     expect(p).toContain('removes the file of a view that `$VIEWS` does not have');
-    expect(p).toContain('the entity sections, all computed by the script from the verified entries and the source, so you write nothing for them either');
+    expect(p).toContain('one list of entities with a section for each (the business domains, each with its purposes, its handoffs and the sections of each of its verified features');
     expect(p).toContain('a switch in its top bar that stays on the same entity');
     expect(p).toContain('the callers the quoted code shows and, kept apart, the applications whose source contains the system\'s name');
   });
@@ -939,7 +940,7 @@ describe('excavator-product-handbook skill: Phase 7 and the files table know the
   it('writes only verified features into the handbook and lists the removed items and the unfinished verification', () => {
     const p = phase(7);
     expect(p).toContain('Only a `verified` feature has a section in the handbook.');
-    expect(p).toContain('the features without a verified entry, among them those whose verification or trace did not finish, and the items verification and the trace removed, each with its reason');
+    expect(p).toContain('the features without a verified entry, among them those whose verification or trace did not finish, the items verification and the trace removed, each with its reason, the overview\'s included, and which outline was used');
     expect(p).toContain('entries/<id>.json changed after it was verified');
   });
 
@@ -1553,7 +1554,7 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
   });
 
   it('says in Phase 7 and in the work split that the handbook opens with the overview and that the script writes its statistics', () => {
-    expect(phase(7)).toContain('the system overview first');
+    expect(phase(7)).toContain('the system overview, written from the verified overview and its own counts');
     expect(phase(7)).toContain('each with its reason, the overview\'s included');
     const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
     expect(table).toContain('computes every count and statistic of the system overview');
