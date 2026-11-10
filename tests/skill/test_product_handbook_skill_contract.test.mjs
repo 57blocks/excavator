@@ -731,6 +731,20 @@ describe('excavator-product-handbook skill: the lane prompt asks for citations t
     expect(prompt).not.toContain('one more thing the code shown has to prove');
   });
 
+  it('asks for the exceptions before a rule stated for everyone: the early branch by type, the sets of offices or regions, the acting approver, the skipping switch, the fallback error text', () => {
+    expect(prompt).toContain('**Exceptions before a general rule.**');
+    expect(prompt).toContain('Before you write a rule that you state for every type, for every office or region, or for everyone, look for the branches that keep it from being general');
+    expect(prompt).toContain('an early branch by type');
+    expect(prompt).toContain('the sets of offices or regions, read separately in the frontend and in the backend (when the two sets differ, write them separately, each with its own evidence)');
+    expect(prompt).toContain('the acting person being the approver or the leader of the request');
+    expect(prompt).toContain('a switch that skips, defers or turns off a step');
+    expect(prompt).toContain('a fixed error text that is shown only when the server sends no message of its own');
+    expect(prompt).toContain('Write the main rule with its condition, and write each exception as its own item with its own evidence');
+    expect(prompt.indexOf('**Following out of the seed files.**')).toBeLessThan(prompt.indexOf('**Exceptions before a general rule.**'));
+    expect(prompt.indexOf('**Exceptions before a general rule.**')).toBeLessThan(prompt.indexOf('**Cite what proves it.**'));
+    expect(sectionText('sections/features.md')).not.toMatch(/[^\x00-\x7F]/);
+  });
+
   it('puts the rule before the labels-and-numbers rule, inside the evidence rules of the lane prompt', () => {
     expect(prompt.indexOf('**Evidence.**')).toBeLessThan(prompt.indexOf('**Cite what proves it.**'));
     expect(prompt.indexOf('**Cite what proves it.**')).toBeLessThan(prompt.indexOf('**Labels and numbers must be in the item\'s own passages.**'));
@@ -743,8 +757,7 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
   it('sits between the entries and the assembly and is told in the run language', () => {
     expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
     expect(before).toContain('**Nothing stays that the code does not back up.**');
-    expect(before).toContain('an item it finds contradicted is removed at once, an item it cannot confirm is given other citations once (its text never changes), and removed if it is still not confirmed.');
-    expect(before).not.toContain('is rewritten once');
+    expect(before).toContain('an item that is not confirmed, contradicted or not, is rewritten once (other citations, or a claim narrowed to what the code shows, never a name or a label), and removed if it is still not confirmed.');
     expect(before).toContain('Five rules govern everything below');
   });
 
@@ -822,13 +835,13 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
     expect(p).toContain('record its verdicts, one command per feature and one at a time, never two at once');
     expect(p).toContain('`<id>: confirmed (<n> items)`');
     expect(p).toContain('`<id>: <n> items to rewrite`, then `Rewrite file: <path>`');
-    expect(p).toContain('preceded by `<id>: <m> items removed` when round 1 removed any');
-    expect(p).toContain('`<id>: confirmed, <n> items removed`, then `No rewrite file: no item is left to rewrite`');
-    expect(p).toContain('an item either verifier judged `contradicted` was removed from the entry at once');
-    expect(p).toContain('A removed item is never rewritten and never put back');
-    expect(p).toContain('The items the two verifiers did not both confirm and neither judged `contradicted` are `unverified`; they are in the rewrite file');
-    expect(p).not.toContain('`unverified` and `contradicted` alike');
-    expect(p).toContain('`<id>: failed at verify: no item could be proved`: round 1 removed every item that carried evidence');
+    expect(p).toContain('round 1 removes nothing');
+    expect(p).toContain('with its claim, its verdict (`contradicted` or `unverified`) and its reason, and the entry file is unchanged');
+    expect(p).toContain('its reason only tells the rewriter where to look: it is never the basis of a new claim');
+    expect(p).not.toContain('was removed from the entry at once');
+    expect(p).not.toContain('A removed item is never rewritten and never put back');
+    expect(p).not.toContain('No rewrite file: no item is left to rewrite');
+    expect(p).not.toContain('round 1 removed every item that carried evidence');
     // The lines the text quotes are the lines the script prints.
     const run = makeCheckedMapRun();
     try {
@@ -836,18 +849,10 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
       expect(run.run('check-entry', 'F1').status).toBe(0);
       const word = { purpose: 'unverified', 'states[1]': 'contradicted' };
       const rewrite = judge(run, 'F1', 1, (item) => word[item.id] ?? 'verified');
-      expect(rewrite.lines.slice(0, 3)).toEqual(['F1: 1 item removed', 'F1: 1 item to rewrite', expect.stringMatching(/^Rewrite file: /)]);
+      expect(rewrite.lines.slice(0, 2)).toEqual(['F1: 2 items to rewrite', expect.stringMatching(/^Rewrite file: /)]);
+      expect(rewrite.stdout).not.toMatch(/removed/);
     } finally {
       run.cleanup();
-    }
-    const settled = makeCheckedMapRun();
-    try {
-      settled.writeEntry();
-      expect(settled.run('check-entry', 'F1').status).toBe(0);
-      const done = judge(settled, 'F1', 1, (item) => (item.id === 'states[1]' ? 'contradicted' : 'verified'));
-      expect(done.lines.slice(0, 2)).toEqual(['F1: confirmed, 1 item removed', 'No rewrite file: no item is left to rewrite']);
-    } finally {
-      settled.cleanup();
     }
   });
 
@@ -871,22 +876,42 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
     expect(prompt).toContain('until `try-entry` prints `<id>: ok`');
   });
 
-  it('limits the rewrite to new citations of the listed items: the text never changes, and nothing else', () => {
+  it('lets the rewrite narrow a listed claim, never widen it, never rename, and says what to do with an item it cannot save', () => {
     const prompt = flat(rewritePrompt);
-    expect(prompt).toContain('do one thing: change its citations only');
-    expect(prompt).toContain('so that the passage by itself proves the item as it is written (for who may do something, the condition the code checks, not the name of a function or variable)');
-    expect(prompt).toContain('The text of the item stays word for word as it is, and so do the screen name, field label or operation name it is written under');
-    expect(prompt).toContain('do not narrow, widen, correct or reword it, even when the code you read shows that the text is wrong');
-    expect(prompt).not.toMatch(/narrow the text|change the text only as far|do one of these/);
-    expect(prompt).toContain('Every one is `unverified`');
-    expect(prompt).toContain('never put those back');
-    expect(prompt).toContain('or a listed item\'s text differs (only its citations may change)');
-    expect(prompt).toContain('their citations may change, their text may not');
-    expect(prompt).toContain('When an item cannot be saved (no passage proves it as it is written), leave it exactly as it is: the script removes it after the second check. Never delete or add an item, and never move one into `unknowns`.');
+    expect(prompt).toContain('Each is `unverified` (the code the verifier saw neither supports nor denies the item) or `contradicted`');
+    expect(prompt).toContain('The reason only tells you where to look; it is never the basis of a new claim');
+    expect(prompt).toContain('do one of two things');
+    expect(prompt).toContain('so that the passages by themselves prove the item as it is written');
+    expect(prompt).toContain('(b) NARROW the claim: add the condition, case or exception the code shows, or drop the part that no passage proves.');
+    expect(prompt).toContain('Never widen it, never change its subject, never turn it into a different fact.');
+    expect(prompt).toContain('The new text must be proved by its own passages, and you must have read those passages yourself.');
+    expect(prompt).toContain('Names and labels never change: the screen name, field label, operation name, state label, transition from and to, the target of a handoff');
+    expect(prompt).toContain('stay exactly as they are');
+    expect(prompt).not.toContain('change its citations only');
+    expect(prompt).not.toContain('do not narrow, widen, correct or reword it');
+    expect(prompt).not.toContain('their citations may change, their text may not');
+    expect(prompt).toContain('When an item cannot be saved (no passage proves it, and no narrower claim is proved either), leave it exactly as it is: the script removes it after the second check. Never delete or add an item, and never move one into `unknowns`.');
     expect(prompt).not.toMatch(/delete the item|move it into `unknowns`/);
     expect(prompt).toContain('Change nothing else. An item that is not listed stays exactly as it is');
-    expect(prompt).toContain('refuses an entry in which an item is missing or added, or an item that is not listed differs');
+    expect(prompt).toContain('refuses an entry in which an item is missing or added, or an item that is not listed differs, or a listed item\'s name or label differs');
+    expect(prompt).toContain('their citations and their text may change, their names and labels may not');
     expect(prompt).toContain('count as listed');
+  });
+
+  it('gives the rewriter the steps that close a gap the reason names: the called function, the enclosing condition, the definition, the other side', () => {
+    const prompt = flat(rewritePrompt);
+    expect(prompt).toContain('When the reason says that an effect, a send, a condition or a source is not shown');
+    expect(prompt).toContain('(1) open the function it calls and find the line that really changes the data or sends the message');
+    expect(prompt).toContain('(2) find the condition around that line, or the start of the function');
+    expect(prompt).toContain('(3) find where the constant, the configuration value or the identity is defined');
+    expect(prompt).toContain('(4) when the other side of the product (the frontend or the backend) is needed, find its matching line');
+    expect(prompt).toContain('Add each passage you find to the citations and keep the old ones.');
+  });
+
+  it('describes the rewrite subagent in the split table as one that may narrow, and keeps its prompt, the table and the agent file free of non-ASCII characters', () => {
+    expect(skillOwn).toContain('swaps or adds the citations that prove each, or narrows its claim to what the code it read shows');
+    expect(skillOwn).not.toContain('Changes only the citations of the items the verifier could not confirm');
+    for (const text of [rewritePrompt, skillOwn, agent, sectionText('sections/features.md'), readFileSync(resolve(repoRoot, 'agents/excavator-handbook-writer.md'), 'utf-8')]) expect(text).not.toMatch(/[^\x00-\x7F]/);
   });
 
   it('keeps the rules of the lane in the rewrite: reads no generated product, writes only the entry, replies one line', () => {
@@ -907,7 +932,8 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
     expect(p).toContain('There is no second rewrite: leave the feature as it is, `checked`');
     expect(p).not.toContain('no item is left to verify');
     expect(p).toContain('or deleted or added an item, and the lines name each path');
-    expect(p).toContain('or changed the text of a listed item (its line reads `<item id>: listed for rewriting, but its claim changed; only its citations may change`)');
+    expect(p).toContain('or changed a name or label of a listed item (its line names the item and says that names and labels may not change)');
+    expect(p).not.toContain('only its citations may change');
     const stepFive = p.slice(p.indexOf('5. As each rewrite subagent returns'));
     expect(stepFive.indexOf('check-entry "$OUT"')).toBeLessThan(stepFive.indexOf('slices "$OUT" <id> --round 2'));
   });
@@ -1283,6 +1309,26 @@ describe('the handbook verifier agent', () => {
     expect(text).toContain('unless the blocks include the function\'s body');
   });
 
+  it('judges only the path a claim names and only what it states, and keeps the three rules above winning on a conflict', () => {
+    expect(text).toContain('Two more rules say what a claim is judged against.');
+    expect(text).toContain('They add to the three rules above and never weaken them: when one of the three rules above and one of these two disagree, the rule above wins.');
+    expect(text).toContain('**Judge only the path the claim names.** When a claim names a page, a path, an entry or a case, judge only that one.');
+    expect(text).toContain('A branch of the shown code that belongs to another path, which the claim does not speak about');
+    expect(text).toContain('neither supports the claim nor contradicts it: use it for neither `verified` nor `contradicted`');
+    expect(text).toContain('**Judge a claim up to what it states.**');
+    expect(text).toContain('builds a message, picks its recipients and hands it to the sending code');
+    expect(text).toContain('Do not demand proof of an outcome the claim does not state, such as delivery');
+    expect(text).toContain('is still `unverified`, as the rule above says');
+    // The three older rules stay word for word.
+    expect(text).toContain('A name never tells you which person, role or office.');
+    expect(text).toContain('A claim of "every", "any", "all", "always", "cannot already" or "none" holds only if nothing narrows it.');
+    expect(text).toContain('Nothing is shown to hold after a call whose body is not shown.');
+    // The new rules sit after the old ones, before the other rules.
+    expect(text.indexOf('Nothing is shown to hold after a call')).toBeLessThan(text.indexOf('**Judge only the path the claim names.**'));
+    expect(text.indexOf('**Judge a claim up to what it states.**')).toBeLessThan(text.indexOf('## Other rules'));
+    expect(agent).not.toMatch(/[^\x00-\x7F]/);
+  });
+
   it('asks for a one-line reason that names no file, and writes the verdict file it is given', () => {
     expect(text).toContain('`reason` is one line of at most about 200 characters');
     expect(text).toContain('Say "line 20", never a file name or path.');
@@ -1573,7 +1619,7 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
   const PINNED = {
     'stages/map.md': '16315c96d2433ef5a78727673d6813bfa8bf0a9879e107cc60f1eb63bc9f7481',
     'sections/overview.md': '2a4f1e07bf2c5d0b65c27028982abff2fdc421b0c91dc78695837282ab46ae66',
-    'sections/features.md': '7e979f0cfd452200eb09355bb9648daa00785bceea525728a0a3ee3b14fbf1ec',
+    'sections/features.md': '6213b625ea106c371a67315c7f05a6792c110746c1402ff07a6058dfab19cfb1',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],

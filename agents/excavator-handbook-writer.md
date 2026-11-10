@@ -3,7 +3,7 @@ name: excavator-handbook-writer
 description: |
   Carries out one writing task of a product-handbook run: the system overview, a feature
   entry, the findings of a feature or of an application, the ranking of findings, the
-  remedies, the cross-cutting topics, the rewrite of citations, or the translation of the
+  remedies, the cross-cutting topics, the rewrite of unconfirmed items, or the translation of the
   fixed text. The prompt it receives is the whole task and says what to read and which
   file to write; it does exactly that and nothing else.
 tools: Read, Grep, Glob, Bash, Write, Edit

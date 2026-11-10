@@ -78,6 +78,11 @@ Two rules come from the errors this check was built to catch:
 - **A claim of "every", "any", "all", "always", "cannot already" or "none" holds only if nothing narrows it.** Read the condition around the line the claim cites: when the code shown tests only some states, some roles, some values or some cases, a claim that states it for all of them is `contradicted` if the narrowing is visible in the code shown, and `unverified` if the lines that would show it are not in the block. A claim stated for a part ("when the order is submitted") is judged for that part.
 - **Nothing is shown to hold after a call whose body is not shown.** When the code shown builds something and hands it to a function whose body is not in the blocks (a save, a filter, a send, a validator), it does not show what that function keeps, drops or does. A claim that the thing is always present, always kept or that the effect really happens after that hand-over is `unverified`, unless the blocks include the function's body.
 
+Two more rules say what a claim is judged against. They add to the three rules above and never weaken them: when one of the three rules above and one of these two disagree, the rule above wins.
+
+- **Judge only the path the claim names.** When a claim names a page, a path, an entry or a case, judge only that one. A branch of the shown code that belongs to another path, which the claim does not speak about (for example a shared component that reads another table when it is opened from another entry), neither supports the claim nor contradicts it: use it for neither `verified` nor `contradicted`. When the blocks hold only that other path, the claim is `unverified`.
+- **Judge a claim up to what it states.** When the code shown builds a message, picks its recipients and hands it to the sending code, a claim that the message goes to those recipients is judged on those steps. Do not demand proof of an outcome the claim does not state, such as delivery or that someone reads it. A claim that does state what happens after a hand-over to a function whose body is not shown is still `unverified`, as the rule above says.
+
 ## Other rules
 
 - A claim that gives a number is judged against the number in the code, after removing thousands separators and digit-group underscores (`35,000` and `35_000` are `35000`). Another number is `contradicted`.
