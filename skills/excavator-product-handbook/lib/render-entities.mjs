@@ -19,11 +19,10 @@ const featureText = (feature, t) => fill(t('md.summary.feature'), { id: feature.
 const bullets = (items, t) => (items.length === 0 ? [t('md.none'), ''] : [...items.map((item) => `- ${inline(item)}`), '']);
 
 function domainsSection({ map, entities, t }) {
-  const verified = new Set(entities.matrices.roleFeature.features);
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const out = [`## ${t('md.entities.domains.heading')}`, '', t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), ''];
   for (const domain of entities.domains) {
-    out.push(`### ${inline(domain.name)}`, '', fill(t('md.entities.domain.counts'), { features: domain.features.length, verified: domain.features.filter((id) => verified.has(id)).length }), '');
+    out.push(`### ${inline(domain.name)}`, '');
     out.push(`#### ${t('md.entities.domain.whatItDoes')}`, '');
     out.push(...bullets(domain.purposes.map((item) => fill(t('md.entities.domain.purposeItem'), { feature: featureText(feature.get(item.feature), t), purpose: inline(item.text) })), t));
   }

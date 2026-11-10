@@ -410,6 +410,8 @@ describe('the page groups the features by business domain', () => {
     expect(main).toContain(d('domain one'));
     expect(main).toContain('href="#/feature/F2"');
     expect(main).not.toContain('href="#/feature/F3"');
+    // D11: the page lists the features, with no line counting them.
+    expect(main).not.toContain('class="lede"');
     expect(html).toContain(marked['md.entities.domains.note']);
     expect(html).not.toContain(marked['md.domains.fromAreas']);
   });

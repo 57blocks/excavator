@@ -112,7 +112,6 @@
     "md.entities.domains.heading": "Domains",
     "md.entities.domains.note": "A domain is a kind of business object or a stretch of business that readers handle together; it can hold features from several areas of the map.",
     "md.entities.domains.purposesNote": "What it does lists only the purposes of the features that were verified, in the words of their entries.",
-    "md.entities.domain.counts": "Features: {features}. Features with a verified entry: {verified}.",
     "md.entities.domain.whatItDoes": "What it does",
     "md.entities.domain.purposeItem": "{feature}: {purpose}",
     "md.entities.roles.heading": "Roles",

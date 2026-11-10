@@ -238,7 +238,7 @@ describe('entity sections and matrices', () => {
     const body = text(run, 'handbook.md');
     const domains = sectionOf(body, '## Domains', '\n## Roles\n');
     expect(domains).toContain('### Order handling');
-    expect(domains).toContain('Features: 2. Features with a verified entry: 1.');
+    expect(domains).not.toContain('Features with a verified entry');
     expect(domains).toContain('- F1 Orders: Staff place new orders for customers.');
     expect(domains).not.toContain('F2 Archive:');
     const roles = sectionOf(body, '\n## Roles\n', '## Roles by feature');

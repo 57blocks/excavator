@@ -7,9 +7,9 @@ import { Cell, TableScroll } from './Tables';
 
 /**
  * A domain (a business domain, or an area of the map when the handbook has no
- * domains file, which the page then says): how many of its features have a
- * verified entry, what it does (only the purposes of its verified features, in
- * the words of their entries), and its features. In the technical view, also
+ * domains file, which the page then says): what it does (only the purposes of
+ * its verified features, in the words of their entries) and its features, listed
+ * with no line counting them (openspec change handbook-deep-entry, D11). In the technical view, also
  * the applications that hold quoted passages of its features.
  */
 export function DomainPage({ data, domain: group }: { data: PageData; domain: Area }) {
@@ -28,7 +28,6 @@ export function DomainPage({ data, domain: group }: { data: PageData; domain: Ar
       <Crumbs trail={[group.name]} />
       <header className="page-head">
         <h1 className="page-title">{group.name}</h1>
-        <p className="lede">{t('md.entities.domain.counts', { features: features.length, verified: features.filter((feature) => feature.status === 'verified').length })}</p>
       </header>
       <p className="muted summary-note">{t(data.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas')}</p>
       <p className="muted summary-note">{t('md.entities.domains.purposesNote')}</p>

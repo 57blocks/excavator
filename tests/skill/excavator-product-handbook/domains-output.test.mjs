@@ -78,8 +78,10 @@ describe('handbook.md groups the features by business domain', () => {
     assemble(run);
     const md = text(run, 'handbook.md');
     const domains = sectionOf(md, '## Domains\n', '\n## Roles');
-    expect(domains).toContain('### Customer orders\n\nFeatures: 3. Features with a verified entry: 1.');
-    expect(domains).toContain('### System upkeep\n\nFeatures: 2. Features with a verified entry: 0.');
+    // D11 of handbook-deep-entry: no line counting a domain's features; the overview table counts them.
+    expect(domains).toContain('### Customer orders\n\n#### What it does');
+    expect(domains).toContain('### System upkeep\n\n#### What it does');
+    expect(domains).not.toContain('Features with a verified entry');
     expect(domains).not.toContain(FROM_AREAS);
     const overview = sectionOf(md, '### Domains and roles', '## Domains and features');
     expect(overview).toContain('| Domain | Features | Verified entries | Roles |');
