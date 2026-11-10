@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, createElement } from 'react';
 
 import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
@@ -87,13 +87,13 @@ export function Chips({ citations }: { citations: Place[] }) {
 }
 
 /** The technical view's source positions of one unit: the items that carry a citation, grouped by item, each with its path, its claim and a chip for each file; collapsed until the reader opens it. */
-export function Locations({ unit, id = 'locations', title }: { unit: UnitLocations; id?: string; title?: string }) {
+export function Locations({ unit, id = 'locations', title, level = 2 }: { unit: UnitLocations; id?: string; title?: string; level?: number }) {
   const t = useText();
   const heading = title ?? t('md.locations.heading');
   const citations = unit.items.reduce((sum, item) => sum + item.citations.length, 0);
   return (
     <section className="section" aria-labelledby={`sec-${id}`} data-part="locations">
-      <h2 className="section-title" id={`sec-${id}`}>{heading}</h2>
+      {createElement(`h${Math.min(6, level)}`, { className: 'section-title', id: `sec-${id}` }, heading)}
       {unit.items.length === 0 ? <p className="muted">{t('md.none')}</p> : (
         <details className="loc-details" data-part="locations-details">
           <summary>{t('page.locations.summary', { items: unit.items.length, citations })}</summary>
