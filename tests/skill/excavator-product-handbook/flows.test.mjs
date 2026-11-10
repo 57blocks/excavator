@@ -15,6 +15,7 @@ const ui = {
   'md.flow.actor.interface': 'Other system',
   'md.flow.actor.operator': 'Operator',
   'md.flow.other': 'Other code',
+  'md.flow.root': 'Main application',
 };
 const t = (key) => ui[key];
 const step = (file) => ({ text: `A step in ${file}.`, evidence: file === undefined ? [] : [{ file, passage: 'x' }, { file: 'web/other.js', passage: 'y' }] });
@@ -58,6 +59,12 @@ describe('operationSequence', () => {
       participants: ['Scheduled job', 'Other code', 'Web shop'],
       steps: [{ from: 0, to: 1 }, { from: 1, to: 1 }, { from: 1, to: 2 }],
     });
+  });
+
+  it('names an unnamed application at the project root by the fixed text, not by its directory', () => {
+    const operation = { sentences: [step('src/a.js')] };
+    expect(operationSequence(operation, 'menu', [{ dir: '.', name: null }], t).participants).toEqual(['User', 'Main application']);
+    expect(operationSequence(operation, 'menu', [{ dir: '.', name: 'Shop' }], t).participants).toEqual(['User', 'Shop']);
   });
 
   it('has only the starter and no arrow for an operation with no step', () => {

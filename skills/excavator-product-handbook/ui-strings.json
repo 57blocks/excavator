@@ -104,6 +104,7 @@
     "md.flow.actor.interface": "Other system",
     "md.flow.actor.operator": "Operator",
     "md.flow.other": "Other code",
+    "md.flow.root": "Main application",
     "md.flow.note": "In the diagram, each participant after the first is the application whose code a step cites, and each arrow is numbered like the step it stands for; an arrow shows the order of the steps, not a call.",
     "md.operation.steps": "Steps",
     "page.flow.label": "Sequence of the steps of {name}",

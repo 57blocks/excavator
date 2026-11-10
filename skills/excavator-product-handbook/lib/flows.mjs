@@ -6,7 +6,8 @@
  * text chosen by how readers reach the feature; then, in the order they first
  * appear, the application whose root holds the file of each step's first
  * citation (the overview's name for it when the overview is verified, else its
- * directory; a file under no root is the fixed text for other code). Step n is
+ * directory, or a fixed text for the project root; a file under no root is the
+ * fixed text for other code). Step n is
  * an arrow from the participant of step n-1 (the starter for step 1) to its
  * own, marked n only: the steps are listed under the diagram with the same
  * numbers. An arrow shows the order of the steps, not a call.
@@ -29,7 +30,8 @@ const STARTER = '\0starter';
  */
 export function operationSequence(operation, reach, applications, t) {
   const dirs = applications.map((application) => application.dir);
-  const nameOf = new Map(applications.map((application) => [application.dir, application.name ?? application.dir]));
+  // An application the overview does not name is shown by its directory; the project root, whose directory is `.`, by a fixed text.
+  const nameOf = new Map(applications.map((application) => [application.dir, application.name ?? (application.dir === '.' ? t('md.flow.root') : application.dir)]));
   const keys = [STARTER];
   const participants = [t(`md.flow.actor.${reach}`)];
   const indexOf = (key, name) => {
