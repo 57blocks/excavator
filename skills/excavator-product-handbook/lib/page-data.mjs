@@ -27,8 +27,11 @@ import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * The format is /17 since openspec change handbook-domain-page: each domain of `entities.domains` carries its `relations` with other
- * domains, its `states` and `transitions`, `entities.domainFlows` sums those relations per direction between two domains, and the technical part holds `domainFiles`, the files the verified entries of each domain quote.
+ * The format is /18 since openspec change handbook-outline: `outline` is the parts and chapters the navigation, the chapter titles and the order of
+ * the chapters follow (outline.mjs `resolveOutline`: the written outline, or the default one with the problem lines of why), each chapter holding one block or one
+ * list of entity pages and `technical` when only the technical view has it, and the blocks it left out with their reasons.
+ * (/17, openspec change handbook-domain-page: each domain of `entities.domains` carries its `relations` with other
+ * domains, its `states` and `transitions`, `entities.domainFlows` sums those relations per direction between two domains, and the technical part holds `domainFiles`, the files the verified entries of each domain quote.)
  * (/16, openspec change handbook-deep-entry: each operation of an entry carries the parts of entry format /2
  * (triggers, calculations, changes, edges, handoffs) and `sequence`, the participants and arrows of its sequence diagram
  * (flows.mjs), and an entry carries its state `transitions`.) (/15, openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
@@ -42,7 +45,7 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. /11: each group of findings
  * carries its priority, and the coverage says which groups have none.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/17';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/18';
 
 const PARTS = Object.fromEntries(OPERATION_PARTS.map((part) => [part.key, part]));
 
@@ -94,7 +97,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
   const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
-  const { summary, system, entities, locations, findings, remedies, topics, history, appendix, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
+  const { summary, system, entities, locations, findings, remedies, topics, history, appendix, outline, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
@@ -107,6 +110,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     areas: map.areas.map((area) => ({ id: area.id, name: area.name })),
     domains: entities.domains.map((domain) => ({ id: domain.id, name: domain.name })),
     domainBasis: entities.domainBasis,
+    outline,
     features: map.features.map((feature) => ({
       id: feature.id,
       name: feature.name,

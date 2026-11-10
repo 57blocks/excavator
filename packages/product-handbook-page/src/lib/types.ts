@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/17';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/18';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -488,6 +488,20 @@ export interface Chunks {
   units: Record<string, string[]>;
 }
 
+/** One chapter of the outline: one block (its id is the route name of its page) or one list of entity pages; `technical` when only the technical view has it. */
+export interface OutlineChapter { title: string; block?: string; list?: string; technical: boolean }
+
+/** A block the outline leaves out: its id, its default title in the run's fixed text and the reason. */
+export interface OutlineUnplaced { block: string; title: string; reason: string }
+
+/** The outline both outputs follow: `source` is `outline` for a written one that passed its check, `default` otherwise, with the lines of why in `problems`. */
+export interface Outline {
+  source: 'outline' | 'default';
+  problems: string[];
+  parts: { title: string; chapters: OutlineChapter[] }[];
+  unplaced: OutlineUnplaced[];
+}
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
   chunks: Chunks;
@@ -502,6 +516,8 @@ export interface PageData {
   /** The groups the page navigates by. */
   domains: Area[];
   domainBasis: DomainBasis;
+  /** The parts and chapters the navigation, the chapter titles and the order follow (openspec change handbook-outline). */
+  outline: Outline;
   features: Feature[];
   /** The verified findings of the features and the application roots as groups, in the order of the first finding of each: the features in the map's order, then the application roots, each in its file's order. */
   findings: FindingGroup[];

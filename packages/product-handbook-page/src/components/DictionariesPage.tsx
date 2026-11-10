@@ -10,6 +10,7 @@ import { SelectField } from './ui/Select';
 import { Item, ItemField, ItemList } from './ui/ItemList';
 import { StatStrip } from './ui/StatStrip';
 import { FilterToolbar, SearchField } from './ui/Toolbar';
+import { PageTitle } from '../lib/outline';
 
 /** The bucket of the files that belong to no application. */
 const NO_APPLICATION = '';
@@ -225,7 +226,7 @@ export function DictionariesPage({ data, technical }: { data: PageData; technica
     <article className="page" data-view="dictionaries">
       <header className="page-head">
         <p className="eyebrow">{systemName(data.project, t)}</p>
-        <h1 className="page-title">{t('md.dict.heading')}</h1>
+        <PageTitle fallback={t('md.dict.heading')} />
       </header>
       {detail.status !== 'ready' ? <ChunkNotice state={detail} /> : detail.value === null
         ? <p className="muted" data-part="dict-status">{t(dictionariesState === 'malformed' ? 'md.dict.malformed' : 'md.dict.notWritten')}</p>

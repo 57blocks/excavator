@@ -102,7 +102,7 @@ describe('assemble and page write the views that --views selects', () => {
     expect(page(run, 'product,technical').status).toBe(0);
     const data = dataOf(run);
     expect(data.views).toEqual(['product', 'technical']);
-    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities', 'technical']);
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'outline', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities', 'technical']);
     expect(Object.keys(data.technical)).toEqual(['featureApplication', 'unattributed', 'applicationDomain', 'integrations', 'jobs', 'locations', 'topicLocations', 'findingLocations', 'history', 'domainFiles', 'data', 'dataState', 'dictionaries', 'dictionariesState']);
   });
 
@@ -218,17 +218,17 @@ describe('the technical view shows the file and lines of each cited item', () =>
 });
 
 describe('entity sections and matrices', () => {
-  it('both views have the domains, the roles and the roles-by-feature matrix between the tables and the coverage section', () => {
+  it('both views have the roles chapter (the roles and the roles-by-feature matrix) and the domains, in the default order, before the tables across features and the coverage section', () => {
     const run = viewsRun();
     assemble(run, 'product,technical');
     for (const name of ['handbook.md', 'handbook-technical.md']) {
       const body = text(run, name);
       const at = (heading) => body.indexOf(heading);
-      expect(at('## All scheduled jobs'), name).toBeGreaterThan(0);
-      expect(at('## Domains'), name).toBeGreaterThan(at('## All scheduled jobs'));
-      expect(at('\n## Roles\n'), name).toBeGreaterThan(at('## Domains'));
-      expect(at('## Roles by feature'), name).toBeGreaterThan(at('\n## Roles\n'));
-      expect(at('## Coverage'), name).toBeGreaterThan(at('## Roles by feature'));
+      expect(at('\n## Roles by feature\n'), name).toBeGreaterThan(0);
+      expect(at('\n## Areas\n'), name).toBeGreaterThan(at('\n## Roles by feature\n'));
+      expect(at('\n### Roles by feature\n'), name).toBeGreaterThan(at('\n## Roles by feature\n'));
+      expect(at('## All scheduled jobs'), name).toBeGreaterThan(at('\n## Areas\n'));
+      expect(at('## Coverage'), name).toBeGreaterThan(at('## All scheduled jobs'));
     }
   });
 
@@ -236,15 +236,15 @@ describe('entity sections and matrices', () => {
     const run = viewsRun();
     assemble(run, 'product');
     const body = text(run, 'handbook.md');
-    const domains = sectionOf(body, '## Domains', '\n## Roles\n');
+    const domains = sectionOf(body, '\n## Areas\n', '\n## All notifications');
     expect(domains).toContain('### Order handling');
     expect(domains).not.toContain('Features with a verified entry');
     expect(domains).toContain('- F1 Orders: Staff place new orders for customers.');
     expect(domains).not.toContain('F2 Archive:');
-    const roles = sectionOf(body, '\n## Roles\n', '## Roles by feature');
+    const roles = sectionOf(body, '\n## Roles by feature\n', '\n### Roles by feature\n');
     expect(roles).toContain('### Clerk\n\n- F1 Orders: Create an order.');
     expect(roles).toContain('### Approver\n\nNone.');
-    const matrix = sectionOf(body, '## Roles by feature', '## Coverage');
+    const matrix = sectionOf(body, '\n### Roles by feature\n', '\n## ');
     expect(matrix).toContain('| Role | F1 Orders |');
     expect(matrix).toContain('| Clerk | Create an order. |');
     expect(matrix).toContain('| Approver |  |');
@@ -255,9 +255,9 @@ describe('entity sections and matrices', () => {
     const run = viewsRun();
     assemble(run, 'product,technical');
     const product = text(run, 'handbook.md');
-    for (const heading of ['## Applications in detail', '## External systems in detail', '## Applications by domain']) expect(product).not.toContain(heading);
+    for (const heading of ['\n## Applications\n', '\n## External systems\n', '## Applications by domain']) expect(product).not.toContain(heading);
     const technical = text(run, 'handbook-technical.md');
-    for (const heading of ['## Applications in detail', '## External systems in detail', '## Applications by domain']) expect(technical).toContain(heading);
+    for (const heading of ['\n## Applications\n', '\n## External systems\n', '## Applications by domain']) expect(technical).toContain(heading);
   });
 
   it('the relations name what was checked: quoted passages that fall in an application, and a name that appears in the source', () => {
@@ -288,7 +288,7 @@ describe('entity sections and matrices', () => {
   it('keeps the callers the quoted code shows apart from the applications whose source holds the name: the model listed the first only', () => {
     const run = viewsRun();
     assemble(run, 'technical');
-    const slack = sectionOf(text(run, 'handbook-technical.md'), '### Slack', '## Applications by domain');
+    const slack = sectionOf(text(run, 'handbook-technical.md'), '### Slack', '\n## All notifications');
     expect(sectionOf(slack, '#### Called by, in the quoted code', '#### Applications whose source contains the name')).toContain('- .');
     expect(sectionOf(slack, '#### Called by, in the quoted code', '#### Applications whose source contains the name')).not.toContain('svc2');
     const named = sectionOf(slack, '#### Applications whose source contains the name', 'Source files outside');
@@ -324,9 +324,9 @@ describe('entity sections and matrices', () => {
     run.run('mark', 'overview', 'failed', 'lane', 'wrote-nothing');
     assemble(run, 'technical');
     const body = text(run, 'handbook-technical.md');
-    const apps = sectionOf(body, '## Applications in detail', '## External systems in detail');
+    const apps = sectionOf(body, '\n## Applications\n', '\n## Areas\n');
     expect(apps).toContain('### .\n\n- Not verified\n- Languages');
-    expect(sectionOf(body, '## External systems in detail', '## Applications by domain')).toContain('None.');
+    expect(sectionOf(body, '\n## External systems\n', '\n## All notifications')).toContain('None.');
   });
 });
 

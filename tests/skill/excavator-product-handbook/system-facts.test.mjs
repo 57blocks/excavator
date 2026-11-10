@@ -303,7 +303,7 @@ describe('system facts: one row per application root, whatever the overview says
     expect(system.counts).toMatchObject({ applications: 2, files: 3, areas: 2, features: 5, featuresWithEntry: 0, roles: 2 });
     runHandbook(['assemble', run.out, '--project', run.root]);
     const md = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
-    const section = md.slice(md.indexOf('## System overview'), md.indexOf('## Areas and features'));
+    const section = md.slice(md.indexOf('## Overview'), md.indexOf('## Business flow'));
     expect(section).toContain('The system overview is not in this handbook. Where it stopped: Written, verification not finished.');
     expect(section).toContain('Applications: 2. Source files: 3.');
     expect(section).toContain(`| repos/api | ${NOT_VERIFIED} | ${NOT_VERIFIED} | JavaScript (2) |`);

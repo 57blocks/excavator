@@ -34,7 +34,7 @@ const assemble = (run, ...args) => {
 const page = (run) => runHandbook(['page', run.out, '--project', run.root], { env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: stubPath } });
 const dataOf = (run) => JSON.parse(/<script type="application\/json" id="xv-product-handbook-data">([\s\S]*?)<\/script>/.exec(read(run, 'handbook.html'))[1]);
 /** The first lines after the heading of the system overview. */
-const afterOverviewHeading = (text) => text.slice(text.indexOf('## System overview')).split('\n').slice(1, 4);
+const afterOverviewHeading = (text) => text.slice(text.indexOf('## Overview')).split('\n').slice(1, 4);
 
 function verifiedRun(adjust) {
   const run = checkedOverviewRun(cleanups, adjust);
@@ -127,9 +127,9 @@ describe('page data: the project is the system name', () => {
     const run = verifiedRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/17');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(data.project).toBe('handbook-fixture');
-    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'outline', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
   });
 
   for (const [what, make] of UNNAMED) {

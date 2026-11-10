@@ -6,6 +6,7 @@ import type { PageData, TopicBasis } from '../lib/types';
 import { Chips } from './Locations';
 import { levelName } from './RecommendationsPage';
 import { Item, ItemCollapse, ItemField, ItemList } from './ui/ItemList';
+import { PageTitle } from '../lib/outline';
 
 type Places = Map<string, { file: string; startLine: number | null; endLine: number | null }[]>;
 
@@ -34,7 +35,7 @@ export function TopicsPage({ data }: { data: PageData }) {
     <article className="page" data-view="topics">
       <header className="page-head">
         <p className="eyebrow">{data.project}</p>
-        <h1 className="page-title">{t('md.topics.heading')}</h1>
+        <PageTitle fallback={t('md.topics.heading')} />
       </header>
       {coverage.lanes.length === 0 ? <p className="muted" data-part="topics-none">{t('md.none')}</p> : (
         <>

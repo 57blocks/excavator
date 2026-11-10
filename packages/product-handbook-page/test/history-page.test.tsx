@@ -14,6 +14,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { History, PageData } from '../src/lib/types';
 import { NO_APPENDIX } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -56,6 +57,7 @@ function dataFor(history: History = HISTORY, views: ('product' | 'technical')[] 
     areas: [{ id: d('A1'), name: d('area') }],
     domains: [{ id: d('A1'), name: d('area') }],
     domainBasis: 'areas',
+    outline: defaultOutline(marked, 'areas'),
     features: [feature('F1', 'Orders'), feature('F2', 'Reminders')],
     findings: [],
     remedies: { categories: [], recommendations: [] },

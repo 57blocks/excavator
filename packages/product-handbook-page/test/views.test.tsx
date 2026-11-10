@@ -15,6 +15,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import type { Entry, Feature, PageData, View } from '../src/lib/types';
 import { switchTarget, technicalNav } from '../src/lib/views';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -44,7 +45,7 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/17',
+    format: 'excavator-product-handbook-page/18',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
@@ -54,6 +55,7 @@ function dataFor(views: View[]): PageData {
     areas: [{ id: 'A1', name: d('area one') }, { id: 'A2', name: d('area two') }],
     domains: [{ id: 'D1', name: d('domain one') }, { id: 'D2', name: d('domain two') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [
       feature('F1', 'A1', 'D1', 'verified', entry('purpose one', [[CLERK, 'creates']])),
       feature('F2', 'A2', 'D1', 'planned', null),
@@ -439,6 +441,7 @@ describe('without business domains the page groups by area and says so', () => {
       ...base,
       domains: base.areas,
       domainBasis: 'areas',
+      outline: defaultOutline(marked, 'areas'),
       features: base.features.map((item) => ({ ...item, domain: item.area })),
       system: { ...base.system, counts: { ...base.system.counts, domains: null }, domains: base.system.areas },
       entities: {
@@ -499,26 +502,34 @@ describe('the rail is two levels: groups and their links', () => {
     const start = rail.indexOf(`data-group="${name}"`);
     return start < 0 ? '' : rail.slice(start, rail.indexOf('</section>', start));
   };
-  const order = (rail: string) => Array.from(rail.matchAll(/data-group="([a-z]+)"/g), (match) => match[1]);
+  const order = (rail: string) => Array.from(rail.matchAll(/data-group="([a-z0-9-]+)"/g), (match) => match[1]);
+  // The rail has one group per part of the outline (here the default outline: the system, the applications, the domains, the external systems, the cross-cutting pages, health and findings, the appendix) and the coverage page last, in no part.
+  const PART: Record<string, number> = { system: 0, applications: 1, domains: 2, systems: 3, topics: 4, health: 5, appendix: 6 };
+  const partOf = (rail: string, name: string) => groupOf(rail, `part-${PART[name]}`);
 
-  it('has the groups in order, each named from the ui table', () => {
+  it('has the groups in order, each named from the outline', () => {
     const rail = railOf(render(product, '#/'));
-    expect(order(rail)).toEqual(['system', 'domains', 'topics', 'health', 'appendix']);
-    for (const name of order(rail)) expect(groupOf(rail, name), name).toContain(`<h2 class="rail-group-name" id="rail-group-${name}">${marked[`page.nav.group.${name}`]}</h2>`);
-    expect(order(railOf(render(both, '#/technical')))).toEqual(['system', 'applications', 'domains', 'systems', 'topics', 'health', 'appendix']);
+    expect(order(rail)).toEqual(['part-0', 'part-2', 'part-4', 'part-5', 'part-6', 'coverage']);
+    const outline = product.outline;
+    for (const [at, name] of [[0, 'system'], [2, 'areas'], [4, 'topics'], [5, 'health'], [6, 'appendix']] as [number, string][]) {
+      expect(groupOf(rail, `part-${at}`), name).toContain(`<h2 class="rail-group-name" id="rail-group-${at}">${outline.parts[at].title}</h2>`);
+    }
+    expect(outline.parts[0].title).toBe(marked['page.nav.group.system']);
+    expect(order(railOf(render(both, '#/technical')))).toEqual(['part-0', 'part-1', 'part-2', 'part-3', 'part-4', 'part-5', 'part-6', 'coverage']);
   });
 
   it('puts each page link in its group, and the three technical pages in the system group of the technical view', () => {
     const rail = railOf(render(product, '#/'));
-    for (const href of ['#/', '#/matrix/roles']) expect(groupOf(rail, 'system'), href).toContain(`href="${href}"`);
-    for (const href of ['#/domain/D1', '#/domain/D2']) expect(groupOf(rail, 'domains'), href).toContain(`href="${href}"`);
-    for (const href of ['#/notifications', '#/jobs', '#/topics']) expect(groupOf(rail, 'topics'), href).toContain(`href="${href}"`);
-    for (const href of ['#/history', '#/findings', '#/recommendations', '#/open-questions']) expect(groupOf(rail, 'health'), href).toContain(`href="${href}"`);
-    for (const href of ['#/glossary', '#/sources', '#/coverage']) expect(groupOf(rail, 'appendix'), href).toContain(`href="${href}"`);
-    expect(groupOf(rail, 'system')).not.toContain('#/data');
+    for (const href of ['#/', '#/matrix/roles']) expect(partOf(rail, 'system'), href).toContain(`href="${href}"`);
+    for (const href of ['#/domain/D1', '#/domain/D2']) expect(partOf(rail, 'domains'), href).toContain(`href="${href}"`);
+    for (const href of ['#/notifications', '#/jobs', '#/topics']) expect(partOf(rail, 'topics'), href).toContain(`href="${href}"`);
+    for (const href of ['#/history', '#/findings', '#/recommendations', '#/open-questions']) expect(partOf(rail, 'health'), href).toContain(`href="${href}"`);
+    for (const href of ['#/glossary', '#/sources']) expect(partOf(rail, 'appendix'), href).toContain(`href="${href}"`);
+    expect(groupOf(rail, 'coverage')).toContain('href="#/coverage"');
+    expect(partOf(rail, 'system')).not.toContain('#/data');
     const technical = railOf(render(both, '#/technical'));
-    for (const href of ['#/technical/matrix/applications', '#/technical/data', '#/technical/dictionaries']) expect(groupOf(technical, 'system'), href).toContain(`href="${href}"`);
-    expect(groupOf(technical, 'systems')).toContain(`data-system="${SLACK}"`);
+    for (const href of ['#/technical/matrix/applications', '#/technical/data', '#/technical/dictionaries']) expect(partOf(technical, 'system'), href).toContain(`href="${href}"`);
+    expect(partOf(technical, 'systems')).toContain(`data-system="${SLACK}"`);
   });
 
   it('folds nothing, numbers nothing and lists no feature', () => {
@@ -670,7 +681,7 @@ describe('the business flow and the technical structure are chapters of their ow
   };
   const systemGroup = (html: string) => {
     const rail = html.slice(html.indexOf('<nav class="rail"'));
-    const start = rail.indexOf('data-group="system"');
+    const start = rail.indexOf('data-group="part-0"');
     return rail.slice(start, rail.indexOf('</section>', start));
   };
 

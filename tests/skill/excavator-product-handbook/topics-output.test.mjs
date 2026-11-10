@@ -61,14 +61,15 @@ afterAll(() => {
 });
 
 describe('the Cross-cutting topics chapter', () => {
-  it('comes after the Findings and Recommendations chapters and before the coverage section, with its note and counts', () => {
+  it('comes before the Findings and Recommendations chapters, in the default order, and before the coverage section, with its note and counts', () => {
     const run = shared();
     assemble(run);
     const body = text(run, 'handbook.md');
     const at = (heading) => body.indexOf(`\n## ${heading}\n`);
+    // The default outline puts the cross-cutting pages before the code health, the findings and the recommendations (handbook-outline D5).
+    expect(at(ui['md.topics.heading'])).toBeLessThan(at(ui['md.findings.heading']));
     expect(at(ui['md.findings.heading'])).toBeLessThan(at(ui['md.remedies.heading']));
-    expect(at(ui['md.remedies.heading'])).toBeLessThan(at(ui['md.topics.heading']));
-    expect(at(ui['md.topics.heading'])).toBeLessThan(at(ui['md.coverage.heading']));
+    expect(at(ui['md.remedies.heading'])).toBeLessThan(at(ui['md.coverage.heading']));
     const chapter = chapterOf(body);
     expect(chapter).toContain(ui['md.topics.note']);
     expect(chapter).toContain('Lanes: 3. Verified entries read: 2. Verified groups of findings read: 4. Rows: 5.');
@@ -232,7 +233,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/17');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     const keys = Object.keys(data);
     expect(keys.slice(keys.indexOf('findings'), keys.indexOf('findings') + 6)).toEqual(['findings', 'remedies', 'topics', 'history', 'appendix', 'coverage']);
     expect(Object.keys(data.topics)).toEqual(['approval', 'time', 'handoffs', 'access', 'repeated']);

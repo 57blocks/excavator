@@ -13,6 +13,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { PageData, Topics } from '../src/lib/types';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -55,6 +56,7 @@ function dataFor(topics: Topics = TOPICS, coverage: Partial<PageData['coverage']
     areas: [],
     domains: [],
     domainBasis: 'areas',
+    outline: defaultOutline(marked, 'areas'),
     features: [],
     findings: [],
     remedies: { categories: [], recommendations: [] },

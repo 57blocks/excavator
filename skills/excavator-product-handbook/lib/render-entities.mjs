@@ -1,10 +1,9 @@
 /**
  * The entity sections and the matrices of handbook.md (openspec change
  * handbook-entities-and-views, design D2, D3, D4), written from the computed
- * entities (entities.mjs) and the verified entries. Both views have the
- * domains, the roles and the roles-by-feature matrix; the technical view adds
- * the applications, the external systems, the applications-by-domain matrix and
- * the source positions of each item. Every heading, header and note is a fixed
+ * entities (entities.mjs) and the verified entries, one function for each block
+ * the outline places (outline.mjs, render.mjs); the technical view adds the
+ * source positions of each item. Every heading, header and note is a fixed
  * text, and each says only what was checked: the same relation names as the
  * page. Pure and deterministic.
  */
@@ -32,7 +31,7 @@ const flowchart = (prefixes, edges) => [
 ];
 
 /** handbook-domain-page D4: the domains with a flow, and one edge for each flow labelled with its count; a fixed text when there is none. */
-function flowDiagram(entities, t) {
+export function flowDiagram(entities, t) {
   const out = [`### ${t('md.entities.domains.flowHeading')}`, ''];
   const flows = entities.domainFlows ?? [];
   if (flows.length === 0) return [...out, t('md.entities.domains.flowNone'), ''];
@@ -42,7 +41,7 @@ function flowDiagram(entities, t) {
 }
 
 /** handbook-domain-page D5: the applications and the external systems the verified overview shows them calling; a fixed text when there is none. */
-function structureDiagram(entities, t) {
+export function structureDiagram(entities, t) {
   const out = [`### ${t('md.entities.systems.diagramHeading')}`, ''];
   const systems = entities.integrations.filter((item) => item.shown.length > 0);
   if (systems.length === 0) return [...out, t('md.entities.systems.diagramNone'), ''];
@@ -51,26 +50,29 @@ function structureDiagram(entities, t) {
   return [...out, t('md.entities.systems.diagramNote'), '', ...flowchart([['A', applications], ['S', systems.map((item) => item.system)]], edges)];
 }
 
-function domainsSection({ map, entities, t }) {
+/**
+ * The domains as the handbook shows them: the notes of the chapter and, for each domain, what it does and its handoffs
+ * to and from other domains (handbook-domain-page D1), from the verified entries only. The business flow diagram is a block of its own.
+ */
+export function domainParts({ map, entities, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const nameOf = new Map(entities.domains.map((domain) => [domain.id, domain.name]));
-  const out = [`## ${t('md.entities.domains.heading')}`, '', t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), '', t('md.entities.domain.relationsNote'), '', ...flowDiagram(entities, t)];
-  for (const domain of entities.domains) {
-    out.push(`### ${inline(domain.name)}`, '');
-    out.push(`#### ${t('md.entities.domain.whatItDoes')}`, '');
+  const intro = [t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), '', t('md.entities.domain.relationsNote'), ''];
+  const each = entities.domains.map((domain) => {
+    const out = [`#### ${t('md.entities.domain.whatItDoes')}`, ''];
     out.push(...bullets(domain.purposes.map((item) => fill(t('md.entities.domain.purposeItem'), { feature: featureText(feature.get(item.feature), t), purpose: inline(item.text) })), t));
-    // handbook-domain-page D1: the handoffs to and from other domains, from the verified entries only.
     out.push(`#### ${t('md.entities.domain.relationsHeading')}`, '');
     for (const [label, direction] of [['md.entities.domain.gives', 'out'], ['md.entities.domain.gets', 'in']]) {
       const items = (domain.relations ?? []).filter((item) => item.direction === direction);
       out.push(t(label), '');
       out.push(...bullets(items.map((item) => fill(t('md.entities.domain.relationItem'), { from: featureText(feature.get(item.from), t), to: featureText(feature.get(item.to), t), domain: nameOf.get(item.domain), text: item.text })), t));
     }
-  }
-  return out;
+    return { id: domain.id, lines: out };
+  });
+  return { intro, domains: each };
 }
 
-function rolesSection({ map, entities, t }) {
+export function rolesSection({ map, entities, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const out = [`## ${t('md.entities.roles.heading')}`, '', t('md.entities.roles.note'), ''];
   for (const role of entities.roles) {
@@ -81,7 +83,7 @@ function rolesSection({ map, entities, t }) {
   return out;
 }
 
-function roleFeatureMatrix({ map, entities, t }) {
+export function roleFeatureMatrix({ map, entities, t }) {
   const { roles, features, cells } = entities.matrices.roleFeature;
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const out = [`## ${t('md.matrix.roleFeature.heading')}`, '', t('md.matrix.roleFeature.note'), ''];
@@ -91,7 +93,7 @@ function roleFeatureMatrix({ map, entities, t }) {
   return out;
 }
 
-function applicationsSection({ map, entities, summary, system, t }) {
+export function applicationsSection({ map, entities, summary, system, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const domain = new Map(entities.domains.map((item) => [item.id, item]));
   const reasonOf = new Map(summary.jobs.map((job) => [job.candidate, job.reason]));
@@ -127,9 +129,8 @@ function applicationsSection({ map, entities, summary, system, t }) {
   return out;
 }
 
-function systemsSection({ entities, t }) {
+export function systemsSection({ entities, t }) {
   const out = [`## ${t('md.entities.systems.heading')}`, '', t('md.entities.systems.note'), ''];
-  out.push(...structureDiagram(entities, t));
   if (entities.integrations.length === 0) out.push(t('md.none'), '');
   for (const item of entities.integrations) {
     out.push(`### ${inline(item.system)}`, '', `- ${inline(fill(t('md.entities.fact'), { label: t('md.table.use'), value: item.use }))}`, '');
@@ -140,7 +141,7 @@ function systemsSection({ entities, t }) {
   return out;
 }
 
-function applicationDomainMatrix({ entities, t }) {
+export function applicationDomainMatrix({ entities, t }) {
   const { applications, domains, cells, unattributed } = entities.matrices.applicationDomain;
   const name = new Map(entities.domains.map((item) => [item.id, item.name]));
   const out = [`## ${t('md.matrix.applicationDomain.heading')}`, '', t('md.matrix.applicationDomain.note'), ''];
@@ -149,14 +150,6 @@ function applicationDomainMatrix({ entities, t }) {
   const rows = applications.map((application) => [application, ...domains.map((id) => cellOf(application, id))]);
   rows.push([t('md.matrix.applicationDomain.outside'), ...domains.map((id) => String(unattributed.find((row) => row.domain === id)?.citations ?? ''))]);
   out.push(table([t('md.table.application'), ...domains.map((id) => name.get(id))], rows), '');
-  return out;
-}
-
-/** The entity sections of a view, as lines: between the cross-cutting tables and the coverage section. */
-export function entitySections({ view, map, entities, summary, system, t }) {
-  const input = { map, entities, summary, system, t };
-  const out = [...domainsSection(input), ...rolesSection(input), ...roleFeatureMatrix(input)];
-  if (view === 'technical') out.push(...applicationsSection(input), ...systemsSection(input), ...applicationDomainMatrix(input));
   return out;
 }
 

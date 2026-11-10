@@ -11,6 +11,7 @@ import { Item, ItemCollapse, ItemList } from './ui/ItemList';
 import { StatChips, StatStrip } from './ui/StatStrip';
 import { SelectField } from './ui/Select';
 import { FilterToolbar } from './ui/Toolbar';
+import { PageTitle } from '../lib/outline';
 
 /** The owner filter: every owner (`all`), the application owners (`system`), or one feature (`feature:<id>`). */
 export type OwnerFilter = 'all' | 'system' | `feature:${string}`;
@@ -75,7 +76,7 @@ export function FindingsPage({ data }: { data: PageData }) {
     <article className="page" data-view="findings">
       <header className="page-head">
         <p className="eyebrow">{data.project}</p>
-        <h1 className="page-title">{t('md.findings.heading')}</h1>
+        <PageTitle fallback={t('md.findings.heading')} />
       </header>
       <p className="muted summary-note">{t('md.findings.note')}</p>
       <StatStrip part="findings-stats" stats={[

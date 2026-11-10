@@ -78,9 +78,9 @@ describe('the technical handbook has a data chapter after the system overview', 
     expect(assemble(made, 'technical').status).toBe(0);
     const body = text(made, 'handbook-technical.md');
     const at = (needle) => body.indexOf(needle);
-    expect(at('## System overview')).toBeGreaterThan(0);
-    expect(at(`## ${ui['md.data.heading']}`)).toBeGreaterThan(at('## System overview'));
-    const grouping = body.search(/^## (Domains|Areas) and features$/m);
+    expect(at('## Overview')).toBeGreaterThan(0);
+    expect(at(`## ${ui['md.data.heading']}`)).toBeGreaterThan(at('## Overview'));
+    const grouping = body.search(/^## (Business domains|Areas)$/m);
     expect(grouping).toBeGreaterThan(0);
     expect(at(`## ${ui['md.data.heading']}`)).toBeLessThan(grouping);
     const text_ = chapter(body);
@@ -215,7 +215,7 @@ describe('the page data carries the data section in its technical part only', ()
     const made = run(data);
     expect(page(made, 'product,technical').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/17');
+    expect(got.format).toBe('excavator-product-handbook-page/18');
     expect(Object.keys(got.technical).slice(-4)).toEqual(['data', 'dataState', 'dictionaries', 'dictionariesState']);
     expect(got.technical.dataState).toBe('ok');
     expect(Object.keys(got.technical.data)).toEqual(['recognized', 'applications', 'tables', 'dropped', 'changedNeverCreated', 'declaredOnly', 'removedButDeclared', 'onlyInMigrations', 'gaps', 'counts']);
@@ -230,7 +230,7 @@ describe('the page data carries the data section in its technical part only', ()
     const made = run(data);
     expect(page(made, 'product').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/17');
+    expect(got.format).toBe('excavator-product-handbook-page/18');
     expect(Object.hasOwn(got, 'technical')).toBe(false);
     expect(text(made, 'handbook.html')).not.toContain('ledger_entries');
   });

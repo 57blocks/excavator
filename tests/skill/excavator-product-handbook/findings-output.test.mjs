@@ -174,13 +174,13 @@ describe('the feature section lists the findings of its own feature', () => {
     const run = shared();
     assemble(run, 'product');
     const body = text(run, 'handbook.md');
-    const f1 = section(body, '### Orders');
-    expect(f1).toContain(`#### ${ui['md.findings.heading']}`);
-    const own = f1.slice(f1.indexOf(`#### ${ui['md.findings.heading']}`));
+    const f1 = section(body, '#### Orders');
+    expect(f1).toContain(`##### ${ui['md.findings.heading']}`);
+    const own = f1.slice(f1.indexOf(`##### ${ui['md.findings.heading']}`));
     expect(own).toContain(`- ${ui[categoryKey('authorization')]}: Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.`);
     expect(own).toContain(`- ${ui[categoryKey('hard-coded')]}: The list of orders is always empty, whatever was created.`);
     expect(own.match(/^- /gm)).toHaveLength(2);
-    expect(body).not.toContain('### Reminders');
+    expect(body).not.toContain('#### Reminders');
   });
 
   it('writes the fixed none text when the feature has a verified entry and a verified unit without a finding', () => {
@@ -189,8 +189,8 @@ describe('the feature section lists the findings of its own feature', () => {
     expect(run.run('check-entry', 'F2').status).toBe(0);
     verifyChecked(run, 'F2');
     assemble(run, 'product');
-    const f2 = section(text(run, 'handbook.md'), '### Archive');
-    expect(f2.slice(f2.indexOf(`#### ${ui['md.findings.heading']}`))).toContain(ui['md.none']);
+    const f2 = section(text(run, 'handbook.md'), '#### Archive');
+    expect(f2.slice(f2.indexOf(`##### ${ui['md.findings.heading']}`))).toContain(ui['md.none']);
   });
 });
 
@@ -279,7 +279,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/17');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(data.findings.map((group) => [group.items.map((item) => item.id), group.owners.map((owner) => [owner.kind, owner.id]), group.category])).toEqual([
       [['F1.findings[0]'], [['feature', 'F1']], 'authorization'],
       [['F1.findings[1]'], [['feature', 'F1']], 'hard-coded'],

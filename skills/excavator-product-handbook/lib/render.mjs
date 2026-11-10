@@ -10,12 +10,13 @@ import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
 import { operationSequence, sequenceMermaid, stateGraph, stateMermaid } from './flows.mjs';
 import { dataBlock } from './render-data.mjs';
 import { dictionaryBlock } from './render-dict.mjs';
-import { appendixChapter } from './render-appendix.mjs';
+import { appendixBlocks } from './render-appendix.mjs';
 import { historyChapter } from './render-history.mjs';
 import { REACHES } from './map-shape.mjs';
 import { inline, table } from './markdown.mjs';
 import { applicationCells, listCell } from './render-application.mjs';
-import { entitySections, locationLines } from './render-entities.mjs';
+import { applicationDomainMatrix, applicationsSection, domainParts, flowDiagram, locationLines, roleFeatureMatrix, rolesSection, structureDiagram, systemsSection } from './render-entities.mjs';
+import { outlineChapters, outlineCoverage, shiftHeadings } from './render-outline.mjs';
 import { featureFindingsLines, findingsChapter, findingsCoverage } from './render-findings.mjs';
 import { EMPTY_PRIORITY } from './priority-model.mjs';
 import { EMPTY_REMEDIES } from './remedies-model.mjs';
@@ -133,8 +134,8 @@ function entryBlock(feature, entry, map, t, locations, areaName, findingsPart, a
   return out;
 }
 
-/** The notification table and the scheduled-job table (summary.mjs), written between the feature chapters and the coverage section. */
-function summaryBlock(summary, map, t) {
+/** The notification table and the scheduled-job table (summary.mjs): two blocks, each starting with its heading. */
+function summaryBlocks(summary, map, t) {
   const name = new Map(map.features.map((feature) => [feature.id, feature.name]));
   const featureText = (id) => fill(t('md.summary.feature'), { id, name: name.get(id) });
   const { counts } = summary;
@@ -149,10 +150,10 @@ function summaryBlock(summary, map, t) {
     ), '');
 
   const scheduleText = ({ bucket, literal }) => (bucket === 'literal' ? `\`${literal}\`` : t(`md.summary.schedule.${bucket}`));
-  out.push(`## ${t('md.summary.jobs.heading')}`, '');
-  out.push(fill(t('md.summary.jobs.counts'), { total: counts.jobRows, ...counts.schedule, described: counts.described }), '');
-  out.push(t('md.summary.jobs.note'), '');
-  out.push(summary.jobs.length === 0
+  const jobs = [`## ${t('md.summary.jobs.heading')}`, ''];
+  jobs.push(fill(t('md.summary.jobs.counts'), { total: counts.jobRows, ...counts.schedule, described: counts.described }), '');
+  jobs.push(t('md.summary.jobs.note'), '');
+  jobs.push(summary.jobs.length === 0
     ? t('md.summary.jobs.none')
     : table(
       [t('md.table.candidate'), t('md.table.feature'), t('md.table.schedule'), t('md.table.does')],
@@ -163,7 +164,7 @@ function summaryBlock(summary, map, t) {
         job.automatic.length === 0 ? t('md.summary.noDescription') : job.automatic.map((a) => inline(fill(t('md.automatic.item'), a))).join('<br>'),
       ]),
     ), '');
-  return out;
+  return { notifications: out, jobs };
 }
 
 /** The domain table of the overview: one row per domain (per area when the handbook groups by area), from the map and the verified entries, so it does not depend on the overview being written. */
@@ -216,7 +217,7 @@ function overviewBlock(system, basis, t, locations) {
   return out;
 }
 
-function coverageBlock(map, state, candidates, t, findings, remedies, topics) {
+function coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view) {
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureText = (key, feature) => `- ${inline(fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area) }))}`;
   const claimed = map.features.reduce((sum, feature) => sum + feature.candidates.length, 0);
@@ -276,6 +277,7 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics) {
   out.push(...findingsCoverage({ map, state, findings, t, areaName }));
   out.push(...remediesCoverage({ remedies, t }));
   out.push(...topicsCoverage({ topics, t }));
+  out.push(...outlineCoverage({ outline, view, t }));
   return out;
 }
 
@@ -290,8 +292,11 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics) {
  * `topics` (topics-model.mjs) are the Cross-cutting topics chapter after the Recommendations chapter and its part of the coverage section.
  * `history` (history-model.mjs) is the Code health chapter after the Cross-cutting topics chapter, and `appendix` (appendix.mjs) the Appendix chapter after the coverage section; both views write both.
  * `remedies` (remedies-model.mjs) are the common cause and measure under each category of the Findings chapter and the Recommendations chapter after it.
+ * `outline` (outline.mjs `resolveOutline`) decides which chapters are written, in which order and under which titles: each block below is one
+ * list of lines (render-outline.mjs), the coverage section is always last and says which outline was used and what it left out. The product view
+ * writes no block that only the technical view has.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX, outline }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -304,23 +309,46 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
   const findingsPart = { state, findings, t };
   const name = system.overview?.name ?? null;
   const title = name === null ? t(technical ? 'md.titleTechnical' : 'md.title') : fill(t(technical ? 'md.titleTechnicalNamed' : 'md.titleNamed'), { name });
-  const out = [`# ${inline(title)}`, '', ...overviewBlock(system, basis, t, placesOf.get('overview')), ...(technical && data !== null ? dataBlock(data, t) : []), ...(technical && dictionaries !== null ? dictionaryBlock(dictionaries, t) : []), `## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
-  if (basis === 'areas') out.push(t('md.domains.fromAreas'), '');
+  const placed = placesOf.get('overview');
+  const domainPart = domainParts({ map, entities, t });
+  const domainsBlock = [`## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
+  if (basis === 'areas') domainsBlock.push(t('md.domains.fromAreas'), '');
   for (const domain of entities.domains) {
-    out.push(`- **${inline(domain.name)}**`);
-    if (domain.features.length === 0) out.push(`  - ${t('md.areas.noFeatures')}`);
+    domainsBlock.push(`- **${inline(domain.name)}**`);
+    if (domain.features.length === 0) domainsBlock.push(`  - ${t('md.areas.noFeatures')}`);
     for (const id of domain.features) {
-      out.push(`  - ${inline(fill(t('md.areas.featureLine'), { name: featureOf.get(id).name, reach: t(`md.reach.${featureOf.get(id).reach}`) }))}`);
+      domainsBlock.push(`  - ${inline(fill(t('md.areas.featureLine'), { name: featureOf.get(id).name, reach: t(`md.reach.${featureOf.get(id).reach}`) }))}`);
     }
   }
-  out.push('', table([t('md.table.reach'), t('md.table.features')], reachCounts(map).map(({ reach, count }) => [t(`md.reach.${reach}`), String(count)])), '');
-  for (const domain of entities.domains) {
-    const written = domain.features.filter((id) => entries.has(id));
-    if (written.length === 0) continue;
-    out.push(`## ${inline(domain.name)}`, '');
-    for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart, system.applications));
+  domainsBlock.push('', table([t('md.table.reach'), t('md.table.features')], reachCounts(map).map(({ reach, count }) => [t(`md.reach.${reach}`), String(count)])), '', ...domainPart.intro);
+  for (const [at, domain] of entities.domains.entries()) {
+    domainsBlock.push(`### ${inline(domain.name)}`, '', ...domainPart.domains[at].lines);
+    for (const id of domain.features.filter((one) => entries.has(one))) {
+      domainsBlock.push(...shiftHeadings(entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart, system.applications), 1));
+    }
   }
-  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, remedies, view, t }), ...recommendationsChapter({ findings, remedies, view, t }), ...topicsChapter({ topics, view, t }), ...historyChapter({ history, map, view, t }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics), ...appendixChapter({ appendix, map, entities, t }));
+  const summaries = summaryBlocks(summary, map, t);
+  const appendixParts = appendixBlocks({ appendix, map, entities, t });
+  const entityInput = { map, entities, summary, system, t };
+  const blocks = new Map([
+    ['overview', overviewBlock(system, basis, t, placed)],
+    ['business', flowDiagram(entities, t)],
+    ['architecture', structureDiagram(entities, t)],
+    ['data', data === null ? [] : dataBlock(data, t)],
+    ['roles-matrix', [...rolesSection(entityInput), ...shiftHeadings(roleFeatureMatrix(entityInput), 1)]],
+    ['applications-matrix', applicationDomainMatrix(entityInput)],
+    ['dictionaries', dictionaries === null ? [] : dictionaryBlock(dictionaries, t)],
+    ['applications', applicationsSection(entityInput)],
+    ['domains', domainsBlock],
+    ['systems', systemsSection(entityInput)],
+    ['notifications', summaries.notifications],
+    ['jobs', summaries.jobs],
+    ['topics', topicsChapter({ topics, view, t })],
+    ['history', historyChapter({ history, map, view, t })],
+    ['findings', findingsChapter({ map, state, findings, remedies, view, t })],
+    ['recommendations', recommendationsChapter({ findings, remedies, view, t })],
+    ...Object.entries(appendixParts),
+  ]);
+  const out = [`# ${inline(title)}`, '', ...outlineChapters({ outline, blocks, view }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view)];
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
-

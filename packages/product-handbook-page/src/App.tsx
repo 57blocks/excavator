@@ -23,6 +23,7 @@ import { SystemPage } from './components/SystemPage';
 import { TopBar } from './components/TopBar';
 import { LoaderContext, createLoader } from './lib/chunks';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
+import { ChapterTitleContext, chapterTitle, isBlockRoute } from './lib/outline';
 import type { Route } from './lib/route';
 import { TextContext, makeText } from './lib/text';
 import type { PageData, View } from './lib/types';
@@ -76,6 +77,9 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
   const view = viewOf(data, route);
   const current: View = view ?? data.views[0];
   const links = useMemo(() => makeLinks(data.views.length > 1 ? current : null), [data.views.length, current]);
+  // The title of the chapter the route is (a block's page), for the heading of the page; an entity page keeps its entity's name.
+  const body = bodyOf(route);
+  const titles = useMemo(() => ({ outline: data.outline, current: isBlockRoute(body.name) ? chapterTitle(data.outline, body.name) ?? null : null }), [data.outline, body.name]);
   const switchTo = Object.fromEntries(data.views.map((item) => [item, switchTarget(data, route, item)])) as Record<View, string>;
 
   useEffect(() => {
@@ -90,6 +94,7 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
     <TextContext.Provider value={t}>
       <ViewContext.Provider value={current}>
         <LinksContext.Provider value={links}>
+         <ChapterTitleContext.Provider value={titles}>
           <div className="app">
             <TopBar project={data.project} menuOpen={menuOpen} onMenu={() => setMenuOpen(!menuOpen)} views={data.views} current={current} switchTo={switchTo} />
             <div className="shell">
@@ -98,6 +103,7 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
               <main className="main" id="main"><PageView data={data} route={route} view={view} />{view !== null && <ChapterNav data={data} route={route} />}</main>
             </div>
           </div>
+         </ChapterTitleContext.Provider>
         </LinksContext.Provider>
       </ViewContext.Provider>
     </TextContext.Provider>
@@ -107,6 +113,9 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
 /** The title of the page a route shows. */
 function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>): string {
   const body = bodyOf(route);
+  // A block's page is titled by the chapter of the outline that holds it; the fixed title is for a block the outline leaves out.
+  const own = isBlockRoute(body.name) ? chapterTitle(data.outline, body.name) : undefined;
+  if (own !== undefined) return own;
   switch (body.name) {
     case 'overview': return t('page.nav.overview');
     case 'business': return t('page.nav.business');

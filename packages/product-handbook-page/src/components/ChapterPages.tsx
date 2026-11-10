@@ -4,6 +4,7 @@ import type { PageData, Technical } from '../lib/types';
 import { Crumbs } from './Crumbs';
 import { FlowChart } from './FlowChart';
 import { Cell, TableScroll } from './Tables';
+import { PageTitle, useBlockTitle } from '../lib/outline';
 
 /**
  * The business flow (openspec change handbook-domain-page, D4, D6), a chapter of its own as in the reference handbook: the
@@ -14,15 +15,16 @@ import { Cell, TableScroll } from './Tables';
 export function BusinessPage({ data }: { data: PageData }) {
   const t = useText();
   const nav = useLinks();
+  const title = useBlockTitle('business', t('page.nav.business'));
   const flows = data.entities.domainFlows ?? [];
   const handoffs = data.entities.domains.flatMap((domain) => (domain.relations ?? []).filter((item) => item.direction === 'out').map((item) => ({ ...item, source: domain.id })));
   const domainName = (id: string) => data.domains.find((item) => item.id === id)?.name ?? id;
   const featureText = (id: string) => t('md.summary.feature', { id, name: data.features.find((feature) => feature.id === id)?.name ?? '' });
   return (
     <article className="page" data-view="business">
-      <Crumbs trail={[t('page.nav.business')]} />
+      <Crumbs trail={[title]} />
       <header className="page-head">
-        <h1 className="page-title">{t('page.nav.business')}</h1>
+        <PageTitle fallback={title} />
         <p className="lede">{t('page.business.lede')}</p>
       </header>
       <section className="section" data-part="business-flow" aria-labelledby="business-flow">
@@ -71,14 +73,15 @@ export function BusinessPage({ data }: { data: PageData }) {
 export function ArchitecturePage({ data, technical }: { data: PageData; technical: Technical }) {
   const t = useText();
   const nav = useLinks();
+  const title = useBlockTitle('architecture', t('page.nav.architecture'));
   const calls = technical.integrations.filter((item) => item.shown.length > 0);
   const callers = [...new Set(calls.flatMap((item) => item.shown))];
   const appName = (dir: string) => data.system.applications.find((application) => application.dir === dir)?.name ?? dir;
   return (
     <article className="page" data-view="architecture">
-      <Crumbs trail={[t('page.nav.architecture')]} />
+      <Crumbs trail={[title]} />
       <header className="page-head">
-        <h1 className="page-title">{t('page.nav.architecture')}</h1>
+        <PageTitle fallback={title} />
         <p className="lede">{t('page.architecture.lede')}</p>
       </header>
 

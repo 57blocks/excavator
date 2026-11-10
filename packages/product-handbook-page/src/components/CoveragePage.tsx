@@ -4,6 +4,7 @@ import { findingCategoryKey } from '../lib/types';
 import type { PageData, RemovedItem } from '../lib/types';
 import { CheckIcon } from './Icons';
 import { ReachBadge } from './ReachBadge';
+import { OutlineCoverage } from './OutlineCoverage';
 import { Cell, TableScroll } from './Tables';
 import { Item, ItemCollapse, ItemList } from './ui/ItemList';
 
@@ -310,6 +311,7 @@ export function CoveragePage({ data }: { data: PageData }) {
       </section>
 
       <FindingsCoverage data={data} />
+      <OutlineCoverage data={data} />
     </article>
   );
 }

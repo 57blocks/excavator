@@ -43,18 +43,18 @@ function run(dict) {
   return made;
 }
 
-/** The text of the dictionary part of the technical handbook: from its heading to the next level-2 or level-3 heading, or the end. */
+/** The text of the dictionary chapter of the technical handbook: from its heading to the next level-2 heading, or the end. */
 function dictionaryPart(body) {
-  const start = body.indexOf(`\n### ${ui['md.dict.heading']}\n`);
+  const start = body.indexOf(`\n## ${ui['md.dict.heading']}\n`);
   expect(start, 'the status dictionary part').toBeGreaterThanOrEqual(0);
-  const next = body.slice(start + 5).search(/\n##? |\n### /);
+  const next = body.slice(start + 5).search(/\n## /);
   return body.slice(start + 1, next === -1 ? undefined : start + 5 + next);
 }
-/** The text of a `####` part of the dictionary part, up to the next `####` that is not one of the per-application headings. */
+/** The text of a `###` part of the dictionary chapter, up to the next `###` that is not one of the per-application headings. */
 function subpart(part, headingKey) {
-  const start = part.indexOf(`#### ${ui[headingKey]}\n`);
+  const start = part.indexOf(`### ${ui[headingKey]}\n`);
   expect(start, headingKey).toBeGreaterThanOrEqual(0);
-  const next = part.indexOf('\n#### ', start + 5);
+  const next = part.indexOf('\n### ', start + 5);
   return part.slice(start, next === -1 ? undefined : next);
 }
 
@@ -79,16 +79,16 @@ describe('the shipped fixed text', () => {
   });
 });
 
-describe('the technical handbook has the status dictionary inside the data chapter', () => {
+describe('the technical handbook has the status dictionary as a chapter after the data chapter', () => {
   it('comes after the tables and gaps of the data chapter and before the grouping of the features', () => {
     const made = run(dictionaries);
     expect(assemble(made, 'technical').status).toBe(0);
     const body = text(made, 'handbook-technical.md');
     const at = (needle) => body.indexOf(needle);
     expect(at(`## ${ui['md.data.heading']}`)).toBeGreaterThan(0);
-    expect(at(`### ${ui['md.dict.heading']}`)).toBeGreaterThan(at(`### ${ui['md.data.gapsHeading']}`));
-    const grouping = body.search(/^## (Domains|Areas) and features$/m);
-    expect(at(`### ${ui['md.dict.heading']}`)).toBeLessThan(grouping);
+    expect(at(`\n## ${ui['md.dict.heading']}\n`)).toBeGreaterThan(at(`### ${ui['md.data.gapsHeading']}`));
+    const grouping = body.search(/^## (Business domains|Areas)$/m);
+    expect(at(`\n## ${ui['md.dict.heading']}\n`)).toBeLessThan(grouping);
   });
 
   it('writes the fixed notes, the recognized forms and the two count lines', () => {
@@ -105,7 +105,7 @@ describe('the technical handbook has the status dictionary inside the data chapt
     const made = run(dictionaries);
     assemble(made, 'technical');
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
-    const sets = part.split('\n').filter((line) => line.startsWith('###### '));
+    const sets = part.split('\n').filter((line) => line.startsWith('##### '));
     expect(sets).toHaveLength(31);
     const rows = part.split('\n').filter((line) => line.startsWith('| ') && !line.startsWith('| ---') && !line.startsWith(`| ${ui['md.dict.table.member']} |`));
     expect(rows).toHaveLength(87);
@@ -148,13 +148,13 @@ describe('the technical handbook has the status dictionary inside the data chapt
     assemble(made, 'technical');
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
     const at = (needle) => part.indexOf(needle);
-    const apps = ['go-app', 'node-app', 'web-app'].map((name) => at(`#### Application ${name}\n`));
+    const apps = ['go-app', 'node-app', 'web-app'].map((name) => at(`### Application ${name}\n`));
     expect(apps.every((index) => index > 0)).toBe(true);
     expect([...apps].sort((a, b) => a - b)).toEqual(apps);
-    expect(at('##### web-app/src/consts.ts\n')).toBeGreaterThan(apps[2]);
-    expect(at('##### web-app/src/enums.ts\n')).toBeGreaterThan(at('##### web-app/src/consts.ts\n'));
-    expect(at('###### TicketStatus\n')).toBeGreaterThan(at('##### web-app/src/consts.ts\n'));
-    expect(part.indexOf('###### Status\n', at('##### web-app/src/enums.ts\n'))).toBeGreaterThan(0);
+    expect(at('#### web-app/src/consts.ts\n')).toBeGreaterThan(apps[2]);
+    expect(at('#### web-app/src/enums.ts\n')).toBeGreaterThan(at('#### web-app/src/consts.ts\n'));
+    expect(at('##### TicketStatus\n')).toBeGreaterThan(at('#### web-app/src/consts.ts\n'));
+    expect(part.indexOf('##### Status\n', at('#### web-app/src/enums.ts\n'))).toBeGreaterThan(0);
     expect(part).toContain('TypeScript object ending in as const, declared at web-app/src/consts.ts, line 1.');
     expect(part).toContain('Go named type (uint8), declared at go-app/status/aliases.go, line 3.');
   });
@@ -197,7 +197,7 @@ describe('the product view never shows the status dictionary', () => {
     expect(assemble(made, 'product,technical').status).toBe(0);
     expect(text(made, 'handbook.md')).not.toContain(ui['md.dict.heading']);
     expect(text(made, 'handbook.md')).not.toContain(ui['md.dict.notWritten']);
-    expect(text(made, 'handbook-technical.md')).toContain(`### ${ui['md.dict.heading']}`);
+    expect(text(made, 'handbook-technical.md')).toContain(`## ${ui['md.dict.heading']}`);
   });
 
   it('with no dictionaries.json the product handbook has no line about it either', () => {
@@ -212,7 +212,7 @@ describe('a missing or malformed dictionaries.json is one visible line in the te
     const made = run(null);
     expect(assemble(made, 'technical').status).toBe(0);
     const lines = dictionaryPart(text(made, 'handbook-technical.md')).split('\n').filter((line) => line.trim() !== '');
-    expect(lines).toEqual([`### ${ui['md.dict.heading']}`, ui['md.dict.notWritten']]);
+    expect(lines).toEqual([`## ${ui['md.dict.heading']}`, ui['md.dict.notWritten']]);
   });
 
   it('malformed (a JSON that fails the shape check, or text that is not JSON): the heading and the one line that says so', () => {
@@ -222,7 +222,7 @@ describe('a missing or malformed dictionaries.json is one visible line in the te
       const made = run(value);
       expect(assemble(made, 'technical').status).toBe(0);
       const lines = dictionaryPart(text(made, 'handbook-technical.md')).split('\n').filter((line) => line.trim() !== '');
-      expect(lines).toEqual([`### ${ui['md.dict.heading']}`, ui['md.dict.malformed']]);
+      expect(lines).toEqual([`## ${ui['md.dict.heading']}`, ui['md.dict.malformed']]);
       cleanups.pop()();
     }
   });
@@ -238,7 +238,7 @@ describe('a missing or malformed dictionaries.json is one visible line in the te
     expect(assemble(made, 'technical').status).toBe(0);
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
     expect(part).toContain('Value sets: 0 (0 Go types, 0 TS enums, 0 TS const objects, 0 JS objects).');
-    expect(part).not.toContain('######');
+    expect(part).not.toContain('#####');
   });
 });
 
@@ -247,7 +247,7 @@ describe('the page data carries the dictionary in its technical part only', () =
     const made = run(dictionaries);
     expect(page(made, 'product,technical').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/17');
+    expect(got.format).toBe('excavator-product-handbook-page/18');
     expect(Object.keys(got.technical).slice(-2)).toEqual(['dictionaries', 'dictionariesState']);
     expect(got.technical.dictionariesState).toBe('ok');
     expect(Object.keys(got.technical.dictionaries)).toEqual(['recognized', 'applications', 'dictionaries', 'mismatches', 'counts']);
@@ -263,7 +263,7 @@ describe('the page data carries the dictionary in its technical part only', () =
     const made = run(dictionaries);
     expect(page(made, 'product').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/17');
+    expect(got.format).toBe('excavator-product-handbook-page/18');
     expect(Object.hasOwn(got, 'technical')).toBe(false);
     expect(text(made, 'handbook.html')).not.toContain('TicketStatus');
   });

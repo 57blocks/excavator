@@ -7,6 +7,7 @@ import type { DataSection, DataTable, PageData, Technical } from '../lib/types';
 import { ChunkNotice } from './ChunkNotice';
 import { Cell, TableScroll } from './Tables';
 import { Item, ItemField, ItemList } from './ui/ItemList';
+import { PageTitle } from '../lib/outline';
 
 /** The bucket of the places that belong to no application. */
 const NO_APPLICATION = '';
@@ -171,7 +172,7 @@ export function DataPage({ data, technical }: { data: PageData; technical: Techn
     <article className="page" data-view="data">
       <header className="page-head">
         <p className="eyebrow">{systemName(data.project, t)}</p>
-        <h1 className="page-title">{t('md.data.heading')}</h1>
+        <PageTitle fallback={t('md.data.heading')} />
       </header>
       {detail.status !== 'ready' ? <ChunkNotice state={detail} /> : detail.value === null
         ? <p className="muted" data-part="data-status">{t(dataState === 'malformed' ? 'md.data.malformed' : 'md.data.notWritten')}</p>

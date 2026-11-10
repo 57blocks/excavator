@@ -14,6 +14,7 @@ import { AppView } from '../src/App';
 import { parseHash } from '../src/lib/route';
 import type { Entry, Feature, PageData, Reach, Summary, System } from '../src/lib/types';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -131,7 +132,7 @@ const emptySystem: System = {
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/17',
+    format: 'excavator-product-handbook-page/18',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
@@ -142,6 +143,7 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
     // No domains file: the domains are the areas, and the page says so.
     domains: [{ id: d('A1'), name: d('area one') }, { id: d('A2'), name: d('area two') }],
     domainBasis: 'areas',
+    outline: defaultOutline(marked, 'areas'),
     features,
     findings: [],
     remedies: { categories: [], recommendations: [] },

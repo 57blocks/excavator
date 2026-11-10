@@ -24,6 +24,7 @@ import { parseHash } from '../src/lib/route';
 import type { DictionariesSection, Entry, PageData } from '../src/lib/types';
 import { cleanup, mount, settle } from './dom';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -69,7 +70,7 @@ const section: DictionariesSection = { recognized: ['ts-enum'], applications: [{
 /** A page whose F1 has a verified entry with source locations and whose dictionaries are written; F2 has no entry. */
 function fullData(): PageData {
   return {
-    format: 'excavator-product-handbook-page/17',
+    format: 'excavator-product-handbook-page/18',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
@@ -79,6 +80,7 @@ function fullData(): PageData {
     areas: [{ id: 'A1', name: d('area') }],
     domains: [{ id: 'D1', name: d('domain') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [
       { id: 'F1', name: d('feature one'), area: 'A1', domain: 'D1', reach: 'menu', status: 'verified', entry, findingsStatus: 'planned' },
       { id: 'F2', name: d('feature two'), area: 'A1', domain: 'D1', reach: 'menu', status: 'planned', entry: null, findingsStatus: 'planned' },

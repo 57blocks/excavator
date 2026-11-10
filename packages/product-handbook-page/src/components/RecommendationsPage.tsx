@@ -4,6 +4,7 @@ import { findingCategoryKey } from '../lib/types';
 import type { Level, PageData, RemedyFact } from '../lib/types';
 import { Chips } from './Locations';
 import { useView } from '../lib/links';
+import { PageTitle } from '../lib/outline';
 
 /** A level as the reader sees it: P0 to P2, or the word for none. */
 export const levelName = (t: Text, level: Level | null): string => (level === null ? t('md.priority.unranked') : t('md.priority.level', { rank: level.slice(1) }));
@@ -50,7 +51,7 @@ export function RecommendationsPage({ data }: { data: PageData }) {
     <article className="page" data-view="recommendations">
       <header className="page-head">
         <p className="eyebrow">{data.project}</p>
-        <h1 className="page-title">{t('md.remedies.heading')}</h1>
+        <PageTitle fallback={t('md.remedies.heading')} />
       </header>
       {data.findings.length === 0 ? <p className="muted">{t('md.none')}</p> : (
         <>

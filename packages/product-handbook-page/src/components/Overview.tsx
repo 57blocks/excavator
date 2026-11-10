@@ -4,6 +4,7 @@ import type { PageData } from '../lib/types';
 import { Locations } from './Locations';
 import { ReachBadge } from './ReachBadge';
 import { SystemOverview } from './SystemOverview';
+import { PageTitle } from '../lib/outline';
 
 /** The first page: how much the handbook holds, the system overview, how readers get to the features, and the domains with their features. */
 export function Overview({ data }: { data: PageData }) {
@@ -16,7 +17,7 @@ export function Overview({ data }: { data: PageData }) {
     <article className="page" data-view="overview">
       <header className="page-head">
         <p className="eyebrow">{systemName(data.project, t)}</p>
-        <h1 className="page-title">{t('page.overview.heading')}</h1>
+        <PageTitle fallback={t('page.overview.heading')} />
       </header>
 
       <ul className="stats">

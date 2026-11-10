@@ -13,6 +13,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { Appendix, PageData } from '../src/lib/types';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -55,6 +56,7 @@ function dataFor(appendix: Appendix = APPENDIX, views: ('product' | 'technical')
     areas: [{ id: d('A1'), name: d('area') }],
     domains: [{ id: 'D1', name: d('Customer orders') }, { id: 'D2', name: d('System upkeep') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [feature('F1', 'Orders', 'D1'), feature('F2', 'Reminders', 'D2')],
     findings: [],
     remedies: { categories: [], recommendations: [] },

@@ -72,15 +72,15 @@ describe('handbook.md opens with the system overview', () => {
   it('has the system overview as its first section, before the areas and features', () => {
     const text = assemble(verifiedOverviewRun());
     const headings = text.split('\n').filter((line) => /^## /.test(line));
-    expect(headings[0]).toBe('## System overview');
-    expect(headings[1]).toBe('## Areas and features');
-    expect(text.indexOf('## System overview')).toBeLessThan(text.indexOf('## Areas and features'));
+    expect(headings[0]).toBe('## Overview');
+    expect(headings[1]).toBe('## Business flow');
+    expect(text.indexOf('## Overview')).toBeLessThan(text.indexOf('## Business flow'));
   });
 
   it('writes the count line, the purpose, the users, the applications, the external systems, the unknowns and the areas, in that order', () => {
     const run = verifiedOverviewRun();
     const text = assemble(run);
-    const section = sectionOf(text, '## System overview', '## Areas and features');
+    const section = sectionOf(text, '## Overview', '## Business flow');
     const order = ['### Purpose', '### User groups', '### Applications', '### External systems', '### Undetermined from the code', '### Areas and roles'];
     const at = order.map((heading) => section.indexOf(heading));
     expect(at.every((index) => index > 0)).toBe(true);
@@ -126,7 +126,7 @@ describe('an overview that is not verified', () => {
     it(`says so and where it stopped (${name}), writes the area table and nothing of the overview`, () => {
       const run = prepare(overviewRun(cleanups));
       const text = assemble(run);
-      const section = sectionOf(text, '## System overview', '## Areas and features');
+      const section = sectionOf(text, '## Overview', '## Business flow');
       expect(section).toContain(`The system overview is not in this handbook. Where it stopped: ${step}.`);
       expect(section).toContain('| Area | Features | Verified entries | Roles |');
       expect(section).not.toContain('Staff place and review orders for customers.');
@@ -181,8 +181,8 @@ describe('the coverage section lists the removed overview items', () => {
     expect(section).toContain('| Roles: Clerk; What it does: Creates orders. | The code shown does not settle it | No line shown names who uses it. |');
     expect(section).toContain('| External system: Slack; What it is used for: Reminders go to a team channel.; Called by, in the quoted code: . | The code shown says otherwise | Another function sends it to a different channel. |');
     // The removed items are gone from the body.
-    expect(sectionOf(text, '## System overview', '## Areas and features')).not.toContain('Order tool');
-    expect(sectionOf(text, '## System overview', '## Areas and features')).not.toContain('Slack');
+    expect(sectionOf(text, '## Overview', '## Business flow')).not.toContain('Order tool');
+    expect(sectionOf(text, '## Overview', '## Business flow')).not.toContain('Slack');
   });
 
   it('puts the same group in the page data, with the claims and reasons and no citation path', () => {
@@ -215,8 +215,8 @@ describe('page data: the overview', () => {
     const run = verifiedOverviewRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/17');
-    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
+    expect(data.format).toBe('excavator-product-handbook-page/18');
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'outline', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
     expect(data.system.status).toBe('verified');
     expect(data.project).toBe('handbook-fixture');
     expect(data.system.overview).toEqual({
@@ -290,7 +290,7 @@ describe('a translated run', () => {
     expect(run.run('check-overview').status).toBe(0);
     verifyChecked(run, 'overview');
     const text = assemble(run);
-    const section = sectionOf(text, `## ${MARK}System overview`, `## ${MARK}Areas and features`);
+    const section = sectionOf(text, `## ${MARK}Overview`, `## ${MARK}Business flow`);
     expect(section).toContain(`### ${MARK}User groups`);
     expect(section).toContain(`| ${MARK}Roles | ${MARK}What it does |`);
     expect(section).toContain(`${MARK}Staff place and review orders for customers.`);
