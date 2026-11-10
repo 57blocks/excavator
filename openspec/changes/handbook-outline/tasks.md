@@ -1,6 +1,6 @@
 ## 1. 目录的格式与检查
 
-- [ ] 1.1 测试先红：形状、守恒（漏放、重复、未知 id、空理由）、空部分、语言、禁用词、`topics` 的可放条件
+- [ ] 1.1 测试先红：形状、守恒（漏放、重复、未知 id、空理由）、空部分、语言、禁用词、块与列表写错
 - [ ] 1.2 `outline-shape.mjs`、`outline-check.mjs`、块的清单；`handbook.mjs` 加命令 `outline-facts`、`check-outline`
 
 ## 2. 按目录输出
