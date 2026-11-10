@@ -23,6 +23,6 @@
 
 提交：`docs(openspec): record handbook-domain-page acceptance`
 
-- [ ] 4.1 O3 变异
-- [ ] 4.2 O4 真实页面截图
-- [ ] 4.3 O5 测试与检查
+- [x] 4.1 O3 变异
+- [x] 4.2 O4 真实页面截图
+- [x] 4.3 O5 测试与检查
