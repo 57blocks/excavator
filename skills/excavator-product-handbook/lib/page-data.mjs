@@ -28,7 +28,7 @@ import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
  * The format is /17 since openspec change handbook-domain-page: each domain of `entities.domains` carries its `relations` with other
- * domains, its `states` and `transitions`, and the technical part holds `domainFiles`, the files the verified entries of each domain quote.
+ * domains, its `states` and `transitions`, `entities.domainFlows` sums those relations per direction between two domains, and the technical part holds `domainFiles`, the files the verified entries of each domain quote.
  * (/16, openspec change handbook-deep-entry: each operation of an entry carries the parts of entry format /2
  * (triggers, calculations, changes, edges, handoffs) and `sequence`, the participants and arrows of its sequence diagram
  * (flows.mjs), and an entry carries its state `transitions`.) (/15, openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
@@ -173,6 +173,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     system,
     entities: {
       domains: entities.domains,
+      domainFlows: entities.domainFlows,
       roles: entities.roles,
       roleFeature: entities.matrices.roleFeature,
     },

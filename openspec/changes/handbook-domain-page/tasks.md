@@ -16,8 +16,8 @@
 
 提交：`feat(excavator-product-handbook): the overview draws the business flow between domains and the technical structure`
 
-- [ ] 3.1 分层函数与两张图的测试先红（O1 的 mermaid，O2 的 SVG 与分层）
-- [ ] 3.2 分层函数、流程图组件、概览的两张图；`handbook.md` 的两张 mermaid 图
+- [x] 3.1 分层函数与两张图的测试先红（O1 的 mermaid，O2 的 SVG 与分层）
+- [x] 3.2 分层函数、流程图组件、概览的两张图；`handbook.md` 的两张 mermaid 图
 
 ## 4. 验收
 

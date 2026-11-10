@@ -116,6 +116,15 @@ describe('entities: the entities', () => {
     expect(build(project(), { entriesMap: map }).domains[1].relations).toEqual([{ direction: 'in', domain: 'A1', from: 'F1', to: 'F3', text: 'The panel shows the new order.' }]);
   });
 
+  it('sums the handoffs between two domains into one flow per direction, in the order they first appear (handbook-domain-page D4)', () => {
+    const map = entries();
+    const handoff = (feature, text) => ({ feature, text, evidence: [ev('svc/a.js', 'export const a = 1;')] });
+    map.get('F1').operations = [{ name: 'Place', sentences: [], handoffs: [handoff('F3', 'One.'), handoff('F2', 'Same domain.'), handoff('F3', 'Two.')] }];
+    map.get('F3').operations = [{ name: 'Open', sentences: [], handoffs: [handoff('F2', 'Back.')] }];
+    expect(build(project(), { entriesMap: map }).domainFlows).toEqual([{ from: 'A1', to: 'A2', count: 2 }, { from: 'A2', to: 'A1', count: 1 }]);
+    expect(build(project()).domainFlows).toEqual([]);
+  });
+
   it('gives each domain the states and transitions of its verified entries, by feature (handbook-domain-page D2)', () => {
     const map = entries();
     map.get('F3').transitions = [{ from: 'S0', to: 'S1', by: 'Opens.', evidence: [ev('svc/admin/panel.js', 'export const panel = 1;')] }];

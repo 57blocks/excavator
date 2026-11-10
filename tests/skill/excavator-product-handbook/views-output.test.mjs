@@ -306,7 +306,7 @@ describe('entity sections and matrices', () => {
     expect(data.technical.featureApplication.map((row) => row.feature)).toEqual(['F1']);
     expect(data.entities.roleFeature.features).toEqual(['F1']);
     expect(data.entities.domains[0].purposes).toEqual([{ feature: 'F1', text: 'Staff place new orders for customers.' }]);
-    expect(Object.keys(data.entities)).toEqual(['domains', 'roles', 'roleFeature']);
+    expect(Object.keys(data.entities)).toEqual(['domains', 'domainFlows', 'roles', 'roleFeature']);
   });
 
   it('a confirmed feature puts nothing in any relation, in the page data or in the matrices', () => {

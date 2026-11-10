@@ -22,8 +22,13 @@ const entities = {
     ] },
     { id: 'D2', name: 'Approvals', features: ['F2'], purposes: [], relations: [{ direction: 'in', domain: 'D1', from: 'F1', to: 'F2', text: 'The request waits for approval.' }] },
     { id: 'D3', name: 'Hours', features: ['F3'], purposes: [], relations: [] },
+    { id: 'D4', name: 'Quiet', features: [], purposes: [], relations: [] },
   ],
+  domainFlows: [{ from: 'D1', to: 'D2', count: 1 }, { from: 'D3', to: 'D1', count: 2 }],
+  integrations: [{ system: 'Mail', use: 'Sends mail.', shown: ['svc', 'web'], named: [], namedOutside: 0 }, { system: 'Chat', use: 'Posts.', shown: ['svc'], named: [], namedOutside: 0 }],
   roles: [],
+  applications: [],
+  relations: { featureApplication: [], unattributed: [] },
   matrices: { roleFeature: { roles: [], features: [], cells: [] } },
 };
 
@@ -52,5 +57,32 @@ describe('handbook.md: the relations of a domain with other domains', () => {
     expect(hours).toContain(`${t('md.entities.domain.gives')}\n\n${t('md.none')}`);
     expect(hours).toContain(`${t('md.entities.domain.gets')}\n\n${t('md.none')}`);
     expect(lines.join('\n').split(t('md.entities.domain.relationsNote')).length).toBe(2);
+  });
+});
+
+describe('handbook.md: the business flow between domains and the technical structure (handbook-domain-page D4, D5)', () => {
+  const product = entitySections({ view: 'product', map, entities, summary: { jobs: [] }, system: { applications: [] }, t }).join('\n');
+  const technical = entitySections({ view: 'technical', map, entities: { ...entities, matrices: { ...entities.matrices, applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] } } }, summary: { jobs: [] }, system: { applications: [] }, t }).join('\n');
+
+  it('draws one node for each domain with a flow and one edge for each flow, labelled with its count', () => {
+    const flow = sectionOf(product.split('\n'), `### ${t('md.entities.domains.flowHeading')}`, '### Leave');
+    expect(flow).toContain(t('md.entities.domains.flowNote'));
+    expect(flow).toContain('```mermaid\nflowchart LR\n  D0["Leave"]\n  D1["Approvals"]\n  D2["Hours"]\n  D0 -->|"1"| D1\n  D2 -->|"2"| D0\n```');
+    expect(flow).not.toContain('Quiet');
+  });
+
+  it('draws the applications and the external systems the verified overview shows them calling, only in the technical view', () => {
+    expect(product).not.toContain(t('md.entities.systems.diagramHeading'));
+    const diagram = sectionOf(technical.split('\n'), `### ${t('md.entities.systems.diagramHeading')}`, '### Mail');
+    expect(diagram).toContain(t('md.entities.systems.diagramNote'));
+    expect(diagram).toContain('```mermaid\nflowchart LR\n  A0["svc"]\n  A1["web"]\n  S0["Mail"]\n  S1["Chat"]\n  A0 --> S0\n  A1 --> S0\n  A0 --> S1\n```');
+  });
+
+  it('writes a fixed text instead of an empty diagram', () => {
+    const empty = { ...entities, domainFlows: [], integrations: [{ system: 'Mail', use: 'Sends mail.', shown: [], named: [], namedOutside: 0 }], matrices: { ...entities.matrices, applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] } } };
+    const lines = entitySections({ view: 'technical', map, entities: empty, summary: { jobs: [] }, system: { applications: [] }, t }).join('\n');
+    expect(lines).toContain(`### ${t('md.entities.domains.flowHeading')}\n\n${t('md.entities.domains.flowNone')}`);
+    expect(lines).toContain(`### ${t('md.entities.systems.diagramHeading')}\n\n${t('md.entities.systems.diagramNone')}`);
+    expect(lines).not.toContain('```mermaid');
   });
 });

@@ -15,6 +15,7 @@
  * - the role by feature matrix: what the entry says the role can do;
  * - `domains[].relations`: a handoff of a verified entry from a feature of the
  *   domain to a feature of another domain (`out`), or the other way (`in`);
+ * - `domainFlows`: those handoffs summed per direction between two domains;
  * - `integrations[].shown`: the callers the verified overview lists;
  * - `integrations[].named`: the applications whose source files hold the system
  *   name, with the number of files; `namedOutside` counts such files in no
@@ -69,6 +70,13 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
         if (from !== undefined && to !== undefined && from !== to) crossings.push({ from: feature.id, to: handoff.feature, text: handoff.text, fromDomain: from, toDomain: to });
       }
     }
+  }
+  // handbook-domain-page D4: the crossings summed per direction between two domains, in the order they first appear.
+  const domainFlows = [];
+  for (const item of crossings) {
+    const flow = domainFlows.find((entry) => entry.from === item.fromDomain && entry.to === item.toDomain);
+    if (flow === undefined) domainFlows.push({ from: item.fromDomain, to: item.toDomain, count: 1 });
+    else flow.count += 1;
   }
   const domainRows = grouping.groups.map((group) => ({
     id: group.id,
@@ -170,6 +178,7 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
   return {
     domainBasis: grouping.basis,
     domains: domainRows,
+    domainFlows,
     domainFiles,
     roles,
     applications,

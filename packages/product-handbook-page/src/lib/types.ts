@@ -303,7 +303,13 @@ export interface DomainRelation { direction: 'out' | 'in'; domain: string; from:
 export interface RoleFeatureMatrix { roles: string[]; features: string[]; cells: { role: string; feature: string; can: string[] }[] }
 
 /** The product part of the entities: no application, no citation path. */
-export interface Entities { domains: Domain[]; roles: { label: string }[]; roleFeature: RoleFeatureMatrix }
+export interface Entities {
+  domains: Domain[];
+  /** The handoffs between two domains summed per direction (openspec change handbook-domain-page, D4), in the order they first appear. */
+  domainFlows?: { from: string; to: string; count: number }[];
+  roles: { label: string }[];
+  roleFeature: RoleFeatureMatrix;
+}
 
 /** Quoted passages of the domain's verified features in each application; `unattributed` counts those in no application. */
 export interface ApplicationDomainMatrix {

@@ -639,3 +639,42 @@ describe('the domain page has the sections of the reference handbook (handbook-d
     for (const html of [technical, product, empty]) expect(unmarked(html)).toEqual([]);
   });
 });
+
+describe('the overview draws the business flow between domains and the technical structure (handbook-domain-page D4, D5)', () => {
+  const withFlows = (views: View[]): PageData => {
+    const data = dataFor(views);
+    data.entities.domainFlows = [{ from: 'D1', to: 'D2', count: 3 }];
+    return data;
+  };
+  const partOf = (html: string, part: string) => {
+    const start = html.indexOf(`data-part="${part}"`);
+    return start < 0 ? '' : html.slice(start, html.indexOf('</section>', start));
+  };
+
+  it('draws a node for each domain with a flow, linking its page, and an edge labelled with the count', () => {
+    const flow = partOf(render(withFlows(BOTH), '#/product'), 'overview-flow');
+    expect(flow).toContain(marked['md.entities.domains.flowHeading']);
+    expect(flow).toContain('href="#/product/domain/D1"');
+    expect(flow).toContain('href="#/product/domain/D2"');
+    expect(flow).toContain('data-edge="D1 D2"');
+    expect(flow).toContain('>3<');
+  });
+
+  it('writes a fixed text and draws nothing when no handoff crosses domains', () => {
+    const flow = partOf(render(dataFor(BOTH), '#/product'), 'overview-flow');
+    expect(flow).toContain(marked['md.entities.domains.flowNone']);
+    expect(flow).not.toContain('<svg');
+  });
+
+  it('draws the applications and the systems they are shown calling, only in the technical view', () => {
+    expect(render(withFlows(BOTH), '#/product')).not.toContain('data-part="overview-architecture"');
+    const architecture = partOf(render(withFlows(BOTH), '#/technical'), 'overview-architecture');
+    expect(architecture).toContain(marked['md.entities.systems.diagramHeading']);
+    expect(architecture).toContain(`href="#/technical/application/${enc(SVC)}"`);
+    expect(architecture).toContain(`href="#/technical/system/${enc(SLACK)}"`);
+  });
+
+  it('takes every text from the ui table or the data', () => {
+    for (const hash of ['#/product', '#/technical']) expect(unmarked(render(withFlows(BOTH), hash)), hash).toEqual([]);
+  });
+});

@@ -18,10 +18,43 @@ const featureText = (feature, t) => fill(t('md.summary.feature'), { id: feature.
 
 const bullets = (items, t) => (items.length === 0 ? [t('md.none'), ''] : [...items.map((item) => `- ${inline(item)}`), '']);
 
+/** A label inside a mermaid node or edge: one line, no double quote. */
+const label = (text) => inline(text).replace(/"/g, "'").replace(/\s+/g, ' ');
+
+/** A mermaid flowchart, left to right, of nodes (labels) and edges (indexes, with an optional label), in a fenced block. */
+const flowchart = (prefixes, edges) => [
+  '```mermaid',
+  'flowchart LR',
+  ...prefixes.flatMap(([prefix, names]) => names.map((name, at) => `  ${prefix}${at}["${label(name)}"]`)),
+  ...edges.map((edge) => `  ${edge.from} -->${edge.label === undefined ? '' : `|"${label(edge.label)}"|`} ${edge.to}`),
+  '```',
+  '',
+];
+
+/** handbook-domain-page D4: the domains with a flow, and one edge for each flow labelled with its count; a fixed text when there is none. */
+function flowDiagram(entities, t) {
+  const out = [`### ${t('md.entities.domains.flowHeading')}`, ''];
+  const flows = entities.domainFlows ?? [];
+  if (flows.length === 0) return [...out, t('md.entities.domains.flowNone'), ''];
+  const drawn = entities.domains.filter((domain) => flows.some((flow) => flow.from === domain.id || flow.to === domain.id));
+  const index = new Map(drawn.map((domain, at) => [domain.id, `D${at}`]));
+  return [...out, t('md.entities.domains.flowNote'), '', ...flowchart([['D', drawn.map((domain) => domain.name)]], flows.map((flow) => ({ from: index.get(flow.from), to: index.get(flow.to), label: String(flow.count) })))];
+}
+
+/** handbook-domain-page D5: the applications and the external systems the verified overview shows them calling; a fixed text when there is none. */
+function structureDiagram(entities, t) {
+  const out = [`### ${t('md.entities.systems.diagramHeading')}`, ''];
+  const systems = entities.integrations.filter((item) => item.shown.length > 0);
+  if (systems.length === 0) return [...out, t('md.entities.systems.diagramNone'), ''];
+  const applications = [...new Set(systems.flatMap((item) => item.shown))];
+  const edges = systems.flatMap((item) => item.shown.map((caller) => ({ from: `A${applications.indexOf(caller)}`, to: `S${systems.indexOf(item)}` })));
+  return [...out, t('md.entities.systems.diagramNote'), '', ...flowchart([['A', applications], ['S', systems.map((item) => item.system)]], edges)];
+}
+
 function domainsSection({ map, entities, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const nameOf = new Map(entities.domains.map((domain) => [domain.id, domain.name]));
-  const out = [`## ${t('md.entities.domains.heading')}`, '', t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), '', t('md.entities.domain.relationsNote'), ''];
+  const out = [`## ${t('md.entities.domains.heading')}`, '', t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), '', t('md.entities.domain.relationsNote'), '', ...flowDiagram(entities, t)];
   for (const domain of entities.domains) {
     out.push(`### ${inline(domain.name)}`, '');
     out.push(`#### ${t('md.entities.domain.whatItDoes')}`, '');
@@ -96,6 +129,7 @@ function applicationsSection({ map, entities, summary, system, t }) {
 
 function systemsSection({ entities, t }) {
   const out = [`## ${t('md.entities.systems.heading')}`, '', t('md.entities.systems.note'), ''];
+  out.push(...structureDiagram(entities, t));
   if (entities.integrations.length === 0) out.push(t('md.none'), '');
   for (const item of entities.integrations) {
     out.push(`### ${inline(item.system)}`, '', `- ${inline(fill(t('md.entities.fact'), { label: t('md.table.use'), value: item.use }))}`, '');
