@@ -15,7 +15,7 @@ import { historyChapter } from './render-history.mjs';
 import { REACHES } from './map-shape.mjs';
 import { inline, table } from './markdown.mjs';
 import { applicationCells, listCell } from './render-application.mjs';
-import { applicationDomainMatrix, applicationsSection, domainParts, flowDiagram, locationLines, roleFeatureMatrix, rolesSection, structureDiagram, systemsSection } from './render-entities.mjs';
+import { applicationDomainMatrix, applicationsSection, domainParts, flowDiagram, locationLines, roleFeatureMatrix, rolesSection, systemsSection } from './render-entities.mjs';
 import { outlineChapters, outlineCoverage, shiftHeadings } from './render-outline.mjs';
 import { featureFindingsLines, findingsChapter, findingsCoverage } from './render-findings.mjs';
 import { EMPTY_PRIORITY } from './priority-model.mjs';
@@ -26,6 +26,7 @@ import { EMPTY_APPENDIX } from './appendix.mjs';
 import { NO_HISTORY_FILE } from './history-model.mjs';
 import { EMPTY_TOPICS } from './topics-model.mjs';
 import { automaticLines, notificationsLines, statesLines, unknownsLines, whereLines, whoLines } from './render-sheet.mjs';
+import { architectureBlock } from './render-architecture.mjs';
 import { chapterBody, unverifiedCoverage } from './render-chapter-entry.mjs';
 import { fill } from './ui.mjs';
 
@@ -280,7 +281,7 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics, ou
  * list of lines (render-outline.mjs), the coverage section is always last and says which outline was used and what it left out. The product view
  * writes no block that only the technical view has.
  */
-export function renderHandbook({ map, entries, chapters = new Map(), state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX, outline }) {
+export function renderHandbook({ map, entries, chapters = new Map(), architecture = { status: 'none' }, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX, outline }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -317,7 +318,7 @@ export function renderHandbook({ map, entries, chapters = new Map(), state, cand
   const blocks = new Map([
     ['overview', overviewBlock(system, basis, t, placed)],
     ['business', flowDiagram(entities, t)],
-    ['architecture', structureDiagram(entities, t)],
+    ['architecture', architectureBlock({ architecture, entities, t })],
     ['data', data === null ? [] : dataBlock(data, t)],
     ['roles-matrix', [...rolesSection(entityInput), ...shiftHeadings(roleFeatureMatrix(entityInput), 1)]],
     ['applications-matrix', applicationDomainMatrix(entityInput)],

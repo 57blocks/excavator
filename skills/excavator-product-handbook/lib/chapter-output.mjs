@@ -45,7 +45,17 @@ function productLine(line) {
 export function productChapter(source) {
   const out = [];
   let fenced = false;
+  let run = [];
+  const flush = () => {
+    if (run.length > 0) out.push(...pruneTable(run));
+    run = [];
+  };
   for (const line of renderChapter(source, []).split('\n')) {
+    if (!fenced && /^\s*\|/.test(line)) {
+      run.push(productLine(line));
+      continue;
+    }
+    flush();
     if (/^\s*```/.test(line)) {
       fenced = !fenced;
       out.push(line);
@@ -56,7 +66,25 @@ export function productChapter(source) {
       if (shown.trim() !== '' || line.trim() === '') out.push(shown);
     }
   }
+  flush();
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
+}
+
+/** The indexes of the columns of a table (`rows`: the data rows as lists of cells) that have a cell with text; every column when there is no row. */
+const keptColumns = (width, rows) => Array.from({ length: width }, (_, at) => at).filter((at) => rows.length === 0 || rows.some((row) => (row[at] ?? '').trim() !== ''));
+
+/**
+ * The lines of a table run of the product view without the columns whose every data cell is empty (a column that held nothing but
+ * citations); the technical view keeps them. `run` is the lines of one table: header, separator, rows.
+ */
+function pruneTable(run) {
+  const split = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+  const [header, separator, ...rows] = run.map(split);
+  if (separator === undefined) return run;
+  const keep = keptColumns(header.length, rows);
+  if (keep.length === header.length || keep.length === 0) return run;
+  const join = (cells) => `| ${keep.map((at) => cells[at] ?? '').join(' | ')} |`;
+  return [join(header), `| ${keep.map((at) => separator[at] ?? '---').join(' | ')} |`, ...rows.map(join)];
 }
 
 const cellsOf = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => withoutCitations(cell));
@@ -96,7 +124,13 @@ export function chapterPageBlocks(source) {
     if (block.kind === 'heading') out.push({ kind: 'heading', level: block.level, text: block.text });
     else if (block.kind === 'paragraph') out.push({ kind: 'paragraph', text: withoutCitations(block.text) });
     else if (block.kind === 'list') out.push({ kind: 'list', ordered: /\d\./.test(block.prefix), text: withoutCitations(block.text) });
-    else if (block.kind === 'table') out.push({ kind: 'table', header: cellsOf(block.header.raw), rows: block.rows.map((row) => cellsOf(row.raw)) });
+    else if (block.kind === 'table') {
+      // The page has no citation in either view, so a column that held nothing else is not drawn.
+      const header = cellsOf(block.header.raw);
+      const rows = block.rows.map((row) => cellsOf(row.raw));
+      const keep = keptColumns(header.length, rows);
+      out.push({ kind: 'table', header: keep.map((at) => header[at]), rows: rows.map((row) => keep.map((at) => row[at] ?? '')) });
+    }
     else if (block.kind === 'diagram') out.push(diagramBlock(block, ownOf));
   }
   return out;

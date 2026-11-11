@@ -54,3 +54,31 @@ export function layered(ids: string[], edges: LayerEdge[]): { nodes: LayerNode[]
   }
   return { nodes: ids.map((id) => ({ id, layer: layer.get(id) ?? 0, order: order.get(id) ?? 0 })), back: [...back].sort((a, b) => a - b) };
 }
+
+/**
+ * The layout of a diagram whose nodes carry their layer (openspec change handbook-architecture-chapter, D4): the layers are the given
+ * numbers made consecutive (an empty one has no column), the order in a layer is the input order. An edge that ends in a layer before
+ * its start is a back edge; an edge between two nodes of one layer is a `same` edge (indexes of both lists are of `edges`). Edges to
+ * unknown nodes are ignored. The same input gives the same output.
+ */
+export function placed(ids: string[], given: number[], edges: LayerEdge[]): { nodes: LayerNode[]; back: number[]; same: number[] } {
+  const ranks = [...new Set(given)].sort((a, b) => a - b);
+  const layer = new Map(ids.map((id, at) => [id, ranks.indexOf(given[at])]));
+  const seen = new Map<number, number>();
+  const nodes = ids.map((id) => {
+    const at = layer.get(id)!;
+    const order = seen.get(at) ?? 0;
+    seen.set(at, order + 1);
+    return { id, layer: at, order };
+  });
+  const back: number[] = [];
+  const same: number[] = [];
+  edges.forEach((edge, at) => {
+    if (!layer.has(edge.from) || !layer.has(edge.to)) return;
+    const [from, to] = [layer.get(edge.from)!, layer.get(edge.to)!];
+    if (edge.from === edge.to) back.push(at);
+    else if (from === to) same.push(at);
+    else if (to < from) back.push(at);
+  });
+  return { nodes, back, same };
+}

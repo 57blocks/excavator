@@ -18,7 +18,7 @@ const featureText = (feature, t) => fill(t('md.summary.feature'), { id: feature.
 const bullets = (items, t) => (items.length === 0 ? [t('md.none'), ''] : [...items.map((item) => `- ${inline(item)}`), '']);
 
 /** A label inside a mermaid node or edge: one line, no double quote. */
-const label = (text) => inline(text).replace(/"/g, "'").replace(/\s+/g, ' ');
+export const label = (text) => inline(text).replace(/"/g, "'").replace(/\s+/g, ' ');
 
 /** A mermaid flowchart, left to right, of nodes (labels) and edges (indexes, with an optional label), in a fenced block. */
 const flowchart = (prefixes, edges) => [

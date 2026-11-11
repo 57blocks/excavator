@@ -107,7 +107,7 @@ function OperationBlock({ operation, featureNames }: { operation: Operation; fea
  * diagram is the same drawing as an operation's, its arrows show only their number and the texts of the arrows are listed under it.
  * A run of list items is one list.
  */
-function ChapterBody({ blocks, name }: { blocks: ChapterBlock[]; name: string }) {
+export function ChapterBody({ blocks, name }: { blocks: ChapterBlock[]; name: string }) {
   const t = useText();
   const out: ReactNode[] = [];
   for (let at = 0; at < blocks.length; at += 1) {

@@ -479,7 +479,24 @@ export interface DictionariesSection {
 }
 
 /** The technical part: only in a page that has the technical view. Holds the only citation paths of the page data. */
+/**
+ * The architecture section of the technical part (openspec change handbook-architecture-chapter): only a status when it is not there
+ * (`none`: not selected, `failed`, `missing`: a file is gone), else the chapter blocks (no citation) and the checked fact sheet:
+ * the components, each with the layer its kind puts it in (users 0, frontends 1, backends 2, databases, external and cloud services 3),
+ * and the links with their short texts.
+ */
+export type ArchitectureSection =
+  | { status: 'none' | 'failed' | 'missing' }
+  | {
+    status: 'checked';
+    chapter: ChapterBlock[];
+    components: { id: string; label: string; kind: 'users' | 'frontend' | 'backend' | 'database' | 'external' | 'cloud'; layer: number; application?: string; stack?: string }[];
+    links: { from: string; to: string; text: string }[];
+  };
+
 export interface Technical {
+  /** Absent in the data of a page made before the section existed; the page reads that as not selected. */
+  architecture?: ArchitectureSection;
   featureApplication: { feature: string; application: string; citations: number }[];
   unattributed: { feature: string; citations: number }[];
   applicationDomain: ApplicationDomainMatrix;

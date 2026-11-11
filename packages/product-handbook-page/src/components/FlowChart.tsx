@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react';
-import { layered } from '../lib/layers';
+import { layered, placed } from '../lib/layers';
 
 /** A box of the diagram: what it shows, where it links and its kind (the styles tell an external system apart). */
-export interface ChartNode { id: string; label: string; href: string; kind?: 'system' | 'feature' | 'state' | 'item'; unverified?: boolean }
+export interface ChartNode { id: string; label: string; href?: string; kind?: 'system' | 'feature' | 'state' | 'item'; unverified?: boolean; layer?: number }
 /** An arrow of the diagram; `count`, when given, is drawn on it and links to `href`; `text`, when given, is drawn beside it. */
 export interface ChartEdge { from: string; to: string; count?: number; href?: string; text?: string }
 
@@ -19,6 +19,8 @@ const WIDE = 11;
 const NARROW = 6;
 const LABEL_PAD = 8;
 const LABEL_HEIGHT = 14;
+/** How far the arrow between two boxes of one layer bulges to the right of their column. */
+const SIDE = 28;
 
 const textWidth = (text: string): number => [...text].reduce((sum, char) => sum + (char.codePointAt(0)! >= 0x2e80 ? WIDE : NARROW), 0);
 
@@ -37,6 +39,7 @@ function curveY(x1: number, y1: number, x2: number, y2: number, x: number): numb
 
 const right = (x: number, y: number): string => `M${x},${y} L${x - HEAD},${y - 4} L${x - HEAD},${y + 4} z`;
 const up = (x: number, y: number): string => `M${x},${y} L${x - 4},${y + HEAD} L${x + 4},${y + HEAD} z`;
+const left = (x: number, y: number): string => `M${x},${y} L${x + HEAD},${y - 4} L${x + HEAD},${y + 4} z`;
 
 /**
  * A flowchart of the overview (openspec change handbook-domain-page, design D3): the layout is `layered`, left to right.
@@ -45,7 +48,11 @@ const up = (x: number, y: number): string => `M${x},${y} L${x - 4},${y + HEAD} L
  * and the page never does.
  */
 export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; edges: ChartEdge[]; label: string; part: string }) {
-  const layout = layered(nodes.map((node) => node.id), edges);
+  // A chart whose nodes all carry a layer is laid out by them (the architecture chart); any other by the longest path.
+  const ids = nodes.map((node) => node.id);
+  const fixed = nodes.length > 0 && nodes.every((node) => node.layer !== undefined);
+  const layout = fixed ? placed(ids, nodes.map((node) => node.layer!), edges) : { ...layered(ids, edges), same: [] as number[] };
+  const same = new Set(layout.same);
   const place = new Map(layout.nodes.map((node) => [node.id, node]));
   const layers = Math.max(0, ...layout.nodes.map((node) => node.layer)) + 1;
   const counts = Array.from({ length: layers }, (_, at) => layout.nodes.filter((node) => node.layer === at).length);
@@ -53,11 +60,21 @@ export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; e
   const back = new Set(layout.back);
   // A gap between two layers is as wide as the longest text of an arrow that ends in the layer after it, and never narrower than GAP_X.
   const gaps = Array.from({ length: Math.max(0, layers - 1) }, () => GAP_X);
+  // The texts of the arrows between two boxes of one layer sit right of their column: the room they take is the first part of the gap after it, and the last layer gets it as a margin.
+  const sideRoom = Array.from({ length: layers }, () => 0);
+  const crossNeed = Array.from({ length: Math.max(0, layers - 1) }, () => 0);
   edges.forEach((edge, at) => {
     if (edge.text === undefined || back.has(at) || !place.has(edge.from) || !place.has(edge.to)) return;
+    if (same.has(at)) {
+      const layer = place.get(edge.to)!.layer;
+      sideRoom[layer] = Math.max(sideRoom[layer], SIDE + 4 + Math.ceil(textWidth(edge.text)) + LABEL_PAD);
+      return;
+    }
     const gap = place.get(edge.to)!.layer - 1;
-    gaps[gap] = Math.max(gaps[gap], Math.ceil(textWidth(edge.text)) + 2 * LABEL_PAD);
+    crossNeed[gap] = Math.max(crossNeed[gap], Math.ceil(textWidth(edge.text)) + 2 * LABEL_PAD);
   });
+  for (let at = 0; at < gaps.length; at += 1) gaps[at] = Math.max(gaps[at], sideRoom[at] + crossNeed[at]);
+  const tail = sideRoom[layers - 1] ?? 0;
   const layerX = (layer: number): number => PAD + layer * WIDTH + gaps.slice(0, layer).reduce((sum, gap) => sum + gap, 0);
   const box = (id: string) => {
     const node = place.get(id)!;
@@ -68,10 +85,10 @@ export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; e
   const labels = new Map<number, { x: number; y: number }>();
   const byGap = new Map<number, { at: number; x: number; y: number }[]>();
   edges.forEach((edge, at) => {
-    if (edge.text === undefined || back.has(at) || !place.has(edge.from) || !place.has(edge.to)) return;
+    if (edge.text === undefined || back.has(at) || same.has(at) || !place.has(edge.from) || !place.has(edge.to)) return;
     const [from, to] = [box(edge.from), box(edge.to)];
     const gap = place.get(edge.to)!.layer - 1;
-    const x = layerX(gap) + WIDTH + gaps[gap] / 2;
+    const x = layerX(gap) + WIDTH + sideRoom[gap] + (gaps[gap] - sideRoom[gap]) / 2;
     const y = curveY(from.x + WIDTH, from.y + HEIGHT / 2, to.x - HEAD, to.y + HEIGHT / 2, x) - 6;
     byGap.set(gap, [...(byGap.get(gap) ?? []), { at, x, y }]);
   });
@@ -84,7 +101,7 @@ export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; e
       lowest = Math.max(lowest, item.y + 3 + PAD);
     });
   }
-  const width = layers * WIDTH + gaps.reduce((sum, gap) => sum + gap, 0) + 2 * PAD;
+  const width = layers * WIDTH + gaps.reduce((sum, gap) => sum + gap, 0) + 2 * PAD + tail;
   const height = Math.max(rows * HEIGHT + (rows - 1) * GAP_Y + 2 * PAD + (back.size > 0 ? BELOW : 0), Math.ceil(lowest));
   const texts: ReactElement[] = [];
   return (
@@ -99,7 +116,12 @@ export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; e
               let path: string;
               let head: string;
               let middle: { x: number; y: number };
-              if (back.has(at)) {
+              if (same.has(at)) {
+                const [xr, y1, y2] = [from.x + WIDTH, from.y + HEIGHT / 2, to.y + HEIGHT / 2];
+                path = `M${xr},${y1} C${xr + SIDE},${y1} ${xr + SIDE},${y2} ${xr + HEAD},${y2}`;
+                head = left(xr, y2);
+                middle = { x: xr + SIDE * 0.75, y: (y1 + y2) / 2 };
+              } else if (back.has(at)) {
                 const bottom = Math.max(from.y, to.y) + HEIGHT + BELOW - 4;
                 const [x1, x2] = [from.x + WIDTH / 2, to.x + WIDTH / 2];
                 path = `M${x1},${from.y + HEIGHT} C${x1},${bottom} ${x2},${bottom} ${x2},${to.y + HEIGHT + HEAD}`;
@@ -118,7 +140,9 @@ export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; e
                   <text className="flow-count" x={middle.x} y={middle.y} dy="0.35em" textAnchor="middle">{String(edge.count)}</text>
                 </>
               );
-              const spot = labels.get(at) ?? { x: middle.x, y: middle.y - 6 };
+              const spot = same.has(at) && edge.text !== undefined
+                ? { x: from.x + WIDTH + SIDE + 4 + textWidth(edge.text) / 2, y: middle.y + 4 }
+                : labels.get(at) ?? { x: middle.x, y: middle.y - 6 };
               // The texts are drawn in a group after every arrow, so no line runs over one.
               if (edge.text !== undefined) texts.push(<text key={at} className="flow-text" x={spot.x} y={spot.y} textAnchor="middle">{edge.text}</text>);
               return (

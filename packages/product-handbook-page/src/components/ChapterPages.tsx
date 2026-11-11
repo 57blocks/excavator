@@ -2,6 +2,7 @@ import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import type { PageData, Technical } from '../lib/types';
 import { Crumbs } from './Crumbs';
+import { ChapterBody } from './FeatureDetail';
 import { FlowChart } from './FlowChart';
 import { Cell, TableScroll } from './Tables';
 import { PageTitle, useBlockTitle } from '../lib/outline';
@@ -66,14 +67,16 @@ export function BusinessPage({ data }: { data: PageData }) {
 
 /**
  * The technical structure (technical view only; openspec change handbook-domain-page, D5, D6), a chapter of its own as in
- * the reference handbook: the applications with their languages, frameworks and history, the diagram of the calls to
- * external systems that the verified overview shows (names a search found are not calls and are not drawn), and the
- * external systems. Calls between applications and to databases are not in the facts, and the note under the diagram says so.
+ * the reference handbook: the applications with their languages, frameworks and history, the checked architecture
+ * chapter under its not-verified text with the layered chart of its fact sheet, or, when the section is not there, the diagram of the calls to
+ * external systems that the verified overview shows (names a search found are not calls and are not drawn) with a fixed text that says
+ * why; then the external systems.
  */
 export function ArchitecturePage({ data, technical }: { data: PageData; technical: Technical }) {
   const t = useText();
   const nav = useLinks();
   const title = useBlockTitle('architecture', t('page.nav.architecture'));
+  const architecture = technical.architecture ?? { status: 'none' as const };
   const calls = technical.integrations.filter((item) => item.shown.length > 0);
   const callers = [...new Set(calls.flatMap((item) => item.shown))];
   const appName = (dir: string) => data.system.applications.find((application) => application.dir === dir)?.name ?? dir;
@@ -115,23 +118,50 @@ export function ArchitecturePage({ data, technical }: { data: PageData; technica
         )}
       </section>
 
-      <section className="section" data-part="architecture-calls" aria-labelledby="architecture-calls">
-        <h2 className="section-title" id="architecture-calls">{t('md.entities.systems.diagramHeading')}</h2>
-        {calls.length === 0 ? <p className="muted">{t('md.entities.systems.diagramNone')}</p> : (
-          <>
-            <p className="muted summary-note">{t('md.entities.systems.diagramNote')}</p>
+      {architecture.status === 'checked' ? (
+        <>
+          <div className="notice" role="note" data-part="architecture-unverified"><p>{t('md.architecture.unverified')}</p></div>
+          <ChapterBody blocks={architecture.chapter} name={title} />
+          <section className="section" data-part="architecture-structure" aria-labelledby="architecture-structure">
+            <h2 className="section-title" id="architecture-structure">{t('md.architecture.diagramHeading')}</h2>
+            <p className="muted summary-note">{t('md.architecture.diagramNote')}</p>
             <FlowChart
-              part="architecture-chart"
-              label={t('md.entities.systems.diagramHeading')}
-              nodes={[
-                ...callers.map((dir) => ({ id: `a:${dir}`, label: appName(dir), href: nav.application(dir) })),
-                ...calls.map((item) => ({ id: `s:${item.system}`, label: item.system, href: nav.system(item.system), kind: 'system' as const })),
-              ]}
-              edges={calls.flatMap((item) => item.shown.map((dir) => ({ from: `a:${dir}`, to: `s:${item.system}` })))}
+              part="architecture-structure-chart"
+              label={t('md.architecture.diagramHeading')}
+              nodes={architecture.components.map((component) => ({
+                id: component.id,
+                label: component.label,
+                href: component.application !== undefined && data.system.applications.some((application) => application.dir === component.application) ? nav.application(component.application) : undefined,
+                kind: component.kind === 'users' || component.kind === 'frontend' || component.kind === 'backend' ? undefined : ('system' as const),
+                unverified: true,
+                layer: component.layer,
+              }))}
+              edges={architecture.links.map((link) => ({ from: link.from, to: link.to, text: link.text }))}
             />
-          </>
-        )}
-      </section>
+          </section>
+        </>
+      ) : (
+        <>
+          <p className="muted summary-note" data-part="architecture-fallback">{t(`md.architecture.${architecture.status === 'none' ? 'notSelected' : architecture.status}`)}</p>
+        <section className="section" data-part="architecture-calls" aria-labelledby="architecture-calls">
+          <h2 className="section-title" id="architecture-calls">{t('md.entities.systems.diagramHeading')}</h2>
+          {calls.length === 0 ? <p className="muted">{t('md.entities.systems.diagramNone')}</p> : (
+            <>
+              <p className="muted summary-note">{t('md.entities.systems.diagramNote')}</p>
+              <FlowChart
+                part="architecture-chart"
+                label={t('md.entities.systems.diagramHeading')}
+                nodes={[
+                  ...callers.map((dir) => ({ id: `a:${dir}`, label: appName(dir), href: nav.application(dir) })),
+                  ...calls.map((item) => ({ id: `s:${item.system}`, label: item.system, href: nav.system(item.system), kind: 'system' as const })),
+                ]}
+                edges={calls.flatMap((item) => item.shown.map((dir) => ({ from: `a:${dir}`, to: `s:${item.system}` })))}
+              />
+            </>
+          )}
+        </section>
+        </>
+      )}
 
       <section className="section" data-part="architecture-systems" aria-labelledby="architecture-systems">
         <h2 className="section-title" id="architecture-systems">{t('md.entities.systems.heading')}</h2>

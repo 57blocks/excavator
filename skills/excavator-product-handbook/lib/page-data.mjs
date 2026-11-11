@@ -83,6 +83,15 @@ function pageEntry(entry, sequenceOf, chapter) {
 }
 
 /**
+ * The architecture section for the technical part (openspec change handbook-architecture-chapter): its status, and when checked the chapter
+ * blocks without citations, the components with their layers and the links; the page draws the chapter and the layered diagram from them.
+ */
+function architecturePageSection(architecture) {
+  if (architecture.status !== 'checked') return { status: architecture.status };
+  return { status: 'checked', chapter: chapterPageBlocks(architecture.chapter.text), components: architecture.model.components, links: architecture.model.links };
+}
+
+/**
  * The page data of a loaded run (`loadCheckedRun`'s result). `roots` are the
  * paths of the project, each replaced by the project's directory name in every
  * string; the first is the real path, which the summary reads the source from.
@@ -203,6 +212,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       findingLocations: findings.groups.flatMap((group) => group.items).map((item) => ({ id: item.id, citations: findings.locations.get(item.id) })),
       history: historyPlaces(history),
       domainFiles: entities.domainFiles,
+      architecture: architecturePageSection(run.architecture ?? { status: 'none' }),
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,
       dictionaries: dictionariesSection.state === 'ok' ? dictionariesPageSection(dictionariesSection.data) : null,
