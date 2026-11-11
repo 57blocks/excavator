@@ -82,10 +82,10 @@ describe('handbook.md groups the features by business domain', () => {
     // D11 of handbook-deep-entry: no line counting a domain's features; the overview table counts them.
     expect(domains).toContain('### Customer orders\n\n#### What it does');
     expect(domains).toContain('### System upkeep\n\n#### What it does');
-    expect(domains).not.toContain('Features with a verified entry');
+    expect(domains).not.toContain('Features with an entry');
     expect(domains).not.toContain(FROM_AREAS);
     const overview = sectionOf(md, '### Domains and roles', '## Business flow');
-    expect(overview).toContain('| Domain | Features | Verified entries | Roles |');
+    expect(overview).toContain('| Domain | Features | Entries written | Roles |');
     expect(overview).toContain('| Customer orders | 3 | 1 | Clerk |');
     expect(overview).toContain('| System upkeep | 2 | 0 | - |');
   });
@@ -109,7 +109,7 @@ describe('without a passing domains file the handbook falls back to the map\'s a
     expect(md).toContain('#### Orders');
     expect(md).not.toContain('Navigation area:');
     expect(sectionOf(md, '## Areas\n', '\n## All notifications')).toContain(FROM_AREAS);
-    expect(sectionOf(md, '### Areas and roles', '## Business flow')).toContain('| Area | Features | Verified entries | Roles |');
+    expect(sectionOf(md, '### Areas and roles', '## Business flow')).toContain('| Area | Features | Entries written | Roles |');
     expect(sectionOf(text(run, 'handbook-technical.md'), '## Applications by domain')).toContain('| Application | Order handling | Automatic work |');
   };
 

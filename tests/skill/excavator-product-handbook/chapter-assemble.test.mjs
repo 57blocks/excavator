@@ -257,7 +257,9 @@ describe('the aggregations read a /3 fact sheet as they read a /2 entry', () => 
 });
 
 describe('the counts labelled verified leave out a checked /3 entry', () => {
-  it('counts one verified feature for a verified /2 and a checked /3', () => {
+  // The overview counts every written entry, a checked /3 included (openspec change handbook-run-precision); the notifications summary
+  // still counts the fact sheets that list notifications, so a /3 entry stays out of it.
+  it('counts both features in the overview for a verified /2 and a checked /3, and one in the notifications summary', () => {
     const run = v3Run();
     const second = clone(run.entry);
     second.id = 'F2';
@@ -265,13 +267,13 @@ describe('the counts labelled verified leave out a checked /3 entry', () => {
     expect(run.run('check-entry', 'F2').status).toBe(0);
     verifyChecked(run, 'F2');
     const data = pageData(run);
-    expect(data.system.counts.featuresWithEntry).toBe(1);
+    expect(data.system.counts.featuresWithEntry).toBe(2);
     expect(data.summary.counts.featuresWithEntry).toBe(1);
-    expect(data.system.domains.find((row) => row.id === 'D1').verified).toBe(1);
-    expect(data.system.areas.find((row) => row.id === 'A1').verified).toBe(1);
+    expect(data.system.domains.find((row) => row.id === 'D1').verified).toBe(2);
+    expect(data.system.areas.find((row) => row.id === 'A1').verified).toBe(2);
     expect(data.appendix.sources.parts.find((row) => row.id === 'features').verified).toBe(1);
     assembled(run);
-    expect(read(run, 'handbook.md')).toContain('Features with a verified entry: 1.');
+    expect(read(run, 'handbook.md')).toContain('Features with an entry: 2.');
   });
 });
 

@@ -87,13 +87,13 @@ describe('handbook.md opens with the system overview', () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
     expect(section.indexOf('Applications: 1. Source files:')).toBeGreaterThan(0);
     expect(section.indexOf('Applications: 1. Source files:')).toBeLessThan(at[0]);
-    expect(section).toContain('Areas: 2. Features: 5. Features with a verified entry: 0. Roles: 2.');
+    expect(section).toContain('Areas: 2. Features: 5. Features with an entry: 0. Roles: 2.');
     expect(section).toContain('Staff place and review orders for customers.');
     expect(section).toContain('| Roles | What it does |\n| --- | --- |\n| Clerk | Creates orders. |');
     expect(section).toContain('| Directory | Name | What it does | Languages | Frameworks | Source files | Lines | First commit | Last commit | Commits | Authors |');
     expect(section).toContain('| External system | What it is used for | Called by, in the quoted code |\n| --- | --- | --- |\n| Slack | Reminders go to a team channel. | . |');
     expect(section).toContain('- Whether other tools call it (searched: the routes and the jobs)');
-    expect(section).toContain('| Area | Features | Verified entries | Roles |\n| --- | --- | --- | --- |\n| Order handling | 2 | 0 | - |\n| Automatic work | 3 | 0 | - |');
+    expect(section).toContain('| Area | Features | Entries written | Roles |\n| --- | --- | --- | --- |\n| Order handling | 2 | 0 | - |\n| Automatic work | 3 | 0 | - |');
   });
 
   it('is the same bytes on a second assemble, with no run time and no project path', () => {
@@ -127,7 +127,7 @@ describe('an overview that is not verified', () => {
       const text = assemble(run);
       const section = sectionOf(text, '## Overview', '## Business flow');
       expect(section).toContain(`The system overview is not in this handbook. Where it stopped: ${step}.`);
-      expect(section).toContain('| Area | Features | Verified entries | Roles |');
+      expect(section).toContain('| Area | Features | Entries written | Roles |');
       expect(section).not.toContain('Staff place and review orders for customers.');
       expect(section).not.toContain('### Purpose');
       expect(section).not.toContain('### User groups');

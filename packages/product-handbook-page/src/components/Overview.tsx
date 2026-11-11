@@ -12,7 +12,8 @@ export function Overview({ data }: { data: PageData }) {
   const nav = useLinks();
   const view = useView();
   const overviewPlaces = view === 'technical' ? data.technical?.locations.find((unit) => unit.id === 'overview') : undefined;
-  const written = data.features.filter((feature) => feature.status === 'verified').length;
+  // A feature with an entry, verified or written and not verified (openspec change handbook-run-precision).
+  const written = data.features.filter((feature) => feature.entry !== null).length;
   return (
     <article className="page" data-view="overview">
       <header className="page-head">

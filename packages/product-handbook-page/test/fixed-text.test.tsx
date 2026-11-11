@@ -279,17 +279,17 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     expect(section(html)).not.toContain(marked['md.none']);
   });
 
-  it('counts only verified features as written on the overview, and marks a checked one as not finished', () => {
+  it('counts the features with an entry as written on the overview, and marks a checked one as not finished', () => {
     const html = render(populated, '#/');
     expect(html).toContain(marked['md.status.checked']);
-    expect(html).toMatch(/stat-value">2<\/span><span class="stat-label">@@With a verified entry/);
+    expect(html).toMatch(/stat-value">2<\/span><span class="stat-label">@@With an entry/);
   });
 
   it('lists a confirmed feature (settled by the verifiers, not yet traced) as not finished, with no entry', () => {
     const confirmed = dataFor([feature('F1', 'menu', 'confirmed', null, 'menu label')]);
     expect(render(confirmed, '#/')).toContain(marked['md.status.confirmed']);
     expect(render(confirmed, '#/coverage')).toContain(marked['md.status.confirmed']);
-    expect(render(confirmed, '#/')).toMatch(/stat-value">0<\/span><span class="stat-label">@@With a verified entry/);
+    expect(render(confirmed, '#/')).toMatch(/stat-value">0<\/span><span class="stat-label">@@With an entry/);
   });
 
   it('shows the rows of the two tables with their fixed texts, the schedule as written, and the reason of an unassigned job', () => {
@@ -380,7 +380,7 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     const html = render(populated, '#/');
     for (const text of ['first summary sentence.', 'second summary sentence.', 'who two', 'does one', 'system one', 'use one', 'app/dir', 'app name', 'app does', '2023-02-01', '2024-01-20', 'overview unknown', 'overview searched', 'area one', 'role two']) expect(html).toContain(d(text));
     for (const key of ['md.overview.heading', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading', 'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.table.firstCommit', 'md.table.authors', 'md.table.callers', 'md.table.verified', 'md.section.unknowns']) expect(html).toContain(marked[key]);
-    expect(html).toContain(`${MARK}Applications: 2. Source files: 11. Lines of source: 1200. Areas: 2. Features: 6. Features with a verified entry: 2. Roles: 2.`);
+    expect(html).toContain(`${MARK}Applications: 2. Source files: 11. Lines of source: 1200. Areas: 2. Features: 6. Features with an entry: 2. Roles: 2.`);
     expect(html).toContain(`${MARK}${d('Lang A')} (9), ${MARK}${d('Lang B')} (2)`);
     // The application with no version history says so in each of the four cells.
     expect((html.match(new RegExp(`${MARK}No version history`, 'g')) ?? []).length).toBe(4);

@@ -123,12 +123,12 @@ function applicationRows(listed, context) {
   return rows;
 }
 
-/** One row per group of features: its features, its features with a verified entry, and the roles those entries name, in the order of the map's roles. */
-function groupRows(groups, map, entries, unverified) {
+/** One row per group of features: its features, its features with an entry (`verified` keeps its name for the page data; a light-scheme entry counts, openspec change handbook-run-precision), and the roles those entries name, in the order of the map's roles. */
+function groupRows(groups, map, entries) {
   return groups.map((group) => {
     const written = group.features.filter((id) => entries.has(id));
     const named = new Set(written.flatMap((id) => entries.get(id).who.map((who) => who.role)));
-    return { id: group.id, name: group.name, features: group.features.length, verified: written.filter((id) => !unverified.has(id)).length, roles: map.roles.map((role) => role.label).filter((label) => named.has(label)) };
+    return { id: group.id, name: group.name, features: group.features.length, verified: written.length, roles: map.roles.map((role) => role.label).filter((label) => named.has(label)) };
   });
 }
 
@@ -146,8 +146,6 @@ function groupRows(groups, map, entries, unverified) {
  */
 export function buildSystem(run, root, scan = scanProject(root)) {
   const { map, state, entries, candidates } = run;
-  // A checked /3 entry is in `entries` but is not verified (openspec change handbook-free-chapter): the counts labelled verified leave it out.
-  const unverified = new Set(run.chapters?.keys() ?? []);
   const status = unitState(state, OVERVIEW_ID).status;
   const doc = entries.get(OVERVIEW_ID);
   const counted = readSourceFiles(scan);
@@ -171,10 +169,10 @@ export function buildSystem(run, root, scan = scanProject(root)) {
       areas: map.areas.length,
       domains: grouping.basis === 'domains' ? grouping.groups.length : null,
       features: map.features.length,
-      featuresWithEntry: map.features.filter((feature) => entries.has(feature.id) && !unverified.has(feature.id)).length,
+      featuresWithEntry: map.features.filter((feature) => entries.has(feature.id)).length,
       roles: map.roles.length,
     },
-    areas: groupRows(areaGroups(map), map, entries, unverified),
-    domains: groupRows(grouping.groups, map, entries, unverified),
+    areas: groupRows(areaGroups(map), map, entries),
+    domains: groupRows(grouping.groups, map, entries),
   };
 }
