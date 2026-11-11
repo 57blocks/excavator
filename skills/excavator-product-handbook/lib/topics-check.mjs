@@ -18,8 +18,8 @@
  *   in the cited text (a level name such as P0 is no number).
  *
  * On success the lane is recorded as `checked` with the digests of its file and
- * its facts, otherwise as `failed` with every problem, and the last line is a
- * `Next:` line. Without `--lane`, every lane is checked in turn and the rows of the
+ * its facts, which is final (openspec change handbook-light-scheme); otherwise as
+ * `failed` with every problem and a `Next:` line. Without `--lane`, every lane is checked in turn and the rows of the
  * lanes that hold are merged into `<out>/entries/topics.json` (by topic, lane, row).
  */
 
@@ -105,7 +105,7 @@ function checkLane(context, state, lane) {
   const id = lane.id;
   const unit = laneUnitId(id);
   const own = currentEntry(state, lane);
-  // A lane that two judges settled for these facts and whose file is unchanged is not checked again: that would drop what the judges recorded.
+  // A verified lane (an older run) for these facts whose file is unchanged is not checked again: that would drop what the judges recorded.
   const settled = own.status === 'verified' ? readLaneFile(outDir, id, own).doc : null;
   if (settled !== null) return { ok: true, lines: [], status: 'verified', message: `${unit}: verified, unchanged since it was verified`, doc: settled };
   const attempts = own.attempts;
@@ -140,7 +140,7 @@ export function checkTopics(outDirArg, root, laneId) {
     const lane = requireLane(context, laneId);
     const result = checkLane(context, state, lane);
     saveState(context.outDir, state);
-    if (result.ok) return { status: 0, lines: [result.message, ...(result.status === 'checked' ? ['Next: run topic-judge'] : [])] };
+    if (result.ok) return { status: 0, lines: [result.message] };
     return { status: 1, lines: [...result.lines, result.again ? NEXT_AGAIN(lane.id) : NEXT_STAYS(lane.id)] };
   }
 
@@ -148,13 +148,11 @@ export function checkTopics(outDirArg, root, laneId) {
   const next = [];
   const docs = [];
   let again = false;
-  let checked = false;
   for (const lane of context.facts.lanes) {
     const result = checkLane(context, state, lane);
     if (result.ok) {
       lines.push(result.message);
       docs.push(result.doc);
-      checked ||= result.status === 'checked';
     } else {
       lines.push(...result.lines.map((line) => `lane ${lane.id}: ${line}`));
       next.push(result.again ? NEXT_AGAIN(lane.id) : NEXT_STAYS(lane.id));
@@ -170,6 +168,6 @@ export function checkTopics(outDirArg, root, laneId) {
     writeJson(file, { schema: TOPICS_FORMAT, rows });
     lines.push(`topics: merged (${docs.length} lanes, ${rows.length} rows)`);
   }
-  lines.push(...next, ...(checked ? ['Next: run topic-judge'] : []));
+  lines.push(...next);
   return { status: again ? 1 : 0, lines };
 }

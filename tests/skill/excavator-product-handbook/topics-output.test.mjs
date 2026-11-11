@@ -184,17 +184,28 @@ describe('what the judges left out and what did not finish', () => {
     expect(coverageTopics(text(run, 'handbook.md'))).toContain(ui['md.coverage.topicsAllKept']);
   });
 
-  it('says the lane did not finish and writes none of its rows when it is only checked, or was never written', () => {
+  it('writes the rows of a checked lane as written, not verified, and says the other lanes did not finish when they were never written', () => {
     const run = topicsRun(cleanups);
     checkedLane(run, 'D1');
     assemble(run);
     const body = text(run, 'handbook.md');
-    expect(coverageTopics(body)).toContain('| Customer orders | Written, verification not finished | 0 | 0 |');
+    expect(coverageTopics(body)).toContain('| Customer orders | Written, not verified | 2 | 0 |');
     expect(coverageTopics(body)).toContain('| System upkeep | Not written | 0 | 0 |');
+    expect(coverageTopics(body)).toContain(ui['md.coverage.topicsUnverified']);
     expect(coverageTopics(body)).toContain(ui['md.coverage.topicsNotFinished']);
-    expect(chapterOf(body)).not.toContain('| Place an order |');
+    expect(chapterOf(body)).toContain('| Place an order |');
+    expect(chapterOf(body)).toContain(ui['md.topics.unverified']);
+    expect(chapterOf(body)).toContain(ui['md.topics.laneNotFinished']);
+    expect(chapterOf(body)).not.toContain(ui['md.topics.notFinished']);
+  });
+
+  it('says the topics did not finish and writes no row when no lane was written', () => {
+    const run = topicsRun(cleanups);
+    assemble(run);
+    const body = text(run, 'handbook.md');
     expect(chapterOf(body)).toContain(ui['md.topics.notFinished']);
-    expect(chapterOf(body)).not.toContain('state none of this');
+    expect(chapterOf(body)).not.toContain(ui['md.topics.unverified']);
+    expect(coverageTopics(body)).not.toContain(ui['md.coverage.topicsUnverified']);
   });
 
   it('ignores a lane whose facts are not the current ones, and says so', () => {
@@ -287,7 +298,8 @@ describe('the page data', () => {
     const unfinished = checkedLane(topicsRun(cleanups), 'D1');
     expect(page(unfinished).status).toBe(0);
     const other = dataOf(unfinished);
-    expect(other.topics.approval).toEqual([]);
+    expect(other.topics.approval).toHaveLength(1);
+    expect(other.unverifiedParts).toMatchObject({ topics: true });
     expect(other.coverage.topics.finished).toBe(false);
     expect(other.coverage.topics.lanes.map((lane) => lane.status)).toEqual(['checked', 'planned', 'planned']);
     const first = text(unfinished, 'handbook.html');

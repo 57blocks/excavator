@@ -276,13 +276,14 @@ function EntryBody({ entry, featureNames }: { entry: Entry; featureNames: Map<st
   );
 }
 
-/** The feature's own verified findings with their category, from the groups that contain the feature (a group merged with another owner's finding still lists this feature's own statement); nothing when its findings are not verified (the coverage page says where they stopped). */
+/** The feature's own verified findings with their category, from the groups that contain the feature (a group merged with another owner's finding still lists this feature's own statement); a checked unit (written, not verified) has its own not-verified text first; nothing when its findings are neither (the coverage page says where they stopped). */
 function FindingsSection({ feature, groups }: { feature: Feature; groups: FindingGroup[] }) {
   const t = useText();
-  if (feature.findingsStatus !== 'verified') return null;
+  if (feature.findingsStatus !== 'verified' && feature.findingsUnverified !== true) return null;
   const own = groups.flatMap((group) => group.items.filter((item) => item.owner.kind === 'feature' && item.owner.id === feature.id).map((item) => ({ item, category: group.category, priority: group.priority })));
   return (
     <Section id="findings" title={t('md.findings.heading')}>
+      {feature.findingsUnverified === true && <div className="notice" role="note" data-part="findings-unverified"><p>{t('md.findings.unverifiedFeature')}</p></div>}
       {own.length === 0 ? <p className="muted">{t('md.none')}</p> : (
         <ul className="plain-list">
           {own.map(({ item, category, priority }) => <li key={item.id}><PriorityBadge priority={priority} /> {t('md.findings.featureItem', { category: t(findingCategoryKey(category)), text: item.text })}</li>)}

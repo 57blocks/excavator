@@ -28,6 +28,7 @@ import { EMPTY_TOPICS } from './topics-model.mjs';
 import { automaticLines, notificationsLines, statesLines, unknownsLines, whereLines, whoLines } from './render-sheet.mjs';
 import { architectureBlock } from './render-architecture.mjs';
 import { chapterBody, unverifiedCoverage } from './render-chapter-entry.mjs';
+import { unverifiedCounts } from './unverified.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -173,8 +174,9 @@ function applicationsTable(system, t) {
  * and do not depend on the overview; an overview that is not verified replaces
  * only the sections a model writes with a line saying where it stopped.
  */
-function overviewBlock(system, basis, t, locations) {
+function overviewBlock(system, basis, t, locations, unverified = false) {
   const out = [`## ${inline(t('md.overview.heading'))}`, ''];
+  if (unverified) out.push(inline(t('md.overview.unverified')), '');
   const { overview, counts } = system;
   if (overview?.name == null) out.push(inline(t('md.overview.nameMissing')), '');
   if (overview === null) out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
@@ -199,7 +201,7 @@ function overviewBlock(system, basis, t, locations) {
   return out;
 }
 
-function coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view, chapters) {
+function coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view, chapters, unverified) {
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureText = (key, feature) => `- ${inline(fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area) }))}`;
   const claimed = map.features.reduce((sum, feature) => sum + feature.candidates.length, 0);
@@ -241,6 +243,8 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics, ou
   out.push('');
 
   out.push(...unverifiedCoverage(map, chapters, t));
+  // The overview is written and not verified when it is checked (openspec change handbook-light-scheme); the other parts say so in their own coverage parts.
+  if (unverifiedCounts(unverified).overview) out.push(t('md.coverage.overviewUnverified'), '');
 
   out.push(`### ${t('md.coverage.removedHeading')}`, '');
   out.push(t('md.coverage.untraced'), '');
@@ -259,7 +263,7 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics, ou
     out.push(`#### ${inline(fill(t('md.coverage.removedFeature'), { id: feature.id, name: feature.name, area: areaName.get(feature.area), count: removed.length }))}`, '');
     out.push(removedTable(removed), '');
   }
-  out.push(...findingsCoverage({ map, state, findings, t, areaName }));
+  out.push(...findingsCoverage({ map, state, findings, unverified, t, areaName }));
   out.push(...remediesCoverage({ remedies, t }));
   out.push(...topicsCoverage({ topics, t }));
   out.push(...outlineCoverage({ outline, view, t }));
@@ -281,7 +285,7 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics, ou
  * list of lines (render-outline.mjs), the coverage section is always last and says which outline was used and what it left out. The product view
  * writes no block that only the technical view has.
  */
-export function renderHandbook({ map, entries, chapters = new Map(), architecture = { status: 'none' }, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX, outline }) {
+export function renderHandbook({ map, entries, chapters = new Map(), architecture = { status: 'none' }, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX, unverified = new Set(), outline }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -291,7 +295,7 @@ export function renderHandbook({ map, entries, chapters = new Map(), architectur
   const basis = entities.domainBasis;
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureOf = new Map(map.features.map((feature) => [feature.id, feature]));
-  const findingsPart = { state, findings, t };
+  const findingsPart = { state, findings, unverified, t };
   const name = system.overview?.name ?? null;
   const title = name === null ? t(technical ? 'md.titleTechnical' : 'md.title') : fill(t(technical ? 'md.titleTechnicalNamed' : 'md.titleNamed'), { name });
   const placed = placesOf.get('overview');
@@ -316,7 +320,7 @@ export function renderHandbook({ map, entries, chapters = new Map(), architectur
   const appendixParts = appendixBlocks({ appendix, map, entities, t });
   const entityInput = { map, entities, summary, system, t };
   const blocks = new Map([
-    ['overview', overviewBlock(system, basis, t, placed)],
+    ['overview', overviewBlock(system, basis, t, placed, unverifiedCounts(unverified).overview)],
     ['business', flowDiagram(entities, t)],
     ['architecture', architectureBlock({ architecture, entities, t })],
     ['data', data === null ? [] : dataBlock(data, t)],
@@ -330,10 +334,10 @@ export function renderHandbook({ map, entries, chapters = new Map(), architectur
     ['jobs', summaries.jobs],
     ['topics', topicsChapter({ topics, view, t })],
     ['history', historyChapter({ history, map, view, t })],
-    ['findings', findingsChapter({ map, state, findings, remedies, view, t })],
+    ['findings', findingsChapter({ map, state, findings, remedies, unverified, view, t })],
     ['recommendations', recommendationsChapter({ findings, remedies, view, t })],
     ...Object.entries(appendixParts),
   ]);
-  const out = [`# ${inline(title)}`, '', ...outlineChapters({ outline, blocks, view }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view, chapters)];
+  const out = [`# ${inline(title)}`, '', ...outlineChapters({ outline, blocks, view }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view, chapters, unverified)];
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }

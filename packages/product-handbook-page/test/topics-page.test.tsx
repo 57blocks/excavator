@@ -156,7 +156,7 @@ describe('the topics page', () => {
   });
 
   it('says the topics did not finish when no lane is verified, and shows no table', () => {
-    const data = dataFor(EMPTY, { lanes: [{ id: 'D1', name: d('Leave'), status: 'checked', kept: 0, dropped: 0 }], finished: false });
+    const data = dataFor(EMPTY, { lanes: [{ id: 'D1', name: d('Leave'), status: 'planned', kept: 0, dropped: 0 }], finished: false });
     const html = main(render(data, '#/product/topics'));
     expect(html).toContain(marked['md.topics.notFinished']);
     expect(html).not.toContain('<table');

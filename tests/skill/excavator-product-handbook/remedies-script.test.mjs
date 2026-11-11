@@ -135,7 +135,8 @@ describe('check-remedies', () => {
     expect(state.remedies.entryDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(state.remedies.factsDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(run.goodRemedies().recommendations[1].text).toContain('should');
-    expect(run.run('check-remedies').lines).toEqual(['remedies: checked (2 categories, 2 recommendations)', 'Next: run remedy-judge']);
+    // A second check of the same file is unchanged (a checked unit is final).
+    expect(run.run('check-remedies').lines).toEqual(['remedies: checked, unchanged since it was checked']);
   });
 
   const REJECTED = [
@@ -387,9 +388,9 @@ describe('remedy-verdicts', () => {
     expect(run.run('remedy-facts').lines).toEqual(['Remedies: verified; nothing to write']);
   });
 
-  it('before the judges, remedy-facts prints the note that the remedies wait for them', () => {
+  it('for checked remedies, remedy-facts prints the note that there is nothing to write', () => {
     const run = checkedRemediesRun(cleanups);
-    expect(run.run('remedy-facts').lines).toEqual(['Remedies: checked; next: run remedy-judge']);
+    expect(run.run('remedy-facts').lines).toEqual(['Remedies: checked; nothing to write']);
   });
 });
 

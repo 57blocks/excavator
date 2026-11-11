@@ -180,6 +180,8 @@ export interface Feature {
   entry: Entry | null;
   /** Where the verification of the feature's findings stands: only `verified` ones are in `PageData.findings`. */
   findingsStatus: Status;
+  /** True when the feature's findings unit is checked and not verified (final in the light scheme): its findings are in `PageData.findings` under the not-verified text. */
+  findingsUnverified?: boolean;
 }
 
 /** Who a finding belongs to: a feature, or an application (`id` is `app<n>`, `name` the verified overview's name for its directory, else the directory). */
@@ -543,6 +545,9 @@ export interface Outline {
   unplaced: OutlineUnplaced[];
 }
 
+/** The parts written but not verified (a checked unit, final in the light scheme); a key is there only when it holds. */
+export interface UnverifiedParts { overview?: boolean; findings?: number; systemFindings?: number; priority?: boolean; remedies?: boolean; topics?: boolean }
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
   chunks: Chunks;
@@ -567,6 +572,8 @@ export interface PageData {
   history: History;
   appendix: Appendix;
   coverage: Coverage;
+  /** The parts written but not verified; absent when there is none. */
+  unverifiedParts?: UnverifiedParts;
   summary: Summary;
   system: System;
   entities: Entities;

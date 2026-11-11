@@ -95,7 +95,7 @@ export function checkRemedies(outDirArg, root) {
   const { run, outDir, facts, entry } = context;
   if (!context.hasGroups) return { status: 0, lines: ['Remedies: no verified findings; nothing to check'] };
   // Remedies that two judges settled for these facts and whose file is unchanged are not checked again: that would drop what the judges recorded.
-  if (run.remedies.doc !== null && entry.factsDigest === facts.digest) return { status: 0, lines: [`${REMEDIES_ID}: verified, unchanged since it was verified`] };
+  if (run.remedies.doc !== null && entry.factsDigest === facts.digest) return { status: 0, lines: [`${REMEDIES_ID}: ${run.remedies.status}, unchanged since it was ${run.remedies.status}`] };
   const stateRead = loadState(outDir);
   if (!stateRead.ok) {
     if (stateRead.missing) throw new UsageError(stateRead.problem);
@@ -123,5 +123,5 @@ export function checkRemedies(outDirArg, root) {
   setUnitState(state, REMEDIES_ID, { status: 'checked', attempts, factsDigest: facts.digest, entryDigest: entryDigest(path) });
   saveState(outDir, state);
   const doc = readJson(path).value;
-  return { status: 0, lines: [`${REMEDIES_ID}: checked (${doc.categories.length} categories, ${doc.recommendations.length} recommendations)`, 'Next: run remedy-judge'] };
+  return { status: 0, lines: [`${REMEDIES_ID}: checked (${doc.categories.length} categories, ${doc.recommendations.length} recommendations)`] };
 }

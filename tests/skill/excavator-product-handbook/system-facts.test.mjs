@@ -296,15 +296,19 @@ describe('system facts: one row per application root, whatever the overview says
 
   it('an overview that is not verified still shows the rows with the script facts, the counts and the area table; only the model-written sections are replaced', () => {
     const run = twoRootsRun({ verify: false });
+    // A checked overview is in the output now (handbook-light-scheme); an overview never written is the case here.
+    const state = run.readJson('state.json');
+    delete state.overview;
+    run.writeJson(join(run.out, 'state.json'), state);
     const system = systemOf(run);
     expect(system.overview).toBeNull();
-    expect(system.status).toBe('checked');
+    expect(system.status).toBe('planned');
     expect(system.applications.map((row) => [row.dir, row.name, row.does, row.files])).toEqual([['repos/api', null, null, 2], ['repos/web', null, null, 1]]);
     expect(system.counts).toMatchObject({ applications: 2, files: 3, areas: 2, features: 5, featuresWithEntry: 0, roles: 2 });
     runHandbook(['assemble', run.out, '--project', run.root]);
     const md = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
     const section = md.slice(md.indexOf('## Overview'), md.indexOf('## Business flow'));
-    expect(section).toContain('The system overview is not in this handbook. Where it stopped: Written, verification not finished.');
+    expect(section).toContain('The system overview is not in this handbook. Where it stopped: Not written.');
     expect(section).toContain('Applications: 2. Source files: 3.');
     expect(section).toContain(`| repos/api | ${NOT_VERIFIED} | ${NOT_VERIFIED} | JavaScript (2) |`);
     expect(section).toContain('### Areas and roles');

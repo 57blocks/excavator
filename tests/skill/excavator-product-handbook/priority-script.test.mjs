@@ -149,7 +149,7 @@ describe('check-priority', () => {
     const run = withPart(() => undefined);
     const result = run.run('check-priority');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['priority: checked (4 groups, 1 part)', 'Next: run priority-judge']);
+    expect(result.lines).toEqual(['priority: checked (4 groups, 1 part)']);
     const state = run.readState();
     expect(state.priority).toMatchObject({ status: 'checked', attempts: 1 });
     expect(state.priority.entryDigest).toMatch(/^[0-9a-f]{64}$/);
@@ -409,9 +409,9 @@ describe('priority-verdicts', () => {
     expect(run.run('priority-items').lines).toEqual(['Priority: verified (4 groups); nothing to rank']);
   });
 
-  it('before the judges, priority-items prints the note that the ranking waits for them', () => {
+  it('for a checked ranking, priority-items prints the note that there is nothing to rank', () => {
     const run = checkedPriorityRun(cleanups);
-    expect(run.run('priority-items').lines).toEqual(['Priority: checked; next: run priority-judge']);
+    expect(run.run('priority-items').lines).toEqual(['Priority: checked (4 groups); nothing to rank']);
   });
 });
 

@@ -190,10 +190,22 @@ describe('what the judges left out and what did not finish', () => {
     expect(coverageRemedies(text(run, 'handbook.md')).trim()).toBe(ui['md.coverage.remediesAllKept']);
   });
 
-  it('says the remedies did not finish, writes none and keeps the findings, when the unit is only checked, failed or never written', () => {
+  it('writes a checked unit as written, not verified; says the remedies did not finish, writes none and keeps the findings, when the unit failed or was never written', () => {
     const run = checkedRemediesRun(cleanups);
     assemble(run);
     let body = text(run, 'handbook.md');
+    expect(coverageRemedies(body)).toContain(ui['md.coverage.remediesUnverified']);
+    expect(coverageRemedies(body)).not.toContain(ui['md.coverage.remediesNotFinished']);
+    expect(body).toContain('Common cause:');
+    expect(recommendationsOf(body)).toContain(ui['md.remedies.unverified']);
+    expect(recommendationsOf(body)).toContain('### 1. Check the caller first');
+    const failed = checkedRemediesRun(cleanups);
+    const bad = failed.goodRemedies();
+    bad.recommendations = [];
+    failed.writeRemedies(bad);
+    expect(failed.run('check-remedies').status).toBe(1);
+    assemble(failed);
+    body = text(failed, 'handbook.md');
     expect(coverageRemedies(body)).toContain(ui['md.coverage.remediesNotFinished']);
     expect(body).not.toContain('Common cause:');
     expect(recommendationsOf(body)).toContain(ui['md.remedies.none']);
@@ -279,12 +291,14 @@ describe('the page data', () => {
     });
   });
 
-  it('has no remedies and an unfinished coverage when the unit is not verified, and is the same bytes from the same input', () => {
+  it('has the remedies of a checked unit, marked not verified, and is the same bytes from the same input', () => {
     const run = checkedRemediesRun(cleanups);
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.remedies).toEqual({ categories: [], recommendations: [] });
-    expect(data.coverage.remedies).toEqual({ finished: false, stale: false, dropped: [] });
+    expect(data.remedies.categories).toHaveLength(2);
+    expect(data.remedies.recommendations).toHaveLength(2);
+    expect(data.unverifiedParts).toMatchObject({ remedies: true });
+    expect(data.coverage.remedies).toEqual({ finished: true, stale: false, dropped: [] });
     const first = text(run, 'handbook.html');
     page(run);
     expect(text(run, 'handbook.html')).toBe(first);

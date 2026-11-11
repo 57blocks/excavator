@@ -18,12 +18,14 @@ import { dictionariesPageSection } from './dict-section.mjs';
 import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
 import { operationSequence } from './flows.mjs';
 import { findingsStatus } from './findings-model.mjs';
+import { findingsId } from './findings-shape.mjs';
 import { handbookModel } from './handbook-model.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { reachCounts } from './render.mjs';
 import { remediesPageSection } from './remedies-page.mjs';
 import { topicsCoveragePage, topicsPageSection } from './topics-page.mjs';
 import { languageTag } from './language-tag.mjs';
+import { unverifiedParts } from './unverified.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
@@ -109,6 +111,8 @@ function architecturePageSection(architecture) {
 export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const { map, entries, state, candidates, ui } = run;
   const chapters = run.chapters ?? new Map();
+  // A checked overview, findings unit or system unit (openspec change handbook-light-scheme) is in the data, marked as not verified; it is not an unfinished unit.
+  const light = run.unverified ?? new Set();
   // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
   const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
@@ -136,6 +140,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       status: state.features[feature.id].status,
       entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id), (operation) => operationSequence(operation, feature.reach, system.applications, (key) => ui[key]), chapters.get(feature.id)) : null,
       findingsStatus: findingsStatus(state, feature.id),
+      ...(light.has(findingsId(feature.id)) ? { findingsUnverified: true } : {}),
       // Only a feature written but not verified has the key (a checked /3 entry), so the data of a run with none is as it was.
       ...(chapters.has(feature.id) ? { unverified: true } : {}),
     })),
@@ -163,7 +168,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
           items: state.features[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
         })),
       findingsUnfinished: map.features
-        .filter((feature) => !['verified', 'planned'].includes(findingsStatus(state, feature.id)))
+        .filter((feature) => !['verified', 'planned'].includes(findingsStatus(state, feature.id)) && !light.has(findingsId(feature.id)))
         .map((feature) => ({ feature: feature.id, status: findingsStatus(state, feature.id) })),
       findingsNotWritten: map.features.filter((feature) => findingsStatus(state, feature.id) === 'planned').length,
       findingsRemoved: map.features
@@ -174,7 +179,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
         })),
       systemFindingsTotal: findings.applications.length,
       systemFindingsUnfinished: findings.applications
-        .filter((application) => !['verified', 'planned'].includes(application.status))
+        .filter((application) => !['verified', 'planned'].includes(application.status) && !light.has(`${application.id}.system`))
         .map((application) => ({ id: application.id, name: application.name, status: application.status })),
       systemFindingsNotWritten: findings.applications.filter((application) => application.status === 'planned').length,
       priority: {
@@ -200,6 +205,9 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       roleFeature: entities.matrices.roleFeature,
     },
   };
+  // Only a run with a part that is written but not verified has the key, so the data of a run with none is as it was.
+  const parts = unverifiedParts(light, { findings, remedies, topics });
+  if (Object.keys(parts).length > 0) data.unverifiedParts = parts;
   if (views.includes('technical')) {
     data.technical = {
       featureApplication: entities.relations.featureApplication,

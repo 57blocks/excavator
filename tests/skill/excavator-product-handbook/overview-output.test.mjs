@@ -119,7 +119,6 @@ describe('an overview that is not verified', () => {
   const stopped = [
     ['not written at all', (run) => run, 'Not written'],
     ['written but not checked', (run) => { run.run('mark', 'overview', 'dispatched'); return run; }, 'Written but not checked'],
-    ['checked, verification not finished', (run) => { expect(run.run('check-overview').status).toBe(0); return run; }, 'Written, verification not finished'],
     ['confirmed, the trace not finished', (run) => { run.run('check-overview'); expect(judge(run, 'overview').status).toBe(0); return run; }, 'Written, final check not finished'],
   ];
   for (const [name, prepare, step] of stopped) {

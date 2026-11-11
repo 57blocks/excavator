@@ -39,7 +39,7 @@ export function factText(t: Text, fact: RemedyFact): string {
 /**
  * The recommendations page (both views): the recommendations in the order they are to be done, each with its title and text, then the
  * findings it rests on (level and representative statement; the technical view adds the file and lines) and the facts it rests on,
- * written in words. Only recommendations that two judges confirmed are here; the coverage page lists what they left out.
+ * written in words. A checked set of remedies is written, not verified, and says so at the head; the coverage page lists what a judge of an older run left out.
  */
 export function RecommendationsPage({ data }: { data: PageData }) {
   const t = useText();
@@ -56,6 +56,7 @@ export function RecommendationsPage({ data }: { data: PageData }) {
       {data.findings.length === 0 ? <p className="muted">{t('md.none')}</p> : (
         <>
           <p className="muted summary-note">{t('md.remedies.note')}</p>
+          {data.unverifiedParts?.remedies === true && <div className="notice" role="note" data-part="remedies-unverified"><p>{t('md.remedies.unverified')}</p></div>}
           {recommendations.length === 0 ? <p className="muted" data-part="recommendations-none">{t('md.remedies.none')}</p> : (
             <>
               <p className="summary-counts">{t('md.remedies.counts', { count: recommendations.length, groups: groupsCited, total: data.findings.length })}</p>

@@ -196,7 +196,7 @@ describe('the coverage section about the ranking', () => {
     expect(chapterOf(body)).toContain('By priority: P0: 0; P1: 0; P2: 0; Unranked: 4.');
   });
 
-  it('says the same for a unit that failed its check, and for one that was checked but not judged', () => {
+  it('says the same for a unit that failed its check; one that was checked is written, not verified, and keeps the levels the writer gave', () => {
     const run = sameCategoryRun();
     run.run('mark', 'priority', 'dispatched');
     run.writePart(1, []);
@@ -206,7 +206,11 @@ describe('the coverage section about the ranking', () => {
     run.writePart(1, run.allKeys.map((key, index) => ({ key, consequence: 'display', reason: REASONS[index] })));
     expect(run.run('check-priority').status).toBe(0);
     assemble(run);
-    expect(text(run, 'handbook.md')).toContain('The ranking did not finish: 4 groups');
+    const body = text(run, 'handbook.md');
+    expect(body).not.toContain('The ranking did not finish');
+    expect(chapterOf(body)).toContain(ui['md.priority.unverified']);
+    expect(chapterOf(body)).toContain('Unranked: 0.');
+    expect(chapterOf(body).split('\n').filter((line) => line.startsWith('- [Unranked] '))).toEqual([]);
   });
 
   it('writes none when there is no verified finding', () => {

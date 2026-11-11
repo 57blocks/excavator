@@ -67,9 +67,10 @@ export function FindingsPage({ data }: { data: PageData }) {
   const levels = countByLevel(data.findings);
   const levelName = (entry: Level | 'none'): string => (entry === 'none' ? t('md.priority.unranked') : t('md.priority.level', { rank: entry.slice(1) }));
   const places = new Map((view === 'technical' ? data.technical?.findingLocations ?? [] : []).map((entry) => [entry.id, entry.citations]));
-  const verified = data.features.filter((feature) => feature.findingsStatus === 'verified').length;
+  const verified = data.features.filter((feature) => feature.findingsStatus === 'verified' || feature.findingsUnverified === true).length;
   const systemTotal = data.coverage.systemFindingsTotal;
   const systemVerified = systemTotal - data.coverage.systemFindingsUnfinished.length - data.coverage.systemFindingsNotWritten;
+  const unverifiedParts = data.unverifiedParts ?? {};
   const statements = data.findings.reduce((sum, group) => sum + group.items.length, 0);
   const ownerFeatures = data.features.filter((feature) => data.findings.some((group) => group.owners.some((one) => one.kind === 'feature' && one.id === feature.id)));
   return (
@@ -79,6 +80,10 @@ export function FindingsPage({ data }: { data: PageData }) {
         <PageTitle fallback={t('md.findings.heading')} />
       </header>
       <p className="muted summary-note">{t('md.findings.note')}</p>
+      {(unverifiedParts.findings ?? 0) > 0 && <div className="notice" role="note" data-part="findings-unverified"><p>{t('md.findings.unverifiedFeature')}</p></div>}
+      {(unverifiedParts.systemFindings ?? 0) > 0 && <div className="notice" role="note" data-part="system-findings-unverified"><p>{t('md.findings.unverifiedSystem')}</p></div>}
+      {unverifiedParts.priority === true && data.findings.length > 0 && <div className="notice" role="note" data-part="priority-unverified"><p>{t('md.priority.unverified')}</p></div>}
+      {unverifiedParts.remedies === true && data.remedies.categories.length > 0 && <div className="notice" role="note" data-part="remedies-unverified"><p>{t('md.remedies.unverified')}</p></div>}
       <StatStrip part="findings-stats" stats={[
         { label: t('page.stat.findings'), value: data.findings.length },
         { label: t('page.stat.statements'), value: statements },

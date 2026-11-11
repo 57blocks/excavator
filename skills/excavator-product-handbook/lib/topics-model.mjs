@@ -5,7 +5,7 @@
  * judges kept, each resolved against the facts, by topic. Both outputs build it
  * here, so the handbook and the page cannot differ.
  *
- * A lane is used only when it is verified, its file is still the one the judges
+ * A lane is used only when it is checked (final in the light scheme, openspec change handbook-light-scheme; its status here is `checked`) or verified, its file is still the one the judges
  * saw (load-run) and the facts it was written for are the facts now (the digest in
  * the state): otherwise it writes no row, and the coverage says what stage it is
  * at (`stale` for a lane written for other facts). The rows the judges dropped are
@@ -17,9 +17,9 @@ import { TOPIC_IDS, mergeRows } from './topics-shape.mjs';
 
 const NONE_LOADED = Object.freeze({ lanes: new Map() });
 
-/** The status of a lane for the outputs: `verified`, `stale` (written for other facts), or the state's own status. */
+/** The status of a lane for the outputs: `verified`, `checked` (final, not verified), `stale` (written for other facts), or the state's own status. */
 function statusOf(own, current) {
-  if (current) return 'verified';
+  if (current) return own.unverified === true ? 'checked' : 'verified';
   if (own.doc !== null || own.status === 'verified') return 'stale';
   return own.status;
 }
@@ -91,6 +91,8 @@ export function withTopics(loaded = NONE_LOADED, facts, { locate = null, finding
     finished: !hasLanes || states.every((one) => one.current),
     stale: states.some((one) => one.status === 'stale'),
     anyVerified: verified.length > 0,
+    // A checked lane (openspec change handbook-light-scheme) is written, not verified: the outputs say so at the head of the chapter.
+    ...(verified.some(({ own }) => own.unverified === true) ? { unverified: true } : {}),
     lanes,
     entriesRead: verified.filter(({ lane }) => lane.kind === 'domain').reduce((sum, { lane }) => sum + lane.featureIds.length, 0),
     groupsRead: verified.filter(({ lane }) => lane.kind === 'repeated').reduce((sum, { lane }) => sum + lane.rows.length, 0),

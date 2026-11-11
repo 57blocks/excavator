@@ -133,7 +133,7 @@ describe('topic-facts', () => {
   it('prints a Topics: note and no fact for a lane that is checked, verified or failed twice', () => {
     const run = topicsRun(cleanups);
     checkedLane(run, 'D1');
-    expect(run.run('topic-facts', '--lane', 'D1').lines).toEqual(['Topics: D1: checked; next: run topic-judge']);
+    expect(run.run('topic-facts', '--lane', 'D1').lines).toEqual(['Topics: D1: checked; nothing to write']);
     expect(judgeTopics(run).status).toBe(0);
     expect(run.run('topic-facts', '--lane', 'D1').lines).toEqual(['Topics: D1: verified; nothing to write']);
   });
@@ -174,14 +174,14 @@ describe('check-topics for a lane', () => {
     expect(entry).toMatchObject({ status: 'checked', attempts: 1 });
     expect(entry.entryDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(entry.factsDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(run.laneRun('check-topics', 'D1').lines).toEqual(['topics:D1: checked (2 rows)', 'Next: run topic-judge']);
+    expect(run.laneRun('check-topics', 'D1').lines).toEqual(['topics:D1: checked (2 rows)']);
   });
 
   it('accepts a lane that wrote no row: nothing in the entries says anything about the topics', () => {
     const run = topicsRun(cleanups);
     run.run('mark', 'topics:D2', 'dispatched');
     run.writePart('D2', []);
-    expect(run.laneRun('check-topics', 'D2').lines).toEqual(['topics:D2: checked (0 rows)', 'Next: run topic-judge']);
+    expect(run.laneRun('check-topics', 'D2').lines).toEqual(['topics:D2: checked (0 rows)']);
   });
 
   const REJECTED = [
@@ -287,7 +287,7 @@ describe('check-topics for the whole run', () => {
     }
     const result = run.run('check-topics');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['topics:D1: checked (2 rows)', 'topics:D2: checked (2 rows)', 'topics:repeated: checked (1 rows)', 'topics: merged (3 lanes, 5 rows)', 'Next: run topic-judge']);
+    expect(result.lines).toEqual(['topics:D1: checked (2 rows)', 'topics:D2: checked (2 rows)', 'topics:repeated: checked (1 rows)', 'topics: merged (3 lanes, 5 rows)']);
     const merged = run.readJson('entries/topics.json');
     expect(merged.schema).toBe('excavator-product-handbook-topics/1');
     expect(merged.rows.map((row) => [row.id, row.lane, row.topic])).toEqual([
