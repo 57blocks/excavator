@@ -40,7 +40,7 @@ const RESIDUAL = Object.freeze({
   size: `Files over ${MAX_FILE_BYTES} bytes and files with a NUL byte are not scanned; they are counted under files.skipped.`,
   oneLine: 'A pattern matches one line, or the line and the next one for the entries the catalog marks "lines": 2 (express routes); a registration spread over more lines is not listed.',
   oneCandidate: 'One candidate per line: a line that patterns of two frameworks match is credited to the framework listed first in the catalog.',
-  react: 'Under react and react-router, route objects (path:) are listed only in files whose path contains "router", and under react <Route> elements too; a route declared in another file is not listed.',
+  react: 'Under react and react-router, route objects (path:) are listed only in files whose path contains "rout", and under react <Route> elements too; a route declared in another file is not listed.',
   gin: 'The gin route pattern (.GET(, .POST( and the other verbs) also matches outbound HTTP-client calls of the same shape; such lines are expected to be left unassigned.',
   graphIgnored: 'The knowledge graph is not read (the caller asked for detection from the build files only): frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
   noGraph: 'No knowledge graph: frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',

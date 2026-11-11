@@ -33,7 +33,7 @@ describe('entrypoint-catalog.json', () => {
   const catalog = JSON.parse(readFileSync(CATALOG_PATH, 'utf-8'));
 
   it('covers the frameworks the change names', () => {
-    for (const name of ['express', 'gin', 'react-router', 'react', 'go-cron', 'node-schedule', 'go-main', 'node-main']) {
+    for (const name of ['express', 'gin', 'react-router', 'react', 'go-cron', 'node-schedule', 'go-main', 'node-main', 'nestjs', 'nestjs-schedule', 'nestjs-event']) {
       expect(catalog, name).toHaveProperty(name);
     }
   });
@@ -109,10 +109,10 @@ describe('prd.mjs entrypoints', () => {
     });
     const router = runPrd(['entrypoints', root]);
     expect(router.json.covered).toEqual(['react-router']);
-    expect(router.json.residualAssumptions.join('\n')).toMatch(/only in files whose path contains "router"/);
+    expect(router.json.residualAssumptions.join('\n')).toMatch(/only in files whose path contains "rout"/);
     const gin = runPrd(['entrypoints', join(FIXTURES, 'gin-service')]);
     expect(gin.json.residualAssumptions.join('\n')).toMatch(/outbound HTTP-client calls/);
-    expect(runPrd(['entrypoints', join(FIXTURES, 'express-app')]).json.residualAssumptions.join('\n')).not.toMatch(/outbound HTTP-client calls|contains "router"/);
+    expect(runPrd(['entrypoints', join(FIXTURES, 'express-app')]).json.residualAssumptions.join('\n')).not.toMatch(/outbound HTTP-client calls|contains "rout"/);
   });
 
   it('lists the gin fixture: routes, a cron job and both mains, not the _test.go file', () => {
