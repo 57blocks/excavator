@@ -16,7 +16,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { entryShapeProblems, ENTRY_FORMAT } from '../../skills/excavator-product-handbook/lib/entry-shape.mjs';
+import { entryShapeProblems, ENTRY_FORMAT_V3 } from '../../skills/excavator-product-handbook/lib/entry-shape.mjs';
+import { MAX_CITED_LINES } from '../../skills/excavator-product-handbook/lib/chapter-check.mjs';
 import { DOMAINS_FORMAT, domainsShapeProblems } from '../../skills/excavator-product-handbook/lib/domains-shape.mjs';
 import { mapShapeProblems } from '../../skills/excavator-product-handbook/lib/map-shape.mjs';
 import { nextLine } from '../../skills/excavator-product-handbook/lib/state.mjs';
@@ -342,9 +343,9 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
     const json = blocks(lanePrompt, 'json')[0];
     const entry = JSON.parse(json.replace(/(:\s*)E(\s*[,}])/g, '$1[{"file": "f", "passage": "p"}]$2'));
     expect(entryShapeProblems(entry)).toEqual([]);
-    expect(entry.format).toBe(ENTRY_FORMAT);
-    expect(Object.keys(entry)).toEqual(['format', 'id', 'purpose', 'who', 'where', 'screens', 'operations', 'states', 'transitions', 'notifications', 'automatic', 'unknowns']);
-    expect(entry.screens[0].fields[0].rules.map((rule) => rule.side)).toEqual(['frontend', 'backend']);
+    expect(entry.format).toBe(ENTRY_FORMAT_V3);
+    expect(Object.keys(entry)).toEqual(['format', 'id', 'purpose', 'who', 'where', 'screens', 'handoffs', 'states', 'transitions', 'notifications', 'automatic', 'unknowns']);
+    expect(Object.keys(entry.screens[0])).toEqual(['name', 'evidence']);
     expect(prompt).toContain('`E` stands for an evidence list, a non-empty array of `{"file": "<path from the project root>", "passage": "<text copied from that file>"}`');
   });
 
@@ -356,7 +357,7 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
   it('requires every passage to occur exactly once in its file, and says what to do when it does not', () => {
     expect(prompt).toContain('it must occur **exactly once** in that file');
     expect(prompt).toContain('quote a longer one (the whole line, or the lines around it)');
-    expect(prompt).toContain('Every item carries its own evidence.');
+    expect(prompt).toContain('Every item of the fact sheet carries its own evidence.');
     expect(prompt).toContain('never under `.excavator`, `.git`, `node_modules`, `vendor`, `dist` or `build`');
   });
 
@@ -381,11 +382,11 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
     expect(prompt).toContain('- The seed files, where you start: <seedFiles, one per line>.');
   });
 
-  it('follows calls and imports out of the seed files, at most 40 more files, and settles an unknown first', () => {
+  it('follows calls and imports out of the seed files with no limit on the files, and settles an unknown first', () => {
     for (const text of [
       '**Following out of the seed files.**',
       'The seed files are where you start, not a fence.',
-      'Open at most 40 files that are not seed files, in all; searches do not count.',
+      'There is no limit on the number of files you open.',
       'never list or walk a directory to see what is in it',
       'Before you write an item in `unknowns`, follow the call or import that could settle it.',
       'who receives a notification and what it says',
@@ -393,11 +394,11 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
       'what a detail page shows',
       'A function\'s name does not say which records it returns or which people it picks',
       'check each one before you say where its value comes from',
-      'When the 40 are spent, open no more',
     ]) {
       expect(prompt, text).toContain(text);
     }
-    expect(prompt).toContain('Beyond them, open only the files that **Following out of the seed files** allows');
+    expect(prompt).toContain('Beyond them, open the files that **Following out of the seed files** leads you to');
+    expect(prompt).not.toMatch(/at most \d+ files/);
   });
 
   it('forbids code-shaped words in reader text, naming each class', () => {
@@ -413,14 +414,79 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
     expect(prompt).toContain('write it in `unknowns` with `item` and what you `searched`');
   });
 
-  it('keeps frontend and backend rules apart and gives no advice', () => {
-    expect(prompt).toContain('A field\'s `rules` keeps the frontend and the backend apart');
+  it('gives no advice', () => {
     expect(prompt).toContain('Give no advice, no opinion and no defect report');
   });
 
   it('writes only the lane\'s own entry file and replies with one line', () => {
-    expect(prompt).toContain('Write only `$OUT/entries/<id>.json`, and nothing else anywhere.');
+    expect(prompt).toContain('Write only `$OUT/chapters/<id>.md` and `$OUT/entries/<id>.json`, and nothing else anywhere.');
     expect(prompt).toContain('Reply with one line: `<id>: written`, and nothing else.');
+  });
+});
+
+describe('excavator-product-handbook skill: the lane writes a free chapter and a fact sheet (O3 of handbook-free-chapter)', () => {
+  const prompt = flat(lanePrompt);
+
+  it('lists what the chapter covers', () => {
+    expect(prompt).toContain('**What the chapter covers.**');
+    for (const part of ['every screen, with its fields, filters, columns, buttons and the messages it shows', 'every operation the user can do and what happens step by step, in the frontend and the backend', 'every rule and check, with its exact condition, and every exception as its own sentence', 'every calculation, with its inputs, rate, rounding and cap', 'every notification, with its trigger, recipient, channel and content', 'where the feature hands over to another feature']) {
+      expect(prompt, part).toContain(part);
+    }
+  });
+
+  it('ends every sentence with a citation group of path and lines, at most 80 lines, backticks for citations only', () => {
+    expect(prompt).toContain('Every sentence that states a fact ends with its citation group');
+    expect(prompt).toContain('(`<path>:<a>-<b>`, or `<path>:<n>` for one line)');
+    expect(prompt).toContain(`A citation covers at most ${MAX_CITED_LINES} lines`);
+    expect(prompt).toContain('Backticks are for citations only');
+    expect(prompt).toContain('A table row is cited like a sentence');
+    expect(prompt).toContain('A line that ends with a colon and introduces a list, a table or a diagram needs no citation');
+    expect(prompt).toContain('every heading needs at least one cited sentence under it');
+    expect(prompt).toContain('headings of your choice from `#` to `####`');
+  });
+
+  it('writes one fact per sentence', () => {
+    expect(prompt).toContain('**One fact per sentence.**');
+    expect(prompt).toContain('A sentence that holds two facts becomes two sentences, each with its own citations.');
+  });
+
+  it('asks for a sequence diagram per main operation in the checked subset, or a no-diagram line', () => {
+    expect(prompt).toContain('**Sequence diagrams.**');
+    expect(prompt).toContain('Draw one sequence diagram for each main operation of the feature');
+    expect(prompt).toContain('Every participant is declared as `participant <Name> as <display name>`');
+    expect(prompt).toContain('the line right after it is `%%` followed by the arrow\'s citation group and nothing else');
+    for (const word of ['`alt`', '`loop`', '`note`']) expect(prompt, word).toContain(word);
+    expect(prompt).toContain('`<!-- no-diagram: <reason> -->`');
+    const diagram = blocks(lanePrompt, 'mermaid')[0];
+    expect(diagram.split('\n')[0]).toBe('sequenceDiagram');
+  });
+
+  it('reads no generated document, sets no file limit and writes both files after try-entry', () => {
+    expect(prompt).toContain('nor any other Markdown or document file of the project');
+    expect(prompt).toContain('There is no limit on the number of files you open.');
+    expect(prompt).toContain('It runs on both files the same checks the orchestrator runs and records nothing');
+    expect(prompt).toContain('A line that starts `note:` does not fail the check');
+    expect(prompt).toContain('never drop a fact only to silence a note');
+    expect(prompt).toContain('Screens carry only their names; their fields, rules and flows are in the chapter.');
+  });
+
+  it('draws the domain flows at the end of Phase 4 with check-domain-flows, at most 3 attempts', () => {
+    const p = phase(4);
+    expect(p).toContain('draw the flow of each business domain');
+    expect(p).toContain('"format": "excavator-product-handbook-domain-flows/1"');
+    expect(p).toContain(`${HANDBOOK} check-domain-flows "$OUT" --project "$PROJECT_ROOT"`);
+    expect(p).toContain('`Next: the domain flows stay failed (3 of 3 attempts); the handbook draws none`');
+    expect(p).toContain('An item node\'s `text` is 1 to 24 characters copied exactly from that item\'s own text');
+    expect(p).toContain('it is 1 to 12 characters copied exactly');
+    expect(p).toContain('never edit an entry, a chapter or `state.json` to make an edge pass');
+  });
+
+  it('says in SKILL.md that a /3 feature is neither verified nor traced, and names check-chapter', () => {
+    const p = flat(phase(5));
+    expect(p).toContain('A feature whose entry has the format `excavator-product-handbook-entry/3`');
+    expect(p).toContain('is not verified or traced in this version');
+    expect(p).toContain(`${HANDBOOK} check-chapter "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(p).toContain('The recipe of step 1 leaves such a feature out, and Phase 6 does not trace it.');
   });
 });
 
@@ -453,7 +519,8 @@ describe('excavator-product-handbook skill: dispatch and retry', () => {
   });
 
   it('never edits a lane\'s file or state.json itself', () => {
-    expect(p).toContain('Never edit `entries/<id>.json` or `state.json` yourself');
+    expect(p).toContain('Never edit `entries/<id>.json`, `chapters/<id>.md` or `state.json` yourself');
+    expect(p).toContain('rm -f "$OUT/entries/<id>.json" "$OUT/chapters/<id>.md"');
     expect(p).toContain('never widen a passage or reword an entry to make it pass');
     expect(p).toContain('Statuses and attempts change only through these commands.');
   });
@@ -554,7 +621,7 @@ describe('excavator-product-handbook skill: the language of the narrative is che
     // Nothing sits between the instruction paragraph and the shape paragraph.
     expect(prompt.slice(instruction, shape).length).toBeLessThan(500);
     expect(prompt.slice(instruction, shape)).toContain('Labels, screen names, `where` labels and the roles stay exactly as the source and the lists at the end write them.');
-    expect(prompt).toContain('when $LANGUAGE has its own script, it also refuses a narrative value that is written only in ASCII letters');
+    expect(prompt).toContain('when $LANGUAGE has its own script, it also refuses a narrative value of the fact sheet that is written only in ASCII letters');
   });
 
   it('names the Next line check-entry prints when the fixed text is not ready, and keeps the two attempt lines', () => {
@@ -717,17 +784,17 @@ describe('excavator-product-handbook skill: the lane prompt asks for citations t
 
   it('asks for the passage that by itself proves each item, the condition for who may do something, and the whole condition for an absolute claim', () => {
     expect(prompt).toContain('**Cite what proves it.**');
-    expect(prompt).toContain('cite, for each item, the passage that by itself proves it');
+    expect(prompt).toContain('cite, for each sentence, the lines that by themselves prove it');
     expect(prompt).toContain('For who may do something, cite the condition the code checks');
     expect(prompt).toContain('not the name of a function or variable');
     expect(prompt).toContain('For a claim of "every", "any" or "cannot already", cite the whole condition');
-    expect(prompt).toContain('When no passage proves it, write it in `unknowns`.');
+    expect(prompt).toContain('When no line proves it, leave it out of the chapter and write it in the fact sheet\'s `unknowns`.');
   });
 
   it('keeps the purpose to one plain sentence of who does what, citing the screen or handler, with conditions and limits left to the rules', () => {
     expect(prompt).toContain('"purpose": {"text": "<one plain sentence: who uses the feature to do what>", "evidence": E}');
     expect(prompt).toContain('The purpose is one plain sentence saying who uses the feature to do what, citing the screen or handler that shows it');
-    expect(prompt).toContain('conditions, filters and limits belong in the rules, not in the purpose');
+    expect(prompt).toContain('conditions, filters and limits belong in the chapter, not in the purpose');
     expect(prompt).not.toContain('one more thing the code shown has to prove');
   });
 
@@ -735,19 +802,20 @@ describe('excavator-product-handbook skill: the lane prompt asks for citations t
     expect(prompt).toContain('**Exceptions before a general rule.**');
     expect(prompt).toContain('Before you write a rule that you state for every type, for every office or region, or for everyone, look for the branches that keep it from being general');
     expect(prompt).toContain('an early branch by type');
-    expect(prompt).toContain('the sets of offices or regions, read separately in the frontend and in the backend (when the two sets differ, write them separately, each with its own evidence)');
+    expect(prompt).toContain('the sets of offices or regions, read separately in the frontend and in the backend (when the two sets differ, write them separately, each with its own citation)');
     expect(prompt).toContain('the acting person being the approver or the leader of the request');
     expect(prompt).toContain('a switch that skips, defers or turns off a step');
     expect(prompt).toContain('a fixed error text that is shown only when the server sends no message of its own');
-    expect(prompt).toContain('Write the main rule with its condition, and write each exception as its own item with its own evidence');
+    expect(prompt).toContain('Write the main rule with its condition, and write each exception as its own sentence with its own citation');
     expect(prompt.indexOf('**Following out of the seed files.**')).toBeLessThan(prompt.indexOf('**Exceptions before a general rule.**'));
     expect(prompt.indexOf('**Exceptions before a general rule.**')).toBeLessThan(prompt.indexOf('**Cite what proves it.**'));
     expect(sectionText('sections/features.md')).not.toMatch(/[^\x00-\x7F]/);
   });
 
-  it('puts the rule before the labels-and-numbers rule, inside the evidence rules of the lane prompt', () => {
-    expect(prompt.indexOf('**Evidence.**')).toBeLessThan(prompt.indexOf('**Cite what proves it.**'));
-    expect(prompt.indexOf('**Cite what proves it.**')).toBeLessThan(prompt.indexOf('**Labels and numbers must be in the item\'s own passages.**'));
+  it('puts the chapter rules before the fact sheet and its evidence rules', () => {
+    expect(prompt.indexOf('**Cite what proves it.**')).toBeLessThan(prompt.indexOf('Write one JSON file with exactly these keys'));
+    expect(prompt.indexOf('Write one JSON file with exactly these keys')).toBeLessThan(prompt.indexOf('**Evidence.**'));
+    expect(prompt.indexOf('**Evidence.**')).toBeLessThan(prompt.indexOf('**Labels and numbers must be in the item\'s own passages.**'));
   });
 });
 
@@ -762,7 +830,7 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
   });
 
   it('lists the checked features at round 1 or waiting for the rewrite, with a recipe that is run on a real state', () => {
-    const recipe = allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith("jq -r '.features | to_entries[] | select(.value.status == \"checked\")"));
+    const recipe = allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith("jq -r '.features | to_entries[] | select(.value.status == \"checked\" and (.value.chapter | not))"));
     expect(recipe).toBeDefined();
     const run = makeCheckedMapRun();
     try {
@@ -777,6 +845,12 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
       const result = spawnSync('bash', ['-c', line], { encoding: 'utf-8' });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout.trim().split('\n')).toEqual(['F1\trewrite', 'F2\tverify']);
+      // A checked /3 feature (one with a recorded chapter) is not listed.
+      const state = JSON.parse(readFileSync(join(run.out, 'state.json'), 'utf-8'));
+      state.features.F2.chapter = { items: [], notes: [] };
+      writeFileSync(join(run.out, 'state.json'), JSON.stringify(state));
+      const without = spawnSync('bash', ['-c', line], { encoding: 'utf-8' });
+      expect(without.stdout.trim().split('\n')).toEqual(['F1\trewrite']);
     } finally {
       run.cleanup();
     }
@@ -1619,7 +1693,7 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
   const PINNED = {
     'stages/map.md': '16315c96d2433ef5a78727673d6813bfa8bf0a9879e107cc60f1eb63bc9f7481',
     'sections/overview.md': '2a4f1e07bf2c5d0b65c27028982abff2fdc421b0c91dc78695837282ab46ae66',
-    'sections/features.md': '6213b625ea106c371a67315c7f05a6792c110746c1402ff07a6058dfab19cfb1',
+    'sections/features.md': '2aac257402b809f3d03ae11dc9bb085b6da8ea63d1928866f6f97c54866d84fc',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],

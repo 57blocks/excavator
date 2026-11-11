@@ -108,11 +108,11 @@
 
 ## Impact
 
-- `skills/excavator-product-handbook/sections/features.md`：写作提示词改为写正文与事实表。
+- `skills/excavator-product-handbook/sections/features.md`：
+  - 写作提示词改为写正文与事实表；
+  - 第 4 阶段最后一步画领域流程图。
 - `SKILL.md`：
-  - `/3` 的功能跳过第 5、6 阶段；
-  - 写完条目后读 `stages/domain-flow.md`。
-- 新的 `stages/domain-flow.md`。
+  - `/3` 的功能跳过第 5、6 阶段。
 - `lib/`：
   - 新的正文解析与检查：切项、出处、时序图子集、内容问题的记录；
   - 事实表 `/3` 的形状与检查；

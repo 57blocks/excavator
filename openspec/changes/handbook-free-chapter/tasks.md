@@ -18,8 +18,8 @@
 
 ## 4. 提示词
 
-- [ ] 4.1 合约测试先红（O3）
-- [ ] 4.2 `sections/features.md` 写作提示词；`SKILL.md`：`/3` 跳过第 5、6 阶段，写完条目后读 `stages/domain-flow.md`；`agents/excavator-handbook-writer.md`
+- [x] 4.1 合约测试先红（O3）
+- [x] 4.2 `sections/features.md` 写作提示词与第 4 阶段最后一步的领域流程图；`SKILL.md`：`/3` 跳过第 5、6 阶段；`agents/excavator-handbook-writer.md`
 - commit：`docs(excavator-product-handbook): writers write a free chapter and a fact sheet`
 
 ## 5. 验收
