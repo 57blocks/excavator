@@ -287,8 +287,8 @@ Commands:
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
       then each section's file. The file of a section whose phase runs after the
-      trace (priority, remedies, topics, outline) is printed as "AFTER_TRACE=<path>" instead: it is read at
-      the end of Phase 6. A value that is not a section exits 1 and the
+      written sections (priority, remedies, topics, outline) is printed as "AFTER_TRACE=<path>" instead: it is read when
+      the phases of the READ= files are done. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"

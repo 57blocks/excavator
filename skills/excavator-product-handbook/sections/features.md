@@ -19,7 +19,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-entry "$OUT" <id> --project "$PROJECT_ROOT"
    ```
    `check-entry` records its result in `state.json` itself: `checked`, or `failed` with the lines it printed as the reasons. A lane that wrote no file fails with `lane-wrote-nothing`.
-   - Exit 0: the entry is checked.
+   - Exit 0: the entry is checked, which is final: the handbook writes the feature with its chapter under a sentence that says it is not verified. The chapter alone can be checked again, recording nothing, with `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-chapter "$OUT" <id> --project "$PROJECT_ROOT"`.
    - Exit 1: the entry failed its checks. The last line it prints is a `Next:` line. Follow it:
      - `Next: delete <id>'s entry, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)`: delete the entry and the chapter (`rm -f "$OUT/entries/<id>.json" "$OUT/chapters/<id>.md"`), mark the dispatch (as in step 2) and re-dispatch the lane once with its prompt followed by this line and then each line `check-entry` printed except the `Next:` line: `Your previous attempt failed these checks; fix them and write the file again:`. Check it again when it returns.
      - `Next: <id> stays failed (2 of 2 attempts)`: leave the feature failed, with its file kept for the user to see. Never make a third attempt.

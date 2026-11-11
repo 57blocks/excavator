@@ -2,7 +2,7 @@
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-The outline decides how the handbook is laid out: which parts and chapters there are, in what order, and what each is called. It runs after Phase 6d (after Phase 6c and Phase 6b when those did not run, and after Phase 6 when no phase after the trace is selected) and before Phase 7. It needs the map and nothing else; it reads no code, and it dispatches no subagent: you write it yourself, in one file, from the blocks the script lists. The outline never removes or edits content: a block's content is computed from the verified entries and the facts of the run, and each block is shown the same way wherever you put it. The outline only places blocks, and `check-outline` holds you to placing every one of them.
+The outline decides how the handbook is laid out: which parts and chapters there are, in what order, and what each is called. It runs after Phase 6d (after Phase 6c and Phase 6b when those did not run, and after the written sections when none of them is selected) and before Phase 7. It needs the map and nothing else; it reads no code, and it dispatches no subagent: you write it yourself, in one file, from the blocks the script lists. The outline never removes or edits content: a block's content is computed from the entries and the facts of the run, and each block is shown the same way wherever you put it. The outline only places blocks, and `check-outline` holds you to placing every one of them.
 
 1. List the blocks:
    ```bash

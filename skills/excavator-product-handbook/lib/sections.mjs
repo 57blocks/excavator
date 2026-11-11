@@ -22,14 +22,14 @@ const TABLE = Object.freeze([
   Object.freeze({ id: 'architecture', stages: Object.freeze(['stages/map.md']), file: 'sections/architecture.md' }),
   Object.freeze({ id: 'findings', stages: Object.freeze(['stages/map.md']), file: 'sections/findings.md' }),
   Object.freeze({ id: 'system-findings', stages: Object.freeze(['stages/map.md']), file: 'sections/system-findings.md' }),
-  // The ranking of the findings (openspec change handbook-findings-priority) works on the findings the trace left verified, so its
-  // phase runs after Phase 6: its file is not a READ= file, it is the AFTER_TRACE= line, and it needs no stage file (it reads no map).
+  // The ranking of the findings (openspec change handbook-findings-priority) works on the findings the sections before it wrote, so its
+  // phase runs after them: its file is not a READ= file, it is the AFTER_TRACE= line, and it needs no stage file (it reads no map).
   Object.freeze({ id: 'priority', stages: Object.freeze([]), file: 'sections/priority.md', afterTrace: true }),
-  // The causes, measures and recommendations (openspec change handbook-remedies) cite the verified and ranked findings, so they run after
-  // the trace and after the ranking: the same AFTER_TRACE= line, printed after the priority one; they need no map and no stage file.
+  // The causes, measures and recommendations (openspec change handbook-remedies) cite the ranked findings, so they run after
+  // the written sections and after the ranking: the same AFTER_TRACE= line, printed after the priority one; they need no map and no stage file.
   Object.freeze({ id: 'remedies', stages: Object.freeze([]), file: 'sections/remedies.md', afterTrace: true }),
   // The cross-cutting topics (openspec change handbook-topics) gather the verified entries and findings by a question that crosses features,
-  // so they run after the trace and after the remedies: the third AFTER_TRACE= line; they need no map and no stage file.
+  // so they run after the written sections and after the remedies: the third AFTER_TRACE= line; they need no map and no stage file.
   Object.freeze({ id: 'topics', stages: Object.freeze([]), file: 'sections/topics.md', afterTrace: true }),
   // The outline (openspec change handbook-outline) places the blocks of the handbook into the parts and chapters of this project, so it runs
   // after everything that writes a block: the fourth AFTER_TRACE= line. It needs the map but no stage file, since the map is already in

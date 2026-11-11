@@ -11,6 +11,6 @@ The history section is the code health chapter: the commits of each year, the fi
    It writes `$OUT/entries/history.json` on every run, whatever an earlier run left there.
 2. On exit 0, tell the user the one line it printed (it starts `History:`), as it is. On any other exit, tell the user the lines it printed as they are, and stop: do not edit `history.json` or any other file yourself.
 
-This section has no units: Phases 5 and 6 have nothing to verify or trace for it.
+This section has no units: it writes nothing a model checks.
 
 ---
