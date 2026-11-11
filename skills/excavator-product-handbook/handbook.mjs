@@ -71,6 +71,12 @@
  *       Check <out>/domain-flows.json, the flow diagram of each domain, node by
  *       node and edge by edge against the entries and chapters that go into the
  *       handbook, and record the attempt in state.json (three at most).
+ *   check-architecture <out> --project <root>
+ *       Check <out>/architecture.json (components and links of the system, each
+ *       with passages copied from project files) and <out>/chapters/architecture.md,
+ *       and record the attempt in state.json (three at most).
+ *   try-architecture <out> --project <root>
+ *       The same checks for the writer to run on its own files; records nothing.
  *   check-chapter <out> <featureId> --project <root>
  *       Check <out>/chapters/<featureId>.md, the free chapter of a /3 entry, and
  *       print its counts; records nothing.
@@ -163,7 +169,7 @@
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data, history, findings, system-findings, priority, remedies, topics, outline; default all) and print
+ *       Validate a --sections list (overview, features, data, history, architecture, findings, system-findings, priority, remedies, topics, outline; default all) and print
  *       SECTIONS=<list>, one READ=<file> line per phase file the run reads,
  *       in reading order, the shared map file once, and an AFTER_TRACE=<file> line
  *       for a section whose phase runs after the trace (priority, remedies, topics, outline); exit 1 for a
@@ -198,6 +204,7 @@ import { assemble } from './lib/assemble.mjs';
 import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { runData } from './lib/data-run.mjs';
+import { checkArchitecture, tryArchitecture } from './lib/architecture-command.mjs';
 import { checkChapterCommand } from './lib/chapter-command.mjs';
 import { checkDomainFlows } from './lib/domain-flows-command.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
@@ -275,7 +282,7 @@ Commands:
       not an application root exits 1: print each such item, then every root as
       "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, history, findings, system-findings, priority, remedies, topics, outline; empty
+      Validate the --sections list (comma-separated: overview, features, data, history, architecture, findings, system-findings, priority, remedies, topics, outline; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
@@ -359,6 +366,19 @@ Commands:
       citations, labels, numbers and banned words, and the narrative language
       (as check-map), and record the result in state.json. A failure ends with
       a Next: line.
+  check-architecture <out> --project <root>
+      Check <out>/architecture.json, the components of the system (users,
+      frontend, backend, database, external, cloud) and the links between them,
+      each with passages copied from project files, and <out>/chapters/architecture.md
+      with the chapter checks. Every application root must be exactly one
+      frontend or backend component; a link joins two declared components; its
+      text has at most 16 characters. Records the attempt in state.json (three at
+      most) and prints "architecture: checked" with the counts, or each problem
+      and a Next: line. Content problems of the reader text are notes.
+  try-architecture <out> --project <root>
+      The same checks, for the writer to run on its own files before it replies.
+      Reads and writes no state.json. Prints "architecture: ok" or each problem
+      and a Next: line.
   check-chapter <out> <featureId> --project <root>
       Check <out>/chapters/<featureId>.md, the free chapter written next to a
       /3 entry (the fact sheet; check-entry and try-entry check both files):
@@ -799,6 +819,17 @@ const COMMANDS = {
     if (positionals.length !== 1) throw new UsageError('check-domain-flows takes exactly one <out> directory');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkDomainFlows(positionals[0], root)));
+  },
+  'check-architecture'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-architecture takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkArchitecture(positionals[0], root)));
+  },
+  'try-architecture'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('try-architecture takes exactly one <out> directory');
+    return report(tryArchitecture(positionals[0], projectRootOption(options.project)));
   },
   'check-chapter'(args) {
     const { positionals, options } = parseArgs(args, ['project']);

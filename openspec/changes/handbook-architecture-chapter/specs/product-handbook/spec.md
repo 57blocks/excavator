@@ -30,9 +30,10 @@
 
 ### Requirement: 架构事实表
 
-同一个子代理 SHALL 写一份 `architecture.json`，格式 `excavator-product-handbook-architecture/1`，有组件与连接两部分：
+同一个子代理 SHALL 写一份 `architecture.json`，格式 `excavator-product-handbook-architecture/1`，有组件、连接与待确认事项三部分：
 - 组件：id、名称、种类、可选的应用根目录、技术栈说明、引文；
 - 连接：起点、终点、一句不长于 16 个字符的说明、引文。
+- 待确认事项：代码说不清的事项与搜过的范围，没有引文。
 
 种类 SHALL 是这几种之一：使用者、前端、后端、数据库、外部服务、云服务。引文是一组 `{file, passage}`，`passage` 照抄自项目里的文件。
 

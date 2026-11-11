@@ -218,7 +218,7 @@ describe('excavator-product-handbook skill: setup', () => {
 describe('excavator-product-handbook skill: commands', () => {
   const usage = runHandbook(['--help']).stdout;
   const usageCommands = [...new Set([...usage.matchAll(/^ {2}([a-z][a-z-]*) [<[]/gm)].map((match) => match[1]))];
-  const skillCommands = [...new Set([...`${skill}\n${skillOwn}\n${sectionText('sections/history.md')}\n${sectionText('sections/priority.md')}\n${sectionText('sections/remedies.md')}\n${sectionText('sections/topics.md')}`.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
+  const skillCommands = [...new Set([...`${skill}\n${skillOwn}\n${sectionText('sections/history.md')}\n${sectionText('sections/architecture.md')}\n${sectionText('sections/priority.md')}\n${sectionText('sections/remedies.md')}\n${sectionText('sections/topics.md')}`.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
 
   it('names every command handbook.mjs has, and only those', () => {
     expect(usageCommands.length).toBeGreaterThanOrEqual(16);
@@ -2591,5 +2591,106 @@ describe('excavator-product-handbook skill: Phase 6d, the topics (O1 of handbook
   it('names no model and picks none, in the phase file or in the agent', () => {
     for (const content of [text, judgeAgent]) expect(content).not.toMatch(/\b(opus|sonnet|haiku|fable)\b|claude-[a-z]+-\d/i);
     expect(judgeAgent).not.toMatch(/^model:/m);
+  });
+});
+
+describe('excavator-product-handbook skill: Phase 4f, the architecture (O3 of handbook-architecture-chapter)', () => {
+  const text = sectionText('sections/architecture.md');
+  const flatText = flat(text);
+  const prompt = flat(text.slice(text.indexOf('````text')));
+
+  it('holds Phase 4f only and is ASCII', () => {
+    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4f: Architecture']);
+    expect(text).not.toMatch(/[^\x00-\x7F]/);
+  });
+
+  it('reads the state, prints the application roots and names, deletes the old files, dispatches one writer and checks both files', () => {
+    const lines = blocks(text, 'bash').join('\n');
+    expect(lines).toContain('(.architecture // {status: "planned", attempts: 0})');
+    expect(lines).toContain(`${HANDBOOK} applications "$PROJECT_ROOT"`);
+    expect(lines).toContain(`${HANDBOOK} names "$PROJECT_ROOT"`);
+    expect(lines).toContain('rm -f "$OUT/chapters/architecture.md" "$OUT/architecture.json"');
+    expect(lines).toContain(`${HANDBOOK} check-architecture "$OUT" --project "$PROJECT_ROOT"`);
+    expect(flatText).toContain('dispatch one `excavator-handbook-writer` subagent in the foreground');
+    expect(flatText).toContain('never an attempt beyond the third');
+    expect(flatText).toContain('Never edit `chapters/architecture.md`, `architecture.json` or `state.json` yourself');
+    expect(flatText).toContain('This section needs the map');
+  });
+
+  it('asks for the stack, the connections, the data, the services, the deployment and sign-in', () => {
+    for (const phrase of [
+      'its language and framework, each with the version its manifest declares',
+      'the port it listens on',
+      'how the frontend reaches each backend',
+      'written per backend',
+      'which backend calls which other backend',
+      'every database: which backends connect to it',
+      'where the table changes are kept',
+      'caches, queues and schedulers',
+      'every external service and every cloud service',
+      'how each application is built and deployed',
+      'sign-in, tokens and permissions',
+      'Write every version and every port with the line that declares it as its citation.',
+    ]) expect(prompt).toContain(phrase);
+  });
+
+  it('starts from the manifests and configuration, reads no document and sets no file limit', () => {
+    expect(prompt).toContain('Start with the application roots below and their build manifests');
+    expect(prompt).toContain('the deployment and pipeline files, and the environment configuration of each root');
+    expect(prompt).toContain('There is no limit on the number of files you open');
+    expect(prompt).toContain('Never read anything under `.excavator/`');
+    expect(prompt).toContain('never read a Markdown or other explanatory document of the project');
+    expect(prompt).toContain('A library in a dependency list proves only that it is declared, not that a service is called.');
+  });
+
+  it('never copies a secret value from configuration', () => {
+    expect(prompt).toContain('Never copy a secret value into the chapter or the fact sheet');
+    expect(prompt).toContain('quote only the part of the line before the value');
+  });
+
+  it('gives no advice and no judgement of age or risk', () => {
+    expect(prompt).toContain('Give no advice, no opinion and no defect report');
+    expect(prompt).toContain('what is old, unmaintained, risky or wrong');
+  });
+
+  it('writes the chapter by the same rules as a feature chapter, shaped for a reader who scans', () => {
+    expect(prompt).toContain('Every sentence that states a fact ends with its citation group');
+    expect(prompt).toContain('A citation covers at most 80 lines');
+    expect(prompt).toContain('Backticks are for citations only');
+    expect(prompt).toContain('**Shape the text for a reader who scans.**');
+    expect(prompt).toContain('paragraphs of at most 3 sentences');
+    expect(prompt).toContain('Never use `alt`, `else`, `opt`, `loop`, `par`, `rect`, `note`, `activate`, `autonumber`');
+    expect(prompt).toContain('`<!-- no-diagram: <reason> -->`');
+  });
+
+  it('asks for a fact sheet of components and links with one component per application root', () => {
+    expect(prompt).toContain('"format": "excavator-product-handbook-architecture/1"');
+    expect(prompt).toContain('<users | frontend | backend | database | external | cloud>');
+    expect(prompt).toContain('Every application root above is exactly one component of kind `frontend` or `backend`');
+    expect(prompt).toContain('at most 16 characters');
+    expect(prompt).toContain('it must occur **exactly once** in that file');
+    expect(prompt).toContain('"unknowns": [{"item":');
+  });
+
+  it('has the writer check both files and reply with one line', () => {
+    expect(prompt).toContain(`${HANDBOOK} try-architecture "$OUT" --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain('until it prints `architecture: ok`');
+    expect(prompt).toContain('Reply with one line: `architecture: written`, and nothing else.');
+  });
+
+  it('is named in SKILL.md: the split, the files, the options, the Sections part and the technical structure', () => {
+    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(split).toContain('`sections/architecture.md` holds Phase 4f');
+    expect(skillOwn).toContain('| `chapters/architecture.md` and `architecture.json` | the architecture subagent (Phase 4f');
+    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('`architecture` (a chapter on how the system is built');
+    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 5: Verify')));
+    expect(part).toContain('`sections/architecture.md` holds Phase 4f (the architecture chapter, section `architecture`), which needs the map');
+    expect(part).toContain('The `architecture` section has no unit either');
+    expect(flat(skillOwn)).toContain('the technical structure (the architecture chapter, marked as not verified, with a diagram of its components in layers');
+  });
+
+  it('names no model', () => {
+    expect(text).not.toMatch(/\b(opus|sonnet|haiku|fable)\b|claude-[a-z]+-\d/i);
   });
 });
