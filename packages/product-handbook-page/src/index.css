@@ -198,7 +198,10 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .status-chip[data-status="planned"] { color: var(--text-2); background: var(--surface-2); }
 
 /* The free chapter of a feature that is written but not verified */
-.chapter-heading { margin: 20px 0 8px; font-size: 16px; }
+.chapter-heading { margin: 20px 0 8px; font-size: 16px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.chapter-heading:is(h3) { font-size: 18px; }
+.chapter-heading:is(h4) { font-size: 16px; }
+.chapter-heading:is(h5) { margin-top: 16px; font-size: 14px; color: var(--text-2); }
 .chapter-text { margin: 8px 0; }
 .chapter-diagram { margin: 14px 0; }
 
@@ -260,7 +263,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .flow-node span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .flow-node:hover { border-color: var(--accent); }
 .flow-node[data-kind="system"] { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent-bg); }
-.flow-text { fill: var(--muted); font-size: 11px; }
+.flow-text { fill: var(--muted); font-size: 11px; paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
 .flow-node[data-unverified] { border-style: dashed; }
 .flow-note { margin-top: 6px; font-size: 12.5px; }
 .handoff-link { margin-right: 6px; padding: 0 8px; border-radius: 6px; font-weight: 600; background: var(--accent-bg); }
