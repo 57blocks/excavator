@@ -30,12 +30,12 @@ function entryKeys(entry, put) {
   entry.where.forEach((place, i) => put(`where[${i}]`, pick(place, ['label'])));
   entry.screens.forEach((screen, i) => {
     put(`screens[${i}]`, pick(screen, ['name']));
-    screen.fields.forEach((field, j) => {
+    (screen.fields ?? []).forEach((field, j) => {
       put(`screens[${i}].fields[${j}]`, pick(field, ['label']));
       field.rules.forEach((rule, k) => put(`screens[${i}].fields[${j}].rules[${k}]`, pick(rule, ['side'])));
     });
   });
-  entry.operations.forEach((operation, i) => {
+  (entry.operations ?? []).forEach((operation, i) => {
     put(`operations[${i}]`, pick(operation, ['name']));
     partList(operation, HANDOFFS).forEach((handoff, k) => put(`operations[${i}].handoffs[${k}]`, pick(handoff, ['feature'])));
   });

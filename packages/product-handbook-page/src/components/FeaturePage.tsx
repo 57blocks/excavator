@@ -16,6 +16,7 @@ export function FeaturePage({ feature, findings, domain, area, locations, featur
         <h1 className="page-title">{feature.name}</h1>
         <div className="feature-facts">
           <ReachBadge reach={feature.reach} />
+          {feature.unverified === true && <span className="status-chip" data-status="unverified" data-part="unverified-mark">{t('md.status.unverified')}</span>}
           {feature.label !== undefined && <span className="shown-as">{t('md.feature.label', { label: feature.label })}</span>}
           {area !== undefined && <span className="shown-as">{t('md.feature.area', { area: area.name })}</span>}
         </div>

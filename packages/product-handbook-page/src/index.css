@@ -197,6 +197,11 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .status-chip[data-status="failed"] { color: var(--bad-text); background: var(--bad-bg); }
 .status-chip[data-status="planned"] { color: var(--text-2); background: var(--surface-2); }
 
+/* The free chapter of a feature that is written but not verified */
+.chapter-heading { margin: 20px 0 8px; font-size: 16px; }
+.chapter-text { margin: 8px 0; }
+.chapter-diagram { margin: 14px 0; }
+
 /* Feature and coverage views */
 .removed-group + .removed-group { margin-top: 18px; }
 .removed-group .block-title { margin-bottom: 8px; font-size: 16px; }

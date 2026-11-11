@@ -34,7 +34,7 @@ export function trimEntry(entry, removed) {
     const sPath = `screens[${i}]`;
     const screenGone = gone(sPath);
     const fields = [];
-    screen.fields.forEach((field, j) => {
+    (screen.fields ?? []).forEach((field, j) => {
       const fPath = `${sPath}.fields[${j}]`;
       const fieldGone = screenGone || gone(fPath);
       if (screenGone) alongWith(fPath);
@@ -50,7 +50,7 @@ export function trimEntry(entry, removed) {
   });
 
   out.operations = [];
-  entry.operations.forEach((operation, i) => {
+  (entry.operations ?? []).forEach((operation, i) => {
     const sentences = operation.sentences.filter((_, j) => !gone(`operations[${i}].sentences[${j}]`));
     if (sentences.length === 0) {
       // An operation without a step goes with its other parts.

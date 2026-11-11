@@ -53,7 +53,7 @@ export function buildSources(run, { applications, findings, remedies, topics }) 
   return {
     parts: [
       sectionRow('overview', [{ id: OVERVIEW_ID, entry: state.overview ?? PLANNED }], new Map(run.entries.has(OVERVIEW_ID) ? [[OVERVIEW_ID, run.entries.get(OVERVIEW_ID)]] : [])),
-      sectionRow('features', featureUnits, new Map([...run.entries].filter(([id]) => id !== OVERVIEW_ID))),
+      sectionRow('features', featureUnits, new Map([...run.entries].filter(([id]) => id !== OVERVIEW_ID && !run.chapters?.has(id)))),
       sectionRow('findings', findingsUnits, findingDocs),
       sectionRow('system-findings', systemUnits, run.systemFindings ?? new Map()),
     ],

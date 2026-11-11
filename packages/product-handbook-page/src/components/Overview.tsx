@@ -58,7 +58,7 @@ export function Overview({ data }: { data: PageData }) {
                         <a href={nav.feature(feature.id)}>{feature.name}</a>
                         <span className="area-feature-meta">
                           <ReachBadge reach={feature.reach} />
-                          {feature.status !== 'verified' && <span className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</span>}
+                          {feature.status !== 'verified' && <span className="status-chip" data-status={feature.unverified === true ? 'unverified' : feature.status}>{t(feature.unverified === true ? 'md.status.unverified' : `md.status.${feature.status}`)}</span>}
                         </span>
                       </li>
                     ))}

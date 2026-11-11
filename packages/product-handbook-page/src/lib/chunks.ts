@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 
-import type { Chunks, DataSection, DictionariesSection, Entry, Feature, UnitLocations } from './types';
+import type { ChapterBlock, Chunks, DataSection, DictionariesSection, Entry, Feature, UnitLocations } from './types';
 
 /**
  * Loading of the part files of a page whose data is large (design D3, D4 of openspec change
@@ -122,7 +122,7 @@ export const featureUnitKey = (id: string): string => `feature:${id}`;
 export function assembleFeature(locations: UnitLocations | undefined, pieces: Piece[]): { entry: Entry | null; locations: UnitLocations | undefined } {
   const head = pieces[0].entry as Entry;
   return {
-    entry: { ...head, screens: tagged(pieces, 'screen'), operations: tagged(pieces, 'operation') },
+    entry: { ...head, screens: tagged(pieces, 'screen'), operations: tagged(pieces, 'operation'), ...(head.chapter === undefined ? {} : { chapter: tagged<ChapterBlock>(pieces, 'chapterBlock') }) },
     locations: locations === undefined ? undefined : { ...locations, items: tagged(pieces, 'locationItem') },
   };
 }

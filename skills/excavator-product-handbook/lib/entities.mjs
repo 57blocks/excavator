@@ -63,12 +63,12 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
   // handbook-deep-entry, D12), in the order of the map, the operations and the handoffs.
   const crossings = [];
   for (const feature of map.features) {
-    for (const operation of entries.get(feature.id)?.operations ?? []) {
-      for (const handoff of operation.handoffs ?? []) {
-        const from = domainOf.get(feature.id);
-        const to = domainOf.get(handoff.feature);
-        if (from !== undefined && to !== undefined && from !== to) crossings.push({ from: feature.id, to: handoff.feature, text: handoff.text, fromDomain: from, toDomain: to });
-      }
+    // A /2 entry keeps its hand-overs in its operations, a /3 fact sheet (openspec change handbook-free-chapter) at the top level.
+    const entry = entries.get(feature.id);
+    for (const handoff of [...(entry?.operations ?? []).flatMap((operation) => operation.handoffs ?? []), ...(entry?.handoffs ?? [])]) {
+      const from = domainOf.get(feature.id);
+      const to = domainOf.get(handoff.feature);
+      if (from !== undefined && to !== undefined && from !== to) crossings.push({ from: feature.id, to: handoff.feature, text: handoff.text, fromDomain: from, toDomain: to });
     }
   }
   // handbook-domain-page D4: the crossings summed per direction between two domains, in the order they first appear.

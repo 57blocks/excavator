@@ -48,9 +48,11 @@ export function splitPageData(data) {
       yield {
         key: featureUnitKey(feature.id),
         pieces: [
-          { entry: { ...entry, screens: [], operations: [] } },
+          // The blocks of a /3 entry's chapter (openspec change handbook-free-chapter) are pieces of their own, so a long chapter can continue in the next part.
+          { entry: { ...entry, screens: [], operations: [], ...(entry.chapter === undefined ? {} : { chapter: [] }) } },
           ...entry.screens.map((screen) => ({ screen })),
           ...entry.operations.map((operation) => ({ operation })),
+          ...(entry.chapter ?? []).map((chapterBlock) => ({ chapterBlock })),
           ...(locationsOf.get(feature.id)?.items ?? []).map((locationItem) => ({ locationItem })),
         ],
       };
@@ -67,7 +69,8 @@ export function restorePageData(core, units) {
   const features = core.features.map((feature) => {
     const pieces = piecesOf.get(featureUnitKey(feature.id));
     if (pieces === undefined) return feature;
-    return { ...feature, entry: { ...pieces[0].entry, screens: tagged(pieces, 'screen'), operations: tagged(pieces, 'operation') } };
+    const head = pieces[0].entry;
+    return { ...feature, entry: { ...head, screens: tagged(pieces, 'screen'), operations: tagged(pieces, 'operation'), ...(head.chapter === undefined ? {} : { chapter: tagged(pieces, 'chapterBlock') }) } };
   });
   const restored = { ...core, features };
   if (core.technical !== undefined) {

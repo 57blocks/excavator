@@ -28,7 +28,7 @@ export function itemClaims(entry, ui, { map = null } = {}) {
   entry.screens.forEach((screen, i) => {
     const screenText = fill(t('md.screen.heading'), { name: screen.name });
     claims.set(`screens[${i}]`, screenText);
-    screen.fields.forEach((field, j) => {
+    (screen.fields ?? []).forEach((field, j) => {
       const fieldText = `${t('md.table.field')}: ${field.label}`;
       claims.set(`screens[${i}].fields[${j}]`, [screenText, fieldText].join(SEP));
       field.rules.forEach((rule, k) => {
@@ -37,7 +37,7 @@ export function itemClaims(entry, ui, { map = null } = {}) {
       });
     });
   });
-  entry.operations.forEach((operation, i) => {
+  (entry.operations ?? []).forEach((operation, i) => {
     operation.sentences.forEach((sentence, j) => {
       claims.set(`operations[${i}].sentences[${j}]`, [t('md.section.operations'), operation.name, sentence.text].join(SEP));
     });
@@ -50,6 +50,10 @@ export function itemClaims(entry, ui, { map = null } = {}) {
         claims.set(`operations[${i}].${part.key}[${k}]`, [t('md.section.operations'), operation.name, t(part.uiKey), body].join(SEP));
       });
     }
+  });
+  // The hand-overs of a /3 fact sheet are at the top level (a /2 entry keeps them in its operations).
+  (entry.handoffs ?? []).forEach((handoff, i) => {
+    claims.set(`handoffs[${i}]`, [t('md.operation.handoffs'), fill(t('md.handoff.item'), { feature: featureName(handoff.feature), text: handoff.text })].join(SEP));
   });
   entry.states.forEach((state, i) => {
     claims.set(`states[${i}]`, `${t('md.table.state')}: ${state.label}; ${t('md.table.meaning')}: ${state.meaning}`);

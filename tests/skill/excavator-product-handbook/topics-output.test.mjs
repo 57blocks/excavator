@@ -130,7 +130,7 @@ describe('the Cross-cutting topics chapter', () => {
 });
 
 describe('a topic without a kept row', () => {
-  it('names the number of verified entries it read and says they state none of it, and never that the system has none', () => {
+  it('names the number of entries it read and says they state none of it, and never that the system has none', () => {
     const run = topicsRun(cleanups);
     checkedLane(run, 'D1', (rows) => rows.slice(0, 1));
     checkedLane(run, 'D2', () => []);
@@ -138,8 +138,8 @@ describe('a topic without a kept row', () => {
     expect(judgeTopics(run).status).toBe(0);
     assemble(run);
     const body = text(run, 'handbook.md');
-    expect(topicOf(body, 'time').trim()).toBe('The 2 verified entries it read state none of this.');
-    expect(topicOf(body, 'handoffs').trim()).toBe('The 2 verified entries it read state none of this.');
+    expect(topicOf(body, 'time').trim()).toBe('The 2 entries it read state none of this.');
+    expect(topicOf(body, 'handoffs').trim()).toBe('The 2 entries it read state none of this.');
     expect(topicOf(body, 'repeated').trim()).toBe('The 4 verified groups of findings it read hold none of this.');
     expect(topicOf(body, 'approval')).toContain('| Place an order |');
     expect(chapterOf(body).replace(ui['md.topics.note'], '')).not.toMatch(/system has no|no approval|does not have/i);
@@ -150,7 +150,7 @@ describe('a topic without a kept row', () => {
     const run = checkedTopicsRun(cleanups);
     expect(judgeTopics(run, (row) => (row.topic === 'approval' ? { verdict: 'doesNotFollow', reason: 'The row names a step that is not cited.' } : 'follows')).status).toBe(0);
     assemble(run);
-    expect(topicOf(text(run, 'handbook.md'), 'approval').trim()).toBe('The 2 verified entries it read state none of this.');
+    expect(topicOf(text(run, 'handbook.md'), 'approval').trim()).toBe('The 2 entries it read state none of this.');
   });
 });
 

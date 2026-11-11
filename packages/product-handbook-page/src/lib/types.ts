@@ -130,6 +130,17 @@ export interface Operation {
   sequence: Sequence;
 }
 
+/**
+ * One block of the free chapter of a /3 entry (openspec change handbook-free-chapter), as the page draws it, with no citation: a heading, a
+ * paragraph, one list item, a table, or a sequence diagram whose arrows show only their number and whose arrow texts are listed under it.
+ */
+export type ChapterBlock =
+  | { kind: 'heading'; level: number; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'list'; ordered: boolean; text: string }
+  | { kind: 'table'; header: string[]; rows: string[][] }
+  | { kind: 'diagram'; sequence: Sequence; arrows: string[] };
+
 /** A verified entry as the page shows it: the text, never the evidence. */
 export interface Entry {
   /** Absent when the purpose was removed as not verified. */
@@ -143,6 +154,9 @@ export interface Entry {
   notifications: { trigger: string; recipient: string; channel: string; content: string }[];
   automatic: { when: string; effect: string }[];
   unknowns: { item: string; searched: string }[];
+  /** Only an entry of format /3 (not verified) has these: its hand-overs and the blocks of its chapter. */
+  handoffs?: { feature: string; text: string }[];
+  chapter?: ChapterBlock[];
 }
 
 export interface Area { id: string; name: string }
@@ -161,6 +175,8 @@ export interface Feature {
   /** The label readers see in the product, for `menu` and `link` features. */
   label?: string;
   status: Status;
+  /** True for a feature written but not verified (a checked /3 entry): its page and its place in the lists say so. */
+  unverified?: boolean;
   entry: Entry | null;
   /** Where the verification of the feature's findings stands: only `verified` ones are in `PageData.findings`. */
   findingsStatus: Status;
@@ -183,6 +199,8 @@ export interface Coverage {
   assigned: number;
   unassigned: { candidate: string; kind: EntrypointKind; reason: string }[];
   reachCounts: { reach: Reach; count: number }[];
+  /** The features written but not verified (checked /3 entries), each with the count of every kind of content note the chapter check recorded. */
+  unverified?: { feature: string; notes: { number: number; quote: number; code: number; advice: number; language: number } }[];
   /** The items the verification removed from the system overview (empty when it lost none). */
   removedOverview: RemovedItem[];
   /** The features that lost items to verification, with those items. */

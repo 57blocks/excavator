@@ -39,6 +39,10 @@ export function checkedFeature(outDir, id, round) {
     return { stop: { status: 1, lines: [stateRead.problem] } };
   }
   const current = unitState(stateRead.state, id);
+  // A checked /3 entry (its check recorded the chapter) goes into the handbook marked as not verified; nothing slices it in this version.
+  if (current.status === 'checked' && current.chapter !== undefined) {
+    return { stop: { status: 1, lines: [`${id}: /3 entries are not verified in this version; the handbook writes a checked one marked as not verified`] } };
+  }
   if (current.status !== 'checked') {
     const next = current.status === 'verified' ? 'nothing; it is verified' : current.status === 'confirmed' ? `run trace for ${id}` : `run check-entry for ${id} first`;
     return { stop: { status: 1, lines: [`${id}: is ${current.status}; only a checked feature is verified`, `Next: ${next}`] } };

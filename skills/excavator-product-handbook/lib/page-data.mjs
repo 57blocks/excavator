@@ -12,6 +12,7 @@
 
 import { basename } from 'node:path';
 
+import { chapterPageBlocks, noteCounts } from './chapter-output.mjs';
 import { pageSection } from './data-section.mjs';
 import { dictionariesPageSection } from './dict-section.mjs';
 import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
@@ -49,17 +50,20 @@ export const PAGE_FORMAT = 'excavator-product-handbook-page/18';
 
 const PARTS = Object.fromEntries(OPERATION_PARTS.map((part) => [part.key, part]));
 
-/** An entry without its evidence, in the page's shape; `sequenceOf` gives an operation's sequence diagram (flows.mjs). */
-function pageEntry(entry, sequenceOf) {
+/**
+ * An entry without its evidence, in the page's shape; `sequenceOf` gives an operation's sequence diagram (flows.mjs). A checked /3 entry (openspec
+ * change handbook-free-chapter) has no operations and no fields: it carries the `chapter` blocks (chapter-output.mjs, no citation) and its top-level `handoffs`.
+ */
+function pageEntry(entry, sequenceOf, chapter) {
   return {
     ...(entry.purpose === undefined ? {} : { purpose: entry.purpose.text }),
     who: entry.who.map((who) => ({ role: who.role, can: who.can })),
     where: entry.where.map((place) => place.label),
     screens: entry.screens.map((screen) => ({
       name: screen.name,
-      fields: screen.fields.map((field) => ({ label: field.label, rules: field.rules.map((rule) => ({ side: rule.side, text: rule.text })) })),
+      fields: (screen.fields ?? []).map((field) => ({ label: field.label, rules: field.rules.map((rule) => ({ side: rule.side, text: rule.text })) })),
     })),
-    operations: entry.operations.map((operation) => ({
+    operations: (entry.operations ?? []).map((operation) => ({
       name: operation.name,
       sentences: operation.sentences.map((sentence) => sentence.text),
       triggers: partList(operation, PARTS.triggers).map((x) => x.text),
@@ -74,6 +78,7 @@ function pageEntry(entry, sequenceOf) {
     notifications: entry.notifications.map((n) => ({ trigger: n.trigger, recipient: n.recipient, channel: n.channel, content: n.content })),
     automatic: entry.automatic.map((item) => ({ when: item.when, effect: item.effect })),
     unknowns: entry.unknowns.map((item) => ({ item: item.item, searched: item.searched })),
+    ...(chapter === undefined ? {} : { handoffs: (entry.handoffs ?? []).map((x) => ({ feature: x.feature, text: x.text })), chapter: chapterPageBlocks(chapter.text) }),
   };
 }
 
@@ -94,6 +99,7 @@ function pageEntry(entry, sequenceOf) {
  */
 export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const { map, entries, state, candidates, ui } = run;
+  const chapters = run.chapters ?? new Map();
   // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
   const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
@@ -119,8 +125,10 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       reach: feature.reach,
       label: feature.label,
       status: state.features[feature.id].status,
-      entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id), (operation) => operationSequence(operation, feature.reach, system.applications, (key) => ui[key])) : null,
+      entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id), (operation) => operationSequence(operation, feature.reach, system.applications, (key) => ui[key]), chapters.get(feature.id)) : null,
       findingsStatus: findingsStatus(state, feature.id),
+      // Only a feature written but not verified has the key (a checked /3 entry), so the data of a run with none is as it was.
+      ...(chapters.has(feature.id) ? { unverified: true } : {}),
     })),
     findings: findings.groups.map((group) => ({
       category: group.category,
@@ -137,6 +145,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
       unassigned: map.unassigned.map((item) => ({ candidate: item.candidate, kind: kind.get(item.candidate), reason: item.reason })),
       reachCounts: reachCounts(map),
+      unverified: map.features.filter((feature) => chapters.has(feature.id)).map((feature) => ({ feature: feature.id, notes: noteCounts(chapters.get(feature.id).notes) })),
       removedOverview: (state.overview?.removed ?? []).map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
       removed: map.features
         .filter((feature) => (state.features[feature.id].removed ?? []).length > 0)

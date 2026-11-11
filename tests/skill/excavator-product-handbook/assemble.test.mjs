@@ -169,7 +169,7 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
     const text = handbook(run);
     const links = text.slice(text.indexOf('### Features reached only by a link'), text.indexOf('### Unassigned candidates'));
     expect(links).toContain('- F2 Archive (Order handling)');
-    const unwritten = text.slice(text.indexOf('### Features without a verified entry'));
+    const unwritten = text.slice(text.indexOf('### Features without an entry'));
     expect(unwritten).toContain('| F2 Archive (Order handling) | Not written |');
     expect(unwritten).toContain('| F3 Reminders (Automatic work) | Written but not checked |');
     expect(unwritten).toContain('| F4 Admin tool (Automatic work) | Failed the checks |');
@@ -193,7 +193,7 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
     }
     assemble(run);
     const text = handbook(run);
-    expect(text).toContain('Every feature has a verified entry.');
+    expect(text).toContain('Every feature has an entry.');
     expect(text).toContain('### Unassigned candidates\n\nNone.');
     expect(text).toContain('### Features reached only by a link\n\n- F2 Archive (Order handling)');
   });

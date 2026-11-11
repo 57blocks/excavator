@@ -5,9 +5,10 @@ import { useFeatureDetail } from '../lib/chunks';
 import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import { findingCategoryKey } from '../lib/types';
-import type { Entry, Feature, Field, FindingGroup, Operation, Rule, UnitLocations } from '../lib/types';
+import type { ChapterBlock, Entry, Feature, Field, FindingGroup, Operation, Rule, UnitLocations } from '../lib/types';
 import { ChunkNotice } from './ChunkNotice';
 import { Locations } from './Locations';
+import { Cell, TableScroll } from './Tables';
 import { PriorityBadge } from './PriorityBadge';
 import { SequenceDiagram } from './SequenceDiagram';
 import { Definition, DefinitionList, Item, ItemField, ItemList } from './ui/ItemList';
@@ -101,9 +102,54 @@ function OperationBlock({ operation, featureNames }: { operation: Operation; fea
   );
 }
 
+/**
+ * The free chapter of a /3 entry (openspec change handbook-free-chapter): the blocks as the script cut them, no citation. A sequence
+ * diagram is the same drawing as an operation's, its arrows show only their number and the texts of the arrows are listed under it.
+ * A run of list items is one list.
+ */
+function ChapterBody({ blocks, name }: { blocks: ChapterBlock[]; name: string }) {
+  const t = useText();
+  const out: ReactNode[] = [];
+  for (let at = 0; at < blocks.length; at += 1) {
+    const block = blocks[at];
+    if (block.kind === 'heading') {
+      // The page's own title is the feature's name; a chapter's headings sit below the sections of the page.
+      out.push(<Heading key={at} level={Math.min(5, block.level + 2)} className="chapter-heading">{block.text}</Heading>);
+    } else if (block.kind === 'paragraph') {
+      out.push(<p key={at} className="chapter-text">{block.text}</p>);
+    } else if (block.kind === 'list') {
+      const run = [block];
+      while (blocks[at + 1]?.kind === 'list') {
+        at += 1;
+        run.push(blocks[at] as typeof block);
+      }
+      const items = run.map((item, index) => <li key={index}>{item.text}</li>);
+      out.push(block.ordered ? <ol key={at} className="plain-list">{items}</ol> : <ul key={at} className="plain-list">{items}</ul>);
+    } else if (block.kind === 'table') {
+      out.push(
+        <TableScroll key={at} label={name}>
+          <thead><tr>{block.header.map((cell, index) => <th scope="col" key={index}>{cell}</th>)}</tr></thead>
+          <tbody>{block.rows.map((row, index) => <tr key={index}>{row.map((cell, column) => (column === 0 ? <Cell row key={column}>{cell}</Cell> : <td key={column}>{cell}</td>))}</tr>)}</tbody>
+        </TableScroll>,
+      );
+    } else {
+      out.push(
+        <div key={at} className="chapter-diagram" data-part="chapter-diagram">
+          <SequenceDiagram sequence={block.sequence} label={t('page.flow.label', { name })} />
+          <ol className="step-list">{block.arrows.map((text, index) => <li key={index}><span className="step-text">{text}</span></li>)}</ol>
+        </div>,
+      );
+    }
+  }
+  return <div className="chapter" data-part="chapter">{out}</div>;
+}
+
+/** The sections of an entry; a /3 entry (it has a `chapter`) has no operations and no fields: its screens are names, and its hand-overs are a list of their own. */
 function EntryBody({ entry, featureNames }: { entry: Entry; featureNames: Map<string, string> }) {
   const t = useText();
   const none = <p className="muted">{t('md.none')}</p>;
+  const nav = useLinks();
+  const sheet = entry.chapter !== undefined;
   return (
     <>
       {entry.purpose !== undefined && (
@@ -139,7 +185,7 @@ function EntryBody({ entry, featureNames }: { entry: Entry; featureNames: Map<st
           return (
             <div className="screen" key={at}>
               <Heading level={3} className="screen-title">{heading}</Heading>
-              {screen.fields.length === 0 ? none : (
+              {sheet ? null : screen.fields.length === 0 ? none : (
                 <>
                   {screen.fields.some((field) => field.rules.length > 0) && (
                     <ItemList part="fields" label={heading}>
@@ -167,9 +213,19 @@ function EntryBody({ entry, featureNames }: { entry: Entry; featureNames: Map<st
         })}
       </Section>
 
-      <Section id="operations" title={t('md.section.operations')}>
-        {entry.operations.length === 0 ? none : entry.operations.map((operation, at) => <OperationBlock key={at} operation={operation} featureNames={featureNames} />)}
-      </Section>
+      {sheet ? (
+        <Section id="handoffs" title={t('md.operation.handoffs')}>
+          {(entry.handoffs ?? []).length === 0 ? none : (
+            <ul className="plain-list">
+              {(entry.handoffs ?? []).map((handoff, at) => <li key={at}><a className="handoff-link" href={nav.feature(handoff.feature)}>{featureNames.get(handoff.feature) ?? handoff.feature}</a> <span>{handoff.text}</span></li>)}
+            </ul>
+          )}
+        </Section>
+      ) : (
+        <Section id="operations" title={t('md.section.operations')}>
+          {entry.operations.length === 0 ? none : entry.operations.map((operation, at) => <OperationBlock key={at} operation={operation} featureNames={featureNames} />)}
+        </Section>
+      )}
 
       <Section id="states" title={t('md.section.states')}>
         {entry.states.length === 0 ? none : (
@@ -253,7 +309,17 @@ export function FeatureDetail({ feature, findings, locations, featureNames }: { 
           <p>{t('page.feature.noEntry')}</p>
           <p className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</p>
         </div>
-      ) : <EntryBody entry={detail.value.entry} featureNames={featureNames} />}
+      ) : detail.value.entry.chapter === undefined ? <EntryBody entry={detail.value.entry} featureNames={featureNames} /> : (
+        <>
+          <div className="notice" role="note" data-part="unverified-mark"><p>{t('md.feature.unverified')}</p></div>
+          <ChapterBody blocks={detail.value.entry.chapter} name={feature.name} />
+          <Section id="fact-sheet" title={t('md.section.factSheet')}>
+            <FeatureScopeProvider value={{ offset: offset + 1, prefix: `${prefix}sheet-` }}>
+              <EntryBody entry={detail.value.entry} featureNames={featureNames} />
+            </FeatureScopeProvider>
+          </Section>
+        </>
+      )}
       <FindingsSection feature={feature} groups={findings} />
       {detail.status === 'ready' && detail.value.entry !== null && detail.value.locations !== undefined && <Locations unit={detail.value.locations} id={`${prefix}locations`} level={2 + offset} />}
     </>

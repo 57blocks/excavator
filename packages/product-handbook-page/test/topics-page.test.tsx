@@ -142,8 +142,8 @@ describe('the topics page', () => {
 
   it('says how many verified entries a topic without a row read, and never that the system has none', () => {
     const html = main(render(dataFor(), '#/product/topics'));
-    expect(part(html, 'time')).toContain(`${MARK}The 3 verified entries it read state none of this.`);
-    expect(part(html, 'access')).toContain(`${MARK}The 3 verified entries it read state none of this.`);
+    expect(part(html, 'time')).toContain(`${MARK}The 3 entries it read state none of this.`);
+    expect(part(html, 'access')).toContain(`${MARK}The 3 entries it read state none of this.`);
     expect(part(render(dataFor({ ...TOPICS, repeated: [] }), '#/product/topics'), 'repeated')).toContain(`${MARK}The 2 verified groups of findings it read hold none of this.`);
   });
 

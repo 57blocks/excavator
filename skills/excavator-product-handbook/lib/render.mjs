@@ -6,8 +6,8 @@
  * path and no citation in the text. Every fixed text comes from `ui`.
  */
 
-import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
-import { operationSequence, sequenceMermaid, stateGraph, stateMermaid } from './flows.mjs';
+import { OPERATION_PARTS, partList } from './entry-parts.mjs';
+import { operationSequence, sequenceMermaid } from './flows.mjs';
 import { dataBlock } from './render-data.mjs';
 import { dictionaryBlock } from './render-dict.mjs';
 import { appendixBlocks } from './render-appendix.mjs';
@@ -25,6 +25,8 @@ import { topicsChapter, topicsCoverage } from './render-topics.mjs';
 import { EMPTY_APPENDIX } from './appendix.mjs';
 import { NO_HISTORY_FILE } from './history-model.mjs';
 import { EMPTY_TOPICS } from './topics-model.mjs';
+import { automaticLines, notificationsLines, statesLines, unknownsLines, whereLines, whoLines } from './render-sheet.mjs';
+import { chapterBody, unverifiedCoverage } from './render-chapter-entry.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -90,45 +92,24 @@ function operationLines(operation, feature, names, applications, t) {
 }
 
 /** `areaName`: the name of the feature's area when the handbook groups by business domain (the area is then a property of the feature), else null. `findingsPart` is the findings context of render-findings.mjs. `applications` are the system facts' application rows. */
-function entryBlock(feature, entry, map, t, locations, areaName, findingsPart, applications) {
+function entryBlock(feature, entry, map, t, locations, areaName, findingsPart, applications, chapter, technical) {
   const reachText = t(`md.reach.${feature.reach}`);
   const names = new Map(map.features.map((other) => [other.id, other.name]));
   const out = [`### ${inline(feature.name)}`, '', inline(fill(t('md.feature.reach'), { reach: reachText })), ''];
   if (areaName !== null) out.push(inline(fill(t('md.feature.area'), { area: areaName })), '');
   if (feature.label !== undefined) out.push(inline(fill(t('md.feature.label'), { label: feature.label })), '');
+  if (chapter !== undefined) {
+    // A checked /3 entry: not verified, so its chapter and the quick reference of its fact sheet stand where the entry's sections would; its citations are in the chapter text.
+    out.push(...chapterBody({ entry, chapter, names, t, technical }), ...featureFindingsLines(feature.id, findingsPart));
+    return out;
+  }
   if (entry.purpose !== undefined) out.push(`#### ${t('md.section.purpose')}`, '', inline(entry.purpose.text), '');
-  out.push(`#### ${t('md.section.who')}`, '');
-  if (entry.who.length === 0) out.push(t('md.none'), '');
-  else out.push(...entry.who.map((who) => `- ${inline(fill(t('md.who.item'), { role: who.role, can: who.can }))}`), '');
-  out.push(`#### ${t('md.section.where')}`, '');
-  out.push(entry.where.length === 0 ? t('md.none') : entry.where.map((place) => inline(place.label)).join(' > '), '');
+  out.push(...whoLines(entry, t), ...whereLines(entry, t));
   out.push(`#### ${t('md.section.screens')}`, '', ...screensBlock(entry, t));
   out.push(`#### ${t('md.section.operations')}`, '');
   if (entry.operations.length === 0) out.push(t('md.none'), '');
   for (const operation of entry.operations) out.push(...operationLines(operation, feature, names, applications, t));
-  out.push(`#### ${t('md.section.states')}`, '');
-  out.push(entry.states.length === 0
-    ? t('md.none')
-    : table([t('md.table.state'), t('md.table.meaning')], entry.states.map((state) => [state.label, state.meaning])), '');
-  const transitions = transitionList(entry);
-  if (transitions.length > 0) {
-    out.push(`**${t('md.section.transitions')}**`, '');
-    out.push(...transitions.map((x) => `- ${inline(fill(t('md.transition.item'), { from: x.from, to: x.to, by: x.by }))}`), '');
-    out.push(...stateMermaid(stateGraph(entry)), '');
-  }
-  out.push(`#### ${t('md.section.notifications')}`, '');
-  out.push(entry.notifications.length === 0
-    ? t('md.none')
-    : table(
-      [t('md.table.trigger'), t('md.table.recipient'), t('md.table.channel'), t('md.table.content')],
-      entry.notifications.map((n) => [n.trigger, n.recipient, n.channel, n.content]),
-    ), '');
-  out.push(`#### ${t('md.section.automatic')}`, '');
-  if (entry.automatic.length === 0) out.push(t('md.none'), '');
-  else out.push(...entry.automatic.map((a) => `- ${inline(fill(t('md.automatic.item'), { when: a.when, effect: a.effect }))}`), '');
-  out.push(`#### ${t('md.section.unknowns')}`, '');
-  if (entry.unknowns.length === 0) out.push(t('md.none'), '');
-  else out.push(...entry.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
+  out.push(...statesLines(entry, t), ...notificationsLines(entry, t), ...automaticLines(entry, t), ...unknownsLines(entry, t));
   out.push(...featureFindingsLines(feature.id, findingsPart));
   if (locations !== undefined) out.push(`#### ${t('md.locations.heading')}`, '', ...locationLines(locations, t));
   return out;
@@ -217,7 +198,7 @@ function overviewBlock(system, basis, t, locations) {
   return out;
 }
 
-function coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view) {
+function coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view, chapters) {
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureText = (key, feature) => `- ${inline(fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area) }))}`;
   const claimed = map.features.reduce((sum, feature) => sum + feature.candidates.length, 0);
@@ -243,9 +224,10 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics, ou
   }
 
   out.push(`### ${t('md.coverage.unwrittenHeading')}`, '');
-  const unwritten = map.features.filter((feature) => state.features[feature.id].status !== 'verified');
+  // A checked /3 entry is written into the handbook, so it is not unwritten; its own part below says it is not verified.
+  const unwritten = map.features.filter((feature) => state.features[feature.id].status !== 'verified' && !chapters.has(feature.id));
   if (unwritten.length === 0) {
-    out.push(t('md.coverage.allWritten'));
+    out.push(chapters.size === 0 ? t('md.coverage.allWritten') : t('md.none'));
   } else {
     out.push(table(
       [t('md.table.feature'), t('md.table.status')],
@@ -256,6 +238,8 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics, ou
     ));
   }
   out.push('');
+
+  out.push(...unverifiedCoverage(map, chapters, t));
 
   out.push(`### ${t('md.coverage.removedHeading')}`, '');
   out.push(t('md.coverage.untraced'), '');
@@ -296,7 +280,7 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics, ou
  * list of lines (render-outline.mjs), the coverage section is always last and says which outline was used and what it left out. The product view
  * writes no block that only the technical view has.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX, outline }) {
+export function renderHandbook({ map, entries, chapters = new Map(), state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX, outline }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -317,14 +301,14 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     domainsBlock.push(`- **${inline(domain.name)}**`);
     if (domain.features.length === 0) domainsBlock.push(`  - ${t('md.areas.noFeatures')}`);
     for (const id of domain.features) {
-      domainsBlock.push(`  - ${inline(fill(t('md.areas.featureLine'), { name: featureOf.get(id).name, reach: t(`md.reach.${featureOf.get(id).reach}`) }))}`);
+      domainsBlock.push(`  - ${inline(fill(t('md.areas.featureLine'), { name: featureOf.get(id).name, reach: t(`md.reach.${featureOf.get(id).reach}`) }))}${chapters.has(id) ? ` - ${inline(t('md.status.unverified'))}` : ''}`);
     }
   }
   domainsBlock.push('', table([t('md.table.reach'), t('md.table.features')], reachCounts(map).map(({ reach, count }) => [t(`md.reach.${reach}`), String(count)])), '', ...domainPart.intro);
   for (const [at, domain] of entities.domains.entries()) {
     domainsBlock.push(`### ${inline(domain.name)}`, '', ...domainPart.domains[at].lines);
     for (const id of domain.features.filter((one) => entries.has(one))) {
-      domainsBlock.push(...shiftHeadings(entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart, system.applications), 1));
+      domainsBlock.push(...shiftHeadings(entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart, system.applications, chapters.get(id), technical), 1));
     }
   }
   const summaries = summaryBlocks(summary, map, t);
@@ -349,6 +333,6 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     ['recommendations', recommendationsChapter({ findings, remedies, view, t })],
     ...Object.entries(appendixParts),
   ]);
-  const out = [`# ${inline(title)}`, '', ...outlineChapters({ outline, blocks, view }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view)];
+  const out = [`# ${inline(title)}`, '', ...outlineChapters({ outline, blocks, view }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics, outline, view, chapters)];
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }

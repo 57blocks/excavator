@@ -211,7 +211,8 @@ export function CoveragePage({ data }: { data: PageData }) {
   const areaName = new Map(data.areas.map((area) => [area.id, area.name]));
   const itemValues = (feature: PageData['features'][number]) => ({ id: feature.id, name: feature.name, area: areaName.get(feature.area) ?? '' });
   const links = data.features.filter((feature) => feature.reach === 'link');
-  const unwritten = data.features.filter((feature) => feature.status !== 'verified');
+  const unwritten = data.features.filter((feature) => feature.status !== 'verified' && feature.unverified !== true);
+  const unverified = data.features.filter((feature) => feature.unverified === true);
   const removed = coverage.removed.flatMap((group) => {
     const feature = data.features.find((item) => item.id === group.feature);
     return feature === undefined ? [] : [{ feature, items: group.items }];
@@ -277,7 +278,7 @@ export function CoveragePage({ data }: { data: PageData }) {
 
       <section className="section" aria-labelledby="cov-unwritten">
         <h2 className="section-title" id="cov-unwritten">{t('md.coverage.unwrittenHeading')}</h2>
-        {unwritten.length === 0 ? <p className="muted">{t('md.coverage.allWritten')}</p> : (
+        {unwritten.length === 0 ? <p className="muted">{t(unverified.length === 0 ? 'md.coverage.allWritten' : 'md.none')}</p> : (
           <TableScroll label={t('md.coverage.unwrittenHeading')}>
             <thead><tr><th scope="col">{t('md.table.feature')}</th><th scope="col">{t('md.table.status')}</th></tr></thead>
             <tbody>
@@ -291,6 +292,20 @@ export function CoveragePage({ data }: { data: PageData }) {
           </TableScroll>
         )}
       </section>
+
+      {unverified.length > 0 && (
+        <section className="section" aria-labelledby="cov-unverified" data-part="unverified-coverage">
+          <h2 className="section-title" id="cov-unverified">{t('md.coverage.unverifiedHeading')}</h2>
+          <p className="muted">{t('md.coverage.unverifiedCount', { count: unverified.length, total: data.features.length })}</p>
+          <ul className="plain-list">
+            {unverified.map((feature) => (
+              <li key={feature.id}>
+                <a href={nav.feature(feature.id)}>{t('md.coverage.unverifiedItem', { ...itemValues(feature), id: feature.id, name: feature.name, ...(coverage.unverified?.find((row) => row.feature === feature.id)?.notes ?? { number: 0, quote: 0, code: 0, advice: 0, language: 0 }) })}</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="section" aria-labelledby="cov-removed">
         <h2 className="section-title" id="cov-removed">{t('md.coverage.removedHeading')}</h2>

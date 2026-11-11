@@ -140,5 +140,10 @@ export function setUnitState(state, id, value) {
     const root = state.systemFindings?.[systemKey(id)]?.root;
     state.systemFindings = { ...state.systemFindings, [systemKey(id)]: root !== undefined && value.root === undefined ? { ...value, root } : value };
   } else if (isFindingsId(id)) state.findings = { ...state.findings, [featureOfFindings(id)]: value };
-  else state.features[id] = value;
+  else {
+    // The chapter a /3 entry's check recorded (openspec change handbook-free-chapter) stays through every later write of the
+    // feature; only a write that records a chapter of its own (check-entry) replaces it.
+    const chapter = state.features[id]?.chapter;
+    state.features[id] = chapter !== undefined && value.chapter === undefined ? { ...value, chapter } : value;
+  }
 }

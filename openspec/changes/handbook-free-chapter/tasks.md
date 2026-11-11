@@ -6,8 +6,8 @@
 
 ## 2. 拼装与页面
 
-- [ ] 2.1 测试先红：`checked` 的 `/3` 写进手册与页面并带「未核对」；产品视图不带出处；覆盖一节的未核对数与内容问题计数；时序图从正文得出；汇总从 `/3` 得出，与同内容的 `/2` 相同；横切主题读 `/3` 正文项；第 5 阶段不列 `/3`，`slices` 对 `/3` 退出 1
-- [ ] 2.2 `render`、`page-data`、`page-units`、`entities`、`topics-facts`、术语表、待确认问题、`state`、`slices` 按 D0、D10、D11、D12 改
+- [x] 2.1 测试先红：`checked` 的 `/3` 写进手册与页面并带「未核对」；产品视图不带出处；覆盖一节的未核对数与内容问题计数；时序图从正文得出；汇总从 `/3` 得出，与同内容的 `/2` 相同；横切主题读 `/3` 正文项；第 5 阶段不列 `/3`，`slices` 对 `/3` 退出 1
+- [x] 2.2 `render`、`page-data`、`page-units`、`entities`、`topics-facts`、术语表、待确认问题、`state`、`slices` 按 D0、D10、D11、D12 改
 - commit：`feat(excavator-product-handbook): assemble and page unverified free chapters`
 
 ## 3. 领域流程图

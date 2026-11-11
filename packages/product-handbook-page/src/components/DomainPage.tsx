@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { useLinks, useView } from '../lib/links';
 import { useText } from '../lib/text';
-import type { Area, DomainRelation, PageData } from '../lib/types';
+import type { Area, DomainRelation, Feature, PageData } from '../lib/types';
 import { REACHES, findingCategoryKey } from '../lib/types';
 import { Crumbs } from './Crumbs';
 import { FeatureDetail, FeatureScopeProvider } from './FeatureDetail';
@@ -28,8 +28,9 @@ export function DomainPage({ data, domain: group }: { data: PageData; domain: Ar
   const domain = data.entities.domains.find((item) => item.id === group.id);
   const features = data.features.filter((feature) => feature.domain === group.id);
   const own = new Set(features.map((feature) => feature.id));
-  // Only a verified feature has an entry to show; the list says nothing more of the others than they are in the domain.
-  const details = features.filter((feature) => feature.status === 'verified');
+  // Only a verified feature, or a checked /3 entry (written but not verified, and marked so), has an entry to show; the list says nothing more of the others than they are in the domain.
+  const shown = (feature: Feature) => feature.status === 'verified' || feature.unverified === true;
+  const details = features.filter(shown);
   const featureNames = new Map(data.features.map((item) => [item.id, item.name]));
   const featureText = (id: string) => t('md.summary.feature', { id, name: data.features.find((feature) => feature.id === id)?.name ?? '' });
   const featureLink = (id: string) => <a href={nav.feature(id)}>{featureText(id)}</a>;
@@ -92,13 +93,14 @@ export function DomainPage({ data, domain: group }: { data: PageData; domain: Ar
             <ul className="area-features">
               {reached.map((feature) => (
                 <li key={feature.id}>
-                  {feature.status !== 'verified' ? <a href={nav.feature(feature.id)}>{feature.name}</a> : (
+                  {!shown(feature) ? <a href={nav.feature(feature.id)}>{feature.name}</a> : (
                     // The anchor is in this page: a plain fragment would be read as a route, so the click scrolls and keeps the route.
                     <a href={`#${anchorId(feature.id)}`} onClick={(event) => { event.preventDefault(); document.getElementById(anchorId(feature.id))?.scrollIntoView({ block: 'start' }); }}>{feature.name}</a>
                   )}
                   <span className="area-feature-meta">
-                    {feature.status !== 'verified' && <span className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</span>}
-                    {feature.status === 'verified' && <a className="area-feature-page" href={nav.feature(feature.id)}>{t('page.domain.featurePage')}</a>}
+                    {feature.unverified === true && <span className="status-chip" data-status="unverified" data-part="unverified-mark">{t('md.status.unverified')}</span>}
+                    {!shown(feature) && <span className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</span>}
+                    {shown(feature) && <a className="area-feature-page" href={nav.feature(feature.id)}>{t('page.domain.featurePage')}</a>}
                   </span>
                 </li>
               ))}
