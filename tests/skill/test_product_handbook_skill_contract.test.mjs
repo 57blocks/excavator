@@ -448,6 +448,7 @@ describe('excavator-product-handbook skill: the lane writes a free chapter and a
   it('writes one fact per sentence', () => {
     expect(prompt).toContain('**One fact per sentence.**');
     expect(prompt).toContain('A sentence that holds two facts becomes two sentences, each with its own citations.');
+    expect(prompt).toContain('Write the sentences about one thing as one paragraph');
   });
 
   it('asks for a sequence diagram per main operation in the checked subset, or a no-diagram line', () => {
@@ -1693,7 +1694,7 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
   const PINNED = {
     'stages/map.md': '16315c96d2433ef5a78727673d6813bfa8bf0a9879e107cc60f1eb63bc9f7481',
     'sections/overview.md': '2a4f1e07bf2c5d0b65c27028982abff2fdc421b0c91dc78695837282ab46ae66',
-    'sections/features.md': '2aac257402b809f3d03ae11dc9bb085b6da8ea63d1928866f6f97c54866d84fc',
+    'sections/features.md': '33e60f09b28cef4f0a07e51bd53e02c6c241b23b2b97d0b467290acf4cc8b406',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],
