@@ -454,6 +454,8 @@ describe('excavator-product-handbook skill: the lane writes a free chapter and a
     expect(prompt).toContain('The steps of a flow are a numbered list');
     expect(prompt).toContain('paragraphs of at most 3 sentences');
     expect(prompt).not.toContain('Write the sentences about one thing as one paragraph');
+    expect(prompt).toContain('The form changes how the facts are laid out, never how many');
+    expect(prompt).toContain('Never merge several conditions, exceptions, notifications or calculations into one row');
   });
 
   it('asks for a sequence diagram per main operation in the checked subset, or a no-diagram line', () => {
@@ -1699,7 +1701,7 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
   const PINNED = {
     'stages/map.md': '16315c96d2433ef5a78727673d6813bfa8bf0a9879e107cc60f1eb63bc9f7481',
     'sections/overview.md': '2a4f1e07bf2c5d0b65c27028982abff2fdc421b0c91dc78695837282ab46ae66',
-    'sections/features.md': 'f9cba710ac2e6ac6317c42201ff196abceeaba3f5920d2d51189b174d944716f',
+    'sections/features.md': '09ffe2b76f068b715877aa3f32abc04e8ac0100f07fc7407e600539f44f18280',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],
