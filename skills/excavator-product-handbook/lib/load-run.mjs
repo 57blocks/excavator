@@ -24,6 +24,7 @@ import { memberDirectories } from './banned-words.mjs';
 import { loadCandidates } from './candidates.mjs';
 import { loadDomains } from './domains-check.mjs';
 import { chapterPath } from './chapter-file.mjs';
+import { loadDomainFlows } from './domain-flows-check.mjs';
 import { checkEntryFile, entryPath } from './entry-check.mjs';
 import { adviceWordsOf } from './findings-check.mjs';
 import { findingsId } from './findings-shape.mjs';
@@ -45,7 +46,7 @@ import { OVERVIEW_ID, featureOfFindings, isFindingsId, isSystemId, unitFor, unit
  * feature id -> the findings file of each verified findings unit; systemFindings: unit id `app<n>.system` -> the file of each verified system unit; domains: the
  * business domains of domains.json when it passes check-domains, null otherwise, which
  * groups the outputs by the map's areas instead; entries:
- * id -> entry of each verified feature, and of the overview under `overview`, and of each checked /3 feature (not verified; `chapters`: id -> `{ text, items, notes }` of exactly those); candidates: candidates.json's items;
+ * id -> entry of each verified feature, and of the overview under `overview`, and of each checked /3 feature (not verified; `chapters`: id -> `{ text, items, notes }` of exactly those); domainFlows: `{ status: 'none' | 'failed' }` or `{ status: 'checked', models }` (domain-flows-check.mjs); candidates: candidates.json's items;
  * ui: the strings table; priority: `{ status, doc, unranked }` of the ranking of the findings (priority-state.mjs); remedies: `{ status, doc, dropped, factsDigest }` of the remedies (remedies-state.mjs); topics: `{ lanes }` of the topics lanes (topics-state.mjs); check: the facts a check of reader text needs,
  * `{ files, memberDirs, languageCheck, mapLabels }`) or `{ ok: false, lines }` with every reason. Throws a
  * UsageError for an out directory or state that does not exist.
@@ -133,6 +134,8 @@ export function loadCheckedRun(outDirArg, root) {
     chapters.set(id, { text: readFileSync(join(outDir, chapterPath(id)), 'utf-8'), items: result.chapter.items, notes: result.chapter.notes });
   }
   if (problems.length > 0) return { ok: false, lines: problems };
+  // The domain flow diagrams (openspec change handbook-free-chapter) are checked again against the entries as they are now, and never a reason to refuse a run: one that no longer passes reads as failed.
+  const domainFlows = loadDomainFlows(outDir, state, { map, domains: domains.doc, entries, chapters });
   // The ranking of the findings (openspec change handbook-findings-priority) is never a reason to refuse a run: a ranking that is not verified, or whose file is not the one the judges saw, is no ranking.
   const priority = loadPriority(outDir, state);
   // The remedies (openspec change handbook-remedies) are the same: never a reason to refuse a run; whether they are for the current facts is decided where the facts are built (remedies-model.mjs).
@@ -140,5 +143,5 @@ export function loadCheckedRun(outDirArg, root) {
   // The topics (openspec change handbook-topics) are the same: never a reason to refuse a run; each lane is current only for the facts it was written for (topics-model.mjs).
   const topics = loadTopics(outDir, state);
   const check = { files, memberDirs, languageCheck, mapLabels: mapChecked.verified };
-  return { ok: true, outDir, map, domains: domains.doc, entries, chapters, findings, systemFindings, priority, remedies, topics, check, state, candidates: candidates.items, ui: ui.strings };
+  return { ok: true, outDir, map, domains: domains.doc, entries, chapters, domainFlows, findings, systemFindings, priority, remedies, topics, check, state, candidates: candidates.items, ui: ui.strings };
 }

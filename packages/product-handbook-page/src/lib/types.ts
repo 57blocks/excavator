@@ -301,6 +301,11 @@ export interface System {
   domains: AreaRow[];
 }
 
+/** The flow diagram of a domain (openspec change handbook-free-chapter, D8): drawn from checked nodes and edges, or failed its checks; a domain with none has no `flow`. */
+export type DomainFlow =
+  | { status: 'failed' }
+  | { status: 'drawn'; nodes: { id: string; kind: 'feature' | 'state' | 'item'; feature: string; label: string }[]; edges: { from: string; to: string; text?: string }[] };
+
 /** A domain (a business domain, or an area of the map when there is no domains file): its features, and the purposes of those that were verified, in the words of their entries. */
 export interface Domain {
   id: string;
@@ -312,6 +317,7 @@ export interface Domain {
   /** The states and transitions of the domain's verified entries, by feature. */
   states?: { feature: string; label: string; meaning: string }[];
   transitions?: { feature: string; from: string; to: string; by: string }[];
+  flow?: DomainFlow;
 }
 
 /** One handoff between a feature of this domain and a feature of another domain, in the words of the verified entry. */

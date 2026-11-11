@@ -1,9 +1,9 @@
 import { layered } from '../lib/layers';
 
 /** A box of the diagram: what it shows, where it links and its kind (the styles tell an external system apart). */
-export interface ChartNode { id: string; label: string; href: string; kind?: 'system' }
-/** An arrow of the diagram; `count`, when given, is drawn on it and links to `href`. */
-export interface ChartEdge { from: string; to: string; count?: number; href?: string }
+export interface ChartNode { id: string; label: string; href: string; kind?: 'system' | 'feature' | 'state' | 'item'; unverified?: boolean }
+/** An arrow of the diagram; `count`, when given, is drawn on it and links to `href`; `text`, when given, is drawn beside it. */
+export interface ChartEdge { from: string; to: string; count?: number; href?: string; text?: string }
 
 /** The size of a box and the gaps between them, in pixels. */
 const WIDTH = 168;
@@ -68,10 +68,14 @@ export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; e
                   <text className="flow-count" x={middle.x} y={middle.y} dy="0.35em" textAnchor="middle">{String(edge.count)}</text>
                 </>
               );
+              const text = edge.text === undefined ? null : (
+                <text className="flow-text" x={middle.x} y={middle.y - 6} textAnchor="middle">{edge.text}</text>
+              );
               return (
                 <g key={at} className="flow-edge" data-edge={`${edge.from} ${edge.to}`} data-back={back.has(at) ? '' : undefined}>
                   <path className="flow-line" d={path} fill="none" />
                   <path className="flow-head" d={head} />
+                  {text}
                   {count !== null && (edge.href === undefined ? count : <a href={edge.href}>{count}</a>)}
                 </g>
               );
@@ -80,7 +84,7 @@ export function FlowChart({ nodes, edges, label, part }: { nodes: ChartNode[]; e
           {nodes.map((node) => {
             const { x, y } = box(node.id);
             return (
-              <a key={node.id} className="flow-node" data-kind={node.kind} href={node.href} title={node.label} style={{ left: x, top: y, width: WIDTH, height: HEIGHT }}>
+              <a key={node.id} className="flow-node" data-kind={node.kind} data-unverified={node.unverified === true ? '' : undefined} href={node.href} title={node.label} style={{ left: x, top: y, width: WIDTH, height: HEIGHT }}>
                 <span>{node.label}</span>
               </a>
             );

@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 
 import { useLinks, useView } from '../lib/links';
 import { useText } from '../lib/text';
-import type { Area, DomainRelation, Feature, PageData } from '../lib/types';
+import type { Area, DomainFlow, DomainRelation, Feature, PageData } from '../lib/types';
 import { REACHES, findingCategoryKey } from '../lib/types';
 import { Crumbs } from './Crumbs';
+import { FlowChart } from './FlowChart';
 import { FeatureDetail, FeatureScopeProvider } from './FeatureDetail';
 import { PriorityBadge } from './PriorityBadge';
 import { Cell, TableScroll } from './Tables';
@@ -84,6 +85,8 @@ export function DomainPage({ data, domain: group }: { data: PageData; domain: Ar
         </ul>
       ), t('md.entities.domains.purposesNote'))}
 
+      {section('domain-flow', t('md.entities.domain.flowHeading'), <DomainFlowBody data={data} flow={domain?.flow} />, domain?.flow?.status === 'drawn' ? t('md.entities.domain.flowNote') : undefined)}
+
       {section('domain-features', t('md.table.features'), features.length === 0 ? <p className="muted">{t('md.areas.noFeatures')}</p> : REACHES.map((reach) => {
         const reached = features.filter((feature) => feature.reach === reach);
         if (reached.length === 0) return null;
@@ -161,6 +164,23 @@ export function DomainPage({ data, domain: group }: { data: PageData; domain: Ar
         </>
       ), t('page.domain.findingsNote'))}
     </article>
+  );
+}
+
+/** The flow diagram of a domain (openspec change handbook-free-chapter, D8) in the layered layout of the overview diagrams; the fixed text when it failed its checks or when there is none. */
+function DomainFlowBody({ data, flow }: { data: PageData; flow: DomainFlow | undefined }) {
+  const t = useText();
+  const nav = useLinks();
+  if (flow === undefined) return <p className="muted">{t('md.entities.domain.flowNone')}</p>;
+  if (flow.status === 'failed') return <p className="muted" data-part="domain-flow-failed">{t('md.entities.domain.flowFailed')}</p>;
+  const unverified = new Set(data.features.filter((feature) => feature.unverified === true).map((feature) => feature.id));
+  return (
+    <FlowChart
+      part="domain-flow-chart"
+      label={t('md.entities.domain.flowHeading')}
+      nodes={flow.nodes.map((node) => ({ id: node.id, label: node.label, href: nav.feature(node.feature), kind: node.kind, unverified: unverified.has(node.feature) }))}
+      edges={flow.edges.map((edge) => ({ from: edge.from, to: edge.to, text: edge.text }))}
+    />
   );
 }
 

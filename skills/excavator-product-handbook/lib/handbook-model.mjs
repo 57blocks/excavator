@@ -31,7 +31,7 @@ export function handbookModel(run, root, views) {
   const scan = scanProject(root);
   const summary = buildSummary(run, root);
   const system = buildSystem(run, root, scan);
-  const entities = buildEntities({ map: run.map, domains: run.domains, entries: run.entries, candidates: run.candidates, summary, system, scan });
+  const entities = buildEntities({ map: run.map, domains: run.domains, domainFlowState: run.domainFlows, entries: run.entries, candidates: run.candidates, summary, system, scan });
   const technical = views.includes('technical');
   const findings = withPriority(buildFindings(run, root, { technical, roots: scan.roots, applicationRows: system.applications }), run.priority);
   // The data section is read once: the technical view shows it, and the remedies' facts count the tables that several applications mention.

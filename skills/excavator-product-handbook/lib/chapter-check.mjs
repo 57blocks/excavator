@@ -90,7 +90,7 @@ export function checkChapter(source, { files, memberDirs = [], languageCheck = n
   if (parsed.diagrams.arrows === 0 && parsed.noDiagram === null) {
     problems.push('every chapter needs a sequence diagram with at least one arrow, or one line <!-- no-diagram: <reason> --> that says why there is none');
   }
-  const items = parsed.items.map((item) => ({ id: item.id, kind: item.kind, text: item.text, claim: item.claim, cites: resolved.get(item.id) }));
+  const items = parsed.items.map((item) => ({ id: item.id, kind: item.kind, text: item.text, claim: item.claim, own: item.own, cites: resolved.get(item.id) }));
   const count = (kind) => parsed.items.filter((item) => item.kind === kind).length;
   const counts = {
     sentences: count('sentence'),

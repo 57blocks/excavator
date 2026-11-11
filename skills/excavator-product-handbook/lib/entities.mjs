@@ -43,17 +43,25 @@ export function owningApplication(dirs, file) {
 /** The count of a Map key `a\0b` kept in the order it was first seen. */
 const bump = (counts, key, by = 1) => counts.set(key, (counts.get(key) ?? 0) + by);
 
+/** The `flow` key of a domain row (openspec change handbook-free-chapter, D8), or nothing. */
+function flowOf(flowState, id) {
+  if (flowState.status === 'failed') return { flow: { status: 'failed' } };
+  const model = flowState.status === 'checked' ? flowState.models.get(id) : undefined;
+  return model === undefined ? {} : { flow: { status: 'drawn', nodes: model.nodes, edges: model.edges } };
+}
+
 /**
  * @param {object} input
  * @param {{ areas: object[], roles: object[], features: object[] }} input.map
  * @param {object | null} [input.domains] a domains.json that passed check-domains; null groups by the map's areas
+ * @param {{ status: string, models?: Map<string, object> }} [input.domainFlowState] the state of the domain flow diagrams (domain-flows-check.mjs): `flow` of a domain row is `{ status: 'failed' }` for every domain when it failed, `{ status: 'drawn', nodes, edges }` for a listed domain when it is checked, and absent otherwise
  * @param {Map<string, object>} input.entries the verified entries by unit id
  * @param {object[]} input.candidates candidates.json's items
  * @param {{ notifications: object[], jobs: object[] }} input.summary
  * @param {{ applications: { dir: string, name: string|null, does: string|null }[], overview: { integrations: object[] } | null }} input.system
  * @param {{ sourceFiles: object[] }} input.scan the project scan (applications.mjs)
  */
-export function buildEntities({ map, domains = null, entries, candidates, summary, system, scan }) {
+export function buildEntities({ map, domains = null, domainFlowState = { status: 'none' }, entries, candidates, summary, system, scan }) {
   const applications = system.applications.map(({ dir, name, does }) => ({ dir, name, does }));
   const dirs = applications.map((application) => application.dir);
   const grouping = domainGrouping(map, domains);
@@ -89,6 +97,7 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
       ...crossings.filter((item) => item.fromDomain === group.id).map((item) => ({ direction: 'out', domain: item.toDomain, from: item.from, to: item.to, text: item.text })),
       ...crossings.filter((item) => item.toDomain === group.id).map((item) => ({ direction: 'in', domain: item.fromDomain, from: item.from, to: item.to, text: item.text })),
     ],
+    ...flowOf(domainFlowState, group.id),
     // The states and transitions of the domain's verified entries (handbook-domain-page D2).
     states: group.features.flatMap((id) => (entries.get(id)?.states ?? []).map((state) => ({ feature: id, label: state.label, meaning: state.meaning }))),
     transitions: group.features.flatMap((id) => (entries.get(id)?.transitions ?? []).map((item) => ({ feature: id, from: item.from, to: item.to, by: item.by }))),

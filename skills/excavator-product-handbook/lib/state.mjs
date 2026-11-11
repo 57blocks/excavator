@@ -32,6 +32,8 @@
  * optional key `remedies`, again an entry of the same form, with the digest of
  * the facts it was written for (`factsDigest`) and the paragraphs the judges did
  * not both accept (`dropped`).
+ * The domain flow diagrams (openspec change handbook-free-chapter) are under the optional key `domainFlows`, `{ status, attempts, reasons }`
+ * (check-domain-flows); a state without it means no attempt was made.
  * The topics of the handbook (openspec change handbook-topics) are under the optional key
  * `topics`, by lane id (a domain's, or `repeated`), each an entry of the same form with the
  * digest of the facts of the lane (`factsDigest`) and the rows the judges did not both accept
@@ -52,6 +54,10 @@ export const FAILURE_STEPS = Object.freeze(['check-entry', 'lane', 'rewrite', 'v
 export const REMOVAL_STEPS = Object.freeze(['verify', 'trace']);
 /** What a removed item records: a verifier's verdict, or `withParent` for an item that went with the item it belongs to. */
 export const REMOVED_VERDICTS = Object.freeze(['unverified', 'contradicted', 'withParent']);
+/** The statuses of the domain flow diagrams (openspec change handbook-free-chapter): `checked`, or `failed` with the reasons of the last attempt. A state without the key means no attempt. */
+export const DOMAIN_FLOWS_STATUSES = Object.freeze(['checked', 'failed']);
+/** The domain flows file gets at most three attempts. */
+export const MAX_FLOW_ATTEMPTS = 3;
 /** A lane gets at most two attempts. */
 export const MAX_ATTEMPTS = 2;
 
@@ -71,6 +77,7 @@ const chapterValid = (chapter) => isObject(chapter) && Array.isArray(chapter.ite
   && (chapter.notes === undefined || (Array.isArray(chapter.notes) && chapter.notes.every((note) => isObject(note) && ['id', 'kind', 'detail'].every((key) => typeof note[key] === 'string'))))
   && chapter.items.every((item) => isObject(item)
   && typeof item.id === 'string' && typeof item.kind === 'string' && typeof item.text === 'string' && typeof item.claim === 'string'
+  && (item.own === undefined || typeof item.own === 'string')
   && Array.isArray(item.cites) && item.cites.every((cite) => isObject(cite) && typeof cite.file === 'string' && typeof cite.passage === 'string'
     && Array.isArray(cite.lines) && cite.lines.length === 2 && cite.lines.every(Number.isInteger)));
 
@@ -158,6 +165,12 @@ const stateProblems = (state) => {
     for (const [lane, entry] of Object.entries(state.topics)) {
       const problem = topicsEntryProblem(lane, entry);
       if (problem !== null) return problem;
+    }
+  }
+  if (state.domainFlows !== undefined) {
+    const flows = state.domainFlows;
+    if (!isObject(flows) || !DOMAIN_FLOWS_STATUSES.includes(flows.status) || !Number.isInteger(flows.attempts) || flows.attempts < 0 || !Array.isArray(flows.reasons) || !flows.reasons.every((reason) => typeof reason === 'string')) {
+      return `domainFlows must be { status (${DOMAIN_FLOWS_STATUSES.join(', ')}), attempts, reasons: [string] }`;
     }
   }
   return state.overview === undefined ? null : entryProblem('overview', state.overview);

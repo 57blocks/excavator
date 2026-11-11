@@ -67,6 +67,10 @@
  *       The same checks for the overview lane itself; records nothing.
  *   check-entry <out> <featureId> --project <root>
  *       Check <out>/entries/<featureId>.json and record the result in state.json.
+ *   check-domain-flows <out> --project <root>
+ *       Check <out>/domain-flows.json, the flow diagram of each domain, node by
+ *       node and edge by edge against the entries and chapters that go into the
+ *       handbook, and record the attempt in state.json (three at most).
  *   check-chapter <out> <featureId> --project <root>
  *       Check <out>/chapters/<featureId>.md, the free chapter of a /3 entry, and
  *       print its counts; records nothing.
@@ -195,6 +199,7 @@ import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { runData } from './lib/data-run.mjs';
 import { checkChapterCommand } from './lib/chapter-command.mjs';
+import { checkDomainFlows } from './lib/domain-flows-command.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { checkDomains } from './lib/domains-check.mjs';
@@ -364,6 +369,17 @@ Commands:
       one sequence diagram or a no-diagram line. Prints each problem with the item
       id, or "<featureId>: chapter ok" and the counts of sentences, table rows,
       citations, diagrams and arrows. Reads and writes no state.json.
+  check-domain-flows <out> --project <root>
+      Check <out>/domain-flows.json, written after the entries and before the
+      outline: for each domain it lists, nodes (a feature, a state of its fact
+      sheet or entry, or a verbatim fragment of one chapter item, at most 24
+      characters) and edges (a hand-over between features, a transition between
+      states, the order of two items of one chapter, or a state label inside an
+      item; an optional text of at most 12 characters taken verbatim from it).
+      Only the entries that go into the handbook count. Prints "domain flows ok:"
+      with the counts, or each problem naming the domain and the node or edge,
+      and a Next: line. Records the attempt in state.json (three at most); a
+      missing file is no attempt.
   try-entry <out> <featureId> --project <root>
       The same checks as check-entry, for the lane to run on its own file
       before it replies. Reads and writes no state.json: it is not an attempt
@@ -777,6 +793,12 @@ const COMMANDS = {
     if (positionals.length !== 2) throw new UsageError('check-entry takes <out> and <featureId>');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkEntry(positionals[0], positionals[1], root)));
+  },
+  'check-domain-flows'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-domain-flows takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkDomainFlows(positionals[0], root)));
   },
   'check-chapter'(args) {
     const { positionals, options } = parseArgs(args, ['project']);

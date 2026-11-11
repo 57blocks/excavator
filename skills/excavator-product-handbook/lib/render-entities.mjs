@@ -51,8 +51,21 @@ export function structureDiagram(entities, t) {
 }
 
 /**
+ * The flow diagram of a domain (openspec change handbook-free-chapter, D8) as a mermaid flowchart of the checked nodes and edges, with its note;
+ * the fixed text that it failed its checks when it did, and the fixed none text for a domain with no diagram.
+ */
+function domainFlowLines(domain, t) {
+  const out = [`#### ${t('md.entities.domain.flowHeading')}`, ''];
+  const { flow } = domain;
+  if (flow === undefined) return [...out, t('md.entities.domain.flowNone'), ''];
+  if (flow.status === 'failed') return [...out, t('md.entities.domain.flowFailed'), ''];
+  const index = new Map(flow.nodes.map((node, at) => [node.id, `N${at}`]));
+  return [...out, t('md.entities.domain.flowNote'), '', ...flowchart([['N', flow.nodes.map((node) => node.label)]], flow.edges.map((edge) => ({ from: index.get(edge.from), to: index.get(edge.to), label: edge.text })))];
+}
+
+/**
  * The domains as the handbook shows them: the notes of the chapter and, for each domain, what it does and its handoffs
- * to and from other domains (handbook-domain-page D1), from the verified entries only. The business flow diagram is a block of its own.
+ * to and from other domains (handbook-domain-page D1), from the verified entries only, and, right after what it does, its flow diagram (domain-flows-check.mjs). The business flow diagram is a block of its own.
  */
 export function domainParts({ map, entities, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
@@ -61,6 +74,7 @@ export function domainParts({ map, entities, t }) {
   const each = entities.domains.map((domain) => {
     const out = [`#### ${t('md.entities.domain.whatItDoes')}`, ''];
     out.push(...bullets(domain.purposes.map((item) => fill(t('md.entities.domain.purposeItem'), { feature: featureText(feature.get(item.feature), t), purpose: inline(item.text) })), t));
+    out.push(...domainFlowLines(domain, t));
     out.push(`#### ${t('md.entities.domain.relationsHeading')}`, '');
     for (const [label, direction] of [['md.entities.domain.gives', 'out'], ['md.entities.domain.gets', 'in']]) {
       const items = (domain.relations ?? []).filter((item) => item.direction === direction);

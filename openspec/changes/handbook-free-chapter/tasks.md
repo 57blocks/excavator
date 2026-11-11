@@ -12,8 +12,8 @@
 
 ## 3. 领域流程图
 
-- [ ] 3.1 测试先红：`check-domain-flows` 的四种边、每种拒绝、3 次不过的固定文字；画图确定性
-- [ ] 3.2 `check-domain-flows`、`stages/domain-flow.md`、领域页与 `handbook.md` 的图
+- [x] 3.1 测试先红：`check-domain-flows` 的四种边、每种拒绝、3 次不过的固定文字；画图确定性
+- [x] 3.2 `check-domain-flows`、状态记录、领域页与 `handbook.md` 的图（运行者的步骤写在第 4 阶段的最后一步，见任务 4）
 - commit：`feat(excavator-product-handbook): domain flow diagrams checked against chapters and fact sheets`
 
 ## 4. 提示词
