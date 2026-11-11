@@ -9,19 +9,25 @@
  * does, so a run resumed with other sections skips the units already done.
  */
 
-/** Sections in run order. `files` are relative to the skill directory; `stages` are shared phase files read first, once. */
+/**
+ * Sections in run order. `file` is relative to the skill directory; `stages` are shared phase files read first, once.
+ * Several sections can share one file (openspec change handbook-one-read): the file is read once, at the place of the row named by
+ * `readAt` (default: the row itself), so the overview, the architecture and the system findings read `sections/system.md` once,
+ * before the features, and the findings read `sections/features.md` at the place of the features.
+ */
 const TABLE = Object.freeze([
-  Object.freeze({ id: 'overview', stages: Object.freeze(['stages/map.md']), file: 'sections/overview.md' }),
+  Object.freeze({ id: 'overview', stages: Object.freeze(['stages/map.md']), file: 'sections/system.md' }),
   Object.freeze({ id: 'features', stages: Object.freeze(['stages/map.md']), file: 'sections/features.md' }),
   Object.freeze({ id: 'data', stages: Object.freeze([]), file: 'sections/data.md' }),
   // The code health (openspec change handbook-history-appendix) is a script section like the data: it reads git and the project files and
   // needs no map, no stage file and no subagent; it is read where the run reaches it, right after the data file.
   Object.freeze({ id: 'history', stages: Object.freeze([]), file: 'sections/history.md' }),
-  // The architecture chapter (openspec change handbook-architecture-chapter) is one writer subagent reading manifests, configuration and
-  // code of every application. Its check reads the run's language and state from the map stage, so it needs the map stage file.
-  Object.freeze({ id: 'architecture', stages: Object.freeze(['stages/map.md']), file: 'sections/architecture.md' }),
-  Object.freeze({ id: 'findings', stages: Object.freeze(['stages/map.md']), file: 'sections/findings.md' }),
-  Object.freeze({ id: 'system-findings', stages: Object.freeze(['stages/map.md']), file: 'sections/system-findings.md' }),
+  // The architecture chapter (openspec change handbook-architecture-chapter) and the system findings are written by the one system writer
+  // that also writes the overview (handbook-one-read, design D2): the same file, read once, where the overview is read.
+  Object.freeze({ id: 'architecture', stages: Object.freeze(['stages/map.md']), file: 'sections/system.md', readAt: 'overview' }),
+  // The findings of a feature are written by the feature's own lane (handbook-one-read, design D1): the features file, read where the features are read.
+  Object.freeze({ id: 'findings', stages: Object.freeze(['stages/map.md']), file: 'sections/features.md', readAt: 'features' }),
+  Object.freeze({ id: 'system-findings', stages: Object.freeze(['stages/map.md']), file: 'sections/system.md', readAt: 'overview' }),
   // The ranking of the findings (openspec change handbook-findings-priority) works on the findings the sections before it wrote, so its
   // phase runs after them: its file is not a READ= file, it is the AFTER_TRACE= line, and it needs no stage file (it reads no map).
   Object.freeze({ id: 'priority', stages: Object.freeze([]), file: 'sections/priority.md', afterTrace: true }),
@@ -65,7 +71,10 @@ export function parseSections(text) {
 export function readPlan(sections) {
   const rows = TABLE.filter((row) => sections.includes(row.id) && row.afterTrace !== true);
   const stages = [...new Set(rows.flatMap((row) => row.stages))];
-  return [...stages, ...rows.map((row) => row.file)];
+  const place = (row) => TABLE.findIndex((other) => other.id === (row.readAt ?? row.id));
+  const files = new Map();
+  for (const row of rows) files.set(row.file, Math.min(files.get(row.file) ?? Infinity, place(row)));
+  return [...stages, ...[...files.keys()].sort((a, b) => files.get(a) - files.get(b))];
 }
 
 /** The files of the sections that run after the trace (Phase 6), read at the end of Phase 6 and not before. */

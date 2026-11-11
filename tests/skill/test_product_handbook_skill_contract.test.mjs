@@ -44,7 +44,7 @@ const skillDir = resolve(repoRoot, 'skills/excavator-product-handbook');
 /** SKILL.md as it is on disk: the shared phases and the Sections part. */
 const skillOwn = readFileSync(resolve(skillDir, 'SKILL.md'), 'utf-8');
 /** The phase files of the sections (openspec change handbook-sections): relative path under the skill directory, in the order a default run reads them. */
-const SECTION_FILES = ['stages/map.md', 'sections/overview.md', 'sections/features.md'];
+const SECTION_FILES = ['stages/map.md', 'sections/system.md', 'sections/features.md'];
 const sectionText = (path) => readFileSync(resolve(skillDir, path), 'utf-8');
 /**
  * The skill as a default run reads it: SKILL.md with the six phase files put
@@ -52,7 +52,7 @@ const sectionText = (path) => readFileSync(resolve(skillDir, path), 'utf-8');
  * order (0, 1, 2, 3, 3c, 3b, 4, 4b, 4c, 4d, 7). Every assertion below that looks for
  * a phase's text looks in the file that holds it.
  */
-const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 7: )/m, [...SECTION_FILES, 'sections/data.md', 'sections/findings.md', 'sections/system-findings.md'].map(sectionText).join(''));
+const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 7: )/m, [...SECTION_FILES, 'sections/data.md'].map(sectionText).join(''));
 const flat = (text) => text.replace(/\s+/g, ' ');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 const tracerAgent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-tracer.md'), 'utf-8');
@@ -99,9 +99,9 @@ describe('excavator-product-handbook skill: structure', () => {
   });
 
   it('has the phases in the order they run: the business domains (3c) and then the system overview (3b) between the map and the entries, and the assembly right after the written sections (no verify or trace phase)', () => {
-    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, '4b', '4c', '4d', 7]);
+    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, '4c', '4b', 7]);
     const titles = [...skill.matchAll(/^## Phase \d+[bcd]?: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Data', 'Findings', 'System findings', 'Assemble, page and reply']);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview, architecture and system findings', 'Entries', 'Findings of features whose entry is already written', 'Data', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
@@ -220,7 +220,7 @@ describe('excavator-product-handbook skill: setup', () => {
 describe('excavator-product-handbook skill: commands', () => {
   const usage = runHandbook(['--help']).stdout;
   const usageCommands = [...new Set([...usage.matchAll(/^ {2}([a-z][a-z-]*) [<[]/gm)].map((match) => match[1]))];
-  const skillCommands = [...new Set([...`${skill}\n${skillOwn}\n${sectionText('sections/history.md')}\n${sectionText('sections/architecture.md')}\n${sectionText('sections/priority.md')}\n${sectionText('sections/remedies.md')}\n${sectionText('sections/topics.md')}`.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
+  const skillCommands = [...new Set([...`${skill}\n${skillOwn}\n${sectionText('sections/history.md')}\n${sectionText('sections/priority.md')}\n${sectionText('sections/remedies.md')}\n${sectionText('sections/topics.md')}`.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
 
   it('names every command handbook.mjs has, and only those', () => {
     expect(usageCommands.length).toBeGreaterThanOrEqual(16);
@@ -358,7 +358,7 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
   it('requires every passage to occur exactly once in its file, and says what to do when it does not', () => {
     expect(prompt).toContain('it must occur **exactly once** in that file');
     expect(prompt).toContain('quote a longer one (the whole line, or the lines around it)');
-    expect(prompt).toContain('Every item of the fact sheet carries its own evidence.');
+    expect(prompt).toContain('Every item of the fact sheet and every finding carries its own evidence.');
     expect(prompt).toContain('never under `.excavator`, `.git`, `node_modules`, `vendor`, `dist` or `build`');
   });
 
@@ -420,8 +420,10 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
   });
 
   it('writes only the lane\'s own entry file and replies with one line', () => {
-    expect(prompt).toContain('Write only `$OUT/chapters/<id>.md` and `$OUT/entries/<id>.json`, and nothing else anywhere.');
-    expect(prompt).toContain('Reply with one line: `<id>: written`, and nothing else.');
+    // handbook-one-read: the lane writes the files its block "Your files" lists (the entry, the findings or both) and replies one line for each group.
+    expect(prompt).toContain('Write only the files listed under **Your files**, and nothing else anywhere.');
+    expect(prompt).toContain('Reply with one line for each file group you wrote and nothing else: `<id>: written` for the chapter and the fact sheet');
+    expect(prompt).toContain('- <the chapter `$OUT/chapters/<id>.md` and the fact sheet `$OUT/entries/<id>.json`, when the lane writes the entry>');
   });
 });
 
@@ -473,7 +475,7 @@ describe('excavator-product-handbook skill: the lane writes a free chapter and a
   it('reads no generated document, sets no file limit and writes both files after try-entry', () => {
     expect(prompt).toContain('nor any other Markdown or document file of the project');
     expect(prompt).toContain('There is no limit on the number of files you open.');
-    expect(prompt).toContain('It runs on both files the same checks the orchestrator runs and records nothing');
+    expect(prompt).toContain('`try-entry` runs on both files the same checks the orchestrator runs and records nothing');
     expect(prompt).toContain('A line that starts `note:` does not fail the check');
     expect(prompt).toContain('never drop a fact only to silence a note');
     expect(prompt).toContain('Screens carry only their names; their fields, rules and flows are in the chapter.');
@@ -545,7 +547,7 @@ describe('excavator-product-handbook skill: dispatch and retry', () => {
 });
 
 describe('excavator-product-handbook skill: the lane listing recipe (run on a real state.json)', () => {
-  const recipe = () => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith('jq -r --arg ids'));
+  const recipe = () => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith('jq -r --arg ids "<ids>" \'($ids | split(" ") | map(select(. != ""))) as $want | .features'));
   const list = (ids) => {
     const run = makeCheckedMapRun();
     try {
@@ -627,7 +629,7 @@ describe('excavator-product-handbook skill: the language of the narrative is che
     // Nothing sits between the instruction paragraph and the shape paragraph.
     expect(prompt.slice(instruction, shape).length).toBeLessThan(500);
     expect(prompt.slice(instruction, shape)).toContain('Labels, screen names, `where` labels and the roles stay exactly as the source and the lists at the end write them.');
-    expect(prompt).toContain('when $LANGUAGE has its own script, it also refuses a narrative value of the fact sheet that is written only in ASCII letters');
+    expect(prompt).toContain('when $LANGUAGE has its own script, they also refuse a narrative value of the fact sheet, and of the findings, that is written only in ASCII letters');
   });
 
   it('names the Next line check-entry prints when the fixed text is not ready, and keeps the two attempt lines', () => {
@@ -826,7 +828,7 @@ describe('excavator-product-handbook skill: the lane prompt asks for citations t
 });
 
 describe('excavator-product-handbook skill: the light scheme (O4 of handbook-light-scheme)', () => {
-  const files = ['SKILL.md', 'stages/map.md', 'stages/outline.md', 'sections/architecture.md', 'sections/data.md', 'sections/features.md', 'sections/findings.md', 'sections/history.md', 'sections/overview.md', 'sections/priority.md', 'sections/remedies.md', 'sections/system-findings.md', 'sections/topics.md'];
+  const files = ['SKILL.md', 'stages/map.md', 'stages/outline.md', 'sections/data.md', 'sections/features.md', 'sections/history.md', 'sections/priority.md', 'sections/remedies.md', 'sections/system.md', 'sections/topics.md'];
   const texts = files.map((path) => [path, sectionText(path)]);
 
   it('names no verifier, tracer or judge agent type', () => {
@@ -874,7 +876,7 @@ describe('excavator-product-handbook skill: the light scheme (O4 of handbook-lig
   });
 
   it('ends each phase at its check: the status lines are checked or failed', () => {
-    for (const path of ['sections/overview.md', 'sections/findings.md', 'sections/system-findings.md', 'sections/priority.md', 'sections/remedies.md', 'sections/topics.md']) {
+    for (const path of ['sections/system.md', 'sections/features.md', 'sections/priority.md', 'sections/remedies.md', 'sections/topics.md']) {
       const lines = [...flat(sectionText(path)).matchAll(/`<status>` is (.+?) in `\$LANGUAGE`/g)].map((match) => match[1]);
       expect(lines.length, path).toBeGreaterThan(0);
       for (const line of lines) expect(line, path).toMatch(/^`checked` or `failed`/);
@@ -1163,8 +1165,8 @@ describe('the handbook verifier agent', () => {
 
 describe('excavator-product-handbook skill: Phase 3c, the business domains (O2 of handbook-map-by-domain)', () => {
   const p = phase('3c');
-  // The map prompt as it was when the domains were added: Phase 3 is not edited by this change, so its text keeps this digest.
-  const MAP_PROMPT_SHA256 = 'b7ed858e6c1db3319f6302221875cddae1be22778bb05bb7af9d41855c8ca7cc';
+  // The map prompt, frozen again by openspec change handbook-one-read (D5: a feature can have several entries that are not connected in the code).
+  const MAP_PROMPT_SHA256 = '2930ac4e46bb5a67070cf46fe46c24f08801a6234389485a6af97f2b566243a8';
   const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
 
   it('sits after the map and its --features step and before the system overview, says it runs in that order, and starts with the language reminder', () => {
@@ -1174,7 +1176,7 @@ describe('excavator-product-handbook skill: Phase 3c, the business domains (O2 o
     expect(p).toContain('Run this phase after the map has passed `check-map` and before Phase 3b');
   });
 
-  it('leaves the map prompt as it was: the text of Phase 3 has the digest it had before the domains were added', () => {
+  it('freezes the map prompt: the text of Phase 3 has the digest of the last intended change', () => {
     expect(createHash('sha256').update(raw.get(3) ?? '').digest('hex')).toBe(MAP_PROMPT_SHA256);
   });
 
@@ -1253,12 +1255,15 @@ describe('excavator-product-handbook skill: Phase 3c, the business domains (O2 o
   });
 });
 
-describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of handbook-system-overview)', () => {
+describe('excavator-product-handbook skill: Phase 3b, the system layer in one read (O2 of handbook-system-overview, O1 of handbook-one-read)', () => {
+  const text = sectionText('sections/system.md');
   const p = phase('3b');
-  const overviewPrompt = promptBlocks(raw.get('3b') ?? '')[0] ?? '';
+  const systemBlocks = promptBlocks(raw.get('3b') ?? '');
+  const systemPrompt = systemBlocks[0] ?? '';
+  const prompt = flat(systemPrompt);
   const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
   const onState = (line, run) => {
-    const result = spawnSync('bash', ['-c', line.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`)], { encoding: 'utf-8' });
+    const result = spawnSync('bash', ['-c', line.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`).replace('"$OUT/map.json"', `"${join(run.out, 'map.json')}"`)], { encoding: 'utf-8' });
     expect(result.status, result.stderr).toBe(0);
     return result.stdout.trim().split('\n').filter((row) => row !== '');
   };
@@ -1271,11 +1276,15 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     while (cleanups.length > 0) cleanups.pop()();
   };
 
-  it('sits after the map and its --features step and before the entries, with the language reminder first', () => {
+  it('holds Phase 3b only, in an ASCII file with one prompt block, sits after the map and its --features step and before the entries, with the language reminder first', () => {
+    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 3b: System overview, architecture and system findings']);
+    expect(text).not.toMatch(/[^\x00-\x7F]/);
+    expect(systemBlocks).toHaveLength(1);
     expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
     expect(skill.indexOf('## Phase 3b: System overview')).toBeGreaterThan(skill.indexOf('## Phase 3: The map'));
     expect(skill.indexOf('## Phase 3b: System overview')).toBeGreaterThan(skill.indexOf('### `--features`'));
     expect(skill.indexOf('## Phase 3b: System overview')).toBeLessThan(skill.indexOf('## Phase 4: Entries'));
+    expect(skill).not.toMatch(/^## Phase 4[df]: /m);
   });
 
   it('reads the overview state with a recipe that is run on a real state: planned without the key, checked after check-overview', () => {
@@ -1291,12 +1300,25 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     }
   });
 
+  it('reads the architecture state with a recipe that is run on a real state', () => {
+    const line = recipe('jq -r \'(.architecture // {status: "planned", attempts: 0})');
+    expect(line).toBeDefined();
+    const run = track(overviewRun([]));
+    try {
+      expect(onState(line, run)).toEqual(['planned\t0']);
+    } finally {
+      clean();
+    }
+  });
+
   it('skips a checked, confirmed or verified overview, resumes a dispatched one that wrote, and allows two attempts', () => {
-    expect(p).toContain('`checked`, `confirmed` or `verified`: the overview is not written again; go to Phase 4.');
-    expect(p).toContain('`dispatched` with `$OUT/entries/overview.json` present (an earlier run stopped after the subagent wrote): go to step 3 as if it had just returned.');
+    expect(p).toContain('`checked`, `confirmed` or `verified`: not written again.');
+    expect(p).toContain('`dispatched` with `$OUT/entries/overview.json` present (an earlier run stopped after the subagent wrote): check it first');
     expect(p).toContain('`failed` with `attempts` 1');
-    expect(p).toContain('Any other state with `attempts` below 2: step 2.');
-    expect(p).toContain('never a third attempt');
+    expect(p).toContain('Any other state with `attempts` below 2: it is written.');
+    expect(p).toContain('Never make a further attempt.');
+    expect(p).toContain('`failed` with `attempts` 3: leave it as it is');
+    expect(p).toContain('never an attempt beyond the third');
   });
 
   it('is written whatever --features says, and is told so in Options', () => {
@@ -1304,70 +1326,93 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     expect(flat(skill.split(/^## Options$/m)[1].split(/^## Sources$/m)[0])).toContain('The system overview is not a feature: this option never skips it (Phase 3b).');
   });
 
-  it('prints the application roots, deletes the old file, records the dispatch and dispatches in the foreground, in that order', () => {
-    const step2 = p.slice(p.indexOf('2. Print what the prompt below needs'), p.indexOf('3. When the subagent returns'));
-    const order = [`${HANDBOOK} applications "$PROJECT_ROOT"`, `${HANDBOOK} names "$PROJECT_ROOT"`, 'rm -f "$OUT/entries/overview.json"', `${HANDBOOK} mark "$OUT" overview dispatched --project "$PROJECT_ROOT"`];
-    const at = order.map((text) => step2.indexOf(text));
+  it('prints the inputs, deletes the old files, records the dispatches and dispatches ONE subagent in the foreground, in that order', () => {
+    const step2 = p.slice(p.indexOf('2. Print what the prompt below needs'), p.indexOf('3. Wait for the subagent'));
+    const order = [`${HANDBOOK} applications "$PROJECT_ROOT"`, `${HANDBOOK} names "$PROJECT_ROOT"`, 'rm -f "$OUT/entries/overview.json"', 'rm -f "$OUT/chapters/architecture.md" "$OUT/architecture.json"', `${HANDBOOK} mark "$OUT" overview dispatched --project "$PROJECT_ROOT"`, `${HANDBOOK} mark "$OUT" <id> dispatched --project "$PROJECT_ROOT"`];
+    const at = order.map((one) => step2.indexOf(one));
     expect(at.every((index) => index > -1)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    expect(step2).toContain('dispatch one `excavator-handbook-writer` subagent in the foreground (never in the background');
+    expect(step2).toContain('dispatch ONE `excavator-handbook-writer` subagent in the foreground (never in the background');
+    expect(step2).toContain('never one subagent per file or per application');
   });
 
-  it('checks the file with check-overview and quotes the Next lines the script prints', () => {
+  it('checks every file with its own command and quotes the Next lines the scripts print', () => {
     expect(p).toContain(`${HANDBOOK} check-overview "$OUT" --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`${HANDBOOK} check-architecture "$OUT" --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`${HANDBOOK} check-system-findings "$OUT" <id> --project "$PROJECT_ROOT"`);
     expect(p).toContain(`\`${nextLine('overview', 0)}\``);
     expect(p).toContain(`\`${nextLine('overview', 2)}\``);
-    expect(p).toContain(RETRY_HEADING);
-    expect(p).toContain('Never edit `entries/overview.json` or `state.json` yourself');
+    expect(p).toContain('Never edit `entries/overview.json`, `chapters/architecture.md`, `architecture.json`, `entries/<id>.json` or `state.json` yourself');
   });
 
-  it('gives the subagent a prompt with the budget, the things it must not read, the one file it writes and the command it runs first', () => {
-    expect(overviewPrompt).not.toBe('');
-    expect(overviewPrompt).toContain('Open at most 30 files that are not build manifests, in all; searches do not count.');
-    expect(overviewPrompt).toContain('Never read anything under `.excavator/`');
-    expect(overviewPrompt).toContain('never read a document that an Excavator skill generated');
-    expect(overviewPrompt).toContain('never read an explanatory document: no `.md`, `.mdx`, `.txt`, `.rst` or `.adoc` file and no docs folder');
-    expect(overviewPrompt).toContain('never run, build or change anything in the project');
-    expect(overviewPrompt).toContain('Write only `$OUT/entries/overview.json`, and nothing else anywhere. Reply with one line: `overview: written`, and nothing else.');
-    expect(overviewPrompt).toContain(`${HANDBOOK} try-overview "$OUT" --project "$PROJECT_ROOT"`);
-    expect(overviewPrompt).toContain('until it prints `overview: ok`');
-    for (const text of ['the application roots below', 'External SDKs'.toLowerCase(), 'build manifests', 'entry files']) expect(overviewPrompt.toLowerCase()).toContain(text.toLowerCase());
+  it('asks again only for the files that did not pass: one more dispatch, the failed files in Your files, the passed ones untouched', () => {
+    const step4 = p.slice(p.indexOf('4. When the checks of the files left some units'), p.indexOf('5. Tell the user'));
+    expect(step4).toContain('dispatch ONE `excavator-handbook-writer` subagent again');
+    expect(step4).toContain(`\`${RETRY_HEADING}\``);
+    expect(step4).toContain('lists only the files of those units');
+    expect(step4).toContain('a file that passed (`checked` or `verified`) is not asked for again and its state stays');
+    expect(step4).toContain('Never a further dispatch for a unit that has used its attempts.');
   });
 
-  it('shows a JSON example that the overview shape check accepts, with every key present', () => {
-    const example = blocks(overviewPrompt, 'json')[0];
-    expect(example).toBeDefined();
-    const doc = JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]'));
-    expect(overviewShapeProblems(doc)).toEqual([]);
-    expect(Object.keys(doc)).toEqual(['format', 'id', 'name', 'summary', 'audiences', 'applications', 'integrations', 'unknowns']);
-    expect(overviewPrompt).toContain('Every key is always there');
+  it('gives the subagent a prompt with the budgets, the things it must not read, the files it writes and the commands it runs first', () => {
+    expect(prompt).toContain('the overview, at most 30 files that are not build manifests');
+    expect(prompt).toContain('each system findings file, at most 20 files that are not seed files of its application');
+    expect(prompt).toContain('the architecture chapter has no limit on the number of files');
+    expect(prompt).toContain('Never read anything under `.excavator/`');
+    expect(prompt).toContain('never read a document that an Excavator skill generated');
+    expect(prompt).toContain('never read an explanatory document of the project (README, AGENTS, docs folders, `.md`, `.mdx`, `.txt`, `.rst`, `.adoc`)');
+    expect(prompt).toContain('never run, build or change anything in the project');
+    expect(prompt).toContain('never list or walk a directory');
+    expect(prompt).toContain('Exclude `.excavator`, `.git`, `node_modules`, `vendor`, `dist` and `build` from every search');
+    expect(prompt).toContain('Write only the files listed in **Your files**, and nothing else anywhere.');
+    expect(prompt).toContain('`overview: written`, `architecture: written`, `<id>: written`');
+    expect(prompt).toContain(`${HANDBOOK} try-overview "$OUT" --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain(`${HANDBOOK} try-architecture "$OUT" --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain(`${HANDBOOK} try-system-findings "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain('at most 5 runs for each file');
+    for (const one of ['the application roots below', 'external sdks', 'build manifests', 'entry files']) expect(prompt.toLowerCase()).toContain(one);
+  });
+
+  it('shows a JSON example for each of the three file kinds that the shape checks accept, with every key present', () => {
+    const [overviewExample, architectureExample, findingsExample] = blocks(systemPrompt, 'json');
+    expect(overviewExample).toBeDefined();
+    const filled = (example) => JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]'));
+    const overview = filled(overviewExample);
+    expect(overviewShapeProblems(overview)).toEqual([]);
+    expect(Object.keys(overview)).toEqual(['format', 'id', 'name', 'summary', 'audiences', 'applications', 'integrations', 'unknowns']);
+    expect(Object.keys(filled(architectureExample))).toEqual(['format', 'components', 'links', 'unknowns']);
+    const findings = JSON.parse(findingsExample.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]').replace('<one of the words above>', 'other').replace('<id>', 'app1.system'));
+    expect(findingsShapeProblems(findings)).toEqual([]);
+    expect(Object.keys(findings)).toEqual(['format', 'id', 'findings', 'unknowns']);
+    expect(findings.id).toBe('app1.system');
+    expect(findings.format).toBe(FINDINGS_FORMAT);
+    expect(prompt).toContain('Every key is always there');
   });
 
   it('states the conservation, the system-name, the callers and the no-document rules the script checks', () => {
-    expect(overviewPrompt).toContain('Every application root listed above must be covered');
-    expect(overviewPrompt).toContain('Two applications never name the same directory');
-    expect(overviewPrompt).toContain('the name must occur in the item\'s own passages');
-    expect(overviewPrompt).toContain('`callers` lists the `dir` of each listed application that calls it, at least one');
-    expect(overviewPrompt).toContain('never a document (`.md`, `.mdx`, `.txt`, `.rst`, `.adoc`)');
-    expect(overviewPrompt).toContain('exactly once');
-    expect(overviewPrompt).toContain('Arabic numerals');
+    expect(prompt).toContain('Every application root listed above must be covered');
+    expect(prompt).toContain('Two applications never name the same directory');
+    expect(prompt).toContain('the name must occur in the item\'s own passages');
+    expect(prompt).toContain('`callers` lists the `dir` of each listed application that calls it, at least one');
+    expect(prompt).toContain('never a document (`.md`, `.mdx`, `.txt`, `.rst`, `.adoc`)');
+    expect(prompt).toContain('exactly once');
+    expect(prompt).toContain('Arabic numerals');
   });
 
   // O2 of handbook-system-name: the prompt gives the candidates and the rules of the name.
   it('prints the name candidates for the prompt and gives the rules of the name: a candidate, copied, its line, the full name, never unresolved, null with unknowns', () => {
-    expect(overviewPrompt).toContain('The name candidates (value, source, file and line, resolved or unresolved): <the output of the names command, as printed>');
-    expect(overviewPrompt).toContain('`text` is the value of one candidate, copied exactly as the list prints it');
-    expect(overviewPrompt).toContain('`evidence` is exactly one passage, not several: the line of that candidate in its file');
-    expect(overviewPrompt).toContain('Choose the full product name a reader would recognise rather than a package name, a module name or an abbreviation');
-    expect(overviewPrompt).toContain('never choose a candidate marked `unresolved`');
-    expect(overviewPrompt).toContain('write `"name": null` and add an item to `unknowns`');
-    expect(overviewPrompt).toContain('never from a document, a directory name or your own wording');
-    expect(overviewPrompt).toContain('none of the reader-text rules below applies to it');
+    expect(prompt).toContain('The name candidates (value, source, file and line, resolved or unresolved): <the output of the names command, as printed>');
+    expect(prompt).toContain('`text` is the value of one candidate, copied exactly as the list prints it');
+    expect(prompt).toContain('`evidence` is exactly one passage, not several: the line of that candidate in its file');
+    expect(prompt).toContain('Choose the full product name a reader would recognise rather than a package name, a module name or an abbreviation');
+    expect(prompt).toContain('never choose a candidate marked `unresolved`');
+    expect(prompt).toContain('write `"name": null` and add an item to `unknowns`');
+    expect(prompt).toContain('never from a document, a directory name or your own wording');
+    expect(prompt).toContain('none of the reader-text rules above applies to it');
   });
 
   it('records the overview as checked, which is final, and hands it to no later phase', () => {
-    expect(phase('3b')).toContain('the scripts check it and record it `checked`, which is final: the overview goes into the handbook as it was written, marked as not verified');
-    expect(phase('3b')).toContain('`<status>` is `checked` or `failed`');
+    expect(p).toContain('The scripts check it and record it `checked`, which is final: the overview goes into the handbook as it was written, marked as not verified');
     try {
       const run = track(checkedOverviewRun([]));
       expect(run.readJson('state.json').overview.status).toBe('checked');
@@ -1385,31 +1430,179 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     expect(phase(7)).toContain('the system overview, written from the overview and its own counts under its not-verified sentence');
     const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
     expect(table).toContain('computes every count and statistic of the system overview');
-    expect(table).toContain('| One `excavator-handbook-writer` subagent for the system overview (Phase 3b)');
-    expect(table).toContain('`entries/overview.json` | the overview subagent (Phase 3b)');
+    expect(table).toContain('| One `excavator-handbook-writer` subagent for the system (Phase 3b)');
+    expect(table).toContain('`entries/overview.json` | the system subagent (Phase 3b)');
+  });
+
+  // The system findings (openspec change handbook-system-findings), now written in the same read.
+  it('resolves --applications with select, with the list as one single-quoted argument, and stops on exit 1', () => {
+    expect(p).toContain(`${HANDBOOK} select "$OUT" --applications '<the --applications value>' --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`${HANDBOOK} applications "$PROJECT_ROOT"`);
+    expect(p).toContain('Exit 1: tell the user the lines it printed (each item that is not an application root and every root), and stop: dispatch nothing in this phase.');
+    expect(p.indexOf('select "$OUT" --applications')).toBeLessThan(p.indexOf('system-seeds "$OUT"'));
+  });
+
+  it('lists the system findings units with a recipe that is run on a real state: planned without the key, checked after check-system-findings', () => {
+    const line = recipe('jq -r --arg ids "<ids>" \'($ids | split(" ") | map(select(. != ""))) as $units');
+    expect(line).toBeDefined();
+    try {
+      const run = track(checkedSystemRun([], 1));
+      const all = 'app1.system app2.system app3.system';
+      expect(onState(line.replace('<ids>', all), run)).toEqual(['app1.system\tchecked\t0', 'app2.system\tplanned\t0', 'app3.system\tplanned\t0']);
+      expect(onState(line.replace('<ids>', 'app3.system app2.system'), run)).toEqual(['app3.system\tplanned\t0', 'app2.system\tplanned\t0']);
+      expect(run.run('mark', 'app2.system', 'dispatched').status).toBe(0);
+      expect(onState(line.replace('<ids>', 'app2.system'), run)).toEqual(['app2.system\tdispatched\t1']);
+      const fresh = track(systemRun([]));
+      expect(fresh.readState().systemFindings).toBeUndefined();
+      expect(onState(line.replace('<ids>', all), fresh).every((row) => row.endsWith('\tplanned\t0'))).toBe(true);
+      const features = recipe('jq -r \'.features[] | [.id, .name, (.seedFiles | join(", "))] | @tsv\'');
+      expect(features).toBeDefined();
+      expect(onState(features, run)[0]).toBe('F1\tOrders\talpha/src/routes/orders.js, alpha/src/server.js');
+    } finally {
+      clean();
+    }
+  });
+
+  it('finds the seed files with system-seeds, records an application with none as verified without a file to write, and checks with check-system-findings', () => {
+    expect(p).toContain(`${HANDBOOK} system-seeds "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(p).toContain('When it prints nothing, the application has no seed file: the subagent writes no file for it.');
+    expect(p).toContain('prints `<id>: verified (0 findings)`');
+    expect(p).toContain('the run needs `--fresh`');
+    expect(p).toContain('`Next: overview stays failed (2 of 2 attempts)`');
+    expect(p).toContain('`System findings <id> <n>/<N>: <status>`');
+    expect(p).toContain('`Overview: <status>`');
+    expect(p).toContain('`Architecture: <status>`');
+  });
+
+  it('the seed step is run on a real project: the files it prints are the ones the subagent starts with, and an application with none is verified', () => {
+    const run = track(systemRun([]));
+    try {
+      expect(run.run('system-seeds', 'app1.system').lines).toEqual(['alpha/bin/start.js', 'alpha/src/jobs/nightly.js', 'alpha/src/server.js']);
+      expect(run.run('system-seeds', 'app3.system').lines).toEqual([]);
+      expect(run.run('check-system-findings', 'app3.system').lines).toEqual(['app3.system: verified (0 findings)']);
+    } finally {
+      clean();
+    }
+  });
+
+  it('carries the writing rules of the findings lane: what a finding is, the categories, the statement, the evidence, the reading limit, numbers, no code, scope words', () => {
+    for (const phrase of [
+      '**What a finding is.**',
+      'something the code does today that is wrong, that a reader can reproduce from your words',
+      'It is not a matter of style or readability, and not a "may" or "might"',
+      'an application with no defect has an empty list, never pad it',
+      '**The statement.**',
+      'It never says how to change it and never judges it',
+      'For a missing check, cite the whole piece of code that performs the write or the action',
+      'For two places that disagree, cite both.',
+      'When the statement uses a word of scope (all, every, never, always, only and the like, in $LANGUAGE), cite the lines that decide when it happens',
+      'When no passage proves that scope, leave the word out and state only the case the passages show.',
+      'write what is not settled in `unknowns`, and say in `searched`, in plain words, what you did not open',
+    ]) expect(prompt, phrase).toContain(phrase);
+    const listed = [...systemPrompt.matchAll(/^- `([a-z-]+)`: .+$/gm)].map((match) => match[1]);
+    expect(listed).toEqual([...FINDING_CATEGORIES]);
+  });
+
+  it('states the scope of the system findings: the shared parts of one application, every feature with its seed files, a defect of one feature left to that feature\'s lane', () => {
+    expect(prompt).toContain('the defects in the parts of the application that no single feature owns');
+    expect(prompt).toContain('whose root directory is `<dir>`');
+    expect(prompt).toContain('The features of this handbook, each with the seed files its own lane reads, which other lanes write: <id, name and seed files of every feature, one per line>');
+    for (const part of ['start-up and shutdown', 'the reading of configuration', 'the registration of routes and middleware (which group of routes carries which middleware)', 'the registration of scheduled jobs', 'authentication, error handling, the sending of messages, calendar and time zone']) expect(prompt, part).toContain(part);
+    expect(prompt).toContain("A defect that lies only in the code of one feature belongs to that feature's lane: do not write it.");
+    expect(prompt).toContain("A finding cites at least one passage in a file under the application's root directory");
+  });
+
+  it('asks for the stack, the connections, the data, the services, the deployment and sign-in, and never copies a secret value', () => {
+    for (const phrase of [
+      'its language and framework, each with the version its manifest declares',
+      'the port it listens on',
+      'how the frontend reaches each backend',
+      'written per backend',
+      'which backend calls which other backend',
+      'every database: which backends connect to it',
+      'where the table changes are kept',
+      'caches, queues and schedulers',
+      'every external service and every cloud service',
+      'how each application is built and deployed',
+      'sign-in, tokens and permissions',
+      'Write every version and every port with the line that declares it as its citation.',
+      'the deployment and pipeline files, and the environment configuration of each root',
+      'A library in a dependency list proves only that it is declared, not that a service is called.',
+      'Never copy a secret value into any file',
+      'quote only the part of the line before the value',
+      'what is old, unmaintained, risky or wrong',
+    ]) expect(prompt, phrase).toContain(phrase);
+  });
+
+  it('writes the architecture chapter by the same rules as a feature chapter, with a fact sheet of components and links', () => {
+    for (const phrase of [
+      'Every sentence that states a fact ends with its citation group',
+      'A citation covers at most 80 lines',
+      'Backticks are for citations only',
+      '**Shape the text for a reader who scans.**',
+      'paragraphs of at most 3 sentences',
+      'Never use `alt`, `else`, `opt`, `loop`, `par`, `rect`, `note`, `activate`, `autonumber`',
+      '`<!-- no-diagram: <reason> -->`',
+      '"format": "excavator-product-handbook-architecture/1"',
+      '<users | frontend | backend | database | external | cloud>',
+      'Every application root above is exactly one component of kind `frontend` or `backend`',
+      'at most 16 characters',
+    ]) expect(prompt, phrase).toContain(phrase);
+  });
+
+  it('names the architecture, the system findings and the shared file in SKILL.md: the split, the files, the options, the Sections part and the technical structure', () => {
+    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 7: Assemble')));
+    expect(part).toContain('`sections/system.md` holds Phase 3b (the system overview, the architecture chapter and the system findings of each application root, sections `overview`, `architecture` and `system-findings`, written by one subagent in one read');
+    expect(part).toContain('and the system findings units (the ids `app<n>.system`) only when `system-findings` is');
+    expect(part).toContain('`--applications` applies only to the `system-findings` section (Phase 3b)');
+    expect(part).toContain('The `data`, `history` and `architecture` sections have no unit in the state of a run');
+    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('`system-findings` (the defects in the parts of each application that no single feature owns)');
+    expect(options).toContain('`architecture` (a chapter on how the system is built');
+    expect(options).toContain('- `--applications <list>` - write system findings only for these application roots');
+    expect(options).toContain('Phase 3b resolves the list with `select`');
+    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(split).toContain('`sections/system.md` holds Phase 3b');
+    expect(split).toContain('`entries/app<n>.system.json` | the system subagent, for the `<n>`th application root (Phase 3b)');
+    expect(split).toContain('| `chapters/architecture.md` and `architecture.json` | the system subagent (Phase 3b');
+    expect(split).toContain('`check-system-findings` for the system findings of an application root, whose state is under the key `systemFindings` by `app<n>`');
+    expect(flat(skillOwn.split(/^## Phase 1: /m)[0].split(/^## Phase 0: /m)[1])).toContain('`--applications` (`$APPLICATIONS`: the value, or none)');
+    expect(flat(skillOwn)).toContain('the technical structure (the architecture chapter, marked as not verified, with a diagram of its components in layers');
+  });
+
+  it('the commands it names are the commands handbook.mjs has (system-seeds, check-system-findings, try-system-findings)', () => {
+    const usage = runHandbook(['--help']).stdout;
+    for (const command of ['system-seeds', 'check-system-findings', 'try-system-findings']) {
+      expect(usage, command).toMatch(new RegExp(`^ {2}${command} <out> app<n> --project <root>$`, 'm'));
+      expect(`${text}${skillOwn}`, command).toContain(`handbook.mjs" ${command}`);
+    }
+    expect(usage).toMatch(/^ {2}select <out> --applications <list> --project <root>$/m);
+  });
+
+  it('names no model', () => {
+    expect(text).not.toMatch(/\b(opus|sonnet|haiku|fable)\b|claude-[a-z]+-\d/i);
   });
 });
 
 // O2 of openspec change handbook-sections: the phases of each section live in a
-// file of their own, byte for byte as they were in SKILL.md on main. The
-// digests are of the spans of main's SKILL.md (from the phase heading to the
-// line before the next phase's heading, separator and blank line included);
-// a changed word in any of the files changes its digest.
+// file of their own. The digests freeze the text of each file as of the last
+// intended change (openspec change handbook-one-read re-froze them); a changed
+// word in any of the files changes its digest, so an intended edit re-freezes them wholesale.
 describe('excavator-product-handbook skill: sections (O2 of handbook-sections)', () => {
   const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
   const PINNED = {
-    'stages/map.md': '16315c96d2433ef5a78727673d6813bfa8bf0a9879e107cc60f1eb63bc9f7481',
-    'sections/overview.md': '0a0ce1cac1132cadaed59fb33b21c953616b82457d756c6ef7ed566db79346e9',
-    'sections/features.md': '429f89a43ffa0ed4f56c3545c90cbeccbf677ae5c99845b9df5a877413c47879',
+    'stages/map.md': '8ac1407dce434389a93aa11094a818c48d365d4573a9c80fef5596d61eb5e3c0',
+    'sections/system.md': 'b55f4ad07550fc45d246f23f06b79c0ba81b25f8839fa7b8c6b7727c474d0442',
+    'sections/features.md': '4bc5e503f08e4fe05dc3b24076689fd28db1af23f5f5c7c72da0d3081232c7ae',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],
-    'sections/overview.md': ['## Phase 3b: System overview'],
-    'sections/features.md': ['## Phase 4: Entries'],
+    'sections/system.md': ['## Phase 3b: System overview, architecture and system findings'],
+    'sections/features.md': ['## Phase 4: Entries', '## Phase 4c: Findings of features whose entry is already written'],
   };
 
   for (const path of SECTION_FILES) {
-    it(`${path} holds the text SKILL.md had on main, word for word`, () => {
+    it(`${path} is frozen: its text has the digest of the last intended change`, () => {
       expect(digest(sectionText(path))).toBe(PINNED[path]);
     });
 
@@ -1536,12 +1729,11 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
 // JSON example passes the shape check; the units of Phases 5 and 6 include the
 // findings units, with recipes that are run on a real state; rule 1 allows the
 // findings and nothing else.
-describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbook-feature-findings)', () => {
-  const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
-  const text = sectionText('sections/findings.md');
-  const p = phase('4c');
-  const findingsPrompt = promptBlocks(raw.get('4c') ?? '')[0] ?? '';
-  const prompt = flat(findingsPrompt);
+describe('excavator-product-handbook skill: the findings of a feature, written by its lane (O1 of handbook-feature-findings, as changed by handbook-one-read)', () => {
+  const text = sectionText('sections/features.md');
+  const p = phase(4);
+  const p4c = phase('4c');
+  const prompt = flat(lanePrompt);
   const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
   const onState = (line, run) => {
     const result = spawnSync('bash', ['-c', line.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`)], { encoding: 'utf-8' });
@@ -1557,16 +1749,16 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
     while (cleanups.length > 0) cleanups.pop()();
   };
 
-  it('sections/findings.md is pinned, holds Phase 4c only and starts with the language reminder', () => {
-    expect(digest(text)).toBe('c71a8f6863466766bca4bf98c50a57494a415c5089b1e0855dfcca2512f7050d');
-    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4c: Findings']);
-    expect(text.startsWith('## Phase 4c: Findings\n')).toBe(true);
-    expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
-    expect(skill.indexOf('## Phase 4c: Findings')).toBeGreaterThan(skill.indexOf('## Phase 4b: Data'));
-    expect(skill.indexOf('## Phase 4c: Findings')).toBeLessThan(skill.indexOf('## Phase 7: Assemble'));
+  it('sections/features.md holds Phases 4 and 4c, is ASCII, starts with the language reminder in each phase and sits between Phases 4b and 7', () => {
+    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4: Entries', '## Phase 4c: Findings of features whose entry is already written']);
+    expect(text).not.toMatch(/[^\x00-\x7F]/);
+    expect(p4c.startsWith(PHASE_LANGUAGE)).toBe(true);
+    expect(skill.indexOf('## Phase 4c: ')).toBeGreaterThan(skill.indexOf('## Phase 4: Entries'));
+    expect(skill.indexOf('## Phase 4c: ')).toBeLessThan(skill.indexOf('## Phase 4b: Data'));
+    expect(skill.indexOf('## Phase 4c: ')).toBeLessThan(skill.indexOf('## Phase 7: Assemble'));
   });
 
-  it('lists the lanes with a recipe that is run on a real state: planned without the key, checked after check-findings', () => {
+  it('lists the findings units with a recipe that is run on a real state: planned without the key, checked after check-findings', () => {
     const line = recipe('jq -r --arg ids "<ids>" \'($ids | split(" ") | map(select(. != ""))) as $want | (.findings // {})');
     expect(line).toBeDefined();
     try {
@@ -1588,30 +1780,43 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
   it('dispatches with mark and checks with check-findings, quotes the Next lines the script prints and allows two attempts', () => {
     expect(p).toContain(`${HANDBOOK} mark "$OUT" <id>.findings dispatched --project "$PROJECT_ROOT"`);
     expect(p).toContain(`${HANDBOOK} check-findings "$OUT" <id>.findings --project "$PROJECT_ROOT"`);
-    expect(p).toContain(`\`${nextLine('<id>.findings', 0).replace("<id>.findings's", '<id>.findings\'s')}\``);
+    expect(p).toContain(`\`${nextLine('<id>.findings', 0)}\``);
     expect(p).toContain('`Next: <id>.findings stays failed (2 of 2 attempts)`');
     expect(p).toContain(RETRY_HEADING);
-    expect(p).toContain('never make a third attempt'.replace('never', 'Never'));
-    expect(p).toContain('Never edit `entries/<id>.findings.json` or `state.json` yourself');
-    expect(p).toContain('dispatch at most `$CONCURRENCY` lanes'.replace('dispatch', 'Dispatch'));
+    expect(p).toContain('never a third attempt');
+    expect(p).toContain('Never edit `entries/<id>.findings.json` yourself either');
+    expect(p).toContain('Dispatch at most `$CONCURRENCY` lanes in one message');
     expect(p).toContain('never in the background');
+    expect(p).toContain('`Findings <id> <n>/<N>: <status>`');
   });
 
-  it('gives the lane the reading limits of an entry lane, the one file it writes and the command it runs first', () => {
-    expect(findingsPrompt).not.toBe('');
-    expect(prompt).toContain('Open at most 20 files that are not seed files, in all; searches do not count.');
+  it('gives the lane the findings file with the entry in one read: one lane per feature, the two try commands, the files it writes', () => {
+    expect(p).toContain('The code of a feature is read once.');
+    expect(p).toContain('Each feature has one lane in this phase: never a second subagent for the findings of a feature.');
+    expect(prompt).toContain('and the findings of the same feature');
+    expect(prompt).toContain('You read the code of the feature once and write every file you are asked for from that one read.');
+    expect(prompt).toContain('**Your files.** The files you write this time, and no others:');
+    expect(prompt).toContain(`${HANDBOOK} try-entry "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain(`${HANDBOOK} try-findings "$OUT" <id>.findings --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain('until it prints `<id>: ok` (`<id>.findings: ok` for the findings), at most 5 runs for each command');
+    expect(prompt).toContain('Write only the files listed under **Your files**, and nothing else anywhere.');
+    expect(prompt).toContain('`<id>: written` for the chapter and the fact sheet, and `<id>.findings: written` for the findings');
     expect(prompt).toContain('Never read anything under `.excavator/`');
     expect(prompt).toContain('never read a document that an Excavator skill generated');
     expect(prompt).toContain('Read code only; never run, build or change anything in the project.');
     expect(prompt).toContain('Exclude `.excavator`, `.git`, `node_modules`, `vendor`, `dist` and `build` from every search');
-    expect(prompt).toContain('Write only `$OUT/entries/<id>.findings.json`, and nothing else anywhere. Reply with one line: `<id>.findings: written`, and nothing else.');
-    expect(prompt).toContain(`${HANDBOOK} try-findings "$OUT" <id>.findings --project "$PROJECT_ROOT"`);
-    expect(prompt).toContain('until it prints `<id>.findings: ok`, at most 5 runs');
     expect(prompt).toContain('never list or walk a directory');
+    expect(prompt).toContain('a finding cites passages in the seed files and in at most 20 other files in all');
   });
 
-  it('shows a JSON example that the findings shape check accepts, with every key present', () => {
-    const example = blocks(findingsPrompt, 'json')[0];
+  it('asks again only for the file that did not pass, and leaves the passed file and its state alone', () => {
+    expect(p).toContain('is dispatched again only for the file that failed');
+    expect(p).toContain('The state of the file that passed, and the file itself, are not touched: do not delete them and do not mark them.');
+    expect(p).toContain('When both files failed, one re-dispatch asks for both');
+  });
+
+  it('shows a findings JSON example that the findings shape check accepts, with every key present', () => {
+    const example = blocks(lanePrompt, 'json')[1];
     expect(example).toBeDefined();
     const doc = JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]').replace('<one of the words above>', 'other').replace('<id>.findings', 'F1.findings'));
     expect(findingsShapeProblems(doc)).toEqual([]);
@@ -1626,7 +1831,7 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
   });
 
   it('lists every category of the enum, with its meaning, and no other', () => {
-    const listed = [...findingsPrompt.matchAll(/^- `([a-z-]+)`: .+$/gm)].map((match) => match[1]);
+    const listed = [...lanePrompt.matchAll(/^- `([a-z-]+)`: .+$/gm)].map((match) => match[1]);
     expect(listed).toEqual([...FINDING_CATEGORIES]);
   });
 
@@ -1637,15 +1842,15 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
     expect(prompt).toContain('It never says how to change it and never judges it');
     expect(prompt).toContain('For a missing check, cite the whole piece of code that performs the write or the action');
     expect(prompt).toContain('For two places that disagree, cite both.');
-    expect(prompt).toContain('Before you write that something is never checked, never sent or not done, search the whole project');
-    expect(prompt).toContain('write it in `unknowns` with what you `searched`');
+    expect(prompt).toContain('and before you write a finding that something is missing');
+    expect(prompt).toContain('do not write it as a fact or as a finding: write it in `unknowns` with `item` and what you `searched`');
     expect(prompt).toContain('exactly once');
     expect(prompt).toContain('Arabic numerals');
   });
 
   it('records a findings unit as checked, which is final, and hands it to no later phase', () => {
-    expect(phase('4c')).toContain('record the unit `checked` (the id is `<id>.findings` where `<id>` is the feature\'s id), which is final: the findings go into the handbook as they were written, marked as not verified');
-    expect(phase('4c')).toContain('`<status>` is `checked` or `failed` (a unit with no finding counts as checked)');
+    expect(p).toContain('record the unit `checked`, which is final: the findings go into the handbook as they were written, marked as not verified');
+    expect(p).toContain('a unit with the id `<id>.findings`');
     try {
       const run = track(checkedFindingsRun([], 'F1'));
       expect(run.readState().findings.F1.status).toBe('checked');
@@ -1654,210 +1859,33 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
     }
   });
 
+  it('dispatches Phase 4c lanes only for a feature whose entry is already written or when findings is selected without features, with the findings file alone', () => {
+    expect(p4c).toContain('This phase is only for the features whose findings are still to write while Phase 4 gave them no lane in this run');
+    expect(p4c).toContain('In a full run of a fresh output directory every feature got its lane in Phase 4, so this phase dispatches no subagent.');
+    expect(p4c).toContain('It runs only with `findings` in `$SECTIONS`');
+    expect(p4c).toContain('with only the findings file in **Your files**');
+    expect(p4c).toContain('`Findings <id> <n>/<N>: <status>`');
+    expect(p).toContain('with `features` not in `$SECTIONS` it dispatches no lane, and a run that selects `findings` alone goes to Phase 4c.');
+  });
+
   it('allows the findings in rule 1 and nowhere else, and says in the Sections part, the options and the split that the section exists', () => {
     const rule = flat(skillOwn.split('\n').find((line) => line.startsWith('1. **As-Is only, no advice, except the remedies.**')));
     expect(rule).toContain('Never write what the product should do or how to change it, in any part but one: the remedies (Phase 6c) may say what to do, and only about the findings and the computed facts the handbook already lists, each cited.');
-    expect(rule).toContain('Only the findings (Phases 4c and 4d, the Findings chapter of the handbook) say what is wrong with the product, and they state the defect and nothing else; every other part states only what exists.');
+    expect(rule).toContain('Only the findings (Phases 3b and 4, the Findings chapter of the handbook) say what is wrong with the product, and they state the defect and nothing else; every other part states only what exists.');
     const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 7: Assemble')));
-    expect(part).toContain('`sections/findings.md` holds Phase 4c (the findings of each feature, section `findings`), which needs the map');
+    expect(part).toContain('`sections/features.md` holds Phase 4 (the entries, section `features`, and the findings of each feature, section `findings`, written by one lane per feature in one read) and Phase 4c');
     expect(part).toContain('the findings units (the ids `<id>.findings`) only when `findings` is');
     const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
     expect(options).toContain('`findings` (the defects each feature\'s code shows, with their root causes)');
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('| One `excavator-handbook-writer` findings subagent per feature (Phase 4c)');
-    expect(split).toContain('`sections/findings.md` holds Phase 4c');
-    expect(split).toContain('`entries/<id>.findings.json` | the findings subagent of feature `<id>` (Phase 4c)');
+    expect(split).toContain('| One `excavator-handbook-writer` subagent lane per feature (Phase 4)');
+    expect(split).toContain('`sections/features.md` holds Phase 4 (the entries and the findings of each feature, written by one lane per feature) and Phase 4c');
+    expect(split).toContain('`entries/<id>.findings.json` | the lane of feature `<id>` (Phase 4; Phase 4c for a feature whose entry is already written)');
   });
 
-  it('leaves the entry and overview prompts as they were: they still write no defect', () => {
-    expect(lanePrompt).toContain('Give no advice, no opinion and no defect report: never write what the product should do or what is wrong with it.');
-    expect(promptBlocks(raw.get('3b') ?? '')[0]).toContain('Give no advice, no opinion and no defect report: never write what the system should do or what is wrong with it.');
-  });
-});
-
-// O1 of openspec change handbook-system-findings: the system-findings section has
-// its phase in a file of its own, byte for byte as pinned; the lane prompt carries
-// the writing rules of the findings lane word for word and its own scope; the
-// recipes are run on a real state; the units of Phases 5 and 6 include the system
-// findings units; the option --applications is resolved by select.
-describe('excavator-product-handbook skill: Phase 4d, the system findings (O1 of handbook-system-findings)', () => {
-  const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
-  const text = sectionText('sections/system-findings.md');
-  const p = phase('4d');
-  const systemPrompt = promptBlocks(raw.get('4d') ?? '')[0] ?? '';
-  const prompt = flat(systemPrompt);
-  const findingsPromptText = promptBlocks(raw.get('4c') ?? '')[0] ?? '';
-  const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
-  const onState = (line, run) => {
-    const result = spawnSync('bash', ['-c', line.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`).replace('"$OUT/map.json"', `"${join(run.out, 'map.json')}"`)], { encoding: 'utf-8' });
-    expect(result.status, result.stderr).toBe(0);
-    return result.stdout.trim().split('\n').filter((row) => row !== '');
-  };
-  const cleanups = [];
-  const track = (run) => {
-    cleanups.push(run.cleanup);
-    return run;
-  };
-  const clean = () => {
-    while (cleanups.length > 0) cleanups.pop()();
-  };
-
-  it('sections/system-findings.md is pinned, holds Phase 4d only, starts with the language reminder and sits between Phases 4c and 7', () => {
-    expect(digest(text)).toBe('4f632833c2f56761420fb4fcf54c216cb15635f2c9411458be92f618bd334976');
-    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4d: System findings']);
-    expect(text.startsWith('## Phase 4d: System findings\n')).toBe(true);
-    expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
-    expect(skill.indexOf('## Phase 4d: ')).toBeGreaterThan(skill.indexOf('## Phase 4c: Findings'));
-    expect(skill.indexOf('## Phase 4d: ')).toBeLessThan(skill.indexOf('## Phase 7: Assemble'));
-  });
-
-  it('leaves the findings phase as it was: its digest is the one the findings tests pin', () => {
-    expect(digest(sectionText('sections/findings.md'))).toBe('c71a8f6863466766bca4bf98c50a57494a415c5089b1e0855dfcca2512f7050d');
-  });
-
-  it('resolves --applications with select, with the list as one single-quoted argument, and stops on exit 1', () => {
-    expect(p).toContain(`${HANDBOOK} select "$OUT" --applications '<the --applications value>' --project "$PROJECT_ROOT"`);
-    expect(p).toContain(`${HANDBOOK} applications "$PROJECT_ROOT"`);
-    expect(p).toContain('Exit 1: tell the user the lines it printed (each item that is not an application root and every root), and stop: dispatch no lane.');
-    expect(p.indexOf('select "$OUT" --applications')).toBeLessThan(p.indexOf('system-seeds "$OUT"'));
-  });
-
-  it('lists the lanes with a recipe that is run on a real state: planned without the key, checked after check-system-findings', () => {
-    const line = recipe('jq -r --arg ids "<ids>" \'($ids | split(" ") | map(select(. != ""))) as $units');
-    expect(line).toBeDefined();
-    try {
-      const run = track(checkedSystemRun([], 1));
-      const all = 'app1.system app2.system app3.system';
-      expect(onState(line.replace('<ids>', all), run)).toEqual(['app1.system\tchecked\t0', 'app2.system\tplanned\t0', 'app3.system\tplanned\t0']);
-      expect(onState(line.replace('<ids>', 'app3.system app2.system'), run)).toEqual(['app3.system\tplanned\t0', 'app2.system\tplanned\t0']);
-      expect(run.run('mark', 'app2.system', 'dispatched').status).toBe(0);
-      expect(onState(line.replace('<ids>', 'app2.system'), run)).toEqual(['app2.system\tdispatched\t1']);
-      const fresh = track(systemRun([]));
-      expect(fresh.readState().systemFindings).toBeUndefined();
-      expect(onState(line.replace('<ids>', all), fresh).every((row) => row.endsWith('\tplanned\t0'))).toBe(true);
-      const features = recipe('jq -r \'.features[] | [.id, .name, (.seedFiles | join(", "))] | @tsv\'');
-      expect(features).toBeDefined();
-      expect(onState(features, run)[0]).toBe('F1\tOrders\talpha/src/routes/orders.js, alpha/src/server.js');
-    } finally {
-      clean();
-    }
-  });
-
-  it('finds the seed files with system-seeds, records an application with none as verified without a lane, and dispatches with mark and checks with check-system-findings', () => {
-    expect(p).toContain(`${HANDBOOK} system-seeds "$OUT" <id> --project "$PROJECT_ROOT"`);
-    expect(p).toContain('When it prints nothing, the application has no seed file: dispatch no lane for it.');
-    expect(p).toContain(`${HANDBOOK} check-system-findings "$OUT" <id> --project "$PROJECT_ROOT"`);
-    expect(p).toContain('prints `<id>: verified (0 findings)`');
-    expect(p).toContain(`${HANDBOOK} mark "$OUT" <id> dispatched --project "$PROJECT_ROOT"`);
-    expect(p).toContain('the run needs `--fresh`');
-    expect(p).toContain(`\`${nextLine('<id>', 0)}\``.replace("<id>'s", "<id>'s"));
-    expect(p).toContain('`Next: <id> stays failed (2 of 2 attempts)`');
-    expect(p).toContain(RETRY_HEADING);
-    expect(p).toContain('Never make a third attempt.');
-    expect(p).toContain('Never edit `entries/<id>.json` or `state.json` yourself');
-    expect(p).toContain('Dispatch at most `$CONCURRENCY` lanes in one message');
-    expect(p).toContain('never in the background');
-    expect(p).toContain('`System findings <id> <n>/<N>: <status>`');
-  });
-
-  it('the seed step is run on a real project: the files it prints are the ones the lane starts with, and an application with none is verified', () => {
-    const run = track(systemRun([]));
-    try {
-      expect(run.run('system-seeds', 'app1.system').lines).toEqual(['alpha/bin/start.js', 'alpha/src/jobs/nightly.js', 'alpha/src/server.js']);
-      expect(run.run('system-seeds', 'app3.system').lines).toEqual([]);
-      expect(run.run('check-system-findings', 'app3.system').lines).toEqual(['app3.system: verified (0 findings)']);
-    } finally {
-      clean();
-    }
-  });
-
-  it('gives the lane the reading limits of an entry lane, the one file it writes and the command it runs first', () => {
-    expect(systemPrompt).not.toBe('');
-    expect(prompt).toContain('Open at most 20 files that are not seed files, in all; searches do not count.');
-    expect(prompt).toContain('Never read anything under `.excavator/`');
-    expect(prompt).toContain('never read a document that an Excavator skill generated');
-    expect(prompt).toContain('Read code only; never run, build or change anything in the project.');
-    expect(prompt).toContain('Exclude `.excavator`, `.git`, `node_modules`, `vendor`, `dist` and `build` from every search');
-    expect(prompt).toContain('Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one line: `<id>: written`, and nothing else.');
-    expect(prompt).toContain(`${HANDBOOK} try-system-findings "$OUT" <id> --project "$PROJECT_ROOT"`);
-    expect(prompt).toContain('until it prints `<id>: ok`, at most 5 runs');
-    expect(prompt).toContain('never list or walk a directory');
-  });
-
-  it('carries the writing rules of the findings lane word for word: the language line, what a finding is, the categories, the statement, the evidence, the negative statements, the reading limit, numbers, no code, scope words', () => {
-    const paragraphs = (text) => text.split('\n\n');
-    const wanted = ['Write in `$LANGUAGE`', '**What a finding is.**', '**Categories.**', 'Write one JSON file with exactly these keys', 'Every key is always there', '**The statement.**', '**Cite what proves it.**', '**Negative statements.**', '**Following out of the seed files.**', '**Numbers.**', '**No code in reader text.**', '**Evidence.**'];
-    const mine = paragraphs(systemPrompt);
-    for (const start of wanted) {
-      const original = paragraphs(findingsPromptText).find((one) => one.startsWith(start));
-      expect(original, start).toBeDefined();
-      expect(mine, start).toContain(original);
-    }
-    // The scope-word sentence is inside the carried evidence paragraph of the findings lane.
-    expect(prompt).toContain('When the statement uses a word of scope (all, every, never, always, only and the like, in $LANGUAGE), cite the lines that decide when it happens');
-    expect(prompt).toContain('When no passage proves that scope, leave the word out and state only the case the passages show.');
-  });
-
-  it('states its own scope: the shared parts of one application, every feature with its seed files, a defect of one feature left to that feature\'s lane', () => {
-    expect(prompt).toContain('You write the system findings of one application of a product handbook');
-    expect(prompt).toContain('the defects in the parts of the application that no single feature owns');
-    expect(prompt).toContain('whose root directory is `<dir>`');
-    expect(prompt).toContain('The features of this handbook, each with the seed files its own lane reads, which other lanes write: <id, name and seed files of every feature, one per line>.');
-    for (const part of ['start-up and shutdown', 'the reading of configuration', 'the registration of routes and middleware (which group of routes carries which middleware)', 'the registration of scheduled jobs', 'authentication, error handling, the sending of messages, calendar and time zone']) expect(prompt, part).toContain(part);
-    expect(prompt).toContain("A defect that lies only in the code of one feature belongs to that feature's lane: do not write it.");
-    expect(prompt).toContain('A finding cites at least one passage in a file under `<dir>`');
-  });
-
-  it('shows a JSON example that the findings shape check accepts, with every key present and the unit id', () => {
-    const example = blocks(systemPrompt, 'json')[0];
-    expect(example).toBeDefined();
-    const doc = JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]').replace('<one of the words above>', 'other').replace('<id>', 'app1.system'));
-    expect(findingsShapeProblems(doc)).toEqual([]);
-    expect(Object.keys(doc)).toEqual(['format', 'id', 'findings', 'unknowns']);
-    expect(doc.id).toBe('app1.system');
-    expect(doc.format).toBe(FINDINGS_FORMAT);
-  });
-
-  it('lists every category of the enum, with its meaning, and no other', () => {
-    const listed = [...systemPrompt.matchAll(/^- `([a-z-]+)`: .+$/gm)].map((match) => match[1]);
-    expect(listed).toEqual([...FINDING_CATEGORIES]);
-  });
-
-  it('records a system findings unit as checked, which is final, and hands it to no later phase', () => {
-    expect(phase('4d')).toContain('record the unit `checked` (the id is `app<n>.system`, where `<n>` counts the application roots from 1 in the order `applications` prints them), which is final');
-    expect(phase('4d')).toContain('`<status>` is `checked` or `failed` (a unit with no finding counts as checked)');
-    try {
-      const run = track(checkedSystemRun([], 1));
-      expect(run.readState().systemFindings.app1.status).toBe('checked');
-    } finally {
-      clean();
-    }
-  });
-
-  it('says in the Sections part, the options, the split and the files that the section and the option exist', () => {
-    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 7: Assemble')));
-    expect(part).toContain('`sections/system-findings.md` holds Phase 4d (the system findings of each application root, section `system-findings`), which needs the map');
-    expect(part).toContain('and the system findings units (the ids `app<n>.system`) only when `system-findings` is');
-    expect(part).toContain('`--applications` applies only to the `system-findings` section (Phase 4d)');
-    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
-    expect(options).toContain('`system-findings` (the defects in the parts of each application that no single feature owns)');
-    expect(options).toContain('- `--applications <list>` - write system findings only for these application roots');
-    expect(options).toContain('Phase 4d resolves the list with `select`');
-    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('| One `excavator-handbook-writer` system findings subagent per application root (Phase 4d)');
-    expect(split).toContain('`sections/system-findings.md` holds Phase 4d');
-    expect(split).toContain('`entries/app<n>.system.json` | the system findings subagent of the `<n>`th application root (Phase 4d)');
-    expect(split).toContain('`check-system-findings` for the system findings of an application root, whose state is under the key `systemFindings` by `app<n>`');
-    expect(flat(skillOwn.split(/^## Phase 1: /m)[0].split(/^## Phase 0: /m)[1])).toContain('`--applications` (`$APPLICATIONS`: the value, or none)');
-  });
-
-  it('the commands it names are the commands handbook.mjs has (system-seeds, check-system-findings, try-system-findings)', () => {
-    const usage = runHandbook(['--help']).stdout;
-    for (const command of ['system-seeds', 'check-system-findings', 'try-system-findings']) {
-      expect(usage, command).toMatch(new RegExp(`^ {2}${command} <out> app<n> --project <root>$`, 'm'));
-      expect(`${text}${skillOwn}`, command).toContain(`handbook.mjs" ${command}`);
-    }
-    expect(usage).toMatch(/^ {2}select <out> --applications <list> --project <root>$/m);
+  it('keeps the entry and overview parts free of defects: they still write no defect report', () => {
+    expect(prompt).toContain('Give no advice, no opinion and no defect report in the chapter and the fact sheet: never write what the product should do or what is wrong with it there.');
+    expect(flat(promptBlocks(raw.get('3b') ?? '')[0])).toContain('Give no advice, no opinion and no defect report there: never write what the system should do, what is old, unmaintained, risky or wrong.');
   });
 });
 
@@ -2230,103 +2258,80 @@ describe('excavator-product-handbook skill: Phase 6d, the topics (O1 of handbook
   });
 });
 
-describe('excavator-product-handbook skill: Phase 4f, the architecture (O3 of handbook-architecture-chapter)', () => {
-  const text = sectionText('sections/architecture.md');
-  const flatText = flat(text);
-  const prompt = flat(text.slice(text.indexOf('````text')));
+// O1 of openspec change handbook-one-read: the code is read once for each feature and once for the system. The tests read the prompts
+// the skill ships; swapping the prompts back to the ones from before the change (the lane prompt without the findings, the three
+// system prompts, the map prompt without the several-entries sentence) turns each of them red.
+describe('excavator-product-handbook skill: one read for each feature and one for the system (O1 of handbook-one-read)', () => {
+  const features = flat(sectionText('sections/features.md'));
+  const system = flat(sectionText('sections/system.md'));
+  const map = flat(sectionText('stages/map.md'));
+  const featurePrompt = flat(lanePrompt);
+  const systemPrompt = flat(promptBlocks(raw.get('3b') ?? '')[0] ?? '');
+  const SYSTEM_EVENT_SENTENCE = 'When code emits an event, publishes a message or puts a job on a queue, search the whole project for that name, find every listener or consumer, and write one hand-over sentence in the overview or the architecture chapter (who takes over, what it does) without describing that feature\'s own flow.';
+  const EVENT_SENTENCE = 'When code emits an event, publishes a message or puts a job on a queue, search the whole project for that name, find every listener or consumer, and write one hand-over sentence in this chapter (who takes over, what it does) without describing the other feature\'s own flow.';
+  const sectionsOf = (list) => runHandbook(['sections', list]).lines;
 
-  it('holds Phase 4f only and is ASCII', () => {
-    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4f: Architecture']);
-    expect(text).not.toMatch(/[^\x00-\x7F]/);
+  it('every phase file the sections command can print exists, and the four retired prompt files are gone', () => {
+    const printed = new Set();
+    for (const list of ['', 'overview', 'architecture', 'system-findings', 'findings', 'features', 'overview,architecture,system-findings,features,findings']) for (const line of sectionsOf(list)) if (line.startsWith('READ=')) printed.add(line.slice(5));
+    for (const path of printed) expect(existsSync(resolve(skillDir, path)), path).toBe(true);
+    for (const gone of ['overview', 'architecture', 'findings', 'system-findings']) expect(existsSync(resolve(skillDir, `sections/${gone}.md`)), gone).toBe(false);
   });
 
-  it('reads the state, prints the application roots and names, deletes the old files, dispatches one writer and checks both files', () => {
-    const lines = blocks(text, 'bash').join('\n');
-    expect(lines).toContain('(.architecture // {status: "planned", attempts: 0})');
-    expect(lines).toContain(`${HANDBOOK} applications "$PROJECT_ROOT"`);
-    expect(lines).toContain(`${HANDBOOK} names "$PROJECT_ROOT"`);
-    expect(lines).toContain('rm -f "$OUT/chapters/architecture.md" "$OUT/architecture.json"');
-    expect(lines).toContain(`${HANDBOOK} check-architecture "$OUT" --project "$PROJECT_ROOT"`);
-    expect(flatText).toContain('dispatch one `excavator-handbook-writer` subagent in the foreground');
-    expect(flatText).toContain('never an attempt beyond the third');
-    expect(flatText).toContain('Never edit `chapters/architecture.md`, `architecture.json` or `state.json` yourself');
-    expect(flatText).toContain('This section needs the map');
+  it('a full run has one writing dispatch for each feature: the entry and the findings in the same lane, the findings lane only for the rest', () => {
+    expect(features).toContain('Each feature has one lane in this phase: never a second subagent for the findings of a feature.');
+    expect(features).toContain('The code of a feature is read once.');
+    expect(features).toContain('In a full run of a fresh output directory every feature got its lane in Phase 4, so this phase dispatches no subagent.');
+    expect(phase(4)).toContain(`${HANDBOOK} check-entry "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(phase(4)).toContain(`${HANDBOOK} check-findings "$OUT" <id>.findings --project "$PROJECT_ROOT"`);
+    expect(promptBlocks(raw.get(4) ?? '')).toHaveLength(1);
+    expect(promptBlocks(raw.get('4c') ?? '')).toHaveLength(0);
   });
 
-  it('asks for the stack, the connections, the data, the services, the deployment and sign-in', () => {
-    for (const phrase of [
-      'its language and framework, each with the version its manifest declares',
-      'the port it listens on',
-      'how the frontend reaches each backend',
-      'written per backend',
-      'which backend calls which other backend',
-      'every database: which backends connect to it',
-      'where the table changes are kept',
-      'caches, queues and schedulers',
-      'every external service and every cloud service',
-      'how each application is built and deployed',
-      'sign-in, tokens and permissions',
-      'Write every version and every port with the line that declares it as its citation.',
-    ]) expect(prompt).toContain(phrase);
+  it('the feature prompt carries the findings requirements and asks for both try commands in order, entry first', () => {
+    for (const phrase of ['**The findings of the feature.**', '**What a finding is.**', '**Categories.**', '**The statement.**', 'excavator-product-handbook-findings/1']) expect(featurePrompt, phrase).toContain(phrase);
+    const entryTry = featurePrompt.indexOf(`${HANDBOOK} try-entry "$OUT" <id>`);
+    const findingsTry = featurePrompt.indexOf(`${HANDBOOK} try-findings "$OUT" <id>.findings`);
+    expect(entryTry).toBeGreaterThan(-1);
+    expect(findingsTry).toBeGreaterThan(entryTry);
+    expect(featurePrompt).toContain('The parts of this prompt that describe a file you are not asked for do not apply to this run: skip them.');
   });
 
-  it('starts from the manifests and configuration, reads no document and sets no file limit', () => {
-    expect(prompt).toContain('Start with the application roots below and their build manifests');
-    expect(prompt).toContain('the deployment and pipeline files, and the environment configuration of each root');
-    expect(prompt).toContain('There is no limit on the number of files you open');
-    expect(prompt).toContain('Never read anything under `.excavator/`');
-    expect(prompt).toContain('never read a Markdown or other explanatory document of the project');
-    expect(prompt).toContain('A library in a dependency list proves only that it is declared, not that a service is called.');
+  it('a retry asks only for the file that did not pass, in the feature phase and in the system phase', () => {
+    expect(features).toContain('is dispatched again only for the file that failed: the re-dispatch\'s prompt lists only that file in **Your files**');
+    expect(features).toContain('The state of the file that passed, and the file itself, are not touched');
+    expect(system).toContain('The block **Your files** lists only the files of those units: a file that passed (`checked` or `verified`) is not asked for again and its state stays.');
   });
 
-  it('never copies a secret value from configuration', () => {
-    expect(prompt).toContain('Never copy a secret value into the chapter or the fact sheet');
-    expect(prompt).toContain('quote only the part of the line before the value');
+  it('the system layer has one writing dispatch, whatever mix of overview, architecture and system findings the run selects', () => {
+    expect(system).toContain('It is the only dispatch of this phase: never one subagent per file or per application');
+    expect(system).toContain('dispatch ONE `excavator-handbook-writer` subagent in the foreground');
+    expect(promptBlocks(raw.get('3b') ?? '')).toHaveLength(1);
+    for (const phrase of ['### The overview', '### The architecture chapter and its fact sheet', '### The system findings of an application', '**Your files.**']) expect(systemPrompt.replace(/\s+/g, ' ')).toContain(phrase);
   });
 
-  it('gives no advice and no judgement of age or risk', () => {
-    expect(prompt).toContain('Give no advice, no opinion and no defect report');
-    expect(prompt).toContain('what is old, unmaintained, risky or wrong');
+  it('the feature and the system prompts send an event, a message or a queue name to its listeners and ask for one hand-over sentence', () => {
+    expect(featurePrompt).toContain(EVENT_SENTENCE);
+    expect(systemPrompt).toContain(SYSTEM_EVENT_SENTENCE);
+    // The sentence sits inside the paragraph about following the seed files outward.
+    for (const [prompt, sentence] of [[lanePrompt, EVENT_SENTENCE], [promptBlocks(raw.get('3b') ?? '')[0], SYSTEM_EVENT_SENTENCE]]) {
+      const paragraph = prompt.split('\n\n').find((one) => one.startsWith('**Following out of the seed files.**'));
+      expect(paragraph).toBeDefined();
+      expect(flat(paragraph)).toContain(sentence);
+    }
   });
 
-  it('writes the chapter by the same rules as a feature chapter, shaped for a reader who scans', () => {
-    expect(prompt).toContain('Every sentence that states a fact ends with its citation group');
-    expect(prompt).toContain('A citation covers at most 80 lines');
-    expect(prompt).toContain('Backticks are for citations only');
-    expect(prompt).toContain('**Shape the text for a reader who scans.**');
-    expect(prompt).toContain('paragraphs of at most 3 sentences');
-    expect(prompt).toContain('Never use `alt`, `else`, `opt`, `loop`, `par`, `rect`, `note`, `activate`, `autonumber`');
-    expect(prompt).toContain('`<!-- no-diagram: <reason> -->`');
+  it('the map prompt lets one feature hold several entries that the code does not connect, when they serve the same object and task', () => {
+    expect(map).toContain('A feature can have several entries that are not connected in the code: put them in one feature when they handle the same kind of business object for the same reader task, without requiring a code connection');
+    expect(map).toContain('keep them apart when they only touch the same object for different tasks');
   });
 
-  it('asks for a fact sheet of components and links with one component per application root', () => {
-    expect(prompt).toContain('"format": "excavator-product-handbook-architecture/1"');
-    expect(prompt).toContain('<users | frontend | backend | database | external | cloud>');
-    expect(prompt).toContain('Every application root above is exactly one component of kind `frontend` or `backend`');
-    expect(prompt).toContain('at most 16 characters');
-    expect(prompt).toContain('it must occur **exactly once** in that file');
-    expect(prompt).toContain('"unknowns": [{"item":');
-  });
-
-  it('has the writer check both files and reply with one line', () => {
-    expect(prompt).toContain(`${HANDBOOK} try-architecture "$OUT" --project "$PROJECT_ROOT"`);
-    expect(prompt).toContain('until it prints `architecture: ok`');
-    expect(prompt).toContain('Reply with one line: `architecture: written`, and nothing else.');
-  });
-
-  it('is named in SKILL.md: the split, the files, the options, the Sections part and the technical structure', () => {
-    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('`sections/architecture.md` holds Phase 4f');
-    expect(skillOwn).toContain('| `chapters/architecture.md` and `architecture.json` | the architecture subagent (Phase 4f');
-    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
-    expect(options).toContain('`architecture` (a chapter on how the system is built');
-    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 7: Assemble')));
-    expect(part).toContain('`sections/architecture.md` holds Phase 4f (the architecture chapter, section `architecture`), which needs the map');
-    expect(part).toContain('The `data`, `history` and `architecture` sections have no unit in the state of a run');
-    expect(flat(skillOwn)).toContain('the technical structure (the architecture chapter, marked as not verified, with a diagram of its components in layers');
-  });
-
-  it('names no model', () => {
-    expect(text).not.toMatch(/\b(opus|sonnet|haiku|fable)\b|claude-[a-z]+-\d/i);
+  it('keeps the check commands, the state keys and the attempt limits of the units', () => {
+    for (const name of ['check-overview', 'check-architecture', 'check-system-findings', 'check-entry', 'check-findings', 'try-overview', 'try-architecture', 'try-system-findings', 'try-entry', 'try-findings']) {
+      expect(`${features}${system}`, name).toContain(`handbook.mjs" ${name}`);
+    }
+    for (const key of ['.overview', '.architecture', '.systemFindings', '.findings']) expect(`${features}${system}`, key).toContain(key);
+    expect(features).toContain('(attempt 2 of 2)');
+    expect(system).toContain('its limit is 3 attempts');
   });
 });
