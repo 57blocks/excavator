@@ -351,7 +351,7 @@
     "md.findings.category.display": "Interaction and display defects",
     "md.findings.category.time": "Date, time zone and calendar defects",
     "md.findings.category.other": "Other",
-    "md.findings.adviceWords": "should,must,ought,recommend,recommended,recommendation,suggest,suggested,suggestion,consider,fix,improve,improvement,refactor,avoid,better,ideally,preferably,needs to,need to",
+    "md.findings.adviceWords": "should,ought,recommend,recommended,recommendation,suggest,suggested,suggestion,consider,fix,improve,improvement,refactor,avoid,better,ideally,preferably",
     "md.findings.scopeWords": "all,every,each,any,always,never,none,nobody,no one,only,whenever,whatever,every time,will not,won't,cannot,can't,does not,doesn't,instead of,rather than",
     "md.priority.level": "P{rank}",
     "md.priority.unranked": "Unranked",

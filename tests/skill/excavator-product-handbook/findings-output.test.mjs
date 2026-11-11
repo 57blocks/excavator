@@ -26,7 +26,7 @@ writeFileSync(stubPath, STUB);
 afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
 
 const REMOVED_REASON = 'The code shown stores the order.';
-const FAILED_TEXT = 'The admin tool must never be run twice at once.';
+const FAILED_TEXT = 'The admin tool should never be run twice at once.';
 const UNFINISHED_TEXT = 'The interface for other systems deletes by number and always answers success.';
 const ui = JSON.parse(readFileSync(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url), 'utf-8')).strings;
 const CATEGORY_NAMES = Object.keys(ui).filter((key) => key.startsWith('md.findings.category.')).map((key) => ui[key]);

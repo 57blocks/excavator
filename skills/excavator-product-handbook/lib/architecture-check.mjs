@@ -1,10 +1,10 @@
 /**
  * The architecture fact sheet (openspec change handbook-architecture-chapter, D3): `<out>/architecture.json`, the components of
- * the system (users, frontends, backends, databases, external and cloud services) and the links between them, each with passages
+ * the system (users, frontends, backends, shared libraries, databases, external and cloud services) and the links between them, each with passages
  * copied from project files. The chapter `chapters/architecture.md` next to it is checked by `checkChapter` unchanged.
  *
  * Refused (every problem in one run): a wrong shape, a kind outside the list, a repeated component id, an application root that is
- * not exactly one frontend or backend component, an application that is no root, a link whose ends are not declared components, a
+ * not exactly one frontend, backend or library component, an application that is no root, a link whose ends are not declared components, a
  * link to itself, the same direction of a pair twice, a link text over 16 characters, a citation that is missing, outside the
  * project or not in its file. The reader text (labels, stacks, link texts, unknowns) only produces notes, as a chapter does.
  * Pure apart from reading the project through `files`.
@@ -19,11 +19,11 @@ import { arrayOf, literal, nonEmptyString, objectOf, shapeProblems } from './sch
 export const ARCHITECTURE_FILE = 'architecture.json';
 export const ARCHITECTURE_CHAPTER_FILE = 'chapters/architecture.md';
 export const ARCHITECTURE_FORMAT = 'excavator-product-handbook-architecture/1';
-export const KINDS = Object.freeze(['users', 'frontend', 'backend', 'database', 'external', 'cloud']);
+export const KINDS = Object.freeze(['users', 'frontend', 'backend', 'library', 'database', 'external', 'cloud']);
 export const LINK_TEXT_MAX = 16;
 /** The layer each kind is drawn in, from the left. */
-export const LAYER_OF = Object.freeze({ users: 0, frontend: 1, backend: 2, database: 3, external: 3, cloud: 3 });
-const APPLICATION_KINDS = ['frontend', 'backend'];
+export const LAYER_OF = Object.freeze({ users: 0, frontend: 1, backend: 2, library: 2, database: 3, external: 3, cloud: 3 });
+const APPLICATION_KINDS = ['frontend', 'backend', 'library'];
 
 const evidence = arrayOf(objectOf({ file: nonEmptyString, passage: nonEmptyString }));
 // The kind is a string here and checked against the list below, so a wrong kind does not hide the other problems.
@@ -73,10 +73,10 @@ export function architectureProblems(doc, { files, memberDirs = [], languageChec
     if (firstOf.has(component.id)) problems.push(`${path}.id: ${quoted(component.id)} is used more than once (first at components[${firstOf.get(component.id)}])`);
     else firstOf.set(component.id, at);
     if (component.application !== undefined) {
-      if (!APPLICATION_KINDS.includes(component.kind)) problems.push(`${path}.application: only a frontend or a backend has an application root`);
+      if (!APPLICATION_KINDS.includes(component.kind)) problems.push(`${path}.application: only a frontend, a backend or a library has an application root`);
       else if (!applicationRoots.includes(component.application)) problems.push(`${path}.application: ${quoted(component.application)} is not an application root (roots: ${applicationRoots.map(quoted).join(', ') || 'none'})`);
     } else if (APPLICATION_KINDS.includes(component.kind)) {
-      problems.push(`${path}: a frontend or a backend needs an application root (roots: ${applicationRoots.map(quoted).join(', ') || 'none'})`);
+      problems.push(`${path}: a frontend, a backend or a library needs an application root (roots: ${applicationRoots.map(quoted).join(', ') || 'none'})`);
     }
     problems.push(...citationLines(path, component.evidence, files));
     citations += component.evidence.length;
@@ -84,7 +84,7 @@ export function architectureProblems(doc, { files, memberDirs = [], languageChec
   });
   for (const root of applicationRoots) {
     const found = doc.components.filter((component) => APPLICATION_KINDS.includes(component.kind) && component.application === root).length;
-    if (found !== 1) problems.push(`application root ${quoted(root)} is not exactly one frontend or backend component (found ${found})`);
+    if (found !== 1) problems.push(`application root ${quoted(root)} is not exactly one frontend, backend or library component (found ${found})`);
   }
   const pairs = new Map();
   doc.links.forEach((link, at) => {

@@ -94,11 +94,11 @@ describe('check-architecture refuses', () => {
   refuses('an unknown key', (doc) => { doc.extra = 1; }, /unexpected key "extra"/);
   refuses('a kind that is not in the list', (doc) => { doc.components[4].kind = 'cache'; }, /components\[4\]\.kind: "cache" is not a kind/);
   refuses('a repeated component id', (doc) => { doc.components[5].id = 'c1'; }, /components\[5\]\.id: "c1" is used more than once/);
-  refuses('an application root that is not a component', (doc) => { doc.components = doc.components.filter((one) => one.id !== 'c4'); doc.links = doc.links.filter((one) => one.from !== 'c4'); }, /application root "apps\/jobs" is not exactly one frontend or backend component \(found 0\)/);
-  refuses('an application root that two components share', (doc) => { doc.components[3].application = 'apps/api'; }, /application root "apps\/api" is not exactly one frontend or backend component \(found 2\)/);
+  refuses('an application root that is not a component', (doc) => { doc.components = doc.components.filter((one) => one.id !== 'c4'); doc.links = doc.links.filter((one) => one.from !== 'c4'); }, /application root "apps\/jobs" is not exactly one frontend, backend or library component \(found 0\)/);
+  refuses('an application root that two components share', (doc) => { doc.components[3].application = 'apps/api'; }, /application root "apps\/api" is not exactly one frontend, backend or library component \(found 2\)/);
   refuses('an application root that does not exist', (doc) => { doc.components[3].application = 'apps/none'; }, /components\[3\]\.application: "apps\/none" is not an application root/);
-  refuses('an application on a component that is not a frontend or backend', (doc) => { doc.components[4].application = 'apps/api'; }, /components\[4\]\.application: only a frontend or a backend has an application root/);
-  refuses('a frontend or backend without an application root', (doc) => { delete doc.components[1].application; }, /components\[1\]: a frontend or a backend needs an application root/);
+  refuses('an application on a component that is not a frontend or backend', (doc) => { doc.components[4].application = 'apps/api'; }, /components\[4\]\.application: only a frontend, a backend or a library has an application root/);
+  refuses('a frontend or backend without an application root', (doc) => { delete doc.components[1].application; }, /components\[1\]: a frontend, a backend or a library needs an application root/);
   refuses('a link to an undeclared component', (doc) => { doc.links[1].to = 'c9'; }, /links\[1\]\.to: "c9" is not a declared component/);
   refuses('a link from an undeclared component', (doc) => { doc.links[1].from = 'c9'; }, /links\[1\]\.from: "c9" is not a declared component/);
   refuses('a link from a component to itself', (doc) => { doc.links[1].to = 'c2'; }, /links\[1\]: "c2" is linked to itself/);

@@ -132,7 +132,7 @@ export function ArchitecturePage({ data, technical }: { data: PageData; technica
                 id: component.id,
                 label: component.label,
                 href: component.application !== undefined && data.system.applications.some((application) => application.dir === component.application) ? nav.application(component.application) : undefined,
-                kind: component.kind === 'users' || component.kind === 'frontend' || component.kind === 'backend' ? undefined : ('system' as const),
+                kind: component.kind === 'users' || component.kind === 'frontend' || component.kind === 'backend' || component.kind === 'library' ? undefined : ('system' as const),
                 unverified: true,
                 layer: component.layer,
               }))}

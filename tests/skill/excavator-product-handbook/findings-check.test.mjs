@@ -167,7 +167,7 @@ describe('each check has a counter-example', () => {
 
   it('does not write the file of a finding that failed a check anywhere but the lane: the file stays as written', () => {
     const run = findingsRun(cleanups);
-    const doc = set(run.findingsDoc('F1'), 'findings.0.text', 'It must check the role.');
+    const doc = set(run.findingsDoc('F1'), 'findings.0.text', 'It should check the role.');
     run.writeFindings('F1', doc);
     expect(run.run('check-findings', unitId('F1')).status).toBe(1);
     expect(JSON.parse(readFileSync(entryFile(run, unitId('F1')), 'utf-8'))).toEqual(doc);
@@ -230,7 +230,9 @@ describe('the shipped fixed text of the findings', () => {
     for (const category of FINDING_CATEGORIES) expect(typeof shipped[categoryKey(category)], category).toBe('string');
     const words = shipped['md.findings.adviceWords'].split(',').map((word) => word.trim());
     expect(words.length).toBeGreaterThan(5);
-    expect(words).toEqual(expect.arrayContaining(['should', 'must', 'recommend', 'fix']));
+    expect(words).toEqual(expect.arrayContaining(['should', 'recommend', 'fix']));
+    // Rule statements use these words as descriptions (openspec change handbook-run-precision D1).
+    for (const word of ['must', 'need to', 'needs to']) expect(words).not.toContain(word);
     expect(new Set(words).size).toBe(words.length);
   });
 

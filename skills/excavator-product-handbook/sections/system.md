@@ -186,13 +186,13 @@ Write one JSON file, `$OUT/architecture.json`, with exactly these keys, and no o
 ```json
 {
   "format": "excavator-product-handbook-architecture/1",
-  "components": [{"id": "<c1, c2, ...>", "label": "<the name a reader knows it by>", "kind": "<users | frontend | backend | database | external | cloud>", "application": "<an application root above; only on a frontend or backend>", "stack": "<its language, framework and versions, in a few words>", "evidence": E}],
+  "components": [{"id": "<c1, c2, ...>", "label": "<the name a reader knows it by>", "kind": "<users | frontend | backend | library | database | external | cloud>", "application": "<an application root above; only on a frontend, backend or library>", "stack": "<its language, framework and versions, in a few words>", "evidence": E}],
   "links": [{"from": "<a component id>", "to": "<a component id>", "text": "<what goes over it, at most 16 characters>", "evidence": E}],
   "unknowns": [{"item": "<what the code does not settle>", "searched": "<what you searched>"}]
 }
 ```
 
-**Components.** Every application root above is exactly one component of kind `frontend` or `backend`, with `application` set to that root; no other component has `application`. A component of kind `users` is a kind of person or outside program that uses the system, cited at the check or the route that lets it in. A `database` is a database a backend connects to, cited at its connection setting. An `external` is a service of another company; a `cloud` is a hosting, storage, mail, log or content delivery service. `stack` is empty for a component that is not an application. Ids are unique.
+**Components.** Every application root above is exactly one component of kind `frontend`, `backend` or `library`, with `application` set to that root; a `library` is a shared code package that other applications import and that runs no server of its own, and it is drawn beside the backends; no other component has `application`. A component of kind `users` is a kind of person or outside program that uses the system, cited at the check or the route that lets it in. A `database` is a database a backend connects to, cited at its connection setting. An `external` is a service of another company; a `cloud` is a hosting, storage, mail, log or content delivery service. `stack` is empty for a component that is not an application. Ids are unique.
 
 **Links.** A link goes from the component that calls or sends to the component that is called or receives: users to the frontend, the frontend to each backend it calls, a backend to the backend it calls, a backend to each database it connects to and to each service it calls. `from` and `to` are ids of components above, never the same one, and each ordered pair occurs once. `text` says in at most 16 characters what goes over it; the details are in the chapter. Cite the line that makes the call or holds the address.
 

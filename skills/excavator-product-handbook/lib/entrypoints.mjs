@@ -31,6 +31,8 @@ export const KINDS = Object.freeze(['route', 'page', 'job', 'main']);
 export const SKIPPED_DIRECTORIES = Object.freeze(['.git', '.excavator', 'node_modules', 'vendor', 'dist', 'build']);
 export const TEST_FILE = /_test\.go$|\.test\.|\.spec\./;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+/** A line whose trimmed start is a comment opener; only the line start is read, never the extent of a block comment. */
+export const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
 const TEXT_CAP = 200;
 const GRAPH_FILE = join('.excavator', 'knowledge-graph.jsonl');
 const HEADER_CAP_BYTES = 16 * 1024 * 1024;
@@ -317,6 +319,7 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
     const hintPath = `/${file.rel}`.toLowerCase();
     const lines = bytes.toString('utf-8').split('\n').map((raw) => (raw.endsWith('\r') ? raw.slice(0, -1) : raw));
     lines.forEach((line, index) => {
+      if (COMMENT_LINE.test(line)) return;
       for (const group of groupsForFile) {
         for (const entry of group.entries) {
           if (entry.pathHint !== null && !hintPath.includes(entry.pathHint)) continue;

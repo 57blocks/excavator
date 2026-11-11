@@ -1544,8 +1544,8 @@ describe('excavator-product-handbook skill: Phase 3b, the system layer in one re
       'Never use `alt`, `else`, `opt`, `loop`, `par`, `rect`, `note`, `activate`, `autonumber`',
       '`<!-- no-diagram: <reason> -->`',
       '"format": "excavator-product-handbook-architecture/1"',
-      '<users | frontend | backend | database | external | cloud>',
-      'Every application root above is exactly one component of kind `frontend` or `backend`',
+      '<users | frontend | backend | library | database | external | cloud>',
+      'Every application root above is exactly one component of kind `frontend`, `backend` or `library`',
       'at most 16 characters',
     ]) expect(prompt, phrase).toContain(phrase);
   });
@@ -1592,8 +1592,8 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
   const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
   const PINNED = {
     'stages/map.md': '8ac1407dce434389a93aa11094a818c48d365d4573a9c80fef5596d61eb5e3c0',
-    'sections/system.md': 'b55f4ad07550fc45d246f23f06b79c0ba81b25f8839fa7b8c6b7727c474d0442',
-    'sections/features.md': '4bc5e503f08e4fe05dc3b24076689fd28db1af23f5f5c7c72da0d3081232c7ae',
+    'sections/system.md': '6133bf4540af792b617a5f2e0658929a21387b91e1209a2fa020c100d7724e20',
+    'sections/features.md': 'a86a33957b53b6b6e76c7cd32fe576fd359697e1f4dddc07600edc6696009741',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],
@@ -1612,6 +1612,17 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
       expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(heads[path]);
     });
   }
+
+  it('the feature prompt keeps quotation marks for source text only (openspec change handbook-run-precision D5)', () => {
+    const text = flat(sectionText('sections/features.md'));
+    expect(text).toContain('Quotation marks hold only text copied from the source; your own words, translations and summaries take no quotation marks.');
+  });
+
+  it('the architecture prompt names the library kind and the three application kinds (openspec change handbook-run-precision D2)', () => {
+    const text = flat(sectionText('sections/system.md'));
+    expect(text).toContain('<users | frontend | backend | library | database | external | cloud>');
+    expect(text).toContain('exactly one component of kind `frontend`, `backend` or `library`');
+  });
 
   it('SKILL.md no longer holds the bodies of the phases that moved, and keeps the shared ones', () => {
     for (const heading of ['## Phase 3: ', '## Phase 3c: ', '## Phase 3b: ', '## Phase 4: Entries']) expect(skillOwn).not.toContain(heading);
