@@ -44,3 +44,21 @@ export function parseSpec(spec) {
 
 /** The spec with an en dash written as a hyphen: two specs of the same lines are one citation. */
 export const specKey = (spec) => spec.replace(EN_DASH, '-');
+
+export const MAX_CITED_LINES = 80;
+
+const lineCount = (lines) => (lines[lines.length - 1] === '' && lines.length > 1 ? lines.length - 1 : lines.length);
+
+/** `{ cite }` or `{ problem }` for one spec; `files` is the project reader (project-files.mjs). */
+export function resolveSpec(spec, files) {
+  const parsed = parseSpec(spec);
+  if (parsed.problem !== undefined) return parsed;
+  const { file, a, b } = parsed;
+  const read = files.resolve(file);
+  if (!read.ok) return { problem: `citation \`${spec}\`: ${file} ${read.reason}` };
+  const lines = read.text.replace(/\r\n?/g, '\n').split('\n');
+  const count = lineCount(lines);
+  if (a < 1 || b < a || b > count) return { problem: `citation \`${spec}\`: lines ${a}-${b} are not inside ${file}, which has ${count} lines (1 <= a <= b <= ${count})` };
+  if (b - a + 1 > MAX_CITED_LINES) return { problem: `citation \`${spec}\`: ${b - a + 1} lines; cite at most ${MAX_CITED_LINES}, a narrower range` };
+  return { cite: { file, lines: [a, b], passage: lines.slice(a - 1, b).join('\n') } };
+}

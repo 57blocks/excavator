@@ -14,34 +14,18 @@
  */
 
 import { bannedFragments, outsideLabels } from './banned-words.mjs';
-import { parseSpec, specKey } from './chapter-cites.mjs';
+import { MAX_CITED_LINES, resolveSpec, specKey } from './chapter-cites.mjs';
 import { parseChapter } from './chapter-parse.mjs';
 import { wordsIn } from './word-lists.mjs';
 import { narrativeProblem } from './narrative.mjs';
 import { NOT_IN_PROJECT, quoteLocator } from './quote-locator.mjs';
 import { labelOccurs, missingNumbers } from './values.mjs';
 
-export const MAX_CITED_LINES = 80;
+export { MAX_CITED_LINES };
 const QUOTES = [/\u201c([^\u201d]+)\u201d/g, /"([^"]+)"/g, /\u300c([^\u300d]+)\u300d/g];
 
-const lineCount = (lines) => (lines[lines.length - 1] === '' && lines.length > 1 ? lines.length - 1 : lines.length);
-
-/** `{ cite }` or `{ problem }` for one spec; `files` is the project reader (project-files.mjs). */
-function resolveSpec(spec, files) {
-  const parsed = parseSpec(spec);
-  if (parsed.problem !== undefined) return parsed;
-  const { file, a, b } = parsed;
-  const read = files.resolve(file);
-  if (!read.ok) return { problem: `citation \`${spec}\`: ${file} ${read.reason}` };
-  const lines = read.text.replace(/\r\n?/g, '\n').split('\n');
-  const count = lineCount(lines);
-  if (a < 1 || b < a || b > count) return { problem: `citation \`${spec}\`: lines ${a}-${b} are not inside ${file}, which has ${count} lines (1 <= a <= b <= ${count})` };
-  if (b - a + 1 > MAX_CITED_LINES) return { problem: `citation \`${spec}\`: ${b - a + 1} lines; cite at most ${MAX_CITED_LINES}, a narrower range` };
-  return { cite: { file, lines: [a, b], passage: lines.slice(a - 1, b).join('\n') } };
-}
-
 /** The quoted texts of `text`. */
-const quotedTexts = (text) => QUOTES.flatMap((pattern) => Array.from(text.matchAll(pattern), (match) => match[1]));
+export const quotedTexts = (text) => QUOTES.flatMap((pattern) => Array.from(text.matchAll(pattern), (match) => match[1]));
 
 /** A level-1 heading opens with its feature number (F12); the number is a name, not a figure of the product. */
 const FEATURE_NUMBER = /\bF\d+\b/g;

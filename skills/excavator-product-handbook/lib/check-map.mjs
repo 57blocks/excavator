@@ -1,4 +1,4 @@
-/** `handbook.mjs check-map <out> --project <root>`: check map.json against candidates.json and the project, then settle state.json. */
+/** `handbook.mjs check-map <out> --project <root>`: check map.json against candidates.json and the project, and write nothing: state.json belongs to `check`. */
 
 import { existsSync } from 'node:fs';
 
@@ -8,7 +8,6 @@ import { UsageError } from './errors.mjs';
 import { languageGate } from './language-check.mjs';
 import { mapProblems, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
-import { settleState } from './state.mjs';
 
 /**
  * Read and check map.json and candidates.json of `<out>`: `{ ok: true, map,
@@ -33,8 +32,6 @@ export function checkMap(outDir, root) {
   const loaded = loadCheckedMap(outDir, root);
   if (!loaded.ok) return { status: 1, lines: loaded.lines };
   const { map, candidates } = loaded;
-  const stateProblems = settleState(outDir, map.features.map((feature) => feature.id));
-  if (stateProblems.length > 0) return { status: 1, lines: stateProblems };
   const unassigned = map.unassigned.length;
   return {
     status: 0,

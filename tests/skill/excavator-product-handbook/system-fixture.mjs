@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { expect } from 'vitest';
 
-import { clone, runHandbook } from './helpers.mjs';
+import { clone, runHandbook, seedLegacyState } from './helpers.mjs';
 
 export const SYSTEM_FORMAT = 'excavator-product-handbook-findings/1';
 
@@ -130,7 +130,7 @@ export function makeSystemRun() {
     readJson: (name) => JSON.parse(readFileSync(join(out, name), 'utf-8')),
     readState: () => JSON.parse(readFileSync(join(out, 'state.json'), 'utf-8')),
     writeState: (state) => writeJson(join(out, 'state.json'), state),
-    run: (command, ...args) => runHandbook([command, out, ...args, '--project', root]),
+    run: (command, ...args) => seedLegacyState(out, command, runHandbook([command, out, ...args, '--project', root])),
     cleanup: () => rmSync(base, { recursive: true, force: true }),
   };
   run.writeSystem = (n = 1, doc = goodSystemFindings(n)) => writeJson(join(out, 'entries', `${systemId(n)}.json`), doc);

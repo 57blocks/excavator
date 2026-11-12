@@ -9,7 +9,7 @@
  *       Print the entrypoint candidates as JSON (design D2).
  *   check-map <out> --project <root>
  *       Check <out>/map.json: shape, candidate conservation, reach and labels,
- *       roles, seed files, citations, values, banned words; create state.json.
+ *       roles, seed files, citations, values, banned words. Writes no state.json.
  *   check-domains <out> --project <root>
  *       Check <out>/domains.json, the business domains the map's features are
  *       grouped into: shape, ids D1, D2, ..., no empty domain, every map feature
@@ -181,6 +181,7 @@ import { candidatesOutput } from './lib/candidates.mjs';
 import { runData } from './lib/data-run.mjs';
 import { checkArchitecture, tryArchitecture } from './lib/architecture-command.mjs';
 import { checkChapterCommand } from './lib/chapter-command.mjs';
+import { checkCommand } from './lib/check.mjs';
 import { checkDomainFlows } from './lib/domain-flows-command.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
@@ -222,8 +223,7 @@ Commands:
       labels, roles, seed files, citations, values and banned words, and, in a
       language with its own script, that the names and reasons the model wrote
       hold a letter of it (needs a checked <out>/ui.json when the language is
-      not English). Creates <out>/state.json (every feature planned) when the
-      map passes.
+      not English). Writes no file: state.json is created by check.
   check-domains <out> --project <root>
       Check <out>/domains.json against the checked map and the project: the
       shape, the language (the map's), ids D1, D2, ... in order without a gap, no
@@ -360,6 +360,17 @@ Commands:
       The same checks, for the writer to run on its own files before it replies.
       Reads and writes no state.json. Prints "architecture: ok" or each problem
       and a Next: line.
+  check <out> [<chapter>...] [--before cross] [--no-record] --project <root>
+      The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
+      the cross chapters; none named means every .md file there): each citation resolves, each
+      fact line cites, paragraphs have at most 4 sentences, a feature chapter has a list or a
+      table, mermaid blocks open with a diagram type, no code-shaped words, no advice outside
+      remedies.md, and the Open questions and Problems sections. Prints one passed or failed
+      line per chapter with its reasons and a Next: line, and records status, attempts and
+      reasons in state.json (format /2); a state.json of another format exits 1 and asks for
+      --fresh. --no-record prints the same without writing state.json. --before cross checks no
+      chapter: it exits 0 when every feature has a passed chapter or one that failed twice.
+      Never changes a chapter.
   check-chapter <out> <featureId> --project <root>
       Check <out>/chapters/<featureId>.md, the free chapter written next to a
       /3 entry (the fact sheet; check-entry and try-entry check both files):
@@ -741,6 +752,12 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('try-architecture takes exactly one <out> directory');
     return report(tryArchitecture(positionals[0], projectRootOption(options.project)));
+  },
+  check(args) {
+    const record = !args.includes('--no-record');
+    const { positionals, options } = parseArgs(args.filter((arg) => arg !== '--no-record'), ['project', 'before']);
+    if (positionals.length < 1) throw new UsageError('check takes <out> and optionally chapter names');
+    return report(checkCommand(positionals[0], positionals.slice(1), projectRootOption(options.project), { before: options.before, record }));
   },
   'check-chapter'(args) {
     const { positionals, options } = parseArgs(args, ['project']);

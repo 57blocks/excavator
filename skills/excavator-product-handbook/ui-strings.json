@@ -654,6 +654,11 @@
     "page.remedies.cause": "Common cause:",
     "page.remedies.measure": "Measure:",
     "page.remedies.groups": "Findings it rests on",
-    "page.remedies.facts": "Facts it rests on"
+    "page.remedies.facts": "Facts it rests on",
+    "chapter.openQuestions": "Open questions",
+    "chapter.problems": "Problems",
+    "chapter.none": "None found.",
+    "chapter.notVerified": "Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code; each fact cites the lines it rests on.",
+    "chapter.notPassed": "This chapter did not pass the final check; {count} problems remain, and the chapter is kept as written."
   }
 }

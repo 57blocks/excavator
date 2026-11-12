@@ -7,13 +7,13 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { entryPath } from '../../../skills/excavator-product-handbook/lib/entry-check.mjs';
-import { entryDigest, loadState, saveState } from '../../../skills/excavator-product-handbook/lib/state.mjs';
+import { entryDigest, loadState, plannedState, saveState } from '../../../skills/excavator-product-handbook/lib/state.mjs';
 import { setUnitState, unitState } from '../../../skills/excavator-product-handbook/lib/unit.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,6 +31,17 @@ export function runHandbook(args, options = {}) {
   const env = { ...process.env, EXCAVATOR_HANDBOOK_ALLOW_V2_ENTRY: '1', ...options.env };
   const result = spawnSync(process.execPath, [HANDBOOK_SCRIPT, ...args], { encoding: 'utf-8', ...options, env });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr, lines: result.stdout.split('\n').filter((line) => line !== '') };
+}
+
+/**
+ * check-map no longer writes state.json; the commands of the older flow still read a /1 state,
+ * so the helpers seed it (every feature planned) after a passing check-map. Returns `result`.
+ */
+export function seedLegacyState(out, command, result) {
+  if (command === 'check-map' && result.status === 0 && !existsSync(join(out, 'state.json'))) {
+    saveState(out, plannedState(JSON.parse(readFileSync(join(out, 'map.json'), 'utf-8')).features.map((feature) => feature.id)));
+  }
+  return result;
 }
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -200,7 +211,7 @@ export function makeRun() {
     writeMap: (map = run.map) => writeJson(join(out, 'map.json'), map),
     writeDomains: (domains = run.domains) => writeJson(join(out, 'domains.json'), domains),
     writeEntry: (id = 'F1', entry = run.entry) => writeJson(join(out, 'entries', `${id}.json`), entry),
-    run: (command, ...args) => runHandbook([command, out, ...args, '--project', root]),
+    run: (command, ...args) => seedLegacyState(out, command, runHandbook([command, out, ...args, '--project', root])),
     cleanup: () => rmSync(base, { recursive: true, force: true }),
   };
   return run;
