@@ -87,17 +87,18 @@ describe('excavator-prd skill: the language of what it writes', () => {
     const line = `${PHASE_LANGUAGE}\n\n`;
     const byCodebase = "`--language <lang>` — output language of the PRD (default: match the codebase's primary human language / the user's request).";
     const noRule = [...Array(4)].reduce((text) => without(text, line), without(without(skill, paragraph), paragraph)).replace(OPTION_LANGUAGE, byCodebase);
+    /** Each known-bad copy, and the problem that the check it was made for reports. */
     const bad = {
-      noRule,
-      noPhaseZero: without(skill, paragraph, '## Phase 0 — '),
-      ownSection: without(without(skill, paragraph), paragraph).replace('---\n\n## Phase 0 — ', `## Language\n\n${paragraph}---\n\n## Phase 0 — `),
-      noPhaseTwo: without(skill, line, '## Phase 2 — '),
-      afterReply: `${without(skill, paragraph, '## Phase 4 — ')}\n${LANGUAGE_RULE}\n`,
-      beforeVerification: without(skill, paragraph, '## Phase 4 — ').replace('5. **Verification', `${paragraph}5. **Verification`),
-      reworded: skill.slice(0, skill.indexOf('## Phase 4 — ')) + skill.slice(skill.indexOf('## Phase 4 — ')).replace('memory and ', ''),
-      byCodebase: skill.replace(OPTION_LANGUAGE, byCodebase),
+      noRule: [noRule, 'the language paragraph is there 0 times, not twice'],
+      noPhaseZero: [without(skill, paragraph, '## Phase 0 — '), 'Phase 0 does not open with the language paragraph'],
+      ownSection: [without(without(skill, paragraph), paragraph).replace('---\n\n## Phase 0 — ', `## Language\n\n${paragraph}---\n\n## Phase 0 — `), 'Phase 0 does not open with the language paragraph'],
+      noPhaseTwo: [without(skill, line, '## Phase 2 — '), 'Phase 2 does not open with the language line'],
+      afterReply: [`${without(skill, paragraph, '## Phase 4 — ')}\n${LANGUAGE_RULE}\n`, 'the language paragraph does not stand right before the command that prints the reply'],
+      beforeVerification: [without(skill, paragraph, '## Phase 4 — ').replace('5. **Verification', `${paragraph}5. **Verification`), 'the language paragraph of Phase 4 comes before the verification'],
+      reworded: [skill.slice(0, skill.indexOf('## Phase 4 — ')) + skill.slice(skill.indexOf('## Phase 4 — ')).replace('memory and ', ''), '1 of 2 language paragraphs differ from the others'],
+      byCodebase: [skill.replace(OPTION_LANGUAGE, byCodebase), 'the options do not say that only --language changes the language'],
     };
-    for (const [name, text] of Object.entries(bad)) expect(languageRuleProblems(text), name).not.toEqual([]);
+    for (const [name, [text, problem]] of Object.entries(bad)) expect(languageRuleProblems(text), name).toContain(problem);
   });
 });
 
