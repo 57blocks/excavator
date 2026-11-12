@@ -545,6 +545,34 @@ describe('extract-structure analysis outcomes', () => {
     });
   });
 
+  it('fails a call-graph entry whose local mark is not true', () => {
+    const analysis = validAnalysis();
+    const registry = {
+      getPluginForFile() {
+        return this;
+      },
+      analyzeFileFull() {
+        return {
+          structure: analysis,
+          callGraph: [{ caller: 'entry', callee: 'target', lineNumber: 1, local: false }],
+        };
+      },
+    };
+
+    expect(
+      extractStructure.analyzeFileWithOutcomes(
+        registry,
+        { path: 'src/full-call-graph-local.ts', fileCategory: 'code' },
+        'export const value = 1;\n',
+      ),
+    ).toEqual({
+      analysis,
+      callGraph: null,
+      structureOutcome: 'succeeded',
+      callGraphOutcome: 'failed',
+    });
+  });
+
   it.each([
     ['a number', 42],
     ['an array', []],

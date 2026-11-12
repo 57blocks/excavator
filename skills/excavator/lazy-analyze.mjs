@@ -283,8 +283,19 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  node to the method node, or lands in a visible bucket; the new gap kinds
  *  `method-call-owner-unresolved`, `method-call-method-unresolved` and
  *  `method-call-ambiguous`, and a `coverage.methodCalls` section (`not-run`
- *  without the name stages). The name-binding catalog is version 4. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/15';
+ *  without the name stages). The name-binding catalog is version 4.
+ *  `lazy-fact-graph/16` (openspec: changes/import-binding-call-scope): a TS/JS
+ *  call resolves its callee only to what the file binds: a top-level function
+ *  or class of its own, or what an import binding names through the module's
+ *  exports (the rule JSX elements resolve by), a member only on a namespace
+ *  import. A same-named declaration of an imported module is no candidate, so
+ *  on an unchanged source tree such an edge becomes `calls-unresolved`; calls
+ *  through a renamed, default, namespace or re-exported binding gain edges; a
+ *  call to a name require() binds becomes `calls-unresolved`. Structure rows of
+ *  TS/JS files mark a call site whose callee an enclosing function binds with
+ *  `local: true`, and such a site is `calls-unresolved`. Other languages are
+ *  unchanged. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/16';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result
