@@ -1586,14 +1586,14 @@ describe('excavator-product-handbook skill: Phase 3b, the system layer in one re
 
 // O2 of openspec change handbook-sections: the phases of each section live in a
 // file of their own. The digests freeze the text of each file as of the last
-// intended change (openspec change handbook-one-read re-froze them); a changed
+// intended change (openspec change handbook-phase-gate re-froze features.md); a changed
 // word in any of the files changes its digest, so an intended edit re-freezes them wholesale.
 describe('excavator-product-handbook skill: sections (O2 of handbook-sections)', () => {
   const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
   const PINNED = {
     'stages/map.md': '8ac1407dce434389a93aa11094a818c48d365d4573a9c80fef5596d61eb5e3c0',
     'sections/system.md': '6133bf4540af792b617a5f2e0658929a21387b91e1209a2fa020c100d7724e20',
-    'sections/features.md': 'a86a33957b53b6b6e76c7cd32fe576fd359697e1f4dddc07600edc6696009741',
+    'sections/features.md': '19174843065d1dc663478fd486ae9034b2b639632705b8c613525dc2cb213a23',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],
@@ -1617,6 +1617,24 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
     const text = flat(sectionText('sections/features.md'));
     expect(text).toContain('Quotation marks hold only text copied from the source; your own words, translations and summaries take no quotation marks.');
   });
+
+  // O3 of openspec change handbook-phase-gate.
+  it('Phase 4 asks for a lane for every listed feature, whatever the run has spent (openspec change handbook-phase-gate D2)', () => {
+    const text = flat(sectionText('sections/features.md'));
+    expect(text).toContain('Dispatch a lane for every feature step 1 lists, whatever the run has spent: never leave a feature unwritten to keep budget or time for later phases, and never plan to mark unwritten features in the handbook instead.');
+    expect(text).toContain('When the run cannot go on, stop; the next run resumes from `state.json` without writing again what is written.');
+  });
+
+  for (const [path, command] of [['sections/priority.md', 'priority-items'], ['sections/remedies.md', 'remedy-facts'], ['sections/topics.md', 'topic-lanes'], ['stages/outline.md', 'outline-facts']]) {
+    it(`${path} passes --features to ${command} and goes back to Phase 4 on the Next line of the gate (openspec change handbook-phase-gate D1)`, () => {
+      const text = sectionText(path);
+      const calls = [...text.matchAll(new RegExp(`${command} "\\$OUT"[^\\n\`]*`, 'g'))].map((match) => match[0]);
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls) expect(call, call).toContain('--features "<ids>"');
+      expect(flat(text)).toContain('a line that starts `Next: go back to Phase 4` means the features of this run are not all written');
+      expect(flat(text)).toContain('Any other exit 1: tell the user the lines it printed, as they are, and stop.');
+    });
+  }
 
   it('the architecture prompt names the library kind and the three application kinds (openspec change handbook-run-precision D2)', () => {
     const text = flat(sectionText('sections/system.md'));

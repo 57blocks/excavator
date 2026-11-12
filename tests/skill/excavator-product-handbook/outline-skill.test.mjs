@@ -22,7 +22,9 @@ describe('stages/outline.md', () => {
 
   it('runs the two commands the script has, with the run\'s paths, and writes outline.json', () => {
     for (const command of ['outline-facts', 'check-outline']) {
-      expect(stage).toContain(`handbook.mjs" ${command} "$OUT" --project "$PROJECT_ROOT"`);
+      // outline-facts also passes --features (openspec change handbook-phase-gate).
+      const features = command === 'outline-facts' ? ' --features "<ids>"' : '';
+      expect(stage).toContain(`handbook.mjs" ${command} "$OUT"${features} --project "$PROJECT_ROOT"`);
       expect(readFileSync(HANDBOOK_SCRIPT, 'utf-8')).toContain(`'${command}'(args)`);
     }
     expect(stage).toContain('`$OUT/outline.json`');

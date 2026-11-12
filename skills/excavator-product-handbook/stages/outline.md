@@ -4,11 +4,11 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 
 The outline decides how the handbook is laid out: which parts and chapters there are, in what order, and what each is called. It runs after Phase 6d (after Phase 6c and Phase 6b when those did not run, and after the written sections when none of them is selected) and before Phase 7. It needs the map and nothing else; it reads no code, and it dispatches no subagent: you write it yourself, in one file, from the blocks the script lists. The outline never removes or edits content: a block's content is computed from the entries and the facts of the run, and each block is shown the same way wherever you put it. The outline only places blocks, and `check-outline` holds you to placing every one of them.
 
-1. List the blocks:
+1. List the blocks (`<ids>` is `$SELECTED` space-separated, or empty without `--features`):
    ```bash
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" outline-facts "$OUT" --project "$PROJECT_ROOT"
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" outline-facts "$OUT" --features "<ids>" --project "$PROJECT_ROOT"
    ```
-   - Exit 1: tell the user the lines it printed, as they are, and stop.
+   - Exit 1: a line that starts `Next: go back to Phase 4` means the features of this run are not all written: read `sections/features.md` again if needed, do Phase 4 for the units listed (the line before it), then run this command again. Any other exit 1: tell the user the lines it printed, as they are, and stop.
    - Exit 2: the command could not run. Show its message and stop.
    - Exit 0: one line per block, tab separated: the id, `block` or `list`, `technical` (only the technical view has it) or `both`, and the block's default title in the fixed text of this run. A `list` block is not one page: it expands into one page for each entity (the business domains, the applications, the external systems). Read the default titles for what each block holds. When you need to know what a block holds in this run, read the verified entries and `$OUT/map.json` as you have already read them; open no source file for it.
 2. Write `$OUT/outline.json`:

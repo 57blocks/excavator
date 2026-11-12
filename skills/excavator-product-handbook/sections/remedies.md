@@ -4,11 +4,11 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 
 The remedies section is the one place of the handbook that gives advice, and it gives it only about what the handbook already says is wrong. It runs after Phase 6b and before Phase 7, on the findings units that are `checked` or `verified` at this moment, and it needs no map file. A script lists the facts a paragraph may cite: each group of the findings (with its level, or unranked, its category and its representative statement), each application (its main language, source files, lines, commits and authors), the number of tables that two or more applications mention, and the counts. One subagent reads only those lines and writes, for each category that has a group, a common cause (one sentence) and a measure, each citing groups of that category, and 1 to 10 recommendations in the order they should be done, each citing groups or other facts. A script refuses a cited id that is not a fact, a citation of another category, a category without a group, a number that is not in the facts the text cites, and code-shaped words and file names in the text; it does not refuse words of advice, which this section alone may use. The remedies are written once and checked by the script, and `checked` is final: no judge reads them, every paragraph and recommendation the script accepts stays, and the handbook marks the remedies as not verified. The section changes no finding, no level, no entry and no overview.
 
-1. List the facts as they are now:
+1. List the facts as they are now (`<ids>` is `$SELECTED` space-separated, or empty without `--features`):
    ```bash
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" remedy-facts "$OUT" --project "$PROJECT_ROOT"
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" remedy-facts "$OUT" --features "<ids>" --project "$PROJECT_ROOT"
    ```
-   - Exit 1: tell the user the lines it printed, as they are, and stop.
+   - Exit 1: a line that starts `Next: go back to Phase 4` means the features of this run are not all written: read `sections/features.md` again if needed, do Phase 4 for the units listed (the line before it), then run this command again. Any other exit 1: tell the user the lines it printed, as they are, and stop.
    - Exit 2: the command could not run. Show its message and stop.
    - Every line starts with `Remedies:`: there is nothing to write in this run and no subagent is dispatched. Tell the user the line. This phase is done.
    - Otherwise it prints one line for each fact, tab-separated, and the first field is the id a paragraph cites. A group line: the group key, its level (`P0`, `P1`, `P2` or `unranked`), its category key and its representative statement. An application line: `app:<directory>`, its name, its main language, its source files, its lines, its commits and its authors (`-` for the last two without a version history). A `tables-shared` line: the number of tables that two or more applications mention (`-` when the data section was not written), then each such table with the applications that mention it. A `counts` line: the number of groups, the groups of each level and the groups of each category.
@@ -17,7 +17,7 @@ The remedies section is the one place of the handbook that gives advice, and it 
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" mark "$OUT" remedies dispatched --project "$PROJECT_ROOT"
    ```
    Exit 1 (`attempts is already 2`): leave the remedies unwritten and this phase is done. A dispatch for facts other than the ones the state records starts the unit over by itself.
-3. Dispatch one `excavator-handbook-writer` subagent, in the foreground, with the prompt below, its placeholders filled in: `<lines>` the exact output of `remedy-facts "$OUT" --project "$PROJECT_ROOT"`, and `$OUT` and `$LANGUAGE` written as their values. Wait for it to return; never in the background: a run without a terminal stops waiting for background subagents.
+3. Dispatch one `excavator-handbook-writer` subagent, in the foreground, with the prompt below, its placeholders filled in: `<lines>` the exact output of `remedy-facts "$OUT" --features "<ids>" --project "$PROJECT_ROOT"`, and `$OUT` and `$LANGUAGE` written as their values. Wait for it to return; never in the background: a run without a terminal stops waiting for background subagents.
 4. When it has returned, check the file:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-remedies "$OUT" --project "$PROJECT_ROOT"

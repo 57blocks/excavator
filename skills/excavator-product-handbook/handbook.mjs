@@ -14,17 +14,23 @@
  *       Check <out>/domains.json, the business domains the map's features are
  *       grouped into: shape, ids D1, D2, ..., no empty domain, every map feature
  *       in exactly one domain, reader text and narrative language of the names.
- *   outline-facts <out> --project <root>
+ *   outline-facts <out> --project <root> [--features <ids>]
  *       Print every block the outline can place, one line each: id, block or
  *       list, the views that have it, and its default title in the run's fixed text.
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
  *   check-outline <out> --project <root>
  *       Check <out>/outline.json, the parts and chapters of the handbook: the
  *       shape, the language (the map's), every block placed once or left out
  *       with a reason, and the reader text of the titles and reasons.
- *   outline-facts <out> --project <root>
+ *   outline-facts <out> --project <root> [--features <ids>]
       Print every block the outline can place, one line each, tab separated:
       the id, block or list, technical or both views, and the default title in
       the run's fixed text. Needs the map to pass check-map. Changes no file.
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
   check-outline <out> --project <root>
       Check <out>/outline.json against the project and the map: the shape, the
       language (the map's), every block placed in exactly one chapter or left
@@ -99,10 +105,12 @@
  *       recorded as verified with no finding.
  *   try-system-findings <out> app<n> --project <root>
  *       The same checks for the lane itself; records nothing.
- *   priority-items <out> --project <root> [--part <n>]
+ *   priority-items <out> --project <root> [--part <n>] [--features <ids>]
  *       Print the groups of the verified findings a ranking lane ranks, one line
  *       each (group key, category, representative statement, other statements),
  *       or one `Priority:` line when there is nothing to rank (design D3).
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
  *   check-priority <out> --project <root>
  *       Check the part files of the ranking lanes against those groups and write
  *       <out>/entries/priority.json; record the result under "priority".
@@ -112,10 +120,12 @@
  *   priority-verdicts <out> --project <root>
  *       Record the two judges' verdicts: a group has a priority only when both
  *       say follows; the others are recorded unranked with their reasons.
- *   remedy-facts <out> --project <root>
+ *   remedy-facts <out> --project <root> [--features <ids>]
  *       Print the facts a remedies lane may cite, one line each (the verified
  *       groups with level and category, the applications, the shared tables, the
  *       counts), or one `Remedies:` line when there is nothing to write (design D2).
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
  *   check-remedies <out> --project <root>
  *       Check <out>/entries/remedies.json against those facts; record the result
  *       under "remedies".
@@ -125,10 +135,12 @@
  *   remedy-verdicts <out> --project <root>
  *       Record the two judges' verdicts: a paragraph or recommendation is kept
  *       only when both say follows; the others are recorded as dropped.
- *   topic-lanes <out> --project <root>
+ *   topic-lanes <out> --project <root> [--features <ids>]
  *       Print the lanes of the cross-cutting topics that have something to write
  *       (a business domain with a verified entry, and repeated when verified
  *       findings exist), one line each, or one `Topics:` line when there is none.
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
  *   topic-facts <out> --lane <id> --project <root>
  *       Print the facts a topics lane may cite, one line each (the verified items
  *       of its domain's entries, or the groups of the verified findings), or one
@@ -218,6 +230,7 @@ import { nameCandidates, nameLines } from './lib/name-candidates.mjs';
 import { writePage } from './lib/page.mjs';
 import { checkPriority } from './lib/priority-check.mjs';
 import { priorityItems } from './lib/priority-items.mjs';
+import { phaseGate } from './lib/phase-gate.mjs';
 import { priorityJudge } from './lib/priority-judge.mjs';
 import { priorityVerdicts } from './lib/priority-verdicts.mjs';
 import { checkRemedies } from './lib/remedies-check.mjs';
@@ -440,7 +453,7 @@ Commands:
   try-system-findings <out> app<n> --project <root>
       The same checks as check-system-findings, for the lane to run on its own
       file before it replies. Reads and writes no state.json.
-  priority-items <out> --project <root> [--part <n>]
+  priority-items <out> --project <root> [--part <n>] [--features <ids>]
       Print the groups of the verified findings a ranking lane ranks, one line
       per group, tab-separated: the group key, the display name of the category,
       the representative statement and the other statements of the group joined
@@ -450,6 +463,10 @@ Commands:
       most 40 groups a part). When there is nothing to rank (no verified finding,
       a ranking that is current, one waiting for its judges, one that failed
       twice) it prints one line that starts with "Priority:" and no group.
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
   check-priority <out> --project <root>
       Check <out>/priority/part-<n>.json for each part: exactly one item for each
       group of the part, a consequence of the table (othersRecords, money,
@@ -468,7 +485,7 @@ Commands:
       follows; any other group is recorded unranked with the reasons of the
       judges that said doesNotFollow, and "priority" is verified. Nothing is
       recorded when a file does not hold.
-  remedy-facts <out> --project <root>
+  remedy-facts <out> --project <root> [--features <ids>]
       Print the facts a remedies lane may cite, one line each, tab-separated, the
       first field the id a paragraph cites: a group of the verified findings (key,
       level or unranked, category, representative statement), an application
@@ -479,6 +496,10 @@ Commands:
       is nothing to write (no verified finding, remedies that are current, ones
       waiting for their judges, ones that failed twice) it prints one line that
       starts with "Remedies:" and no fact.
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
   check-remedies <out> --project <root>
       Check <out>/entries/remedies.json: a paragraph for each category at most
       once and only for a category with a verified group, a paragraph of a category
@@ -495,7 +516,7 @@ Commands:
       both say follows; any other is recorded as dropped with the reasons of the
       judges that said doesNotFollow, and "remedies" is verified. Nothing is
       recorded when a file does not hold.
-  topic-lanes <out> --project <root>
+  topic-lanes <out> --project <root> [--features <ids>]
       Print the lanes of the cross-cutting topics that have something to write, one
       line each, tab-separated: the lane id (a business domain id, or an area id
       when the handbook groups by area, that has at least one verified entry;
@@ -503,6 +524,10 @@ Commands:
       for repeated), the number of facts and the status of the lane for the facts
       as they are now (planned, dispatched, checked, verified or failed). With no
       lane it prints one line that starts with "Topics:".
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
   topic-facts <out> --lane <id> --project <root>
       Print the facts a topics lane may cite, one line each, tab-separated, the
       first field the id a row cites. A domain lane: <featureId>#<item path>, the
@@ -724,9 +749,9 @@ const COMMANDS = {
     return report(checkDomains(positionals[0], projectRootOption(options.project)));
   },
   'outline-facts'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'features']);
     if (positionals.length !== 1) throw new UsageError('outline-facts takes exactly one <out> directory');
-    return report(outlineFacts(positionals[0], projectRootOption(options.project)));
+    return report(phaseGate(positionals[0], options.features) ?? outlineFacts(positionals[0], projectRootOption(options.project)));
   },
   'check-outline'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
@@ -842,8 +867,10 @@ const COMMANDS = {
     return report(tryEntry(positionals[0], positionals[1], projectRootOption(options.project)));
   },
   'priority-items'(args) {
-    const { positionals, options } = parseArgs(args, ['project', 'part']);
+    const { positionals, options } = parseArgs(args, ['project', 'part', 'features']);
     if (positionals.length !== 1) throw new UsageError('priority-items takes exactly one <out> directory');
+    const blocked = phaseGate(positionals[0], options.features);
+    if (blocked !== null) return report(blocked);
     const part = options.part === undefined ? undefined : /^\d+$/.test(options.part) ? Number(options.part) : 0;
     return report(priorityItems(positionals[0], projectRootOption(options.project), part));
   },
@@ -865,9 +892,9 @@ const COMMANDS = {
     return withStateLock(positionals[0], () => report(priorityVerdicts(positionals[0], root)));
   },
   'remedy-facts'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'features']);
     if (positionals.length !== 1) throw new UsageError('remedy-facts takes exactly one <out> directory');
-    return report(remedyFacts(positionals[0], projectRootOption(options.project)));
+    return report(phaseGate(positionals[0], options.features) ?? remedyFacts(positionals[0], projectRootOption(options.project)));
   },
   'check-remedies'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
@@ -887,9 +914,9 @@ const COMMANDS = {
     return withStateLock(positionals[0], () => report(remedyVerdicts(positionals[0], root)));
   },
   'topic-lanes'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'features']);
     if (positionals.length !== 1) throw new UsageError('topic-lanes takes exactly one <out> directory');
-    return report(topicLanes(positionals[0], projectRootOption(options.project)));
+    return report(phaseGate(positionals[0], options.features) ?? topicLanes(positionals[0], projectRootOption(options.project)));
   },
   'topic-facts'(args) {
     const { positionals, options } = parseArgs(args, ['project', 'lane']);
