@@ -260,15 +260,18 @@ describe('the Reading Layers commands give what the rule reads, on real products
  * Full run (lazy-analyze.mjs for F1, semantic-graph.mjs write for F3), a
  * commit that adds src/c.ts and an incremental update (prepare-incremental.mjs,
  * then finalize-incremental.mjs on the assembled graph the file analyzer would
- * leave), then a second Full run. After each step the rule has to pick the
- * place that was written last.
+ * leave), a second Full run, and a commit that adds src/d.ts and a second
+ * incremental update. After each step the rule has to pick the place that was
+ * written last, and an update has to start from the layers the rule picks
+ * instead of putting every file in its fallback layer.
  */
-describe('the Reading Layers rule picks the layers written last, through Full, incremental and Full', { timeout: 180_000 }, () => {
+describe('the Reading Layers rule picks the layers written last, through Full, incremental, Full and incremental', { timeout: 240_000 }, () => {
   const skillDir = resolve(repoRoot, 'skills', 'excavator');
   const root = join(dir, 'pipeline');
   const dataDir = join(root, '.excavator');
   const NEW_FILE = 'file:src/c.ts';
   const OLD_FILE = 'file:src/a.ts';
+  const LAST_FILE = 'file:src/d.ts';
   const after = {};
 
   const script = (name, ...args) => execFileSync(process.execPath, [join(skillDir, name), root, ...args], {
@@ -286,7 +289,21 @@ describe('the Reading Layers rule picks the layers written last, through Full, i
     writeFileSync(layersPath, JSON.stringify({ layers }));
     script('semantic-graph.mjs', 'write', '--layers', layersPath);
   };
-  const outputs = () => Object.fromEntries([OLD_FILE, NEW_FILE].map((id) => [id, runCommands(root, id)]));
+  const outputs = () => Object.fromEntries([OLD_FILE, NEW_FILE, LAST_FILE].map((id) => [id, runCommands(root, id)]));
+  /** A commit that adds `path`, then an incremental update from `base` with the file analyzer's node for it; returns the plan. */
+  const incrementalUpdate = (base, path) => {
+    write(path, 'export const added = 1;\n');
+    git('add', '-A');
+    git('commit', '-q', '-m', `add ${path}`);
+    script('prepare-incremental.mjs', base);
+    const intermediate = join(dataDir, 'intermediate');
+    const plan = JSON.parse(readFileSync(join(intermediate, 'incremental-plan.json'), 'utf-8'));
+    const previous = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
+    const added = { id: `file:${path}`, type: 'file', name: path, filePath: path, summary: '', tags: [], complexity: 'simple' };
+    writeFileSync(join(intermediate, 'assembled-graph.json'), JSON.stringify({ nodes: [...previous.nodes, added], edges: previous.edges }));
+    script('finalize-incremental.mjs');
+    return plan;
+  };
 
   beforeAll(() => {
     mkdirSync(root, { recursive: true });
@@ -309,24 +326,20 @@ describe('the Reading Layers rule picks the layers written last, through Full, i
     ]);
     after.full = outputs();
 
-    write('src/c.ts', 'export const c = 3;\n');
-    git('add', '-A');
-    git('commit', '-q', '-m', 'second');
-    script('prepare-incremental.mjs', first);
-    const intermediate = join(dataDir, 'intermediate');
-    after.plan = JSON.parse(readFileSync(join(intermediate, 'incremental-plan.json'), 'utf-8'));
-    const previous = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
-    const added = { id: NEW_FILE, type: 'file', name: 'c.ts', filePath: 'src/c.ts', summary: '', tags: [], complexity: 'simple' };
-    writeFileSync(join(intermediate, 'assembled-graph.json'), JSON.stringify({ nodes: [...previous.nodes, added], edges: previous.edges }));
-    script('finalize-incremental.mjs');
+    after.plan = incrementalUpdate(first, 'src/c.ts');
     after.incremental = outputs();
+    const second = git('rev-parse', 'HEAD');
 
+    // the second Full run names the layer differently, so the layers an update starts from show where they came from
     fullRun([
-      { id: 'layer:service', name: 'Service', description: 'Logic', nodeIds: ['file:src/a.ts', 'file:src/b.ts', 'file:src/c.ts'] },
+      { id: 'layer:core', name: 'Core', description: 'Logic', nodeIds: ['file:src/a.ts', 'file:src/b.ts', 'file:src/c.ts'] },
       { id: 'layer:config', name: 'Config', description: 'Settings', nodeIds: ['file:package.json'] },
     ]);
     after.secondFull = outputs();
-  }, 180_000);
+
+    after.secondPlan = incrementalUpdate(second, 'src/d.ts');
+    after.secondIncremental = outputs();
+  }, 240_000);
 
   it('after the Full run: no layersFrom, no layer lines, the digests match, the semantic graph', () => {
     const runs = after.full[OLD_FILE];
@@ -346,7 +359,10 @@ describe('the Reading Layers rule picks the layers written last, through Full, i
     expect(pick(runs, 'jq -c --arg id').lines).toEqual([]);
     expect(pick(runs, '.layersFrom').lines).toEqual(['incremental']);
     expect(pickSource(runs)).toBe('lines');
-    expect(layerIds(pick(runs, 'grep -F').lines)).toHaveLength(1);
+    // the update started from the Full run's layers: the old file keeps its layer, the new one joins its directory's
+    expect(layerIds(pick(runs, 'grep -F').lines)).toEqual(['layer:service']);
+    expect(layerIds(pick(after.incremental[OLD_FILE], 'grep -F').lines)).toEqual(['layer:service']);
+    expect(layerIds(allLayerLines(runs).lines)).toEqual(['layer:config', 'layer:service']);
   });
 
   it('after the second Full run: layersFrom is gone, the old layer lines are carried, the semantic graph is newer', () => {
@@ -356,6 +372,16 @@ describe('the Reading Layers rule picks the layers written last, through Full, i
     expect(pick(runs, '.factDigest').lines).toEqual(pick(runs, '.factsDigest').lines);
     expect(pick(runs, '.factsDigest').lines).not.toEqual(pick(after.full[OLD_FILE], '.factsDigest').lines);
     expect(pickSource(runs)).toBe('semantic');
-    expect(layerIds(pick(runs, 'jq -c --arg id').lines)).toEqual(['layer:service']);
+    expect(layerIds(pick(runs, 'jq -c --arg id').lines)).toEqual(['layer:core']);
+  });
+
+  it('after a second incremental update: it starts from the newer semantic graph, not the layer lines the second Full run carried', () => {
+    expect(after.secondPlan.action).toBe('PARTIAL_UPDATE');
+    const runs = after.secondIncremental[LAST_FILE];
+    expect(pick(runs, '.layersFrom').lines).toEqual(['incremental']);
+    expect(pickSource(runs)).toBe('lines');
+    expect(layerIds(pick(runs, 'grep -F').lines)).toEqual(['layer:core']);
+    expect(layerIds(pick(after.secondIncremental[NEW_FILE], 'grep -F').lines)).toEqual(['layer:core']);
+    expect(layerIds(allLayerLines(runs).lines)).toEqual(['layer:config', 'layer:core']);
   });
 });
