@@ -16,6 +16,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 import { PIPELINE_VERSION, runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
+import { XML_METHOD_CALL_GAP_KINDS } from '../../skills/excavator/xml-method-call-resolution.mjs';
 import { buildFactGraph } from '../../skills/excavator/build-fact-graph.mjs';
 import { createProjectService } from '../../skills/excavator/project-service.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
@@ -93,8 +94,8 @@ describe('XML injection sites in the real Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/13');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/13');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
   });
 
   it('records no framework in the header: its poms and Spring contexts declare no framework keyword', () => {
@@ -312,8 +313,8 @@ describe('XML injection sites in the real Lazy driver', () => {
     expect(without.coverage.nameReferences).toEqual({ status: 'not-run' });
     expect(graph.nodes.length).toBe(without.nodes.length);
     // `without` has no mentions stage either: those edges and gaps are an earlier step's
-    expect(graph.edges.filter((e) => !['injects', 'mentions', 'references'].includes(e.type)).length).toBe(without.edges.length);
-    const added = new Set([...Object.values(XML_INJECTION_GAP_KINDS), 'mention-ambiguous', 'mention-target-unindexed', 'path-mention-unresolved']);
+    expect(graph.edges.filter((e) => !['injects', 'invokes', 'mentions', 'references'].includes(e.type)).length).toBe(without.edges.length);
+    const added = new Set([...Object.values(XML_INJECTION_GAP_KINDS), ...Object.values(XML_METHOD_CALL_GAP_KINDS), 'mention-ambiguous', 'mention-target-unindexed', 'path-mention-unresolved']);
     expect(graph.gaps.filter((g) => !added.has(g.kind) && !g.kind.startsWith('name-reference-'))).toEqual(without.gaps);
   });
 

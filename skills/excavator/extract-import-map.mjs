@@ -33,14 +33,28 @@
  *     stats: { filesScanned, filesWithImports, totalEdges },
  *     importMap: { <path>: [<resolvedPath>, ...], ... },
  *     unresolved: { <path>: [<specifier>, ...], ... },
- *     resolvedSources: { <path>: { <specifier>: <resolvedPath>, ... }, ... }
+ *     ambiguous: { <path>: { <specifier>: [<candidatePath>, ...] }, ... },
+ *     tsConfigFiles: [<path>, ...],
+ *     resolvedSources: { <path>: { <specifier>: <resolvedPath>, ... }, ... },
+ *     reexportOnly: { <path>: [<resolvedPath>, ...], ... }
  *   }
  *
  * `unresolved` records every import specifier that named nothing inside the
  * project (external package or broken path) instead of dropping it silently.
+ * `ambiguous` records every TS/JS specifier that two tsconfig alias scopes
+ * (a config and a config it references) map to different files; it gets no
+ * edge, and is not also in `unresolved`.
+ * `tsConfigFiles` lists every tsconfig file read to build the aliases,
+ * including those reached through `extends` and `references`, so an
+ * incremental run can tell when an edit to one of them changes resolution.
  * `resolvedSources` says which file each resolved TS/JS import or re-export
  * specifier names, so the fact graph can follow an import binding to its
  * module without resolving the specifier again.
+ * `reexportOnly` lists the `importMap` targets that only `export ... from`
+ * statements reach: no import statement, require() or other extracted source
+ * of the file reaches them. A re-export binds no name in the file, so callers
+ * resolving calls by name leave these targets out of the file's scope; the
+ * file still depends on them, so `importMap` keeps them.
  *
  * Logging: stderr only (stdout reserved for piped tools).
  * Per-file resilience: failures emit `Warning: extract-import-map: ...` and
@@ -48,9 +62,9 @@
  */
 
 import { createRequire } from 'node:module';
-import { dirname, resolve, join, posix, isAbsolute } from 'node:path';
+import { dirname, resolve, join, posix, isAbsolute, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 
 /**
@@ -205,9 +219,10 @@ function dirOf(p) {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a single tsconfig.json file content and return
- * `{ baseUrl: string, paths: Map<string, string[]> }` or `null` if both the
- * comment-stripped and raw parses fail. Centralizes the "JSONC-then-raw"
+ * Parse a single tsconfig file content (parseTsConfigText) and return
+ * `{ baseUrl?, paths?: Map<string, string[]>, extends: string[],
+ * references: string[] }` or `null` if both the comment-stripped and raw
+ * parses fail. Centralizes the "JSONC-then-raw"
  * fallback so callers can iterate many tsconfigs without duplicating the
  * try/catch ladder.
  *
@@ -290,28 +305,65 @@ function parseTsConfigText(raw) {
       return null;
     }
   }
-  const compilerOptions = parsed?.compilerOptions ?? {};
-  const baseUrl = compilerOptions.baseUrl ?? '.';
-  const paths = new Map();
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) parsed = {};
+  const compilerOptions = parsed.compilerOptions && typeof parsed.compilerOptions === 'object'
+    ? parsed.compilerOptions
+    : {};
+  const baseUrl = typeof compilerOptions.baseUrl === 'string' ? compilerOptions.baseUrl : undefined;
+  let paths;
   if (compilerOptions.paths && typeof compilerOptions.paths === 'object') {
+    paths = new Map();
     for (const [alias, targets] of Object.entries(compilerOptions.paths)) {
       if (Array.isArray(targets)) {
-        paths.set(alias, targets);
+        paths.set(alias, targets.filter(t => typeof t === 'string'));
       }
     }
   }
-  return { baseUrl, paths };
+  const extendsList = (Array.isArray(parsed.extends) ? parsed.extends : [parsed.extends])
+    .filter(e => typeof e === 'string' && e.length > 0);
+  const references = (Array.isArray(parsed.references) ? parsed.references : [])
+    .map(r => (r && typeof r.path === 'string' ? r.path : null))
+    .filter(r => r !== null && r.length > 0);
+  return { baseUrl, paths, extends: extendsList, references };
 }
 
 /**
- * Load every `tsconfig.json` discovered in the input file list and parse
- * each. Returns `Map<dirPath, { baseUrl, paths }>` keyed by the
- * project-relative POSIX directory containing the tsconfig (empty string
- * for a root-level tsconfig.json).
+ * Resolve a path written inside a tsconfig (an `extends` or `references`
+ * entry) against the directory of that tsconfig. Returns the project-relative
+ * POSIX path, or null when it is absolute or walks above the project root:
+ * a config path is input read from the project and must stay inside it.
+ */
+function resolveConfigPath(configDir, spec) {
+  const posixSpec = toPosix(spec);
+  if (posixSpec.startsWith('/') || isAbsolute(spec)) return null;
+  const parts = [];
+  for (const part of [...(configDir ? configDir.split('/') : []), ...posixSpec.split('/')]) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (parts.length === 0) return null;
+      parts.pop();
+    } else {
+      parts.push(part);
+    }
+  }
+  return parts.join('/');
+}
+
+/** True when `dir` is `ancestor` or lies below it (project-relative POSIX). */
+function isWithinDir(dir, ancestor) {
+  return ancestor === '' || dir === ancestor || dir.startsWith(ancestor + '/');
+}
+
+/**
+ * Load every `tsconfig.json` discovered in the input file list and build the
+ * alias scopes each one gives. Returns `Map<dirPath, scope[]>` keyed by the
+ * project-relative POSIX directory containing the tsconfig (empty string for
+ * a root-level tsconfig.json); per-import resolution walks up from the
+ * importer to the nearest key.
  *
- * `paths` keys keep their trailing `*` wildcards intact (e.g. `"@/*"`); the
- * resolver matches them by prefix. Values are arrays because tsconfig
- * allows multiple targets per alias.
+ * A scope is `{ scopeDir, anchorDir, paths }`: `paths` keeps its `*`
+ * wildcards (e.g. `"@/*"`), targets resolve against `anchorDir`, and the
+ * scope applies only to importers inside `scopeDir`.
  *
  * WHY plural: pnpm/yarn workspace monorepos commonly carry per-package
  * tsconfig.json files with package-scoped `paths` aliases. Loading only
@@ -319,10 +371,29 @@ function parseTsConfigText(raw) {
  * (2) erroneously apply root aliases to files in sub-packages that
  * redefine them. Per-importer walk-up is the only correct behavior.
  *
- * Returns an empty map if no tsconfigs are found — many JS-only projects
- * have none, and relative imports still resolve without one. On parse
- * failure for a specific tsconfig, emits a Warning: pointing at the bad
- * file and skips it (the rest of the project keeps working).
+ * Each discovered tsconfig.json gives:
+ *   - its own scope, with `baseUrl` and `paths` inherited through
+ *     `extends` (see effectiveTsOptions), applying to every importer that
+ *     walks up to it;
+ *   - one scope per entry of its `references` (a config file, or a
+ *     directory holding a tsconfig.json), read from disk even when the
+ *     inventory does not list it, with its own `extends` chain. A
+ *     referenced config applies only to importers inside its own directory:
+ *     TypeScript includes a config's directory by default, and this keeps a
+ *     package's alias off files elsewhere under the solution config. This is
+ *     how a solution-style root (`"files": []` plus `references`) gets the
+ *     aliases of the configs it delegates to.
+ * When two scopes resolve one import to different files, the resolver
+ * records it as ambiguous and gives no edge (see resolveTsJsImport).
+ *
+ * A config that cannot be read or parsed emits a Warning: and a `failures`
+ * entry and contributes no aliases; the rest of the project keeps working.
+ * An `extends` or `references` entry that names a missing file or leaves
+ * the project root, and an `extends` cycle, emit a Warning: only (see
+ * `skip` below). An
+ * `extends` that names a package (not a relative path) is not followed:
+ * aliases are project-specific, and any import that needed one stays in
+ * `unresolved`.
  *
  * Parse strategy (per-file, in parseTsConfigText):
  *   1. Try the comment-stripped text (handles JSONC-style tsconfigs).
@@ -334,6 +405,27 @@ async function loadTsConfigs(projectRoot, files) {
   const out = new Map();
   const warnings = [];
   const failures = [];
+  const reported = new Set();
+  const warn = (key, warning) => {
+    if (reported.has(key)) return false;
+    reported.add(key);
+    warnings.push(`Warning: extract-import-map: ${warning} \u2014 path aliases from this config will not be applied \u2014 relative imports unaffected\n`);
+    return true;
+  };
+  // A config that exists but cannot be read or parsed is a failure, as it
+  // always was for tsconfig.json.
+  const report = (path, stage, message, warning) => {
+    if (warn(`${path}\0${stage}\0${message}`, warning)) failures.push({ path, stage, message });
+  };
+  // An entry that cannot be followed is a warning only. Its target is
+  // missing (outside the selected sources, or a broken config) or outside
+  // the project root (a sub-project of a monorepo analysed on its own), and
+  // neither is a fault of this run; an import that needed its aliases stays
+  // in `unresolved`, which is where it becomes visible.
+  const skip = (from, spec, kind, why) => {
+    warn(`${from}\0${kind}\0${spec}`, `tsconfig at ${join(projectRoot, from)} ${kind} ${spec}, which ${why}`);
+  };
+
   // Collect the candidate paths in the original file order before reading,
   // so warning emit order matches the previous sequential implementation.
   const candidates = [];
@@ -346,34 +438,109 @@ async function loadTsConfigs(projectRoot, files) {
     candidates.push({ key: p, absPath });
   }
   const reads = await readFilesParallel(candidates);
-  for (const { key: p, raw, err } of reads) {
+
+  // Parsed configs by project-relative path; null marks one that failed.
+  const parsedByPath = new Map();
+  const parseConfig = (p, raw, err) => {
     if (err) {
-      failures.push({ path: p, stage: 'resolver-config-read', message: err.message });
-      // absPath isn't carried through the helper return shape; reconstruct it.
-      warnings.push(
-        `Warning: extract-import-map: tsconfig.json at ${join(projectRoot, p)} failed ` +
-        `to read (${err.message}) — path aliases from this config will ` +
-        `not be applied — relative imports unaffected\n`,
-      );
-      continue;
+      report(p, 'resolver-config-read', err.message,
+        `tsconfig.json at ${join(projectRoot, p)} failed to read (${err.message})`);
+      parsedByPath.set(p, null);
+      return null;
     }
     const parsed = parseTsConfigText(raw);
     if (!parsed) {
-      failures.push({
-        path: p,
-        stage: 'resolver-config-parse',
-        message: 'invalid tsconfig.json',
-      });
-      warnings.push(
-        `Warning: extract-import-map: tsconfig.json at ${join(projectRoot, p)} failed ` +
-        `to parse — path aliases from this config will not be applied ` +
-        `— relative imports unaffected\n`,
-      );
-      continue;
+      report(p, 'resolver-config-parse', 'invalid tsconfig.json',
+        `tsconfig.json at ${join(projectRoot, p)} failed to parse`);
     }
-    out.set(dirOf(p), parsed);
+    parsedByPath.set(p, parsed);
+    return parsed;
+  };
+  for (const { key, raw, err } of reads) parseConfig(key, raw, err);
+
+  let rootReal = null;
+  try { rootReal = realpathSync(projectRoot); } catch { /* checked per file */ }
+  // Read a config named by an `extends` or `references` entry of `from`.
+  // Returns { path, parsed } or null after reporting why it was not read.
+  const loadNamed = (from, spec, kind) => {
+    let p = resolveConfigPath(dirOf(from), spec);
+    if (p === null) {
+      skip(from, spec, kind, 'is outside the project root');
+      return null;
+    }
+    let abs = join(projectRoot, p);
+    if (kind === 'references' && existsSync(abs) && statSync(abs).isDirectory()) {
+      p = p ? `${p}/tsconfig.json` : 'tsconfig.json';
+      abs = join(projectRoot, p);
+    } else if (kind === 'extends' && !existsSync(abs) && !p.endsWith('.json')) {
+      p = `${p}.json`;
+      abs = join(projectRoot, p);
+    }
+    if (parsedByPath.has(p)) return { path: p, parsed: parsedByPath.get(p) };
+    let real = null;
+    try { real = realpathSync(abs); } catch { /* missing */ }
+    if (real === null) {
+      skip(from, spec, kind, 'does not exist');
+      return null;
+    }
+    if (rootReal === null || (real !== rootReal && !real.startsWith(rootReal + sep))) {
+      skip(from, spec, kind, 'is outside the project root');
+      return null;
+    }
+    let raw = null;
+    let err = null;
+    try { raw = readFileSync(abs, 'utf-8'); } catch (e) { err = e; }
+    return { path: p, parsed: parseConfig(p, raw, err) };
+  };
+
+  // baseUrl and paths after `extends`, each with the directory of the config
+  // that set it: TypeScript resolves baseUrl against the config that sets
+  // it, and paths without a baseUrl against the config that sets paths.
+  const effectiveTsOptions = (p, parsed, stack) => {
+    let baseUrl;
+    let paths;
+    for (const spec of parsed.extends) {
+      if (!spec.startsWith('.') && !spec.startsWith('/') && !isAbsolute(spec)) continue;
+      const base = loadNamed(p, spec, 'extends');
+      if (!base || !base.parsed) continue;
+      if (stack.includes(base.path)) {
+        skip(p, spec, 'extends', 'extends it back');
+        continue;
+      }
+      const inherited = effectiveTsOptions(base.path, base.parsed, [...stack, base.path]);
+      if (inherited.baseUrl) baseUrl = inherited.baseUrl;
+      if (inherited.paths) paths = inherited.paths;
+    }
+    if (parsed.baseUrl !== undefined) baseUrl = { value: parsed.baseUrl, dir: dirOf(p) };
+    if (parsed.paths !== undefined) paths = { value: parsed.paths, dir: dirOf(p) };
+    return { baseUrl, paths };
+  };
+  const scopeOf = (p, parsed, scopeDir) => {
+    const { baseUrl, paths } = effectiveTsOptions(p, parsed, [p]);
+    if (!paths || paths.value.size === 0) return null;
+    const anchorDir = baseUrl
+      ? resolveConfigPath(baseUrl.dir, baseUrl.value)
+      : paths.dir;
+    if (anchorDir === null) return null;
+    return { scopeDir, anchorDir, paths: paths.value };
+  };
+
+  for (const { key: p } of reads) {
+    const parsed = parsedByPath.get(p);
+    if (!parsed) continue;
+    const scopes = [];
+    const own = scopeOf(p, parsed, dirOf(p));
+    if (own) scopes.push(own);
+    for (const spec of parsed.references) {
+      const ref = loadNamed(p, spec, 'references');
+      if (!ref || !ref.parsed) continue;
+      const scope = scopeOf(ref.path, ref.parsed, dirOf(ref.path));
+      if (scope) scopes.push(scope);
+    }
+    out.set(dirOf(p), scopes);
   }
-  return { configs: out, warnings, failures };
+  const configFiles = [...parsedByPath.keys()].sort(comparePaths);
+  return { configs: out, files: configFiles, warnings, failures };
 }
 
 /**
@@ -585,9 +752,9 @@ function findNearestConfigDir(startDir, configMap) {
 /**
  * Resolution context shared across all per-file resolver calls. Holds:
  *  - fileSet: Set<string> of every input file's posix path
- *  - tsConfigs: Map<dir, { baseUrl, paths }> from every tsconfig.json in
- *    `files[]`. Per-import resolution walks up from the importer to the
- *    nearest enclosing tsconfig.
+ *  - tsConfigs: Map<dir, scope[]> from every tsconfig.json in `files[]`
+ *    (see loadTsConfigs). Per-import resolution walks up from the importer
+ *    to the nearest enclosing tsconfig.
  *  - goModules: Map<dir, moduleName> from every go.mod in `files[]`.
  *  - phpAutoloads: Map<dir, autoloadMap> from every composer.json in
  *    `files[]`. Resolved paths are anchored at the composer's directory.
@@ -623,6 +790,7 @@ async function buildResolutionContext(projectRoot, files) {
   for (const w of phpResult.warnings) process.stderr.write(w);
   for (const w of swiftResult.warnings) process.stderr.write(w);
   const tsConfigs = tsResult.configs;
+  const tsConfigFiles = tsResult.files;
   const goModules = goResult.modules;
   const phpAutoloads = phpResult.autoloads;
 
@@ -654,6 +822,7 @@ async function buildResolutionContext(projectRoot, files) {
     projectRoot,
     fileSet,
     tsConfigs,
+    tsConfigFiles,
     goModules,
     goFilesByDir,
     javaIndex,
@@ -672,6 +841,10 @@ async function buildResolutionContext(projectRoot, files) {
     // Dedupe Sets for one-time-per-file warnings. Keyed by importer file
     // path. Mutated by resolvers.
     _warnedNoRustCrateRoot: new Set(),
+    // TS/JS specifiers two alias scopes map to different files:
+    // Map<importer path, Map<specifier, candidate paths>>. Mutated by
+    // resolveTsJsImport.
+    tsAmbiguous: new Map(),
     _warnedNoGoModule: new Set(),
   };
 }
@@ -774,48 +947,60 @@ export function resolveTsJsImport(rawImport, file, ctx) {
   }
 
   // tsconfig path aliases. Walk up from the importer to find the nearest
-  // tsconfig.json; resolve targets relative to THAT tsconfig's directory.
+  // tsconfig.json; resolve targets against each of its scopes (its own
+  // aliases and those of the configs it references, see loadTsConfigs).
   // Without the walk-up, a root tsconfig would either swallow aliases that
   // belong to a sub-package or fail to apply sub-package-defined aliases.
   const tsConfigDir = findNearestConfigDir(importerDir, ctx.tsConfigs);
   if (tsConfigDir !== undefined) {
-    const tsConfig = ctx.tsConfigs.get(tsConfigDir);
-    const { baseUrl, paths } = tsConfig;
-    if (paths && paths.size > 0) {
-      for (const [alias, targets] of paths) {
-        const aliasMatch = matchTsAlias(alias, src);
-        if (aliasMatch === null) continue;
-        for (const target of targets) {
-          const mapped = applyTsAlias(target, aliasMatch);
-          // baseUrl is tsconfig-dir-relative; '.', './', '' all mean the
-          // tsconfig's own directory. We anchor at tsConfigDir so a nested
-          // tsconfig's `baseUrl: '.'` maps to its package, not project root.
-          const normalizedBase = baseUrl === '.' || baseUrl === ''
-            ? ''
-            : toPosix(baseUrl);
-          const relativeToConfig = normalizedBase
-            ? posix.join(normalizedBase, mapped)
-            : mapped;
-          // posix.normalize strips a leading "./" left over when both
-          // tsConfigDir and normalizedBase are empty (root tsconfig with
-          // `"@/*": ["./*"]`, the create-next-app default). Without this the
-          // candidate stays as "./foo" while ctx.fileSet stores "foo", and
-          // probeWithExtensions silently drops every cross-module edge.
-          const candidate = posix.normalize(
-            tsConfigDir
-              ? posix.join(tsConfigDir, relativeToConfig)
-              : relativeToConfig,
-          );
-          // Defensive: tsconfig targets shouldn't escape the project root.
-          if (candidate.startsWith('..')) continue;
-          const probed = probeWithExtensions(candidate, ctx.fileSet);
-          if (probed) return probed;
-        }
-      }
+    const hits = [];
+    for (const scope of ctx.tsConfigs.get(tsConfigDir)) {
+      if (!isWithinDir(importerDir, scope.scopeDir)) continue;
+      const hit = resolveTsAliasInScope(src, scope, ctx.fileSet);
+      if (hit && !hits.includes(hit)) hits.push(hit);
+    }
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) {
+      // Two configs map this specifier to different files and which one
+      // compiles the importer is not decided here: no edge, and the
+      // specifier goes to the `ambiguous` bucket instead of `unresolved`.
+      const path = toPosix(file.path);
+      if (!ctx.tsAmbiguous.has(path)) ctx.tsAmbiguous.set(path, new Map());
+      ctx.tsAmbiguous.get(path).set(rawImport, hits.sort(comparePaths));
+      return null;
     }
   }
 
   // Bare specifier with no leading `./`, no alias match -> external package.
+  return null;
+}
+
+/**
+ * Resolve a specifier against one alias scope: the first alias (in `paths`
+ * order) and target whose file exists. Targets resolve against the scope's
+ * `anchorDir` (the baseUrl, or the directory of the config that sets
+ * `paths` when no baseUrl is set) and must stay inside the project root.
+ */
+function resolveTsAliasInScope(src, scope, fileSet) {
+  for (const [alias, targets] of scope.paths) {
+    const aliasMatch = matchTsAlias(alias, src);
+    if (aliasMatch === null) continue;
+    for (const target of targets) {
+      const mapped = applyTsAlias(toPosix(target), aliasMatch);
+      // posix.normalize strips a leading "./" left over when the anchor is
+      // the project root (root tsconfig with `"@/*": ["./*"]`, the
+      // create-next-app default). Without this the candidate stays as
+      // "./foo" while fileSet stores "foo", and probeWithExtensions silently
+      // drops every cross-module edge.
+      const candidate = posix.normalize(
+        scope.anchorDir ? posix.join(scope.anchorDir, mapped) : mapped,
+      );
+      // Defensive: tsconfig targets shouldn't escape the project root.
+      if (candidate.startsWith('..') || candidate.startsWith('/')) continue;
+      const probed = probeWithExtensions(candidate, fileSet);
+      if (probed) return probed;
+    }
+  }
   return null;
 }
 
@@ -2036,10 +2221,15 @@ async function main() {
   // graph's `imports-unresolved` gap are what tell them apart. Previously an
   // unresolved specifier was simply absent from the output.
   const unresolved = {};
+  // Specifiers two tsconfig alias scopes map to different files, per file,
+  // with the candidates. They get no edge and are not in `unresolved`.
+  const ambiguous = {};
   const resolvedSources = {};
+  const reexportOnly = {};
   let filesWithImports = 0;
   let totalEdges = 0;
   let unresolvedSpecifiers = 0;
+  let ambiguousSpecifiers = 0;
 
   for (const file of analysisFiles) {
     const path = toPosix(file.path);
@@ -2078,6 +2268,10 @@ async function main() {
     let resolved;
     const unresolvedSet = new Set();
     const sourceTargets = new Map();
+    // Targets an `export ... from` entry reaches, and targets anything else
+    // reaches; the difference is the file's `reexportOnly`.
+    const reexportTargets = new Set();
+    const boundTargets = new Set();
     try {
       const resolvedSet = new Set();
 
@@ -2105,6 +2299,7 @@ async function main() {
               hit = true;
               // TS/JS resolves a specifier to at most one file.
               if (TS_JS_LANGS.has(file.language) && imp?.source) sourceTargets.set(imp.source, out);
+              (Array.isArray(imp?.reexports) ? reexportTargets : boundTargets).add(out);
             }
           }
           if (!hit && imp?.source) unresolvedSet.add(imp.source);
@@ -2117,6 +2312,7 @@ async function main() {
           for (const out of outs) {
             if (out && ctx.fileSet.has(out)) {
               resolvedSet.add(out);
+              boundTargets.add(out);
               hit = true;
             }
           }
@@ -2139,10 +2335,19 @@ async function main() {
     }
 
     importMap[path] = resolved;
+    const ambiguousHere = ctx.tsAmbiguous.get(path);
+    if (ambiguousHere) {
+      for (const specifier of ambiguousHere.keys()) unresolvedSet.delete(specifier);
+      ambiguous[path] = Object.fromEntries(
+        [...ambiguousHere].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+      ambiguousSpecifiers += ambiguousHere.size;
+    }
     if (sourceTargets.size > 0) {
       resolvedSources[path] = Object.fromEntries(
         [...sourceTargets].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
     }
+    const onlyReexported = resolved.filter((target) => reexportTargets.has(target) && !boundTargets.has(target));
+    if (onlyReexported.length > 0) reexportOnly[path] = onlyReexported;
     if (unresolvedSet.size > 0) {
       // Locale-independent order (UTF-16 code units) keeps the output byte-stable.
       unresolved[path] = [...unresolvedSet].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -2162,11 +2367,16 @@ async function main() {
       totalEdges,
       filesWithUnresolved: Object.keys(unresolved).length,
       unresolvedSpecifiers,
+      filesWithAmbiguous: Object.keys(ambiguous).length,
+      ambiguousSpecifiers,
     },
     failures,
     importMap,
     unresolved,
+    ambiguous,
+    tsConfigFiles: ctx.tsConfigFiles,
     resolvedSources,
+    reexportOnly,
   };
 
   writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');

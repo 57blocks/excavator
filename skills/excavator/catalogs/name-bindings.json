@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "unitDescriptors": ["pom.xml", "build.gradle", "build.gradle.kts", "build.xml", "build.sbt"],
   "xmlBinders": [
     {
@@ -287,6 +287,39 @@
         "attributeSuffixes": ["-ref"],
         "elements": ["ref", "idref"]
       }
+    }
+  ],
+  "xmlMethodCalls": [
+    {
+      "id": "spring-xml-method-call",
+      "namespace": "spring",
+      "basis": "Spring XML configuration: besides names of other beans, an element names a method the container calls. init-method and destroy-method are no-argument methods of the bean's class, and default-init-method and default-destroy-method on the beans root stand for them on every bean that does not write its own (they apply only to beans whose class has the method, so a bean without it is not a gap); factory-method is a static method of the class written in class, or, with factory-bean, an instance method of the class of the bean that factory-bean names; lookup-method and replaced-method name a method of the bean's class that the container overrides; property name and an attribute of the p namespace (its -ref suffix dropped) name the property whose setter the container calls, the setter being set plus the property name with its first letter upper case; the method of a task scheduled element is a no-argument method of the class of the bean its ref names, and the method of an aop advice element (before, after, after-returning, after-throwing, around) is a method of the class of the bean that the ref of the enclosing aspect names.",
+      "root": "beans",
+      "rootNamespace": ["http://www.springframework.org/schema/beans", null],
+      "consumer": {
+        "element": "bean",
+        "binder": "spring-xml-bean"
+      },
+      "sites": [
+        { "id": "spring-init-method", "element": "bean", "attribute": "init-method", "method": "value", "owner": { "from": "consumer" }, "arity": 0, "optional": false },
+        { "id": "spring-destroy-method", "element": "bean", "attribute": "destroy-method", "method": "value", "owner": { "from": "consumer" }, "arity": 0, "optional": false },
+        { "id": "spring-factory-method", "element": "bean", "attribute": "factory-method", "unless": "factory-bean", "method": "value", "owner": { "from": "declared" }, "arity": null, "optional": false },
+        { "id": "spring-factory-method-bean", "element": "bean", "attribute": "factory-method", "when": "factory-bean", "method": "value", "owner": { "from": "named", "attribute": "factory-bean" }, "arity": null, "optional": false },
+        { "id": "spring-lookup-method-name", "element": "lookup-method", "attribute": "name", "method": "value", "owner": { "from": "consumer" }, "arity": null, "optional": false },
+        { "id": "spring-replaced-method-name", "element": "replaced-method", "attribute": "name", "method": "value", "owner": { "from": "consumer" }, "arity": null, "optional": false },
+        { "id": "spring-property-setter", "element": "property", "attribute": "name", "method": "setter", "owner": { "from": "consumer" }, "arity": 1, "optional": false },
+        { "id": "spring-p-setter", "attributeNamespace": "http://www.springframework.org/schema/p", "method": "setter", "owner": { "from": "consumer" }, "arity": 1, "optional": false },
+        { "id": "spring-scheduled-method", "element": "scheduled", "attribute": "method", "method": "value", "owner": { "from": "named", "attribute": "ref" }, "arity": 0, "optional": false },
+        { "id": "spring-aop-before", "element": "before", "attribute": "method", "method": "value", "owner": { "from": "named", "attribute": "ref", "ancestors": ["aspect"] }, "arity": null, "optional": false },
+        { "id": "spring-aop-after", "element": "after", "attribute": "method", "method": "value", "owner": { "from": "named", "attribute": "ref", "ancestors": ["aspect"] }, "arity": null, "optional": false },
+        { "id": "spring-aop-after-returning", "element": "after-returning", "attribute": "method", "method": "value", "owner": { "from": "named", "attribute": "ref", "ancestors": ["aspect"] }, "arity": null, "optional": false },
+        { "id": "spring-aop-after-throwing", "element": "after-throwing", "attribute": "method", "method": "value", "owner": { "from": "named", "attribute": "ref", "ancestors": ["aspect"] }, "arity": null, "optional": false },
+        { "id": "spring-aop-around", "element": "around", "attribute": "method", "method": "value", "owner": { "from": "named", "attribute": "ref", "ancestors": ["aspect"] }, "arity": null, "optional": false }
+      ],
+      "defaults": [
+        { "id": "spring-default-init-method", "attribute": "default-init-method", "like": "spring-init-method" },
+        { "id": "spring-default-destroy-method", "attribute": "default-destroy-method", "like": "spring-destroy-method" }
+      ]
     }
   ],
   "annotationInjections": [

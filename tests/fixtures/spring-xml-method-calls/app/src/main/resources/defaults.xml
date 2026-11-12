@@ -1,0 +1,6 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       default-init-method="init">
+  <bean id="a" class="com.acme.A"/>
+  <bean id="b" class="com.acme.B"/>
+  <bean id="c" class="com.acme.A" init-method="init"/>
+</beans>

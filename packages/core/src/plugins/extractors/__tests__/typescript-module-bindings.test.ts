@@ -75,6 +75,14 @@ describe("TypeScriptExtractor re-exports", () => {
     ]);
   });
 
+  it("gives a re-export that forwards nothing an empty list, unlike a side-effect import", () => {
+    const result = structure(`export {} from "./setup";\nimport "./polyfill";\n`);
+    expect(result.imports).toEqual([
+      { source: "./setup", specifiers: [], lineNumber: 1, reexports: [] },
+      { source: "./polyfill", specifiers: [], lineNumber: 2 },
+    ]);
+  });
+
   it("reads `default as` in the javascript grammar, where `default` is a keyword node", () => {
     const result = structure(`export { default as Badge } from "./badge";\n`, "js");
     expect(result.imports[0]?.reexports).toEqual([{ exported: "Badge", imported: "default" }]);

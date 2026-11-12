@@ -1,0 +1,71 @@
+{
+  "_comment": "Normative keywords per language. Only a bold keyword (**must**) carries normative force. warnUnbolded: report a plain keyword inside a rule; off where words have no boundaries. formCondition: the bold opening word of a form-conditional rule (**Where** \u2026), a declared leak of form into the spec. hiddenForce: words that carry force without a keyword (cannot, is refused, never\u2026); lint warns when a rule uses one and carries no bold keyword.",
+  "en": {
+    "prohibition": [
+      "must not"
+    ],
+    "requirement": [
+      "must"
+    ],
+    "permission": [
+      "may"
+    ],
+    "formCondition": [
+      "Where"
+    ],
+    "hiddenForce": [
+      "cannot",
+      "can't",
+      "can not",
+      "can",
+      "could",
+      "should",
+      "shall",
+      "has to",
+      "have to",
+      "needs to",
+      "need to",
+      "is required",
+      "are required",
+      "is allowed",
+      "are allowed",
+      "is not allowed",
+      "are not allowed",
+      "is refused",
+      "are refused",
+      "is forbidden",
+      "are forbidden",
+      "is prohibited",
+      "are prohibited",
+      "never",
+      "only"
+    ],
+    "warnUnbolded": true
+  },
+  "zh": {
+    "prohibition": [
+      "\u4e0d\u5e94"
+    ],
+    "requirement": [
+      "\u5e94"
+    ],
+    "permission": [
+      "\u53ef"
+    ],
+    "formCondition": [
+      "\u51e1\u91c7\u7528"
+    ],
+    "hiddenForce": [
+      "\u5fc5\u987b",
+      "\u4e0d\u5f97",
+      "\u4e0d\u80fd",
+      "\u4e0d\u53ef\u4ee5",
+      "\u53ea\u80fd",
+      "\u7981\u6b62",
+      "\u987b",
+      "\u9700\u8981",
+      "\u53ef\u4ee5"
+    ],
+    "warnUnbolded": false
+  }
+}

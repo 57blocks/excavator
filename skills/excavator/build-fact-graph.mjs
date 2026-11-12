@@ -56,6 +56,7 @@ import {
   mapDeclarationKind,
   assignOrdinals,
   lookupCandidates,
+  callScopePaths,
   canonicalizeForDigest,
   createGapCollector,
 } from './fact-graph-resolve.mjs';
@@ -72,6 +73,7 @@ import {
 import {
   XML_INJECTION_GAP_KINDS, assertInjectionConservation, resolveXmlInjections,
 } from './xml-injection-resolution.mjs';
+import { XML_METHOD_CALL_GAP_KINDS, assertMethodCallConservation, resolveXmlMethodCalls } from './xml-method-call-resolution.mjs';
 import {
   ANNOTATION_INJECTION_GAP_KINDS, mergeInjectsEdges, resolveAnnotationInjections,
 } from './annotation-injection-resolution.mjs';
@@ -463,7 +465,8 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // calls: source (caller) and target (callee) must EACH resolve to exactly
   // one declaration, or the call site is a gap — never a guessed edge (D3).
   // Scope for the callee is the caller's own file plus its import-map-
-  // resolved internal targets; scope for the caller is its own file only
+  // resolved internal targets, less those only a re-export reaches
+  // (`callScopePaths`); scope for the caller is its own file only
   // (a call graph entry's `caller` is always a function declared in that
   // file). `callee`/`caller` text is matched verbatim (no receiver/dot
   // splitting) — the same conservative rule already used by
@@ -554,7 +557,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
 
   for (const row of fileRows) {
     if (isJava(row)) continue;
-    const scope = [row.path, ...(importMapSafe.importMap?.[row.path] ?? [])];
+    const scope = callScopePaths(importMapSafe, row.path);
     const lang = languageOfPath.get(row.path) ?? row.language ?? 'unknown';
     for (const site of row.callGraph ?? []) {
       const targets = lookupCandidates(declByPathName, scope, site.callee);
@@ -738,6 +741,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // -------------------------------------------------------------------------
   let nameReferenceCoverage = { status: 'not-run' };
   let injectionCoverage = { status: 'not-run' };
+  let methodCallCoverage = { status: 'not-run' };
   let annotationInjectionCoverage = { status: 'not-run' };
   if ((nameReferenceSites !== undefined && nameReferenceSites !== null) !== (nameBindingCatalog !== undefined && nameBindingCatalog !== null)) {
     throw new Error('buildFactGraph: nameReferenceSites and nameBindingCatalog go together');
@@ -790,6 +794,33 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     for (const gap of [...injected.gaps, ...annotated.gaps]) gapCollector.add(gap.kind, gap.scope, gap.sample);
     injectionCoverage = injected.coverage;
     annotationInjectionCoverage = annotated.coverage;
+
+    // Method calls (openspec: changes/spring-xml-method-calls): the method a descriptor names, as an `invokes`
+    // edge from the descriptor's file node. After the injection stage, which shares the binding table.
+    const called = resolveXmlMethodCalls({
+      sites: nameReferenceSites,
+      catalog: nameBindingCatalog,
+      table: bindingTable,
+      manifestPaths,
+      // A project with no Java row has no resolver: no name then resolves to a class with methods.
+      types: resolver ?? createJavaCallResolver({ rows: [], functionIds, classIds, otherJvmRows }),
+      javaRows,
+      functionIds,
+      languageOf: (path) => languageOfPath.get(path),
+    });
+    for (const edge of called.edges) {
+      addEdge({
+        source: fileIdOf(edge.file),
+        target: edge.target,
+        type: 'invokes',
+        direction: 'forward',
+        weight: edge.weight,
+        evidence: edge.evidence,
+        provenance: 'extracted',
+      });
+    }
+    for (const gap of called.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+    methodCallCoverage = called.coverage;
   }
   // Without the name stages the by-type edges are the only `injects` edges to merge.
   if (!nameReferenceSites && typeInjected !== null) {
@@ -884,6 +915,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     nameReferences: nameReferenceCoverage,
     injections: injectionCoverage,
     annotationInjections: annotationInjectionCoverage,
+    methodCalls: methodCallCoverage,
     routes: routeCoverage,
     typeInjections: typeInjectionCoverage,
     jsxElements: jsxCoverage,
@@ -916,6 +948,13 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     assertInjectionConservation(injectionCoverage, Object.fromEntries(
       [...new Set([...Object.values(XML_INJECTION_GAP_KINDS), ...Object.values(ANNOTATION_INJECTION_GAP_KINDS)])].map((kind) => [kind, recorded(kind)]),
     ), annotationInjectionCoverage);
+  }
+  if (methodCallCoverage.status === 'ran') {
+    // Read back from what was recorded into the graph, by gap kind, as for the injection sites.
+    const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
+    assertMethodCallConservation(methodCallCoverage, Object.fromEntries(
+      [...new Set(Object.values(XML_METHOD_CALL_GAP_KINDS))].map((kind) => [kind, recorded(kind)]),
+    ));
   }
   if (routeCoverage.status === 'ran') {
     // Read back from what was recorded into the graph, by family and gap kind, and from the edges the graph got.
@@ -1067,6 +1106,9 @@ const GAP_REASONS = Object.freeze({
   'injection-ambiguous': 'injection site(s), in an XML descriptor or in a Java annotation, whose name binds to more than one thing in the deployment unit(s) it is looked up in (two classes, or a class name that several declarations carry): no injects edge is drawn and none of the candidates is preferred',
   'injection-elsewhere': 'injection site(s), in an XML descriptor or in a Java annotation, whose name no binding of the deployment unit(s) it is looked up in declares in the family\'s namespace (for an XML ref local, in the site\'s own file; for a Seam In, among the Seam components), but another unit, namespace, file or kind of binding does (a bean of another module, a JSF or CDI bean that Seam does not inject, a component another framework\'s annotation declares): no injects edge is drawn, since the name is only known to be bound where the site cannot see it',
   'injection-unbound': 'injection site(s), in an XML descriptor or in a Java annotation, whose name no binding this analysis reads declares: beans of libraries or of a parent context, built-in Seam components and context variables, beans a factory or producer method declares, names set at runtime and components of sources that are not Java are not read, so the name may well be bound there',
+  'method-call-owner-unresolved': 'method call site(s) in an XML descriptor (a Spring init-method, factory-method, property setter, scheduled or advice method) whose class cannot be told: no enclosing bean element or no bean named, a bean built by a factory method or with no class (for a call that belongs to the bean\'s own class), a parent or name with no binding in the unit, a repository class the index has no node for, a class name that several declarations carry, or a bean name that no binding of the unit declares (another unit or namespace has it, or nothing does): no invokes edge is drawn. A class outside the repository is no gap',
+  'method-call-method-unresolved': 'method call site(s) in an XML descriptor whose class is a repository class but where no method of that name and argument count is found on it or its repository ancestors: either a supertype is outside the repository or cannot be resolved, so the method may be the library\'s, or the method does not exist in the repository (a method of a generated class, a typo), or the call is a setter for a nested property path (`a.b`, which the container resolves through a getter), which is not modeled: no invokes edge is drawn. A default init or destroy method a bean does not have is no gap',
+  'method-call-ambiguous': 'method call site(s) in an XML descriptor whose class has more than one method of that name and argument count on the nearest type of its hierarchy that declares one (overloads; an override is not ambiguous, the nearest declaration is the one called) or one whose node id another declaration shares: no invokes edge is drawn and none of the candidates is preferred',
   'route-handler-unresolved': 'Java route site(s) - a method that carries an annotation of the route catalog - whose handler has no method node an edge can point at: the method is in a nested, local or anonymous type (which have no method nodes), or its node id is shared with another declaration, or the structure row has no single entry for it: no endpoint and no routes edge is drawn',
   'route-verb-unresolved': 'Java route site(s) that do not name one HTTP method: the method writes none (a locator of a sub-resource, a path with no method, or a custom method the catalog does not know) or writes two or more different ones, and none of them is preferred: no endpoint is drawn',
   'route-root-unresolved': 'Java route site(s) whose top-level type writes no root path the catalog reads (a sub-resource, a resource that a descriptor or a configuration registers, a path an interface or a parent type gives): the root path is not completed from any other place, and no endpoint is drawn',

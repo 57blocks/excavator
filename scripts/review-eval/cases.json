@@ -1,0 +1,95 @@
+{
+  "cases": [
+    {
+      "id": "privacy-scan-first-version",
+      "range": "a6f76444^..a6f76444",
+      "defects": [
+        {
+          "id": "privacy-scan-skips-binary-and-merge-lines",
+          "fix": "eae78093",
+          "failing": "A commit adds a file holding a NUL byte (UTF-16 text, say) with a listed name: without --text git prints 'Binary files differ' and the scan finds 0 matches. A merge's conflict resolution adds a name that a later commit removes: neither the --no-merges log nor the three-dot diff holds that line.",
+          "spans": [
+            { "path": "scripts/ci/privacy-scan.mjs", "start": 36, "end": 36 },
+            { "path": "scripts/ci/privacy-scan.mjs", "start": 80, "end": 90 }
+          ]
+        },
+        {
+          "id": "privacy-workflow-uses-event-payload-text",
+          "fix": "346ae997",
+          "failing": "The title and body go into step env, so the Actions log prints them although the scan must never print the text. A re-run reuses the frozen event payload, so after an edit it scans the old title, body and base. The branch name is never scanned.",
+          "spans": [
+            { "path": ".github/workflows/privacy.yml", "start": 48, "end": 51 },
+            { "path": ".github/workflows/privacy.yml", "start": 57, "end": 63 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "structure-all-first-version",
+      "range": "d8c2a484^..d8c2a484",
+      "defects": [
+        {
+          "id": "structure-all-shared-chunk-scratch-names",
+          "fix": "4f9d9997",
+          "failing": "Two runs over the same project root at once (with different --out) write, read and remove the same .excavator/tmp/structure-all-chunk-<index> files, so one run merges the other's chunk or fails reading a file the other removed.",
+          "spans": [
+            { "path": "skills/excavator/structure-all.mjs", "start": 187, "end": 188 },
+            { "path": "skills/excavator/structure-all.mjs", "start": 199, "end": 201 }
+          ]
+        },
+        {
+          "id": "structure-all-scan-paths-escape-root",
+          "fix": "21b4c42f",
+          "failing": "A --scan file whose files[] holds '../outside/secret.ts' or an absolute path is passed on unfiltered, and the extractor reads join(projectRoot, path), so a file outside the project is read and recorded.",
+          "spans": [
+            { "path": "skills/excavator/structure-all.mjs", "start": 178, "end": 185 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "doc-map-evidence-check-tests",
+      "range": "96c12106^..96c12106",
+      "defects": [
+        {
+          "id": "doc-map-test-unconditional-path-cut",
+          "fix": "a110bd95",
+          "failing": "When the temporary project path plus 'src/Rx.java' is 80 characters or fewer, the script prints the whole path, but the test always expects the first 80 characters plus '...', so the test fails on a short temporary directory.",
+          "spans": [
+            { "path": "tests/skill/test_doc_map.test.mjs", "start": 614, "end": 614 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "batched-blob-snapshot-reader",
+      "range": "0377b248^..0377b248",
+      "description": "Reads commit snapshots through the batched blob reader and removes the per-file helper.",
+      "defects": []
+    },
+    {
+      "id": "hotspots-co-change",
+      "range": "106a700c^..106a700c",
+      "description": "Counts pairs of files changed in the same commits, with a per-commit file cap and a minimum pair count.",
+      "defects": []
+    },
+    {
+      "id": "hotspots-no-history-reason",
+      "range": "a8c6b885^..a8c6b885",
+      "description": "Says why a project has no history.",
+      "defects": []
+    },
+    {
+      "id": "ts-import-bindings-and-reexports",
+      "range": "32e165fa^..32e165fa",
+      "description": "The TypeScript and JavaScript extractor records import bindings, re-exports and local export names.",
+      "defects": []
+    },
+    {
+      "id": "gherkin-feature-parser",
+      "range": "4536890d^..4536890d",
+      "description": "A .feature reader that turns Feature, Scenario and steps into anchored structure.",
+      "defects": []
+    }
+  ]
+}

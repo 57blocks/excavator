@@ -150,6 +150,23 @@ export function lookupCandidates(index, scopePaths, name) {
   return out;
 }
 
+/**
+ * The files a non-Java call in `path` looks its callee up in: the file
+ * itself and its import-map targets, less the targets only `export ... from`
+ * reaches (`reexportOnly`). A re-export binds no name in the file, so the
+ * module it forwards declares nothing the file can call by a bare name.
+ * Shared by the fact graph and the audit so both use one scope.
+ *
+ * @param {{ importMap?: object, reexportOnly?: object }|null|undefined} importMap
+ *   extract-import-map.mjs output
+ * @param {string} path
+ * @returns {string[]}
+ */
+export function callScopePaths(importMap, path) {
+  const reexportOnly = new Set(importMap?.reexportOnly?.[path] ?? []);
+  return [path, ...(importMap?.importMap?.[path] ?? []).filter((target) => !reexportOnly.has(target))];
+}
+
 // ---------------------------------------------------------------------------
 // Digest — canonical (key-sorted) JSON, sha256. Mirrors annotate-graph.mjs's
 // canonicalize/sha256 (same reasoning as matchImportLine above: a deliberate,

@@ -1,7 +1,8 @@
-// scripts/ci/privacy-scan.mjs (openspec change ci-merge-gate, capability
-// `change-review`). Synthetic lists in a throwaway repository: the real
-// lists live only in the repository's secrets. Each added line counts once,
-// in the commit that adds it, even when a later commit removes it.
+// scripts/ci/privacy-scan.mjs (openspec changes ci-merge-gate and
+// privacy-scan-lockfile-scope, capability `change-review`). Synthetic lists
+// in a throwaway repository: the real lists live only in the repository's
+// secrets. Each added line counts once, in the commit that adds it, even when
+// a later commit removes it.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -125,6 +126,15 @@ describe('privacy-scan', () => {
     const result = scan();
     expect(result.status).toBe(0);
     expect(nonzero(result)).toEqual({});
+  });
+
+  it('counts a corpus pattern an integrity hash hits by chance everywhere but the root lockfile', () => {
+    const line = `    resolution: {integrity: sha512-Qx/${CORPUS}+Rt==}\n`;
+    commit('chore: lock', { 'pnpm-lock.yaml': line, 'packages/p/pnpm-lock.yaml': line, 'src/hash.txt': line });
+    const result = scan();
+    expect(result.status).toBe(1);
+    expect(nonzero(result)).toEqual({ 'corpus added lines': 2 });
+    expectNoListedText(result);
   });
 
   it('does not count a corpus name in openspec/, docs/ or root Markdown', () => {

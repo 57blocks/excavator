@@ -420,7 +420,9 @@ export class TypeScriptExtractor implements LanguageExtractor {
 
   /**
    * `export ... from 'S'` is also an import of `S`, so the import map
-   * resolves it; its forwarded names go in `reexports`.
+   * resolves it; its forwarded names go in `reexports`. The entry carries
+   * `reexports` even when it forwards nothing (`export {} from 'S'`), which
+   * tells it apart from a side-effect `import 'S'`.
    */
   private extractReexport(
     node: TreeSitterNode,
@@ -448,7 +450,7 @@ export class TypeScriptExtractor implements LanguageExtractor {
       source: getStringValue(sourceNode),
       specifiers: [],
       lineNumber: node.startPosition.row + 1,
-      ...(reexports.length > 0 ? { reexports } : {}),
+      reexports,
     });
   }
 

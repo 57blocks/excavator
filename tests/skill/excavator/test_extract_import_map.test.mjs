@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -132,6 +132,8 @@ describe('extract-import-map.mjs — TypeScript / JavaScript resolver', () => {
       // Unresolved-specifier accounting is part of the stats block now.
       filesWithUnresolved: 0,
       unresolvedSpecifiers: 0,
+      filesWithAmbiguous: 0,
+      ambiguousSpecifiers: 0,
     });
     expect(result.output.unresolved).toEqual({});
   });
@@ -2311,5 +2313,396 @@ describe('extract-import-map.mjs — resolved TS/JS sources', () => {
     expect(result.output.importMap['src/ui/index.ts']).toEqual(['src/ui/button.tsx', 'src/ui/card.tsx']);
     expect(result.output.unresolved['src/page.tsx']).toEqual(['react']);
     expect(result.output.unresolved['src/ui/index.ts']).toEqual(['external-kit']);
+  });
+
+  it('lists the targets only a re-export reaches, and keeps them in the import map', () => {
+    projectRoot = setupTree({
+      'src/barrel.ts': "export { a } from './a';\nexport * from './b';\nexport {} from './c';\n",
+      // './a' is also imported and './c' also required, so a name is bound
+      // from them; a side-effect import binds none but is not a re-export.
+      'src/mixed.ts': [
+        "import { a } from './a';",
+        "export { a } from './a';",
+        "export * from './b';",
+        "export { c } from './c';",
+        "const { c } = require('./c');",
+        "export {} from './d';",
+        "import './e';",
+        '',
+      ].join('\n'),
+      'src/plain.ts': "import { a } from './a';\n",
+      'src/a.ts': 'export function a() {}\n',
+      'src/b.ts': 'export function b() {}\n',
+      'src/c.ts': 'export function c() {}\n',
+      'src/d.ts': 'export function d() {}\n',
+      'src/e.ts': 'export function e() {}\n',
+    });
+    const paths = ['src/barrel.ts', 'src/mixed.ts', 'src/plain.ts', 'src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts'];
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: paths.map((path) => ({ path, language: 'typescript', fileCategory: 'code' })),
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.output.reexportOnly).toEqual({
+      'src/barrel.ts': ['src/a.ts', 'src/b.ts', 'src/c.ts'],
+      'src/mixed.ts': ['src/b.ts', 'src/d.ts'],
+    });
+    expect(result.output.importMap['src/barrel.ts']).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts']);
+    expect(result.output.importMap['src/mixed.ts']).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts']);
+    expect(result.output.importMap['src/plain.ts']).toEqual(['src/a.ts']);
+  });
+});
+
+describe('extract-import-map.mjs - tsconfig references and extends', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  const code = (path) => ({ path, language: 'typescript', fileCategory: 'code' });
+  const config = (path) => ({ path, language: 'json', fileCategory: 'config' });
+
+  it('resolves aliases defined in a config the root tsconfig only references (solution layout)', () => {
+    // Root config compiles nothing itself and delegates to referenced
+    // configs; the alias lives in one of them. Comments and trailing commas
+    // as the referenced config is commonly written.
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({
+        files: [],
+        references: [{ path: './tsconfig.app.json' }, { path: './tsconfig.node.json' }],
+      }),
+      'tsconfig.app.json': `{
+        "compilerOptions": {
+          /* Bundler mode */
+          "baseUrl": ".",
+          "paths": { "src/*": ["./src/*"] }, // alias
+        },
+        "include": ["src"],
+      }`,
+      'tsconfig.node.json': JSON.stringify({ include: ['vite.config.ts'] }),
+      'src/App.tsx':
+        `import { Button } from 'src/common/components';\n` +
+        `import { format } from 'src/utils/format';\n` +
+        `import { local } from './local';\n` +
+        `import React from 'react';\n`,
+      'src/common/components/index.ts': `export const Button = 1;\n`,
+      'src/utils/format.ts': `export const format = 1;\n`,
+      'src/local.ts': `export const local = 1;\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [
+        config('tsconfig.json'),
+        config('tsconfig.app.json'),
+        config('tsconfig.node.json'),
+        code('src/App.tsx'),
+        code('src/common/components/index.ts'),
+        code('src/utils/format.ts'),
+        code('src/local.ts'),
+      ],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['src/App.tsx']).toEqual([
+      'src/common/components/index.ts',
+      'src/local.ts',
+      'src/utils/format.ts',
+    ]);
+    expect(result.output.unresolved['src/App.tsx']).toEqual(['react']);
+    expect(result.output.failures).toEqual([]);
+  });
+
+  it('reads a referenced config that the file inventory does not list', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({ files: [], references: [{ path: './tsconfig.app.json' }] }),
+      'tsconfig.app.json': JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } } }),
+      'src/main.ts': `import { x } from '@/x';\n`,
+      'src/x.ts': `export const x = 1;\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [config('tsconfig.json'), code('src/main.ts'), code('src/x.ts')],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['src/main.ts']).toEqual(['src/x.ts']);
+  });
+
+  it('applies a referenced config only to files inside its own directory', () => {
+    // The root references a package config with a non-default name, so the
+    // walk-up from a file in the package finds the root tsconfig.json. A
+    // file outside the package must not pick up the package's alias.
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({
+        files: [],
+        references: [{ path: './packages/web/tsconfig.lib.json' }],
+      }),
+      'packages/web/tsconfig.lib.json': JSON.stringify({
+        compilerOptions: { baseUrl: '.', paths: { '@web/*': ['src/*'] } },
+      }),
+      'packages/web/src/a.ts': `import { b } from '@web/b';\n`,
+      'packages/web/src/b.ts': `export const b = 1;\n`,
+      'scripts/tool.ts': `import { b } from '@web/b';\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [
+        config('tsconfig.json'),
+        config('packages/web/tsconfig.lib.json'),
+        code('packages/web/src/a.ts'),
+        code('packages/web/src/b.ts'),
+        code('scripts/tool.ts'),
+      ],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['packages/web/src/a.ts']).toEqual(['packages/web/src/b.ts']);
+    expect(result.output.importMap['scripts/tool.ts']).toEqual([]);
+    expect(result.output.unresolved['scripts/tool.ts']).toEqual(['@web/b']);
+  });
+
+  it('resolves a reference that names a directory to that directory\'s tsconfig.json', () => {
+    // The inventory does not list app/tsconfig.json, so the walk-up stops at
+    // the root config and only its reference reaches the alias.
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({ files: [], references: [{ path: './app' }] }),
+      'app/tsconfig.json': JSON.stringify({ compilerOptions: { paths: { '~/*': ['./lib/*'] } } }),
+      'app/lib/y.ts': `export const y = 1;\n`,
+      'app/main.ts': `import { y } from '~/y';\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [config('tsconfig.json'), code('app/lib/y.ts'), code('app/main.ts')],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['app/main.ts']).toEqual(['app/lib/y.ts']);
+  });
+
+  it('records an import two referenced configs map to different files as ambiguous, with no edge', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({
+        files: [],
+        references: [{ path: './tsconfig.app.json' }, { path: './tsconfig.web.json' }],
+      }),
+      'tsconfig.app.json': JSON.stringify({ compilerOptions: { paths: { '@/*': ['./app/*'] } } }),
+      'tsconfig.web.json': JSON.stringify({ compilerOptions: { paths: { '@/*': ['./web/*'] } } }),
+      'app/foo.ts': `export const foo = 1;\n`,
+      'web/foo.ts': `export const foo = 2;\n`,
+      'web/only.ts': `export const only = 1;\n`,
+      'main.ts':
+        `import { foo } from '@/foo';\n` +   // both configs reach a file: ambiguous
+        `import { only } from '@/only';\n`,  // one config reaches a file: resolved
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [
+        config('tsconfig.json'),
+        config('tsconfig.app.json'),
+        config('tsconfig.web.json'),
+        code('app/foo.ts'),
+        code('web/foo.ts'),
+        code('web/only.ts'),
+        code('main.ts'),
+      ],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['main.ts']).toEqual(['web/only.ts']);
+    expect(result.output.ambiguous).toEqual({
+      'main.ts': { '@/foo': ['app/foo.ts', 'web/foo.ts'] },
+    });
+    // One bucket per specifier: ambiguous is not also unresolved.
+    expect(result.output.unresolved['main.ts']).toBeUndefined();
+    expect(result.output.stats.ambiguousSpecifiers).toBe(1);
+  });
+
+  it('resolves an import two referenced configs map to the same file', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({
+        files: [],
+        references: [{ path: './tsconfig.app.json' }, { path: './tsconfig.test.json' }],
+      }),
+      'tsconfig.app.json': JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } } }),
+      'tsconfig.test.json': JSON.stringify({ compilerOptions: { baseUrl: 'src', paths: { '@/*': ['*'] } } }),
+      'src/foo.ts': `export const foo = 1;\n`,
+      'main.ts': `import { foo } from '@/foo';\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [config('tsconfig.json'), code('src/foo.ts'), code('main.ts')],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['main.ts']).toEqual(['src/foo.ts']);
+    expect(result.output.ambiguous).toEqual({});
+  });
+
+  it('inherits paths and baseUrl through relative extends, anchored at the config that sets them', () => {
+    projectRoot = setupTree({
+      'tsconfig.base.json': JSON.stringify({
+        compilerOptions: { baseUrl: '.', paths: { '@shared/*': ['libs/shared/*'] } },
+      }),
+      'packages/a/tsconfig.json': JSON.stringify({ extends: '../../tsconfig.base.json' }),
+      'packages/a/src/main.ts': `import { s } from '@shared/s';\n`,
+      'libs/shared/s.ts': `export const s = 1;\n`,
+      // Child sets its own paths but inherits baseUrl from the base: targets
+      // are anchored at the base's baseUrl.
+      'packages/b/tsconfig.json': JSON.stringify({
+        extends: ['../../tsconfig.base.json'],
+        compilerOptions: { paths: { '#lib/*': ['libs/shared/*'] } },
+      }),
+      'packages/b/src/main.ts': `import { s } from '#lib/s';\nimport { t } from '@shared/s';\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [
+        config('tsconfig.base.json'),
+        config('packages/a/tsconfig.json'),
+        config('packages/b/tsconfig.json'),
+        code('packages/a/src/main.ts'),
+        code('packages/b/src/main.ts'),
+        code('libs/shared/s.ts'),
+      ],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['packages/a/src/main.ts']).toEqual(['libs/shared/s.ts']);
+    // The child's own paths replace the inherited ones, as in TypeScript.
+    expect(result.output.importMap['packages/b/src/main.ts']).toEqual(['libs/shared/s.ts']);
+    expect(result.output.unresolved['packages/b/src/main.ts']).toEqual(['@shared/s']);
+  });
+
+  it('warns about a missing or escaping referenced config without a failure, keeping other imports', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({
+        files: [],
+        references: [{ path: './tsconfig.missing.json' }, { path: '../outside/tsconfig.json' }],
+        extends: '../outside/base.json',
+      }),
+      'src/main.ts': `import { x } from './x';\nimport { y } from '@/y';\n`,
+      'src/x.ts': `export const x = 1;\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [config('tsconfig.json'), code('src/main.ts'), code('src/x.ts')],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['src/main.ts']).toEqual(['src/x.ts']);
+    expect(result.output.unresolved['src/main.ts']).toEqual(['@/y']);
+    expect(result.stderr).toMatch(/references \.\/tsconfig\.missing\.json, which does not exist/);
+    expect(result.stderr).toMatch(/references \.\.\/outside\/tsconfig\.json, which is outside the project root/);
+    expect(result.stderr).toMatch(/extends \.\.\/outside\/base\.json, which is outside the project root/);
+    // A target outside the selected sources or the project root is not a
+    // fault of the run; the import that needed it is in `unresolved`.
+    expect(result.output.failures).toEqual([]);
+  });
+
+  it('records a failure for a referenced config that does not parse, once however often it is named', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({ files: [], references: [{ path: './tsconfig.app.json' }] }),
+      'tsconfig.app.json': '{ "compilerOptions": { "paths": ',
+      'pkg/tsconfig.json': JSON.stringify({ files: [], references: [{ path: '../tsconfig.app.json' }] }),
+      'src/main.ts': `import { x } from './x';\nimport { y } from '@/y';\n`,
+      'src/x.ts': `export const x = 1;\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [config('tsconfig.json'), config('pkg/tsconfig.json'), code('src/main.ts'), code('src/x.ts')],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['src/main.ts']).toEqual(['src/x.ts']);
+    expect(result.stderr).toMatch(/tsconfig\.json at .*tsconfig\.app\.json failed to parse/);
+    expect(result.output.failures).toEqual([
+      expect.objectContaining({ path: 'tsconfig.app.json', stage: 'resolver-config-parse' }),
+    ]);
+  });
+
+  it('warns once about a broken extends in a base that two referenced configs share', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({
+        files: [],
+        references: [{ path: './tsconfig.app.json' }, { path: './tsconfig.test.json' }],
+      }),
+      'tsconfig.app.json': JSON.stringify({ extends: './tsconfig.base.json' }),
+      'tsconfig.test.json': JSON.stringify({ extends: './tsconfig.base.json' }),
+      'tsconfig.base.json': JSON.stringify({
+        extends: './tsconfig.gone.json',
+        compilerOptions: { paths: { '@/*': ['./src/*'] } },
+      }),
+      'src/main.ts': `import { x } from '@/x';\n`,
+      'src/x.ts': `export const x = 1;\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [config('tsconfig.json'), code('src/main.ts'), code('src/x.ts')],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['src/main.ts']).toEqual(['src/x.ts']);
+    expect(result.stderr.match(/extends \.\/tsconfig\.gone\.json, which does not exist/g)).toHaveLength(1);
+  });
+
+  it.skipIf(process.platform === 'win32')('does not read a referenced config whose real path leaves the project root', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({ files: [], references: [{ path: './tsconfig.app.json' }] }),
+      'src/main.ts': `import { x } from '@/x';\n`,
+      'src/x.ts': `export const x = 1;\n`,
+    });
+    const outside = mkdtempSync(join(tmpdir(), 'excavator-eim-outside-'));
+    try {
+      writeFileSync(join(outside, 'tsconfig.app.json'),
+        JSON.stringify({ compilerOptions: { paths: { '@/*': ['./src/*'] } } }), 'utf-8');
+      symlinkSync(join(outside, 'tsconfig.app.json'), join(projectRoot, 'tsconfig.app.json'));
+
+      const result = runScript(projectRoot, {
+        projectRoot,
+        files: [config('tsconfig.json'), code('src/main.ts'), code('src/x.ts')],
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.output.importMap['src/main.ts']).toEqual([]);
+      expect(result.output.unresolved['src/main.ts']).toEqual(['@/x']);
+      expect(result.stderr).toMatch(/references \.\/tsconfig\.app\.json, which is outside the project root/);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('stops at an extends cycle and still resolves the aliases it read', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({ extends: './a.json', compilerOptions: { paths: { '@/*': ['./src/*'] } } }),
+      'a.json': JSON.stringify({ extends: './tsconfig.json' }),
+      'src/main.ts': `import { x } from '@/x';\n`,
+      'src/x.ts': `export const x = 1;\n`,
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [config('tsconfig.json'), code('src/main.ts'), code('src/x.ts')],
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.output.importMap['src/main.ts']).toEqual(['src/x.ts']);
+    expect(result.stderr).toMatch(/a\.json extends \.\/tsconfig\.json, which extends it back/);
+    expect(result.output.failures).toEqual([]);
   });
 });

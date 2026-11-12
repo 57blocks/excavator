@@ -940,6 +940,29 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(scan.importMap['src/index.ts']).toEqual(['alternate/foo.ts']);
   });
 
+  it('re-resolves unchanged importers when a referenced or extended tsconfig changes', () => {
+    // The alias lives in a config the root only references, which extends a
+    // shared base under a name no rule could guess.
+    const { root, baseCommit } = setupRepository({
+      'tsconfig.json': JSON.stringify({ files: [], references: [{ path: './tsconfig.app.json' }] }),
+      'tsconfig.app.json': JSON.stringify({ extends: './configs/shared.json' }),
+      'configs/shared.json': JSON.stringify({
+        compilerOptions: { baseUrl: '..', paths: { '@/*': ['src/*'] } },
+      }),
+      'src/index.ts': "import { value } from '@/foo';\nexport { value };\n",
+      'src/foo.ts': 'export const value = 1;\n',
+      'alternate/foo.ts': 'export const value = 2;\n',
+      'src/a.ts': 'export const a = 1;\n',
+    });
+    writeProjectFile(root, 'configs/shared.json', JSON.stringify({
+      compilerOptions: { baseUrl: '..', paths: { '@/*': ['alternate/*'] } },
+    }));
+    commit(root, 'change alias target in the shared base');
+
+    const { scan } = prepare(root, baseCommit);
+    expect(scan.importMap['src/index.ts']).toEqual(['alternate/foo.ts']);
+  });
+
   it('aborts without advancing baselines when import extraction reports a config failure', () => {
     const { root, baseCommit } = setupRepository({
       'tsconfig.json': JSON.stringify({

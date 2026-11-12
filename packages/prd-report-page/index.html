@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- xv:csp -->
+    <script>
+      // Set the remembered theme before the first paint; the app applies it again on start. Storage may throw.
+      (function () {
+        var theme = 'light';
+        try {
+          var stored = window.localStorage.getItem('excavator-prd-report-theme');
+          if (stored === 'light' || stored === 'dark') theme = stored;
+        } catch (error) { /* no storage: the default */ }
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
+    <title>PRD report</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- xv:data -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

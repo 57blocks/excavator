@@ -1753,8 +1753,8 @@ describe('coverage, gaps and conservation (design D10)', () => {
   it('refuses sites without a catalog and a catalog without sites', () => {
     const scan = { files: [], skipped: [] };
     const structureAll = { results: [] };
-    // what the name-reference stage returns for a project with nothing in it (the injection keys are xml-injection-references')
-    const sites = { files: [], bindings: [], injections: [], injectionFiles: { 'spring-xml-injection': 0 }, uncoveredReferences: {}, conditions: [], outsideFiles: {} };
+    // what the name-reference stage returns for a project with nothing in it (the injection keys are xml-injection-references', the method call keys spring-xml-method-calls')
+    const sites = { files: [], bindings: [], injections: [], injectionFiles: { 'spring-xml-injection': 0 }, methodCalls: [], methodCallFiles: { 'spring-xml-method-call': 0 }, methodCallsEmpty: 0, uncoveredReferences: {}, conditions: [], outsideFiles: {} };
     expect(() => buildFactGraph({ scan, structureAll, nameReferenceSites: sites })).toThrow(/nameReferenceSites and nameBindingCatalog go together/);
     expect(() => buildFactGraph({ scan, structureAll, nameBindingCatalog: CATALOG })).toThrow(/nameReferenceSites and nameBindingCatalog go together/);
     expect(buildFactGraph({ scan, structureAll, nameReferenceSites: sites, nameBindingCatalog: CATALOG }).coverage.nameReferences)

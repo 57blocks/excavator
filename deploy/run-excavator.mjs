@@ -44,6 +44,8 @@ import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, readKnowledgeGraphHeader } fr
 /** The runner's own copy of the independently re-validated graph, line-oriented like the graph itself. */
 const VALIDATED_GRAPH_FILE = 'validated-graph.jsonl';
 import { measureReadCoverage } from './read-coverage.mjs';
+import { buildSkopoPrompt, isSkopoMode, needsFacts, parseScope, runSkopoVerdict, SKOPO_MODES } from './skopo-mode.mjs';
+import { resolveFreshness } from '../skills/excavator/consumer-freshness.mjs';
 
 export { PIPELINE_VERSION };
 
@@ -62,6 +64,7 @@ export const RUNTIME_PARAMS = Object.freeze([
   'EXCAVATOR_TIMEOUT_MINUTES',
   'AWS_REGION',
   'ANTHROPIC_MODEL',
+  'EXCAVATOR_SCOPE',
 ]);
 
 /**
@@ -92,6 +95,9 @@ export const DEFAULTS = Object.freeze({
   // short enough not to matter next to a 180-minute default timeout.
   timeoutGraceSeconds: 30,
 });
+
+/** Every EXCAVATOR_MODE value. */
+export const MODES = Object.freeze(['lazy', 'full', ...Object.keys(SKOPO_MODES)]);
 
 export const EXIT_CODES = Object.freeze({
   OK: 0,
@@ -159,13 +165,17 @@ export function parseConfig(env = {}) {
   const errors = [];
 
   const mode = env.EXCAVATOR_MODE;
-  if (mode !== 'lazy' && mode !== 'full') {
+  if (mode !== 'lazy' && mode !== 'full' && !isSkopoMode(mode)) {
     errors.push(
-      `EXCAVATOR_MODE must be "lazy" or "full", got ${mode === undefined ? 'unset' : JSON.stringify(mode)}`,
+      `EXCAVATOR_MODE must be one of ${MODES.map((m) => `"${m}"`).join(', ')}, got ${mode === undefined ? 'unset' : JSON.stringify(mode)}`,
     );
   }
+  const scope = parseScope(env.EXCAVATOR_SCOPE, mode, errors);
 
   const force = parseBooleanFlag(env.EXCAVATOR_FORCE, false, 'EXCAVATOR_FORCE', errors);
+  if (force && mode === 'skopo-report') {
+    errors.push('EXCAVATOR_FORCE does not apply to skopo-report: it reports the run skopo-create left; force skopo-create instead');
+  }
   const maxContradicted = parseNonNegativeInteger(
     env.EXCAVATOR_MAX_CONTRADICTED, DEFAULTS.maxContradicted, 'EXCAVATOR_MAX_CONTRADICTED', errors,
   );
@@ -176,7 +186,7 @@ export function parseConfig(env = {}) {
   let region = null;
   let model = null;
   let maxBudgetUsd = null;
-  if (mode === 'full') {
+  if (mode === 'full' || isSkopoMode(mode)) {
     region = requireNonEmpty(env.AWS_REGION, 'AWS_REGION', errors);
     model = requireNonEmpty(env.ANTHROPIC_MODEL, 'ANTHROPIC_MODEL', errors);
     maxBudgetUsd = parsePositiveNumber(
@@ -198,7 +208,7 @@ export function parseConfig(env = {}) {
   return {
     ok: true,
     config: {
-      mode, force, maxContradicted, timeoutMinutes, region, model, maxBudgetUsd,
+      mode, force, maxContradicted, timeoutMinutes, region, model, maxBudgetUsd, scope,
       repoRoot, outDir, pluginDir, claudeBin, timeoutGraceSeconds,
     },
   };
@@ -388,12 +398,17 @@ export function checkRun({ resultEvent, processExitCode, timedOut, spawnError })
 }
 
 // ---------------------------------------------------------------------------
-// Product check (task 2.3). Compares the produced meta.json/knowledge-graph
-// against the HEAD recorded before the run and the requested model (design
-// D4 "product").
+// Product check (task 2.3). Compares the produced meta.json and the semantic
+// graph against the HEAD recorded before the run and the requested model
+// (design D4 "product"). Full does not write the fact graph, so the model is
+// recorded in semantic-graph.json; null means it is missing or unreadable.
 // ---------------------------------------------------------------------------
 
-export function checkProduct({ graph, meta, expectedHead, expectedModel }) {
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value !== '';
+}
+
+export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel, factsDigest }) {
   const reasons = [];
 
   const actualHead = meta?.gitCommitHash ?? null;
@@ -401,11 +416,22 @@ export function checkProduct({ graph, meta, expectedHead, expectedModel }) {
     reasons.push(`meta.json gitCommitHash is ${JSON.stringify(actualHead)}, expected HEAD ${JSON.stringify(expectedHead)}`);
   }
 
-  const actualModel = graph?.project?.model ?? null;
-  if (actualModel === 'unknown' || actualModel === null || actualModel === undefined) {
-    reasons.push(`graph project.model is ${JSON.stringify(actualModel)}, expected ${JSON.stringify(expectedModel)}`);
-  } else if (actualModel !== expectedModel) {
-    reasons.push(`graph project.model is ${JSON.stringify(actualModel)}, expected ${JSON.stringify(expectedModel)}`);
+  const actualModel = semanticGraph?.model ?? null;
+  if (actualModel === 'unknown' || actualModel === null || actualModel === undefined || actualModel !== expectedModel) {
+    const source = semanticGraph === null || semanticGraph === undefined
+      ? 'semantic-graph.json is missing or unreadable, so model is'
+      : 'semantic-graph.json model is';
+    reasons.push(`${source} ${JSON.stringify(actualModel)}, expected ${JSON.stringify(expectedModel)}`);
+  }
+
+  // The semantic graph must be built from the facts this run just wrote: a
+  // stale one from an earlier run (same model) must not pass as this run's product.
+  const semanticDigest = semanticGraph?.factDigest;
+  if (!isNonEmptyString(semanticDigest) || !isNonEmptyString(factsDigest) || semanticDigest !== factsDigest) {
+    reasons.push(
+      `semantic-graph.json factDigest is ${JSON.stringify(semanticDigest ?? null)}, `
+      + `but knowledge-graph.jsonl project.factsDigest is ${JSON.stringify(factsDigest ?? null)}; they must be equal strings`,
+    );
   }
 
   return { ok: reasons.length === 0, reasons };
@@ -414,21 +440,36 @@ export function checkProduct({ graph, meta, expectedHead, expectedModel }) {
 // ---------------------------------------------------------------------------
 // Skip rule (task 2.3/2.5). Decides whether a full run is skipped, and when
 // not, whether to force a full rebuild (`--full`) or an incremental one
-// (`--mode=full`) — design D3's three-case table.
+// (`--mode=full`) — design D3's three-case table. A full product is a
+// semantic-graph.json with a factDigest (design D5); it is fresh when that
+// digest equals the fact graph's factsDigest and the commit is HEAD.
 // ---------------------------------------------------------------------------
 
-export function planFullRun({ graph, meta, headSha, force, pipelineVersion }) {
-  const hasFullProduct = graph?.project?.pipelineVersion === pipelineVersion;
-  const commitMatches = hasFullProduct && meta?.gitCommitHash === headSha;
+export function planFullRun({ graph, semanticGraph, meta, headSha, model, force }) {
+  const factDigest = semanticGraph?.factDigest;
+  const hasFullProduct = isNonEmptyString(factDigest);
+  const recordedModel = semanticGraph?.model;
+  const modelMatches = recordedModel === model;
+  const fresh = hasFullProduct
+    && factDigest === graph?.project?.factsDigest
+    && modelMatches
+    && meta?.gitCommitHash === headSha;
 
-  if (hasFullProduct && commitMatches && !force) {
-    return { action: 'skip', reason: 'existing full product already matches HEAD' };
+  if (fresh && !force) {
+    return { action: 'skip', reason: 'existing full product already matches HEAD, the facts and the requested model' };
   }
   if (force) {
     return { action: 'run', flag: '--full', reason: 'EXCAVATOR_FORCE is set' };
   }
+  if (hasFullProduct && !modelMatches) {
+    // --full rebuilds Phase F3 unconditionally; --mode=full would reuse the architecture of the other model.
+    return {
+      action: 'run', flag: '--full',
+      reason: `existing full product records model ${JSON.stringify(recordedModel) ?? 'undefined'}, requested ${JSON.stringify(model)}`,
+    };
+  }
   if (hasFullProduct) {
-    return { action: 'run', flag: '--mode=full', reason: 'existing full product but HEAD changed' };
+    return { action: 'run', flag: '--mode=full', reason: 'existing full product but the facts or HEAD changed' };
   }
   return { action: 'run', flag: '--full', reason: 'no existing full product (none, or Lazy-only)' };
 }
@@ -439,8 +480,16 @@ export function planFullRun({ graph, meta, headSha, force, pipelineVersion }) {
 // ---------------------------------------------------------------------------
 
 export function buildClaudeArgs({ repoPath, pluginDir, fullFlagArg, model, maxBudgetUsd }) {
+  return buildPromptArgs({ prompt: `/excavator:excavator ${repoPath} ${fullFlagArg}`, pluginDir, model, maxBudgetUsd });
+}
+
+/**
+ * The isolation and budget arguments every Claude Code run of the runner takes, around one `-p`
+ * prompt: `full` and the skopo modes start Claude Code the same way.
+ */
+export function buildPromptArgs({ prompt, pluginDir, model, maxBudgetUsd }) {
   return [
-    '-p', `/excavator:excavator ${repoPath} ${fullFlagArg}`,
+    '-p', prompt,
     '--plugin-dir', pluginDir,
     '--setting-sources', 'user',
     '--settings', '{"disableAllHooks": true}',
@@ -801,9 +850,10 @@ async function runFull(config, env) {
   const dataDir = join(config.repoRoot, '.excavator');
   const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
   const metaPath = join(dataDir, 'meta.json');
+  const semanticGraphPath = join(dataDir, 'semantic-graph.json');
 
-  // planFullRun only looks at project.pipelineVersion: read the header line,
-  // never the whole graph. An unreadable graph counts as absent.
+  // planFullRun only looks at project.factsDigest: read the header line,
+  // never the whole graph. An unreadable graph or semantic graph counts as absent.
   let existingGraph = null;
   if (existsSync(graphPath)) {
     try {
@@ -812,8 +862,11 @@ async function runFull(config, env) {
       existingGraph = null;
     }
   }
+  const existingSemanticGraph = readJsonIfExists(semanticGraphPath);
   const existingMeta = readJsonIfExists(metaPath);
-  const plan = planFullRun({ graph: existingGraph, meta: existingMeta, headSha: repoHead, force: config.force, pipelineVersion: PIPELINE_VERSION });
+  const plan = planFullRun({
+    graph: existingGraph, semanticGraph: existingSemanticGraph, meta: existingMeta, headSha: repoHead, model: config.model, force: config.force,
+  });
 
   const baseSummaryFields = {
     imageCommit: env.EXCAVATOR_IMAGE_COMMIT,
@@ -858,7 +911,9 @@ async function runFull(config, env) {
   let productCheck = null;
   let fabricationCheck = null;
   if (postGraph !== null) {
-    productCheck = checkProduct({ graph: postGraph, meta: postMeta, expectedHead: repoHead, expectedModel: config.model });
+    productCheck = checkProduct({ semanticGraph: readJsonIfExists(semanticGraphPath), meta: postMeta, expectedHead: repoHead, expectedModel: config.model,
+      factsDigest: postGraph?.project?.factsDigest,
+    });
     const { scriptFailure, validationReport, validatedGraph } = runIndependentValidation({
       pluginDir: config.pluginDir, repoRoot: config.repoRoot, graphPath, outDir: config.outDir,
     });
@@ -889,6 +944,67 @@ async function runFull(config, env) {
   return exitCode;
 }
 
+/**
+ * A skopo mode (openspec: changes/skopo-extension, design D10): build the facts first when they
+ * are not fresh (zero model, the same script as `lazy`), run the mode's skill in Claude Code under
+ * `full`'s isolation, then judge the products with `skopo.mjs verdict` instead of the model's own
+ * report. The skill's products stay in `<out>/skopo` on every path.
+ */
+async function runSkopo(config, env) {
+  ensureDir(config.outDir);
+  const baseSummaryFields = {
+    imageCommit: env.EXCAVATOR_IMAGE_COMMIT,
+    imageClaudeCodeVersion: env.EXCAVATOR_IMAGE_CLAUDE_CODE_VERSION,
+    repoHead: safeResolveHead(config.repoRoot), mode: config.mode, model: config.model,
+    skipped: false, skipReason: null, fabricationCheck: null,
+  };
+
+  const freshness = await resolveFreshness(config.repoRoot).catch((err) => ({ status: 'unknown', reason: err.message }));
+  if (needsFacts(freshness)) {
+    const facts = runLazyAnalyzeScript({ pluginDir: config.pluginDir, repoRoot: config.repoRoot });
+    if (facts.stderr) process.stderr.write(facts.stderr);
+    if (facts.status !== 0) {
+      const exitCode = EXIT_CODES.RUN_FAILURE;
+      writeSummary(config.outDir, buildSummary({
+        ...baseSummaryFields, loadCheck: null, productCheck: null, modelUsage: {}, exitCode,
+        runCheck: { ok: false, reasons: [`the facts were ${freshness.status} and lazy-analyze.mjs exited with status ${facts.status}`] },
+      }));
+      return exitCode;
+    }
+  }
+
+  const prompt = buildSkopoPrompt({ mode: config.mode, repoPath: config.repoRoot, outDir: config.outDir, scope: config.scope, fresh: config.force });
+  const args = buildPromptArgs({ prompt, pluginDir: config.pluginDir, model: config.model, maxBudgetUsd: config.maxBudgetUsd });
+  const cwd = mkdtempSync(join(tmpdir(), 'excavator-run-'));
+  const runResult = await spawnClaude({
+    claudeBin: config.claudeBin, args, cwd,
+    env: { ...env, ANTHROPIC_MODEL: config.model },
+    outDir: config.outDir, timeoutMinutes: config.timeoutMinutes, graceSeconds: config.timeoutGraceSeconds,
+  });
+
+  const runJsonlPath = join(config.outDir, 'run.jsonl');
+  const rawEvents = existsSync(runJsonlPath) ? readFileSync(runJsonlPath, 'utf-8') : '';
+  const { initEvent, resultEvent } = parseStreamEvents(rawEvents);
+  const loadCheck = checkLoad({ initEvent, expectedAgentIds: readExpectedAgentIds(config.pluginDir), expectedPluginPath: config.pluginDir });
+  const runCheck = checkRun({
+    resultEvent, processExitCode: runResult.processExitCode, timedOut: runResult.timedOut, spawnError: runResult.spawnError,
+  });
+  const productCheck = runSkopoVerdict({ pluginDir: config.pluginDir, outDir: config.outDir, mode: config.mode, repoRoot: config.repoRoot });
+
+  const exitCode = resolveExitCode({ skipped: false, loadOk: loadCheck.ok, runOk: runCheck.ok, productOk: productCheck.ok, fabricationOk: true });
+  let readCoverage;
+  try {
+    readCoverage = measureReadCoverage({ rawEvents, repoRoot: config.repoRoot });
+  } catch (err) {
+    readCoverage = { error: err.message };
+  }
+  writeSummary(config.outDir, buildSummary({
+    ...baseSummaryFields, loadCheck, runCheck, productCheck,
+    modelUsage: resultEvent?.modelUsage ?? {}, exitCode, readCoverage,
+  }));
+  return exitCode;
+}
+
 export async function main(env = process.env) {
   const parsed = parseConfig(env);
   if (!parsed.ok) {
@@ -899,7 +1015,9 @@ export async function main(env = process.env) {
 
   const { config } = parsed;
   try {
-    const exitCode = config.mode === 'lazy' ? await runLazy(config, env) : await runFull(config, env);
+    const exitCode = config.mode === 'lazy'
+      ? await runLazy(config, env)
+      : isSkopoMode(config.mode) ? await runSkopo(config, env) : await runFull(config, env);
     process.exit(exitCode);
   } catch (err) {
     process.stderr.write(`run-excavator.mjs failed: ${err.message}\n`);
@@ -922,8 +1040,8 @@ if (isCliEntry()) {
 
 export default {
   RUNTIME_PARAMS, ADVANCED_ENV_VARS, DEFAULTS, EXIT_CODES, PIPELINE_VERSION,
-  parseConfig, resolveExpectedAgentIds, readExpectedAgentIds, parseStreamEvents,
-  checkLoad, checkRun, checkProduct, planFullRun, buildClaudeArgs,
+  MODES, parseConfig, resolveExpectedAgentIds, readExpectedAgentIds, parseStreamEvents,
+  checkLoad, checkRun, checkProduct, planFullRun, buildClaudeArgs, buildPromptArgs,
   countByVerification, checkFabrication, resolveExitCode, aggregateModelUsage, buildSummary,
   resolveHead, runLazyAnalyzeScript, runValidateGraphScript, runIndependentValidation, stderrTail, spawnClaude,
 };

@@ -182,8 +182,12 @@ export function mergeCandidates({ exact = [], bm25 = [], sourceSearch = [], sema
  *  endpoint - the route a Java method is dispatched for, written on its
  *  annotations - to the method that handles it (openspec: changes/jaxrs-route-
  *  facts, D8): through it a handler reaches its endpoint and an endpoint its
- *  handlers, which no caller in the source shows. */
-export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements', 'overrides', 'mentions', 'references', 'injects', 'routes']);
+ *  handlers, which no caller in the source shows. `invokes` links a descriptor
+ *  file to a method the container calls by a name the descriptor writes (a Spring
+ *  init-method, the setter of a property, a scheduled or advice method; openspec:
+ *  changes/spring-xml-method-calls): through it a method reaches the descriptor
+ *  that has the container call it, which no caller in the source shows. */
+export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements', 'overrides', 'mentions', 'references', 'injects', 'routes', 'invokes']);
 
 export const DEFAULT_TRAVERSAL_BUDGETS = Object.freeze({ maxSeeds: 5, maxNodes: 80, maxEdges: 160 });
 export const DEFAULT_BFS_MAX_HOPS = 4;

@@ -7,7 +7,7 @@
 
 ### Requirement: 镜像内容钉死且不含凭证与产物
 
-运行镜像 SHALL 包含一个已构建完成的 Excavator 检出（依赖与 `packages/core` 的构建产物齐全），且只对应一个记录在案的 commit；SHALL 包含一个记录在案的固定版本的 Claude Code，并关闭其一切更新途径；SHALL 提供 Node ≥ 22、git，以及同时可用 `python` 与 `python3` 两个命令调用的 Python 3。镜像 SHALL 以固定 uid 的非 root 用户运行，并把 Excavator 检出暴露在该用户的 `$HOME/.excavator-plugin`；挂载进来的仓库属主与该用户不同时，git 操作 SHALL 仍然可用。镜像 SHALL 以标签记录 Excavator 的 commit 与 Claude Code 的版本。镜像 MUST NOT 包含任何云凭证、模型凭证、git 凭证、目标仓库源码或 `.excavator/` 产物；模型 ID、区域与预算 MUST NOT 写死在镜像里。
+运行镜像 SHALL 包含一个已构建完成的 Excavator 检出（依赖与 `packages/core` 的构建产物齐全），且只对应一个记录在案的 commit；SHALL 包含一个记录在案的固定版本的 Claude Code，并关闭其一切更新途径；SHALL 提供 Node ≥ 22、git、`jq`，以及同时可用 `python` 与 `python3` 两个命令调用的 Python 3。镜像 SHALL 以固定 uid 的非 root 用户运行，并把 Excavator 检出暴露在该用户的 `$HOME/.excavator-plugin`；挂载进来的仓库属主与该用户不同时，git 操作 SHALL 仍然可用，包括关掉了用户级、系统级配置的 hotspots 历史读取。镜像 SHALL 以标签记录 Excavator 的 commit 与 Claude Code 的版本。镜像 MUST NOT 包含任何云凭证、模型凭证、git 凭证、目标仓库源码或 `.excavator/` 产物；模型 ID、区域与预算 MUST NOT 写死在镜像里。
 
 #### Scenario: 版本与标签一致
 - **WHEN** 在镜像里查询 Claude Code 版本与 Excavator 检出的 commit
@@ -39,15 +39,30 @@
 
 ### Requirement: full 模式在源码未变时跳过
 
-`full` 模式下，当目标仓库现有产物是 full 流程产出的、其记录的 commit 等于当前 HEAD，且未要求强制重跑时，运行 SHALL 以成功退出码结束并在摘要中标为跳过，MUST NOT 启动 Claude Code，MUST NOT 改动任何产物。现有产物只是 Lazy 产出时，即使 commit 相同也 MUST NOT 跳过。
+`full` 模式下，当目标仓库现有产物是 full 流程产出的、其记录的 commit 等于当前 HEAD，、其记录的模型等于本次请求的模型，且未要求强制重跑时，运行 SHALL 以成功退出码结束并在摘要中标为跳过，MUST NOT 启动 Claude Code，MUST NOT 改动任何产物。现有产物只是 Lazy 产出时，即使 commit 相同也 MUST NOT 跳过。
+
+「full 流程产出」按 `semantic-graph.json` 判断：该文件存在且带非空的 `factDigest`。「未变」要求这个 `factDigest` 等于事实图 `project.factsDigest`，语义图记录的 `model` 等于本次请求的模型，且 `meta.json` 记录的 commit 等于 HEAD。有 full 产物但记录的模型不同（含 `unknown`、缺失）时，运行 SHALL 以强制全量重建启动（增量会沿用另一个模型建的架构，其产物又会在产物检查里因模型不符而失败），原因写明记录的与请求的模型。模型相同而事实图或 HEAD 变了时，运行 SHALL 走增量；没有 full 产物时才全量重建。事实图的 `project.pipelineVersion` 不是判据：新布局的 Full 不改写事实图。
 
 #### Scenario: HEAD 未变
-- **WHEN** 目标仓库现有的 full 产物记录的 commit 与 HEAD 相同，且未要求强制重跑
+- **WHEN** 目标仓库现有的 full 产物记录的 commit 与 HEAD 相同，其语义图的 `factDigest` 等于事实图的 `factsDigest`，且未要求强制重跑
 - **THEN** 运行以成功退出码结束，摘要标为跳过，没有模型调用，产物逐字节不变
 
 #### Scenario: 只有 Lazy 产物
-- **WHEN** 目标仓库现有产物由 Lazy 产出，记录的 commit 与 HEAD 相同，以 `full` 模式启动
+- **WHEN** 目标仓库现有产物由 Lazy 产出（没有 `semantic-graph.json`），记录的 commit 与 HEAD 相同，以 `full` 模式启动
 - **THEN** 运行不跳过，正常启动 full 流程
+
+#### Scenario: 有语义图但事实图变了
+- **WHEN** 目标仓库有 `semantic-graph.json`，但它的 `factDigest` 不等于事实图当前的 `factsDigest`，或 commit 不等于 HEAD
+- **THEN** 运行不跳过，以增量方式启动 full 流程，而不是强制全量重建
+
+#### Scenario: 模型不同的 full 产物
+- **GIVEN** a full product whose `factDigest` equals the fact graph's `factsDigest` and whose commit is HEAD, but whose `model` is `unknown`, absent, or a model other than the requested one
+- **WHEN** the runner starts in `full` mode without force
+- **THEN** it does not skip and starts a forced full rebuild, the reason naming the recorded and the requested model; once that run records the requested model, the next run with nothing changed skips
+
+#### Scenario: 语义图读不出
+- **WHEN** `semantic-graph.json` 不是合法 JSON 或没有 `factDigest`
+- **THEN** 它不算 full 产物，运行不跳过
 
 ### Requirement: 被分析仓库的配置不被执行或加载
 
@@ -73,7 +88,9 @@
 
 `full` 模式在模型运行结束后 SHALL 分两类检查：
 - **运行本身**：运行结果没有报告错误，没有被拒绝的权限请求，没有失败的子 agent，没有超时，没有触及花费上限，且这些字段在运行结果中确实存在。任一项不满足时，运行 SHALL 以运行失败的退出码结束。
-- **产物**：产物记录的 commit 等于运行前的 HEAD；产物记录的模型等于本次请求的模型 ID，而不是 `unknown`。任一项不满足时，运行 SHALL 以加载或产物检查失败的退出码结束。
+- **产物**：产物记录的 commit 等于运行前的 HEAD；产物记录的模型等于本次请求的模型 ID，而不是 `unknown`。模型记录在 `semantic-graph.json` 的 `model` 字段（Full 语义隔离的布局里，事实图 `knowledge-graph.jsonl` 不由模型写入，不记模型）。`semantic-graph.json` 不存在、读不出或没有 `model` 时，同样视为不满足，原因写明读的是哪个文件。此外，`semantic-graph.json` 的 `factDigest` SHALL 等于本次运行刚写出的事实图的 `project.factsDigest`；任一边缺失或不是非空字符串，同样不满足，原因写明两个文件和两个值。任一项不满足时，运行 SHALL 以加载或产物检查失败的退出码结束。
+
+模型 ID 的记录 SHALL 来自运行时的环境：语义图写入时取 `EXCAVATOR_MODEL`，未设置则取 `ANTHROPIC_MODEL`（运行器只设置后者），两者都没有才记 `unknown`。
 
 两类情况下，摘要都 SHALL 写明原因，已有产物 SHALL 保留。
 
@@ -88,6 +105,21 @@
 #### Scenario: 模型调用被拒
 - **WHEN** 运行结果以模型调用错误结束（例如 Bedrock 返回 403，因账号未开通该模型）
 - **THEN** 运行以运行失败的退出码结束，摘要的原因里给出模型服务返回的 HTTP 状态与原始错误信息，而不只是 Claude Code 的通用提示
+
+#### Scenario: 模型记录在语义图里
+- **GIVEN** a finished Full run whose `knowledge-graph.jsonl` has no `project.model` and whose `semantic-graph.json` records `model` equal to the requested model ID
+- **WHEN** the runner checks the product
+- **THEN** the product check passes on the model; the same run with `model` `unknown`, absent, or a different ID fails it, and a missing `semantic-graph.json` fails it naming that file
+
+#### Scenario: 只设了 ANTHROPIC_MODEL
+- **GIVEN** a Full run started by the runner, which sets `ANTHROPIC_MODEL` and not `EXCAVATOR_MODEL`
+- **WHEN** the skill writes `semantic-graph.json`
+- **THEN** its `model` is the value of `ANTHROPIC_MODEL`; when `EXCAVATOR_MODEL` is also set that value wins, and with neither set it is `unknown`
+
+#### Scenario: 语义图是上一次运行留下的
+- **GIVEN** a Full run after which `meta.json` is at HEAD and `semantic-graph.json` from the same model is still the previous run's, so its `factDigest` differs from the fact graph's `factsDigest` (F3 never ran or its write failed)
+- **WHEN** the runner checks the product
+- **THEN** the product check fails, naming `semantic-graph.json` and `knowledge-graph.jsonl` and both digest values; a missing or non-string digest on either side fails it too, and equal digests with a matching model pass
 
 ### Requirement: 独立复核编造与结构完整性
 
@@ -119,7 +151,7 @@
 
 ### Requirement: 镜像可自检且按固定规则发布
 
-镜像 SHALL 提供不调用模型、不需要凭证的自检：版本与标签一致、插件清单校验通过、`python` 命令可用、在临时生成的小仓库上 Lazy 能产出知识图谱、挂载的仓库属主与容器用户不同时 git 仍可用。发布流程 SHALL 运行仓库测试门、确认构建来自干净的检出、构建 `linux/amd64` 镜像并运行自检；只有在发布触发（打 tag 或手动触发）下且全部通过后，才以不可覆盖的标签 `<插件版本>-<短 commit>` 推送到镜像仓库。镜像构建与自检 SHALL 只在发布触发下运行。改到部署相关文件的 PR SHALL 只运行仓库测试门，MUST NOT 构建镜像、运行自检或推送，且镜像这一步在运行记录中 SHALL 显示为跳过。镜像流程运行而不推送时——不是发布触发，或镜像仓库参数未配置——流程 SHALL 明确报告跳过了推送及原因。
+镜像 SHALL 提供不调用模型、不需要凭证的自检：版本与标签一致、插件清单校验通过、`python` 命令可用、`jq` 命令可用、在临时生成的小仓库上 Lazy 能产出知识图谱、挂载的仓库属主与容器用户不同时 git 仍可用，且按 hotspots 的方式（关掉用户级、系统级配置）读一个属主不同的仓库的历史能产出结果。发布流程 SHALL 运行仓库测试门、确认构建来自干净的检出、构建 `linux/amd64` 镜像并运行自检；只有在发布触发（打 tag 或手动触发）下且全部通过后，才以不可覆盖的标签 `<插件版本>-<短 commit>` 推送到镜像仓库。镜像构建与自检 SHALL 只在发布触发下运行。改到部署相关文件的 PR SHALL 只运行仓库测试门，MUST NOT 构建镜像、运行自检或推送，且镜像这一步在运行记录中 SHALL 显示为跳过。镜像流程运行而不推送时——不是发布触发，或镜像仓库参数未配置——流程 SHALL 明确报告跳过了推送及原因。
 
 #### Scenario: 未配置镜像仓库
 - **WHEN** 在没有配置镜像仓库参数的情况下触发发布流程
@@ -132,3 +164,7 @@
 #### Scenario: 自检失败不推送
 - **WHEN** 自检失败
 - **THEN** 不推送任何镜像
+
+#### Scenario: 自检覆盖 skill 依赖的命令与属主不同的仓库
+- **WHEN** 在镜像里运行自检
+- **THEN** 自检检查 `jq` 能计算，并在一个被 git 视为属主不同的临时仓库上运行 hotspots 脚本、得到产物；缺少 `jq` 或 hotspots 被 git 以属主为由拒绝时，对应检查失败

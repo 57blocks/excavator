@@ -143,6 +143,7 @@ import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
 import { mergeSnapshotSelection } from './scan-project.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
+import { isSnapshotDirName } from './source-snapshot/snapshot-dir.mjs';
 import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, writeSourceIndex } from './source-index-store.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAll } from './structure-all-store.mjs';
 import {
@@ -266,8 +267,24 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  section (`not-run` for an import map without `resolvedSources`). Structure
  *  rows of TS/JS files gain import `bindings`, `reexports` (an `export ... from`
  *  is also an import, so barrels gain `imports` edges), export `local` names and
- *  `jsx`; `exports` edges resolve by the local name. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/13';
+ *  `jsx`; `exports` edges resolve by the local name.
+ *  `lazy-fact-graph/14` (openspec: changes/reexport-call-scope): a non-Java
+ *  call no longer looks its callee up in a file that only `export ... from`
+ *  reaches (the import map's `reexportOnly`). On an unchanged source tree a
+ *  call that found candidates in such a file moves: an edge to one becomes
+ *  `calls-unresolved`, and a `calls-ambiguous` site can become an edge or
+ *  `calls-unresolved`. An `export {} from` import entry now carries
+ *  `reexports: []`.
+ *  `lazy-fact-graph/15` (openspec: changes/spring-xml-method-calls): the method a
+ *  descriptor names and the container calls (a Spring init-method, destroy-method,
+ *  factory-method, lookup-method, replaced-method, the setter a property or a p
+ *  attribute stands for, a scheduled or an advice method, and the root's default
+ *  init and destroy methods) becomes an `invokes` edge from the descriptor's file
+ *  node to the method node, or lands in a visible bucket; the new gap kinds
+ *  `method-call-owner-unresolved`, `method-call-method-unresolved` and
+ *  `method-call-ambiguous`, and a `coverage.methodCalls` section (`not-run`
+ *  without the name stages). The name-binding catalog is version 4. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/15';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result
@@ -457,9 +474,13 @@ function basenameOf(p) {
  * own literal fields when present. No synthesis, no inference — an absent
  * or field-less manifest just means an empty description, which is honest,
  * not a gap to paper over with a guess.
+ *
+ * The manifest is read from `sourceDir` (the materialized snapshot, which holds
+ * the analyzed content) but the fallback name is `projectRoot`'s folder: the
+ * snapshot directory's own name is a temporary one (design D4d).
  */
-function deterministicProjectMeta(projectRoot) {
-  const pkgPath = join(projectRoot, 'package.json');
+function deterministicProjectMeta(sourceDir, projectRoot) {
+  const pkgPath = join(sourceDir, 'package.json');
   if (existsSync(pkgPath)) {
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
@@ -473,6 +494,12 @@ function deterministicProjectMeta(projectRoot) {
     }
   }
   return { name: basenameOf(projectRoot), description: '' };
+}
+
+/** The name an earlier graph carries forward, unless it is a snapshot directory's (an earlier run's mistake). */
+function carriedProjectName(existingGraph, name) {
+  const existing = existingGraph?.project?.name;
+  return existing === undefined || existing === null || isSnapshotDirName(existing) ? name : existing;
 }
 
 /** `--exclude <patterns>` passthrough to `scan-project.mjs`, if present. */
@@ -852,7 +879,7 @@ export async function runLazyAnalysis({
     // exactly the sha `revision` already names; for Directory/MultiRepo there
     // is no single commit to report, so it is honestly null.
     const gitCommitHash = activeSnapshot.kind === 'git' ? activeSnapshot.sha : null;
-    const { name, description } = deterministicProjectMeta(materializedDir);
+    const { name, description } = deterministicProjectMeta(materializedDir, root);
     const languages = Object.keys(scan.stats?.byLanguage ?? {}).sort();
 
     // A previous graph only carries semantic fields forward; a corrupt one
@@ -864,7 +891,7 @@ export async function runLazyAnalysis({
     const knowledgeGraph = {
       version: KNOWLEDGE_GRAPH_VERSION,
       project: {
-        name: existingGraph?.project?.name ?? name,
+        name: carriedProjectName(existingGraph, name),
         languages: existingGraph?.project?.languages?.length ? existingGraph.project.languages : languages,
         frameworks: frameworkIds,
         description: existingGraph?.project?.description ?? description,

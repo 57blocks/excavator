@@ -1,8 +1,10 @@
 // Legacy-literal gate (design D3): pnpm test must fail if any pre-rename
 // literal (the old product name, the old ignore-file name, the old env var,
 // or the old dot-prefixed data-dir token) leaks into a tracked file outside
-// the accepted exemptions (NOTICE, docs/, openspec/, and two byte-matched
-// upstream schema-URL lines in scripts/lib/large-repo-benchmark.mjs).
+// the accepted exemptions (NOTICE, docs/, openspec/, two byte-matched
+// upstream schema-URL lines in scripts/lib/large-repo-benchmark.mjs, and the
+// lines of the copied upstream dashboard listed by hash in
+// packages/explorer/upstream-lines.json).
 //
 // The forbidden tokens are built from concatenated parts rather than typed
 // literally, so this file's own source does not trip the very patterns it
@@ -13,6 +15,7 @@ import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +53,20 @@ const EXEMPT_EXACT_LINES = new Set([
   `  'https://raw.githubusercontent.com/${upstreamOrg}/${upstreamRepoName}/main/docs/benchmarks/large-repo-report-1.0.0.schema.json';`,
 ]);
 
+// The copied upstream dashboard keeps the upstream project's own name in its
+// import paths, data-dir mentions and licence lines (openspec:
+// changes/viewer-explorer, design D2a). Each such line is exempt only when its
+// path and whole text hash to an entry of the package's table, so a line we
+// write or change there later is still checked.
+const UPSTREAM_LINES_TABLE = 'packages/explorer/upstream-lines.json';
+const UPSTREAM_LINE_HASHES = new Set(
+  JSON.parse(readFileSync(join(repoRoot, UPSTREAM_LINES_TABLE), 'utf-8')).lines,
+);
+
+function upstreamLineHash(relPath, line) {
+  return createHash('sha256').update(`${relPath}\n${line}`).digest('hex');
+}
+
 // Bare-slash agent/skill references, e.g. "/understand-file-analyzer" — this
 // pattern's own source contains no hyphen directly after "understand", so it
 // does not trip LEGACY_LITERAL_PATTERNS above when this file is itself
@@ -82,6 +99,7 @@ function findLegacyLiteralViolations(baseDir, relPaths) {
     if (lines === null) continue;
     lines.forEach((line, idx) => {
       if (EXEMPT_EXACT_LINES.has(line)) return;
+      if (UPSTREAM_LINE_HASHES.has(upstreamLineHash(rel, line))) return;
       for (const pattern of LEGACY_LITERAL_PATTERNS) {
         if (pattern.test(line)) {
           violations.push({ file: rel, line: idx + 1, excerpt: line.trim().slice(0, 200) });
@@ -119,7 +137,7 @@ function gitTrackedFiles(pathspecs = []) {
 }
 
 describe('legacy-literal gate (design D3)', () => {
-  it('no tracked file outside NOTICE/docs/openspec carries a legacy literal', () => {
+  it('no tracked file outside NOTICE/docs/openspec and the listed upstream lines carries a legacy literal', () => {
     const files = gitTrackedFiles();
     const violations = findLegacyLiteralViolations(repoRoot, files);
     expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
@@ -154,6 +172,33 @@ describe('legacy-literal gate (design D3)', () => {
 
       const violations = findLegacyLiteralViolations(tmpDir, ['NOTICE']);
       expect(violations).toEqual([]);
+    });
+
+    it('exempts a listed upstream line only at its own path and only unchanged', () => {
+      const rel = 'packages/explorer/tsconfig.json';
+      const listed = readFileSync(join(repoRoot, rel), 'utf-8')
+        .split('\n')
+        .find((line) => LEGACY_LITERAL_PATTERNS.some((pattern) => pattern.test(line)));
+      expect(listed).toBeDefined();
+      tmpDir = mkdtempSync(join(tmpdir(), 'legacy-literal-upstream-'));
+      const plant = (path, text) => {
+        execFileSync('mkdir', ['-p', dirname(join(tmpDir, path))]);
+        writeFileSync(join(tmpDir, path), `${text}\n`);
+      };
+
+      plant(rel, listed);
+      expect(findLegacyLiteralViolations(tmpDir, [rel])).toEqual([]);
+
+      plant(rel, `${listed} `);
+      expect(findLegacyLiteralViolations(tmpDir, [rel]).length).toBe(1);
+
+      const elsewhere = 'packages/other/tsconfig.json';
+      plant(elsewhere, listed);
+      expect(findLegacyLiteralViolations(tmpDir, [elsewhere]).length).toBe(1);
+
+      const unlisted = 'packages/explorer/src/planted.ts';
+      plant(unlisted, `import x from "@${LEGACY_PRODUCT_NAME}/core/planted";`);
+      expect(findLegacyLiteralViolations(tmpDir, [unlisted]).length).toBe(1);
     });
 
     it('reports nothing for a clean file with none of the legacy tokens', () => {

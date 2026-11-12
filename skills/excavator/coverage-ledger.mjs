@@ -168,8 +168,10 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
     if (skipSamples[key].length < sampleLimit) skipSamples[key].push(entry.path);
   }
 
-  // 3. Extraction statuses for the emitted files.
+  // 3. Extraction statuses for the emitted files, and the lines their
+  //    readers recognised but could not place.
   const statusSamples = {};
+  const unplacedByLanguage = {};
   const seen = new Set();
   for (const result of structure.results) {
     if (seen.has(result.path)) {
@@ -200,6 +202,14 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
     row.kinds.import += arrayLength(result.imports);
     row.kinds.export += arrayLength(result.exports);
     row.kinds.call += arrayLength(result.callGraph);
+    for (const run of result.unplaced ?? []) {
+      if (!unplacedByLanguage[lang]) unplacedByLanguage[lang] = { count: 0, samples: [] };
+      const unplaced = unplacedByLanguage[lang];
+      unplaced.count += run.endLine - run.startLine + 1;
+      if (unplaced.samples.length < sampleLimit) {
+        unplaced.samples.push(`${result.path}:${run.startLine}-${run.endLine} ${run.reason}`);
+      }
+    }
   }
 
   // 4. Unresolved import specifiers, per language of the importing file.
@@ -211,6 +221,22 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
     row.count += specifiers.length;
     for (const specifier of specifiers) {
       if (row.samples.length < sampleLimit) row.samples.push(`${path} → ${specifier}`);
+    }
+  }
+
+  // 5. Ambiguous import specifiers: two tsconfig alias scopes name different
+  // files, so no edge was drawn. Kept apart from unresolved specifiers, which
+  // name nothing inside the project.
+  const ambiguousByLanguage = {};
+  for (const [path, bySpecifier] of Object.entries(importMap?.ambiguous ?? {})) {
+    const lang = languageOfPath.get(path) || 'unknown';
+    if (!ambiguousByLanguage[lang]) ambiguousByLanguage[lang] = { count: 0, samples: [] };
+    const row = ambiguousByLanguage[lang];
+    for (const [specifier, candidates] of Object.entries(bySpecifier)) {
+      row.count += 1;
+      if (row.samples.length < sampleLimit) {
+        row.samples.push(`${path} \u2192 ${specifier} (${candidates.join(' | ')})`);
+      }
     }
   }
 
@@ -273,6 +299,26 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
       kind: 'imports-unresolved',
       scope: language,
       reason: `${row.count} import specifier(s) in ${language} named nothing inside the project (external package or broken path)`,
+      count: row.count,
+      samples: row.samples,
+    });
+  }
+
+  for (const [language, row] of Object.entries(ambiguousByLanguage)) {
+    gaps.push({
+      kind: 'imports-ambiguous',
+      scope: language,
+      reason: `${row.count} import specifier(s) in ${language} name different files under different tsconfig path aliases; no edge was drawn`,
+      count: row.count,
+      samples: row.samples,
+    });
+  }
+
+  for (const [language, row] of Object.entries(unplacedByLanguage)) {
+    gaps.push({
+      kind: 'unplaced-lines',
+      scope: language,
+      reason: `${row.count} ${language} line(s) were recognised by the reader but could not be placed in their file's structure`,
       count: row.count,
       samples: row.samples,
     });

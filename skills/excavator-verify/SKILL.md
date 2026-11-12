@@ -1,7 +1,7 @@
 ---
 name: excavator-verify
 description: Verify an As-Is document (for example a PRD written by excavator-prd) against the source code it describes. Checks only the statement classes where model-written documents go wrong — negative claims, reachability and ordering, trigger mechanisms, absolute or invariance claims, and open "to be confirmed" items — plus cross-section consistency. Reports a verdict with file:line evidence for every checked statement; with --fix, corrects the document in place.
-argument-hint: "<document> [project-path] [--fix] [--report <path>] [--language <lang>]"
+argument-hint: "<document> [project-path] [--fix] [--no-summary] [--report <path>] [--language <lang>]"
 ---
 
 # /excavator-verify
@@ -35,6 +35,7 @@ Statements outside these classes are not checked. The report must say so.
 - The document path (required).
 - The project path — the source tree the document describes (default: current working directory).
 - `--fix` — after verification, correct the document in place (see Phase 5). Without it the document is not modified.
+- `--no-summary` — with `--fix`, do not append the verification summary to the document; the counts stay in the report. Without `--fix` it has no effect.
 - `--report <path>` — where to write the verification report (default: next to the document, `<document-stem>.verification.md`).
 - `--language <lang>` — the language of the report and everything said to the user during the run; English when it is not given. Quotes and corrections stay in the document's language.
 
@@ -44,7 +45,7 @@ Statements outside these classes are not checked. The report must say so.
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-1. Resolve `DOC` and `PROJECT_ROOT`, and parse `--fix`, `--report` and `--language` (`$LANGUAGE`: English when it is not given). Record the source baseline: `git -C "$PROJECT_ROOT" rev-parse HEAD` if it is a Git repository, otherwise "non-Git snapshot".
+1. Resolve `DOC` and `PROJECT_ROOT`, and parse `--fix`, `--no-summary`, `--report` and `--language` (`$LANGUAGE`: English when it is not given). Record the source baseline: `git -C "$PROJECT_ROOT" rev-parse HEAD` if it is a Git repository, otherwise "non-Git snapshot".
 2. Map the document without reading it whole: `grep -n '^#' "$DOC"` for headings and `wc -l "$DOC"` for size. Note the document's language as `DOC_LANGUAGE`: quotes, corrections and the summary `--fix` appends are in `DOC_LANGUAGE` and the document's style, whatever `$LANGUAGE` is.
 3. Plan the split: group consecutive top-level sections into **section groups** of roughly similar line counts (aim for about 500–900 lines each; never more than 14 groups). Include every line of the document in exactly one group, including front matter and glossaries.
 
@@ -127,7 +128,7 @@ Edit `DOC` in place, one entry at a time:
 - **still-open** — leave it, and make sure the open marker says what was searched.
 - Where the flow has an evidence `<details>` block, add the new evidence lines to it.
 
-Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in `DOC_LANGUAGE`, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Then add a section **Fix** at the end of the report: of the entries that carry a correction (contradicted, misattributed, resolved-right, resolved-wrong and conflict), how many there are and how many you applied, and each one you could not apply with the reason.
+Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then, unless `--no-summary` was given, append a short section at the end of `DOC` (heading in `DOC_LANGUAGE`, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. With `--no-summary` append nothing to `DOC` after the corrections: the counts are in the report only. Then add a section **Fix** at the end of the report: of the entries that carry a correction (contradicted, misattributed, resolved-right, resolved-wrong and conflict), how many there are and how many you applied, and each one you could not apply with the reason.
 
 ## Phase 6 — Reply
 

@@ -57,8 +57,8 @@ describe('excavator-verify skill: phases', () => {
 describe('excavator-verify skill: the language of what it writes', () => {
   it('writes the report and every line to the user in English unless --language names another language', () => {
     expect(before).toContain(OPTION_LANGUAGE);
-    expect(skill).toContain('argument-hint: "<document> [project-path] [--fix] [--report <path>] [--language <lang>]"');
-    expect(phase.get(0)).toContain('1. Resolve `DOC` and `PROJECT_ROOT`, and parse `--fix`, `--report` and `--language` (`$LANGUAGE`: English when it is not given).');
+    expect(skill).toContain('argument-hint: "<document> [project-path] [--fix] [--no-summary] [--report <path>] [--language <lang>]"');
+    expect(phase.get(0)).toContain('1. Resolve `DOC` and `PROJECT_ROOT`, and parse `--fix`, `--no-summary`, `--report` and `--language` (`$LANGUAGE`: English when it is not given).');
     expect(flat(skill).split(LANGUAGE_RULE).join('').split('`--language').length - 1).toBe(2);
   });
 
@@ -161,6 +161,35 @@ function languageRuleProblems(text) {
   if (!last.startsWith(`${PHASE_LANGUAGE} ${SKIP} ${LANGUAGE_RULE}`)) problems.push('Phase 6 does not say when to skip it before the language paragraph');
   return problems;
 }
+
+describe('excavator-verify skill: --no-summary', () => {
+  const options = flat(skill.split(/^## Phase 0 — /m)[0]);
+
+  it('is an argument of the skill, named wherever the arguments are listed and parsed', () => {
+    expect(skill).toContain('--no-summary]');
+    expect(options).toContain('`--no-summary` — with `--fix`, do not append the verification summary to the document; the counts stay in the report. Without `--fix` it has no effect.');
+    expect(phase.get(0)).toContain('parse `--fix`, `--no-summary`, `--report` and `--language`');
+    expect(phase.get(0)).not.toContain('parse `--fix`, `--report`');
+  });
+
+  it('skips the append step under it, and the report keeps its counts', () => {
+    const fix = phase.get(5);
+    expect(fix).toContain('Then, unless `--no-summary` was given, append a short section at the end of `DOC`');
+    expect(fix).toContain('With `--no-summary` append nothing to `DOC` after the corrections: the counts are in the report only.');
+    expect(fix).not.toContain('Then append a short section');
+    expect(phase.get(3)).toContain('**Counts** — a table of class × verdict');
+  });
+
+  it('has no effect without --fix', () => {
+    expect(options).toContain('Without `--fix` it has no effect.');
+    expect(skill).toContain('## Phase 5 — Fix (only with `--fix`)');
+  });
+
+  it('leaves the reply as it was: its last line says corrections were applied, not that a summary was', () => {
+    expect(phase.get(6)).toContain('"Corrections applied: <A> of <B>, in <the document\'s path>"');
+    expect(phase.get(6)).not.toMatch(/summary section|verification summary/i);
+  });
+});
 
 describe('excavator-verify skill: the reply', () => {
   it('ends with the command that prints the reply, and the reply is what it prints', () => {
