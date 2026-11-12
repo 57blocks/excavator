@@ -22,8 +22,7 @@ export function remedyFacts(outDir, root) {
   const { run, facts, entry, hasGroups } = context;
   if (!hasGroups) return note('no verified findings; nothing to write');
   const current = entry.factsDigest === facts.digest;
-  if (run.remedies.doc !== null && current) return note('verified; nothing to write');
-  if (entry.status === 'checked' && current) return note('checked; next: run remedy-judge');
+  if (run.remedies.doc !== null && current) return note(`${run.remedies.status}; nothing to write`);
   if (entry.status === 'failed' && entry.attempts >= MAX_ATTEMPTS && current) return note(`failed (${MAX_ATTEMPTS} of ${MAX_ATTEMPTS} attempts); the remedies are not written`);
   return { status: 0, lines: facts.rows.map(factLine) };
 }

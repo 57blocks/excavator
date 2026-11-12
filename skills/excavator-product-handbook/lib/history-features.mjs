@@ -4,7 +4,7 @@
  * features whose verified entry holds a citation in the file. Read from
  * state.json and the entry files of the output directory, with no check of the
  * project and no map: a run that has none (the history section run first) has no
- * feature to name. A feature counts only while its state is `verified`; the
+ * feature to name. A feature counts only while its state is `verified`, or `checked` with a chapter (a /3 entry); the
  * assembly checks the entries again and lists only the features still verified.
  */
 
@@ -35,7 +35,8 @@ export function featuresByFile(outDir) {
   const byFile = new Map();
   if (!loaded.ok) return byFile;
   for (const [id, entry] of Object.entries(loaded.state.features)) {
-    if (entry.status !== 'verified') continue;
+    // A checked /3 entry (a chapter, written and not verified) is in the output as well (openspec change handbook-light-scheme); a checked entry without a chapter is not.
+    if (entry.status !== 'verified' && !(entry.status === 'checked' && entry.chapter !== undefined && !entry.rewriting)) continue;
     const read = readJson(join(outDir, 'entries', `${id}.json`));
     if (!read.ok) continue;
     for (const file of citedFiles(read.value)) byFile.set(file, [...(byFile.get(file) ?? []), id]);

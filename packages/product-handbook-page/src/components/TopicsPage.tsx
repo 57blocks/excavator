@@ -6,6 +6,7 @@ import type { PageData, TopicBasis } from '../lib/types';
 import { Chips } from './Locations';
 import { levelName } from './RecommendationsPage';
 import { Item, ItemCollapse, ItemField, ItemList } from './ui/ItemList';
+import { PageTitle } from '../lib/outline';
 
 type Places = Map<string, { file: string; startLine: number | null; endLine: number | null }[]>;
 
@@ -18,7 +19,7 @@ function basisText(t: Text, entry: TopicBasis): string {
 
 /**
  * The cross-cutting topics page (both views): one table for each topic, the columns of the topic and the basis of each row (the technical
- * view adds the file and lines). Only rows that two judges confirmed are here; the coverage page lists what they left out. A topic without
+ * view adds the file and lines). A checked lane is written, not verified, and the page says so at the head; the coverage page lists what a judge of an older run left out. A topic without
  * a row says which verified entries or groups of findings it read and that they state none of it, never that the system has none.
  */
 export function TopicsPage({ data }: { data: PageData }) {
@@ -27,18 +28,19 @@ export function TopicsPage({ data }: { data: PageData }) {
   const nav = useLinks();
   const coverage = data.coverage.topics;
   const places: Places = new Map(view === 'technical' ? [...(data.technical?.topicLocations ?? []), ...(data.technical?.findingLocations ?? [])].map((entry) => [entry.id, entry.citations]) : []);
-  const verified = coverage.lanes.filter((lane) => lane.status === 'verified');
+  const verified = coverage.lanes.filter((lane) => lane.status === 'verified' || lane.status === 'checked');
   const written = { domain: verified.some((lane) => lane.id !== 'repeated'), repeated: verified.some((lane) => lane.id === 'repeated') };
   const rows = TOPICS.reduce((sum, topic) => sum + data.topics[topic.id].length, 0);
   return (
     <article className="page" data-view="topics">
       <header className="page-head">
         <p className="eyebrow">{data.project}</p>
-        <h1 className="page-title">{t('md.topics.heading')}</h1>
+        <PageTitle fallback={t('md.topics.heading')} />
       </header>
       {coverage.lanes.length === 0 ? <p className="muted" data-part="topics-none">{t('md.none')}</p> : (
         <>
           <p className="muted summary-note">{t('md.topics.note')}</p>
+          {data.unverifiedParts?.topics === true && <div className="notice" role="note" data-part="topics-unverified"><p>{t('md.topics.unverified')}</p></div>}
           {verified.length === 0 ? <p className="muted" data-part="topics-not-finished">{t('md.topics.notFinished')}</p> : (
             <>
               <p className="summary-counts">{t('md.topics.counts', { lanes: verified.length, entries: coverage.entriesRead, groups: coverage.groupsRead, rows })}</p>

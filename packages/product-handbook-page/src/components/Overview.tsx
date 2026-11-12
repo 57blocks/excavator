@@ -4,6 +4,7 @@ import type { PageData } from '../lib/types';
 import { Locations } from './Locations';
 import { ReachBadge } from './ReachBadge';
 import { SystemOverview } from './SystemOverview';
+import { PageTitle } from '../lib/outline';
 
 /** The first page: how much the handbook holds, the system overview, how readers get to the features, and the domains with their features. */
 export function Overview({ data }: { data: PageData }) {
@@ -11,12 +12,13 @@ export function Overview({ data }: { data: PageData }) {
   const nav = useLinks();
   const view = useView();
   const overviewPlaces = view === 'technical' ? data.technical?.locations.find((unit) => unit.id === 'overview') : undefined;
-  const written = data.features.filter((feature) => feature.status === 'verified').length;
+  // A feature with an entry, verified or written and not verified (openspec change handbook-run-precision).
+  const written = data.features.filter((feature) => feature.entry !== null).length;
   return (
     <article className="page" data-view="overview">
       <header className="page-head">
         <p className="eyebrow">{systemName(data.project, t)}</p>
-        <h1 className="page-title">{t('page.overview.heading')}</h1>
+        <PageTitle fallback={t('page.overview.heading')} />
       </header>
 
       <ul className="stats">
@@ -57,7 +59,7 @@ export function Overview({ data }: { data: PageData }) {
                         <a href={nav.feature(feature.id)}>{feature.name}</a>
                         <span className="area-feature-meta">
                           <ReachBadge reach={feature.reach} />
-                          {feature.status !== 'verified' && <span className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</span>}
+                          {feature.status !== 'verified' && <span className="status-chip" data-status={feature.unverified === true ? 'unverified' : feature.status}>{t(feature.unverified === true ? 'md.status.unverified' : `md.status.${feature.status}`)}</span>}
                         </span>
                       </li>
                     ))}

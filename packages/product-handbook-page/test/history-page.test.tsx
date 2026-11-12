@@ -14,6 +14,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { History, PageData } from '../src/lib/types';
 import { NO_APPENDIX } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -47,6 +48,7 @@ const feature = (id: string, name: string): PageData['features'][number] => ({ i
 function dataFor(history: History = HISTORY, views: ('product' | 'technical')[] = ['product', 'technical']): PageData {
   return {
     format: PAGE_FORMAT,
+    chunks: { parts: [], units: {} },
     project: d('Acme'),
     language: d('language'),
     languageTag: 'xx',
@@ -55,6 +57,7 @@ function dataFor(history: History = HISTORY, views: ('product' | 'technical')[] 
     areas: [{ id: d('A1'), name: d('area') }],
     domains: [{ id: d('A1'), name: d('area') }],
     domainBasis: 'areas',
+    outline: defaultOutline(marked, 'areas'),
     features: [feature('F1', 'Orders'), feature('F2', 'Reminders')],
     findings: [],
     remedies: { categories: [], recommendations: [] },
@@ -99,14 +102,15 @@ describe('the history route and link', () => {
     expect(routeHash({ name: 'history' }, 'technical')).toBe('#/technical/history');
   });
 
-  it('has the sidebar link right before the coverage link in both views, with the heading from the ui table', () => {
+  // Since handbook-deep-entry D11 the code health opens the health group, before the findings.
+  it('has the sidebar link right before the findings link in both views, with the heading from the ui table', () => {
     for (const view of ['product', 'technical']) {
       const html = render(dataFor(), `#/${view}`);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       const links = Array.from(rail.matchAll(/href="([^"]*)"/g), (match) => match[1]);
       const at = links.indexOf(`#/${view}/history`);
       expect(at, view).toBeGreaterThan(-1);
-      expect(links[at + 1]).toBe(`#/${view}/coverage`);
+      expect(links[at + 1]).toBe(`#/${view}/findings`);
       expect(rail).toContain(marked['md.history.heading']);
     }
   });

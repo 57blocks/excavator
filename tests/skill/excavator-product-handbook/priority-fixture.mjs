@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 
 import { expect } from 'vitest';
 
-import { runHandbook, verifyChecked } from './helpers.mjs';
+import { runHandbook, settleDerived, verifyChecked } from './helpers.mjs';
 import { findingsRun, unitId } from './findings-fixture.mjs';
 
 export const ENV_PART_SIZE = 'EXCAVATOR_HANDBOOK_PRIORITY_PART_SIZE';
@@ -82,36 +82,22 @@ export function checkedPriorityRun(cleanups) {
   return run;
 }
 
-/** The judge files `priority-judge` wrote and the verdict file paths it printed: `[{ part, judge, a, b }]`. */
-export function judgePlan(run) {
-  const result = run.run('priority-judge');
-  expect(result.status, result.stdout + result.stderr).toBe(0);
-  return result.lines.filter((line) => line.startsWith('Part ')).map((line) => {
-    const [head, judge, verdicts] = line.split(' | ');
-    const [a, b] = verdicts.replace('Verdict files: ', '').split(' ');
-    return { part: Number(/^Part (\d+)\//.exec(head)[1]), judge: judge.replace('Judge file: ', ''), a, b };
-  });
-}
-
-/** Write the two verdict files of every part: `decide(group, letter)` gives a verdict word or `{ verdict, reason }`, default `follows`. */
-export function writeVerdicts(plan, decide = () => 'follows') {
-  for (const { judge, a, b } of plan) {
-    const groups = JSON.parse(readFileSync(judge, 'utf-8')).groups;
-    for (const [letter, path] of [['a', a], ['b', b]]) {
-      const verdicts = groups.map((group) => {
-        const given = decide(group, letter);
-        const verdict = typeof given === 'string' ? { verdict: given } : given;
-        return { id: group.id, verdict: verdict.verdict, reason: verdict.reason ?? `The statements say what the reason says for ${group.consequence}.` };
-      });
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, `${JSON.stringify({ verdicts }, null, 2)}\n`);
-    }
+/**
+ * Settle a checked ranking as an older run's two judges left it: every group ranked, except the groups for which
+ * `decide(group, letter)` (group `{ key, consequence }`, letter `a` or `b`) gives `{ verdict: 'doesNotFollow', reason }`;
+ * those are recorded unranked with the reasons.
+ */
+export function judgeAll(run, decide = () => 'follows') {
+  const result = settleDerived(run, 'priority');
+  const state = run.readState();
+  const unranked = [];
+  for (const item of run.readJson('entries/priority.json').items) {
+    const reasons = ['a', 'b'].map((letter) => decide({ key: item.key, consequence: item.consequence }, letter)).filter((given) => typeof given === 'object' && given.verdict === 'doesNotFollow').map((given) => given.reason);
+    if (reasons.length > 0) unranked.push({ key: item.key, reasons });
   }
-}
-
-/** Judge a checked run: everything `follows` unless `decide` says otherwise; returns the priority-verdicts result. */
-export function judgeAll(run, decide) {
-  const plan = judgePlan(run);
-  writeVerdicts(plan, decide);
-  return run.run('priority-verdicts');
+  if (unranked.length > 0) {
+    state.priority = { ...state.priority, unranked };
+    run.writeJson(join(run.out, 'state.json'), state);
+  }
+  return result;
 }

@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clone, confirmChecked, judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, confirmChecked, runHandbook, verifyChecked } from './helpers.mjs';
 import { checkedOverviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -239,7 +239,7 @@ describe('system facts: one row per application root, whatever the overview says
   const manifest = (name) => `{ "name": "${name}" }\n`;
 
   /** A project of two application roots, repos/api and repos/web (each with one source file), and a package below repos/api. */
-  function twoRootsRun({ listTools = false, judgeBad = () => 'verified', verify = true } = {}) {
+  function twoRootsRun({ listTools = false, removed = [], verify = true } = {}) {
     const run = checkedOverviewRun(cleanups, (doc, r) => {
       rmSync(join(r.root, 'package.json'));
       for (const dir of ['api', 'web']) {
@@ -256,14 +256,13 @@ describe('system facts: one row per application root, whatever the overview says
       doc.name = { text: 'api', evidence: [{ file: 'repos/api/package.json', passage: manifest('api').trim() }] };
     });
     if (verify) {
-      expect(judge(run, 'overview', 1, judgeBad).status).toBe(0);
-      expect(traceFeature(run, 'overview').status).toBe(0);
+      verifyChecked(run, 'overview', removed);
     }
     return run;
   }
 
   it('keeps the row of a root whose application was removed, with its facts and the not-verified text in the name and responsibility cells', () => {
-    const run = twoRootsRun({ judgeBad: (item) => (item.id === 'applications[1]' ? { verdict: 'contradicted', reason: 'The code shown does something else.' } : 'verified') });
+    const run = twoRootsRun({ removed: [{ path: 'applications[1]', verdict: 'contradicted', reason: 'The code shown does something else.' }] });
     expect(run.readJson('state.json').overview.removed.map((record) => record.path)).toEqual(['applications[1]']);
     const system = systemOf(run);
     expect(system.applications.map((row) => [row.dir, row.name, row.does])).toEqual([
@@ -296,15 +295,19 @@ describe('system facts: one row per application root, whatever the overview says
 
   it('an overview that is not verified still shows the rows with the script facts, the counts and the area table; only the model-written sections are replaced', () => {
     const run = twoRootsRun({ verify: false });
+    // A checked overview is in the output now (handbook-light-scheme); an overview never written is the case here.
+    const state = run.readJson('state.json');
+    delete state.overview;
+    run.writeJson(join(run.out, 'state.json'), state);
     const system = systemOf(run);
     expect(system.overview).toBeNull();
-    expect(system.status).toBe('checked');
+    expect(system.status).toBe('planned');
     expect(system.applications.map((row) => [row.dir, row.name, row.does, row.files])).toEqual([['repos/api', null, null, 2], ['repos/web', null, null, 1]]);
     expect(system.counts).toMatchObject({ applications: 2, files: 3, areas: 2, features: 5, featuresWithEntry: 0, roles: 2 });
     runHandbook(['assemble', run.out, '--project', run.root]);
     const md = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
-    const section = md.slice(md.indexOf('## System overview'), md.indexOf('## Areas and features'));
-    expect(section).toContain('The system overview is not in this handbook. Where it stopped: Written, verification not finished.');
+    const section = md.slice(md.indexOf('## Overview'), md.indexOf('## Business flow'));
+    expect(section).toContain('The system overview is not in this handbook. Where it stopped: Not written.');
     expect(section).toContain('Applications: 2. Source files: 3.');
     expect(section).toContain(`| repos/api | ${NOT_VERIFIED} | ${NOT_VERIFIED} | JavaScript (2) |`);
     expect(section).toContain('### Areas and roles');

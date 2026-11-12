@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/14';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/18';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -115,6 +115,32 @@ export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
 export interface Screen { name: string; fields: Field[] }
 
+/** The sequence diagram of an operation, computed by the script from the steps' citations: participant names, and per step the indices of the participants its arrow joins. */
+export interface Sequence { participants: string[]; steps: { from: number; to: number }[] }
+
+/** An operation as a flow (entry format /2): an operation of an older entry has empty lists. */
+export interface Operation {
+  name: string;
+  sentences: string[];
+  triggers: string[];
+  calculations: string[];
+  changes: string[];
+  edges: { when: string; then: string }[];
+  handoffs: { feature: string; text: string }[];
+  sequence: Sequence;
+}
+
+/**
+ * One block of the free chapter of a /3 entry (openspec change handbook-free-chapter), as the page draws it, with no citation: a heading, a
+ * paragraph, one list item, a table, or a sequence diagram whose arrows show only their number and whose arrow texts are listed under it.
+ */
+export type ChapterBlock =
+  | { kind: 'heading'; level: number; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'list'; ordered: boolean; text: string }
+  | { kind: 'table'; header: string[]; rows: string[][] }
+  | { kind: 'diagram'; sequence: Sequence; arrows: string[] };
+
 /** A verified entry as the page shows it: the text, never the evidence. */
 export interface Entry {
   /** Absent when the purpose was removed as not verified. */
@@ -122,11 +148,15 @@ export interface Entry {
   who: { role: string; can: string }[];
   where: string[];
   screens: Screen[];
-  operations: { name: string; sentences: string[] }[];
+  operations: Operation[];
   states: { label: string; meaning: string }[];
+  transitions: { from: string; to: string; by: string }[];
   notifications: { trigger: string; recipient: string; channel: string; content: string }[];
   automatic: { when: string; effect: string }[];
   unknowns: { item: string; searched: string }[];
+  /** Only an entry of format /3 (not verified) has these: its hand-overs and the blocks of its chapter. */
+  handoffs?: { feature: string; text: string }[];
+  chapter?: ChapterBlock[];
 }
 
 export interface Area { id: string; name: string }
@@ -145,9 +175,13 @@ export interface Feature {
   /** The label readers see in the product, for `menu` and `link` features. */
   label?: string;
   status: Status;
+  /** True for a feature written but not verified (a checked /3 entry): its page and its place in the lists say so. */
+  unverified?: boolean;
   entry: Entry | null;
   /** Where the verification of the feature's findings stands: only `verified` ones are in `PageData.findings`. */
   findingsStatus: Status;
+  /** True when the feature's findings unit is checked and not verified (final in the light scheme): its findings are in `PageData.findings` under the not-verified text. */
+  findingsUnverified?: boolean;
 }
 
 /** Who a finding belongs to: a feature, or an application (`id` is `app<n>`, `name` the verified overview's name for its directory, else the directory). */
@@ -167,6 +201,8 @@ export interface Coverage {
   assigned: number;
   unassigned: { candidate: string; kind: EntrypointKind; reason: string }[];
   reachCounts: { reach: Reach; count: number }[];
+  /** The features written but not verified (checked /3 entries), each with the count of every kind of content note the chapter check recorded. */
+  unverified?: { feature: string; notes: { number: number; quote: number; code: number; advice: number; language: number } }[];
   /** The items the verification removed from the system overview (empty when it lost none). */
   removedOverview: RemovedItem[];
   /** The features that lost items to verification, with those items. */
@@ -267,14 +303,39 @@ export interface System {
   domains: AreaRow[];
 }
 
+/** The flow diagram of a domain (openspec change handbook-free-chapter, D8): drawn from checked nodes and edges, or failed its checks; a domain with none has no `flow`. */
+export type DomainFlow =
+  | { status: 'failed' }
+  | { status: 'drawn'; nodes: { id: string; kind: 'feature' | 'state' | 'item'; feature: string; label: string }[]; edges: { from: string; to: string; text?: string }[] };
+
 /** A domain (a business domain, or an area of the map when there is no domains file): its features, and the purposes of those that were verified, in the words of their entries. */
-export interface Domain { id: string; name: string; features: string[]; purposes: { feature: string; text: string }[] }
+export interface Domain {
+  id: string;
+  name: string;
+  features: string[];
+  purposes: { feature: string; text: string }[];
+  /** The handoffs of verified entries that cross into or out of the domain (openspec change handbook-domain-page, D1): `out` first, then `in`; `domain` is the other domain. */
+  relations?: DomainRelation[];
+  /** The states and transitions of the domain's verified entries, by feature. */
+  states?: { feature: string; label: string; meaning: string }[];
+  transitions?: { feature: string; from: string; to: string; by: string }[];
+  flow?: DomainFlow;
+}
+
+/** One handoff between a feature of this domain and a feature of another domain, in the words of the verified entry. */
+export interface DomainRelation { direction: 'out' | 'in'; domain: string; from: string; to: string; text: string }
 
 /** What the verified entry of a feature says a role can do; a role-feature pair the entries do not name has no cell. */
 export interface RoleFeatureMatrix { roles: string[]; features: string[]; cells: { role: string; feature: string; can: string[] }[] }
 
 /** The product part of the entities: no application, no citation path. */
-export interface Entities { domains: Domain[]; roles: { label: string }[]; roleFeature: RoleFeatureMatrix }
+export interface Entities {
+  domains: Domain[];
+  /** The handoffs between two domains summed per direction (openspec change handbook-domain-page, D4), in the order they first appear. */
+  domainFlows?: { from: string; to: string; count: number }[];
+  roles: { label: string }[];
+  roleFeature: RoleFeatureMatrix;
+}
 
 /** Quoted passages of the domain's verified features in each application; `unattributed` counts those in no application. */
 export interface ApplicationDomainMatrix {
@@ -420,7 +481,24 @@ export interface DictionariesSection {
 }
 
 /** The technical part: only in a page that has the technical view. Holds the only citation paths of the page data. */
+/**
+ * The architecture section of the technical part (openspec change handbook-architecture-chapter): only a status when it is not there
+ * (`none`: not selected, `failed`, `missing`: a file is gone), else the chapter blocks (no citation) and the checked fact sheet:
+ * the components, each with the layer its kind puts it in (users 0, frontends 1, backends and shared libraries 2, databases, external and cloud services 3),
+ * and the links with their short texts.
+ */
+export type ArchitectureSection =
+  | { status: 'none' | 'failed' | 'missing' }
+  | {
+    status: 'checked';
+    chapter: ChapterBlock[];
+    components: { id: string; label: string; kind: 'users' | 'frontend' | 'backend' | 'library' | 'database' | 'external' | 'cloud'; layer: number; application?: string; stack?: string }[];
+    links: { from: string; to: string; text: string }[];
+  };
+
 export interface Technical {
+  /** Absent in the data of a page made before the section existed; the page reads that as not selected. */
+  architecture?: ArchitectureSection;
   featureApplication: { feature: string; application: string; citations: number }[];
   unattributed: { feature: string; citations: number }[];
   applicationDomain: ApplicationDomainMatrix;
@@ -432,6 +510,8 @@ export interface Technical {
   topicLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The path of each hotspot file and of each file of a pair of `PageData.history`, in the order of its rows. */
   history: { hotspots: string[]; coChange: { a: string; b: string }[] };
+  /** The files the verified entries of each domain quote, with the number of passages, most quoted first (openspec change handbook-domain-page, D2). */
+  domainFiles?: { domain: string; files: { file: string; citations: number }[] }[];
   findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
@@ -441,8 +521,36 @@ export interface Technical {
   dictionariesState: 'ok' | 'missing' | 'malformed';
 }
 
+/**
+ * The index of the part files of a page whose data is large (openspec change handbook-page-chunked-data): the ids of the
+ * parts in order and, for each unit, the parts that hold it in order. Both are empty when the page is one file. A unit is the
+ * detail shown on one page: `feature:<id>` (the entry and source locations of a verified feature), `data` and `dictionaries`.
+ */
+export interface Chunks {
+  parts: string[];
+  units: Record<string, string[]>;
+}
+
+/** One chapter of the outline: one block (its id is the route name of its page) or one list of entity pages; `technical` when only the technical view has it. */
+export interface OutlineChapter { title: string; block?: string; list?: string; technical: boolean }
+
+/** A block the outline leaves out: its id, its default title in the run's fixed text and the reason. */
+export interface OutlineUnplaced { block: string; title: string; reason: string }
+
+/** The outline both outputs follow: `source` is `outline` for a written one that passed its check, `default` otherwise, with the lines of why in `problems`. */
+export interface Outline {
+  source: 'outline' | 'default';
+  problems: string[];
+  parts: { title: string; chapters: OutlineChapter[] }[];
+  unplaced: OutlineUnplaced[];
+}
+
+/** The parts written but not verified (a checked unit, final in the light scheme); a key is there only when it holds. */
+export interface UnverifiedParts { overview?: boolean; findings?: number; systemFindings?: number; priority?: boolean; remedies?: boolean; topics?: boolean }
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
+  chunks: Chunks;
   /** The system name the verified overview kept, or null; never the directory of the project. */
   project: string | null;
   language: string;
@@ -454,6 +562,8 @@ export interface PageData {
   /** The groups the page navigates by. */
   domains: Area[];
   domainBasis: DomainBasis;
+  /** The parts and chapters the navigation, the chapter titles and the order follow (openspec change handbook-outline). */
+  outline: Outline;
   features: Feature[];
   /** The verified findings of the features and the application roots as groups, in the order of the first finding of each: the features in the map's order, then the application roots, each in its file's order. */
   findings: FindingGroup[];
@@ -462,6 +572,8 @@ export interface PageData {
   history: History;
   appendix: Appendix;
   coverage: Coverage;
+  /** The parts written but not verified; absent when there is none. */
+  unverifiedParts?: UnverifiedParts;
   summary: Summary;
   system: System;
   entities: Entities;

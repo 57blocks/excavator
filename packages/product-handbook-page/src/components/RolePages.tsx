@@ -3,16 +3,18 @@ import { systemName, useText } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { Crumbs } from './Crumbs';
 import { Cell, TableScroll } from './Tables';
+import { PageTitle, useBlockTitle } from '../lib/outline';
 
 /** A role: for each verified feature whose entry names it, what the entry says the role can do. It is what the entries say, not a list of permissions. */
 export function RolePage({ data, label }: { data: PageData; label: string }) {
   const t = useText();
   const nav = useLinks();
+  const matrixTitle = useBlockTitle('roles-matrix', t('md.matrix.roleFeature.heading'));
   const cells = data.entities.roleFeature.cells.filter((cell) => cell.role === label);
   const featureText = (id: string) => t('md.summary.feature', { id, name: data.features.find((feature) => feature.id === id)?.name ?? '' });
   return (
     <article className="page" data-view="role" data-role={label}>
-      <Crumbs trail={[<a href={nav.rolesMatrix}>{t('md.matrix.roleFeature.heading')}</a>, label]} />
+      <Crumbs trail={[<a href={nav.rolesMatrix}>{matrixTitle}</a>, label]} />
       <header className="page-head">
         <h1 className="page-title">{label}</h1>
       </header>
@@ -40,7 +42,7 @@ export function RolesMatrixPage({ data }: { data: PageData }) {
     <article className="page" data-view="roles-matrix">
       <header className="page-head">
         <p className="eyebrow">{systemName(data.project, t)}</p>
-        <h1 className="page-title">{heading}</h1>
+        <PageTitle fallback={heading} />
       </header>
       <p className="muted summary-note">{t('md.matrix.roleFeature.note')}</p>
       {roles.length === 0 || features.length === 0 ? <p className="muted">{t('md.none')}</p> : (

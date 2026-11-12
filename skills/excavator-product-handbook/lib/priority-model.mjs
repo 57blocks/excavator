@@ -8,8 +8,10 @@
  * The keys are computed again from the groups as they are now: an item of the
  * priority file whose key no group has (the statement or the members changed
  * after the ranking) is not written, and its group is unranked. A group has a
- * priority only when the unit is verified (its file still the one the judges saw)
- * and the judges did not leave it unranked. The groups are then sorted by level
+ * priority only when the unit is checked or verified (its file still the one
+ * that was checked) and the judges did not leave it unranked. A checked unit is
+ * final (openspec change handbook-light-scheme): the judges left nothing out, so
+ * every group the file holds keeps the level the writer gave it. The groups are then sorted by level
  * (P0, P1, P2, unranked), stably, so inside a category the order is by level and
  * then the order the handbook had.
  */
@@ -47,6 +49,8 @@ export function withPriority(findings, ranking = NONE) {
     groups,
     priority: {
       finished: groups.length === 0 || ranking.doc !== null,
+      // A checked ranking (openspec change handbook-light-scheme) is written, not verified: the outputs say so at its head.
+      ...(ranking.unverified === true && ranking.doc !== null ? { unverified: true } : {}),
       counts,
       unranked: groups.filter((group) => group.priority === null).map((group) => ({ group, reasons: left.get(group.key) ?? [] })),
     },

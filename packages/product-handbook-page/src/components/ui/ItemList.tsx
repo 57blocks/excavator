@@ -1,13 +1,19 @@
 import { Children } from 'react';
 import type { ReactNode } from 'react';
 
+import { PAGE_SIZE, Pager, nodesOf, usePage } from './Pager';
+
 /**
  * A collection with a free-text column is a list of blocks, not a table: each item has its short attributes on a first
  * line (badges, owner, name), its body at the full content width, secondary text under the body and, last, anything
- * collapsed (source locations). A part an item does not have is not drawn.
+ * collapsed (source locations). A part an item does not have is not drawn. More than 200 items are shown 200 at a
+ * time, with the page controls under the list; the items are the already filtered children.
  */
 export function ItemList({ part, label, children }: { part?: string; label?: string; children: ReactNode }) {
-  return <ul className="item-list" role="list" data-part={part} aria-label={label}>{children}</ul>;
+  const items = nodesOf(children);
+  const paging = usePage(items.length);
+  const list = <ul className="item-list" role="list" data-part={part} aria-label={label}>{items.length > PAGE_SIZE ? items.slice(paging.start, paging.end) : children}</ul>;
+  return items.length > PAGE_SIZE ? <>{list}<Pager total={items.length} {...paging} /></> : list;
 }
 
 export function Item({ attrs, note, extra, data, children }: { attrs?: ReactNode; note?: ReactNode; extra?: ReactNode; data?: Record<`data-${string}`, string | undefined>; children?: ReactNode }) {

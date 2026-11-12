@@ -15,6 +15,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import type { Entry, Feature, PageData, View } from '../src/lib/types';
 import { switchTarget, technicalNav } from '../src/lib/views';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -33,7 +34,7 @@ const SLACK = d('Slack');
 const entry = (purpose: string, roles: [string, string][]): Entry => ({
   purpose: d(purpose),
   who: roles.map(([role, can]) => ({ role, can: d(can) })),
-  where: [], screens: [], operations: [], states: [], notifications: [], automatic: [], unknowns: [],
+  where: [], screens: [], operations: [], states: [], transitions: [], notifications: [], automatic: [], unknowns: [],
 });
 
 const feature = (id: string, area: string, domain: string, status: Feature['status'], entryValue: Entry | null): Feature => ({
@@ -44,7 +45,8 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/14',
+    format: 'excavator-product-handbook-page/18',
+    chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -53,6 +55,7 @@ function dataFor(views: View[]): PageData {
     areas: [{ id: 'A1', name: d('area one') }, { id: 'A2', name: d('area two') }],
     domains: [{ id: 'D1', name: d('domain one') }, { id: 'D2', name: d('domain two') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [
       feature('F1', 'A1', 'D1', 'verified', entry('purpose one', [[CLERK, 'creates']])),
       feature('F2', 'A2', 'D1', 'planned', null),
@@ -221,7 +224,7 @@ describe('the technical view is navigated by application', () => {
     expect(nav.unplaced.map((item) => item.id)).toEqual(['F2', 'F4']);
   });
 
-  it('draws that tree in the rail, in the order application, domain, feature', () => {
+  it('lists the applications in the rail, one link each, in the order of the overview, then the domains and the external systems', () => {
     const html = render(data, '#/technical');
     const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
     expect(rail).toContain('data-view-nav="technical"');
@@ -232,26 +235,18 @@ describe('the technical view is navigated by application', () => {
     expect(svc).toBeGreaterThan(0);
     expect(admin).toBeGreaterThan(svc);
     expect(ghost).toBeGreaterThan(admin);
-    const adminPart = rail.slice(admin, ghost);
-    expect(adminPart.indexOf('data-domain="D1"')).toBeGreaterThanOrEqual(0);
-    expect(adminPart.indexOf('data-domain="D2"')).toBeGreaterThan(adminPart.indexOf('data-domain="D1"'));
-    expect(adminPart.indexOf('href="#/technical/feature/F3"')).toBeGreaterThan(adminPart.indexOf('data-domain="D2"'));
-    expect(rail).toContain('data-part="unplaced"');
-    expect(rail.indexOf('href="#/technical/feature/F2"', rail.indexOf('data-part="unplaced"'))).toBeGreaterThan(0);
-    expect(rail).toContain('data-part="systems"');
+    expect(at('data-domain="D1"')).toBeGreaterThan(ghost);
+    expect(at(`data-system="${SLACK}"`)).toBeGreaterThan(at('data-domain="D2"'));
+    expect(rail).not.toContain('/feature/');
   });
 
-  it('the rail is one scroll container that holds the page links, the feature list and the key', () => {
+  it('the rail is one scroll container that holds every group', () => {
     for (const hash of ['#/technical', '#/product']) {
       const html = render(data, hash);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       expect(rail.match(/class="rail-scroll"/g)).toHaveLength(1);
-      const open = rail.indexOf('class="rail-scroll"');
-      expect(rail.indexOf('class="rail-top"')).toBeGreaterThan(open);
-      expect(rail.indexOf('class="rail-feature"')).toBeGreaterThan(open);
-      expect(rail.indexOf('class="rail-key"')).toBeGreaterThan(rail.indexOf('class="rail-feature"'));
-      expect(rail).toMatch(/^<nav class="rail"[^>]*><div class="rail-scroll">/);
-      expect(rail.endsWith('</ul></div></div>')).toBe(true);
+      expect(rail).toMatch(/^<nav class="rail"[^>]*><div class="rail-scroll"><section class="rail-group"/);
+      expect(rail.endsWith('</a></section></div>')).toBe(true);
     }
   });
 
@@ -382,18 +377,15 @@ describe('the page groups the features by business domain', () => {
   const data = dataFor(['product']);
   const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
 
-  it('draws the navigation by domain: a feature is under its domain, whatever area it sits in', () => {
+  it('draws the navigation by domain: on a feature page the link of its domain is marked, whatever area the feature sits in', () => {
     const rail = railOf(render(data, '#/'));
     const one = rail.indexOf('href="#/domain/D1"');
     const two = rail.indexOf('href="#/domain/D2"');
     expect(one).toBeGreaterThan(0);
     expect(two).toBeGreaterThan(one);
     expect(rail).not.toContain('href="#/domain/A1"');
-    const first = rail.slice(one, two);
-    // F2 is in area A2 and F1 in A1, and both are in D1.
-    expect(first).toContain('href="#/feature/F1"');
-    expect(first).toContain('href="#/feature/F2"');
-    expect(first).not.toContain('href="#/feature/F3"');
+    // F2 is in area A2 and in domain D1.
+    expect(railOf(render(data, '#/feature/F2'))).toContain('<a class="rail-link" data-domain="D1" href="#/domain/D1" aria-current="true">');
   });
 
   it('the overview count line gives the area count and the business domain count', () => {
@@ -420,6 +412,8 @@ describe('the page groups the features by business domain', () => {
     expect(main).toContain(d('domain one'));
     expect(main).toContain('href="#/feature/F2"');
     expect(main).not.toContain('href="#/feature/F3"');
+    // D11: the page lists the features, with no line counting them.
+    expect(main).not.toContain('class="lede"');
     expect(html).toContain(marked['md.entities.domains.note']);
     expect(html).not.toContain(marked['md.domains.fromAreas']);
   });
@@ -447,6 +441,7 @@ describe('without business domains the page groups by area and says so', () => {
       ...base,
       domains: base.areas,
       domainBasis: 'areas',
+      outline: defaultOutline(marked, 'areas'),
       features: base.features.map((item) => ({ ...item, domain: item.area })),
       system: { ...base.system, counts: { ...base.system.counts, domains: null }, domains: base.system.areas },
       entities: {
@@ -493,4 +488,272 @@ describe('without business domains the page groups by area and says so', () => {
   function railOf(html: string): string {
     return html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
   }
+});
+
+// O6 of openspec change handbook-deep-entry (design D11): the rail has two levels, a group name and its links, all
+// shown, none folding or numbered: the system, (technical) the applications, the business domains, (technical) the
+// external systems, the cross-cutting pages, health and findings, and the appendix. No feature is in the rail; on a
+// feature page the link of its domain is marked as the current place.
+describe('the rail is two levels: groups and their links', () => {
+  const product = dataFor(['product']);
+  const both = dataFor(BOTH);
+  const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
+  const groupOf = (rail: string, name: string) => {
+    const start = rail.indexOf(`data-group="${name}"`);
+    return start < 0 ? '' : rail.slice(start, rail.indexOf('</section>', start));
+  };
+  const order = (rail: string) => Array.from(rail.matchAll(/data-group="([a-z0-9-]+)"/g), (match) => match[1]);
+  // The rail has one group per part of the outline (here the default outline: the system, the applications, the domains, the external systems, the cross-cutting pages, health and findings, the appendix) and the coverage page last, in no part.
+  const PART: Record<string, number> = { system: 0, applications: 1, domains: 2, systems: 3, topics: 4, health: 5, appendix: 6 };
+  const partOf = (rail: string, name: string) => groupOf(rail, `part-${PART[name]}`);
+
+  it('has the groups in order, each named from the outline', () => {
+    const rail = railOf(render(product, '#/'));
+    expect(order(rail)).toEqual(['part-0', 'part-2', 'part-4', 'part-5', 'part-6', 'coverage']);
+    const outline = product.outline;
+    for (const [at, name] of [[0, 'system'], [2, 'areas'], [4, 'topics'], [5, 'health'], [6, 'appendix']] as [number, string][]) {
+      expect(groupOf(rail, `part-${at}`), name).toContain(`<h2 class="rail-group-name" id="rail-group-${at}">${outline.parts[at].title}</h2>`);
+    }
+    expect(outline.parts[0].title).toBe(marked['page.nav.group.system']);
+    expect(order(railOf(render(both, '#/technical')))).toEqual(['part-0', 'part-1', 'part-2', 'part-3', 'part-4', 'part-5', 'part-6', 'coverage']);
+  });
+
+  it('puts each page link in its group, and the three technical pages in the system group of the technical view', () => {
+    const rail = railOf(render(product, '#/'));
+    for (const href of ['#/', '#/matrix/roles']) expect(partOf(rail, 'system'), href).toContain(`href="${href}"`);
+    for (const href of ['#/domain/D1', '#/domain/D2']) expect(partOf(rail, 'domains'), href).toContain(`href="${href}"`);
+    for (const href of ['#/notifications', '#/jobs', '#/topics']) expect(partOf(rail, 'topics'), href).toContain(`href="${href}"`);
+    for (const href of ['#/history', '#/findings', '#/recommendations', '#/open-questions']) expect(partOf(rail, 'health'), href).toContain(`href="${href}"`);
+    for (const href of ['#/glossary', '#/sources']) expect(partOf(rail, 'appendix'), href).toContain(`href="${href}"`);
+    expect(groupOf(rail, 'coverage')).toContain('href="#/coverage"');
+    expect(partOf(rail, 'system')).not.toContain('#/data');
+    const technical = railOf(render(both, '#/technical'));
+    for (const href of ['#/technical/matrix/applications', '#/technical/data', '#/technical/dictionaries']) expect(partOf(technical, 'system'), href).toContain(`href="${href}"`);
+    expect(partOf(technical, 'systems')).toContain(`data-system="${SLACK}"`);
+  });
+
+  it('folds nothing, numbers nothing and lists no feature', () => {
+    for (const rail of [railOf(render(product, '#/feature/F3')), railOf(render(both, '#/technical/feature/F3'))]) {
+      expect(rail).not.toContain('<details');
+      expect(rail).not.toContain('/feature/');
+      expect(rail).not.toContain('rail-key');
+      expect(rail).not.toContain('rail-count');
+    }
+  });
+
+  it('marks the current page, and on a feature page the link of its domain', () => {
+    expect(railOf(render(product, '#/findings'))).toContain('<a class="rail-link" href="#/findings" aria-current="page">');
+    expect(railOf(render(product, '#/domain/D2'))).toContain('<a class="rail-link" data-domain="D2" href="#/domain/D2" aria-current="page">');
+    const onFeature = railOf(render(product, '#/feature/F3'));
+    expect(onFeature).toContain('<a class="rail-link" data-domain="D2" href="#/domain/D2" aria-current="true">');
+    expect(onFeature.match(/aria-current=/g)).toHaveLength(1);
+  });
+
+  it('every text of the rail comes from the ui table', () => {
+    for (const hash of ['#/', '#/feature/F3', '#/findings']) expect(unmarked(railOf(render(product, hash))), hash).toEqual([]);
+    for (const hash of ['#/technical', '#/technical/feature/F3']) expect(unmarked(railOf(render(both, hash))), hash).toEqual([]);
+  });
+});
+
+describe('the domain page has the sections of the reference handbook (handbook-domain-page D2)', () => {
+  /** D1 holds F1 (menu, verified) and F2 (made automatic here); its relations, states, findings, hotspots, cited files and tables are set here. */
+  const withDomain = (views: View[]): PageData => {
+    const data = dataFor(views);
+    data.features[1] = { ...data.features[1], reach: 'automated' };
+    data.entities.domains[0] = {
+      ...data.entities.domains[0],
+      relations: [
+        { direction: 'out', domain: 'D2', from: 'F1', to: 'F3', text: d('hands the order on') },
+        { direction: 'in', domain: 'D2', from: 'F3', to: 'F1', text: d('sends it back') },
+      ],
+      states: [{ feature: 'F1', label: d('Draft'), meaning: d('not sent yet') }],
+      transitions: [{ feature: 'F1', from: d('Draft'), to: d('Sent'), by: d('the clerk sends it') }],
+    };
+    const owner = (id: string) => ({ kind: 'feature' as const, id, name: d(`name ${id}`) });
+    data.findings = [
+      { category: 'calculation', owners: [owner('F1')], items: [{ id: 'F1.findings[0]', owner: owner('F1'), text: d('finding of one') }], priority: { level: 'P1', consequence: 'wrongResult', reason: d('wrong total') } },
+      { category: 'display', owners: [owner('F3')], items: [{ id: 'F3.findings[0]', owner: owner('F3'), text: d('finding of three') }], priority: null },
+    ];
+    const hot = (name: string, features: string[]) => ({ name: d(name), app: SVC, commits: 7, authors: 2, lines: 50, last: d('2024-05-01'), uncertain: 0, features });
+    data.history = { ...NO_HISTORY, state: 'ok', hotspots: [hot('a.js', ['F1']), hot('z.js', ['F3'])] } as PageData['history'];
+    if (data.technical !== undefined) {
+      data.technical.history = { hotspots: [d('src/a.js'), d('src/z.js')], coChange: [] };
+      data.technical.domainFiles = [{ domain: 'D1', files: [{ file: d('src/a.js'), citations: 3 }, { file: d('src/b.js'), citations: 1 }] }, { domain: 'D2', files: [] }];
+      const table = (name: string, file: string) => ({ name: d(name), sources: [], createdBy: null, lastChangedBy: null, mentions: { [SVC]: [{ file: d(file), line: 1, rule: 'a' as const }] } });
+      data.technical.data = { tables: [table('orders', 'src/b.js'), table('audit', 'src/q.js')] } as unknown as NonNullable<NonNullable<PageData['technical']>['data']>;
+      data.technical.dataState = 'ok';
+    }
+    return data;
+  };
+  const mainOf = (html: string) => html.slice(html.indexOf('<main'));
+  const sectionOf = (html: string, part: string) => {
+    const start = html.indexOf(`data-part="${part}"`);
+    return start < 0 ? '' : html.slice(start, html.indexOf('</section>', start));
+  };
+  const technical = mainOf(render(withDomain(BOTH), '#/technical/domain/D1'));
+  const product = mainOf(render(withDomain(BOTH), '#/product/domain/D1'));
+
+  it('puts the sections in the order of the reference handbook, the code only in the technical view', () => {
+    const order = ['domain-does', 'domain-features', 'domain-states', 'domain-code', 'domain-relations', 'domain-findings'];
+    const at = order.map((part) => technical.indexOf(`data-part="${part}"`));
+    expect(at.every((position) => position > 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(product).not.toContain('data-part="domain-code"');
+    for (const part of order.filter((name) => name !== 'domain-code')) expect(product).toContain(`data-part="${part}"`);
+  });
+
+  it('groups the features by how readers reach them, with a count per group', () => {
+    const features = sectionOf(technical, 'domain-features');
+    expect(features).toContain(`${MARK}Menu (1)`);
+    expect(features).toContain(`${MARK}Automatic (1)`);
+    expect(features.indexOf('href="#/technical/feature/F1"')).toBeLessThan(features.indexOf('href="#/technical/feature/F2"'));
+  });
+
+  it('lists the states and transitions by feature', () => {
+    const states = sectionOf(technical, 'domain-states');
+    expect(states).toContain('href="#/technical/feature/F1"');
+    expect(decode(states)).toContain(`${MARK}${d('Draft')}: ${d('not sent yet')}`);
+    expect(decode(states)).toContain(`${MARK}${d('Draft')} to ${d('Sent')}: ${d('the clerk sends it')}`);
+  });
+
+  it('shows where the code is: the hotspots of its features, the files its entries quote, and the tables named in those files', () => {
+    const code = decode(sectionOf(technical, 'domain-code'));
+    expect(code).toContain(d('src/a.js'));
+    expect(code).not.toContain(d('src/z.js'));
+    expect(code).toContain(`${MARK}${d('src/b.js')}: 1 passages`);
+    expect(code).toContain(d('orders'));
+    expect(code).not.toContain(d('audit'));
+    expect(code).toContain(marked['page.domain.tablesNote']);
+  });
+
+  it('says why the hotspots or the tables are missing instead of none when their file was not read', () => {
+    const data = withDomain(BOTH);
+    data.history = { ...data.history, state: 'malformed' } as PageData['history'];
+    data.technical!.data = null;
+    data.technical!.dataState = 'missing';
+    const code = sectionOf(mainOf(render(data, '#/technical/domain/D1')), 'domain-code');
+    expect(code).toContain(marked['md.history.malformed']);
+    expect(code).toContain(marked['md.data.notWritten']);
+    const unread = withDomain(BOTH);
+    unread.history = { ...unread.history, state: 'missing' } as PageData['history'];
+    unread.technical!.dataState = 'malformed';
+    const second = sectionOf(mainOf(render(unread, '#/technical/domain/D1')), 'domain-code');
+    expect(second).toContain(marked['md.history.notWritten']);
+    expect(second).toContain(marked['md.data.malformed']);
+  });
+
+  it('lists the relations on two sides, each linking both features and the other domain', () => {
+    const relations = sectionOf(technical, 'domain-relations');
+    const gives = relations.slice(relations.indexOf(marked['md.entities.domain.gives']), relations.indexOf(marked['md.entities.domain.gets']));
+    const gets = relations.slice(relations.indexOf(marked['md.entities.domain.gets']));
+    expect(gives).toContain('href="#/technical/feature/F3"');
+    expect(decode(gives)).toContain(d('hands the order on'));
+    expect(gives).toContain('href="#/technical/domain/D2"');
+    expect(decode(gets)).toContain(d('sends it back'));
+    expect(decode(gives)).not.toContain(d('sends it back'));
+  });
+
+  it('lists only the findings of its own features, and links the findings page', () => {
+    const findings = decode(sectionOf(technical, 'domain-findings'));
+    expect(findings).toContain(d('finding of one'));
+    expect(findings).not.toContain(d('finding of three'));
+    expect(findings).toContain('href="#/technical/findings"');
+  });
+
+  it('writes none for an empty section, and every text comes from the ui table or the data', () => {
+    const empty = mainOf(render(dataFor(BOTH), '#/technical/domain/D2'));
+    for (const part of ['domain-states', 'domain-relations', 'domain-findings']) expect(sectionOf(empty, part)).toContain(marked['md.none']);
+    for (const html of [technical, product, empty]) expect(unmarked(html)).toEqual([]);
+  });
+});
+
+describe('the business flow and the technical structure are chapters of their own, like the reference handbook (handbook-domain-page D4, D5, D6)', () => {
+  const withFlows = (views: View[]): PageData => {
+    const data = dataFor(views);
+    data.entities.domainFlows = [{ from: 'D1', to: 'D2', count: 1 }];
+    data.entities.domains[0] = { ...data.entities.domains[0], relations: [{ direction: 'out', domain: 'D2', from: 'F1', to: 'F3', text: d('hands the order on') }] };
+    data.entities.domains[1] = { ...data.entities.domains[1], relations: [{ direction: 'in', domain: 'D1', from: 'F1', to: 'F3', text: d('hands the order on') }] };
+    return data;
+  };
+  const partOf = (html: string, part: string) => {
+    const start = html.indexOf(`data-part="${part}"`);
+    return start < 0 ? '' : html.slice(start, html.indexOf('</section>', start));
+  };
+  const systemGroup = (html: string) => {
+    const rail = html.slice(html.indexOf('<nav class="rail"'));
+    const start = rail.indexOf('data-group="part-0"');
+    return rail.slice(start, rail.indexOf('</section>', start));
+  };
+
+  it('routes the two chapters, the technical structure in the technical view only', () => {
+    expect(parseHash('#/business')).toEqual({ name: 'business' });
+    expect(parseHash('#/technical/architecture')).toEqual({ name: 'architecture', view: 'technical' });
+    expect(routeHash({ name: 'architecture' }, 'technical')).toBe('#/technical/architecture');
+    expect(render(withFlows(BOTH), '#/product/architecture')).not.toContain('data-view="architecture"');
+  });
+
+  it('lists the chapters of the system first in the rail: overview, business flow, technical structure, data, then the matrices', () => {
+    const order = (html: string) => Array.from(systemGroup(html).matchAll(/href="([^"]+)"/g), (match) => match[1]);
+    expect(order(render(withFlows(BOTH), '#/technical'))).toEqual(['#/technical', '#/technical/business', '#/technical/architecture', '#/technical/data', '#/technical/matrix/roles', '#/technical/matrix/applications', '#/technical/dictionaries']);
+    expect(order(render(withFlows(BOTH), '#/product'))).toEqual(['#/product', '#/product/business', '#/product/matrix/roles']);
+  });
+
+  it('leaves the two diagrams off the overview', () => {
+    const overview = render(withFlows(BOTH), '#/technical');
+    expect(overview).not.toContain('data-part="flow-chart"');
+    expect(overview).not.toContain('data-part="architecture-chart"');
+  });
+
+  it('draws the business flow and lists every handoff between domains once, with both domains, both features and what is handed over', () => {
+    const html = render(withFlows(BOTH), '#/product/business');
+    expect(html).toContain('data-view="business"');
+    expect(html).toContain(marked['page.business.lede']);
+    const chart = partOf(html, 'business-flow');
+    expect(chart).toContain('data-edge="D1 D2"');
+    expect(chart).toContain('href="#/product/domain/D1"');
+    const list = decode(partOf(html, 'business-list'));
+    expect(list.split(d('hands the order on')).length).toBe(2);
+    for (const href of ['#/product/domain/D1', '#/product/domain/D2', '#/product/feature/F1', '#/product/feature/F3']) expect(list).toContain(`href="${href}"`);
+  });
+
+  it('writes a fixed text and draws nothing when no handoff crosses domains', () => {
+    const html = render(dataFor(BOTH), '#/product/business');
+    expect(partOf(html, 'business-flow')).toContain(marked['md.entities.domains.flowNone']);
+    expect(html).not.toContain('class="flow-svg"');
+    expect(html).not.toContain('data-part="business-list"');
+  });
+
+  it('gives the technical structure a table of the applications, the diagram of the calls to external systems and the external systems', () => {
+    const html = render(withFlows(BOTH), '#/technical/architecture');
+    expect(html).toContain(marked['page.architecture.lede']);
+    const apps = decode(partOf(html, 'architecture-applications'));
+    for (const name of [d('Service'), d('Admin'), d('main work'), d('Lang'), d('2024-01-01')]) expect(apps).toContain(name);
+    expect(apps).toContain(`href="#/technical/application/${enc(SVC)}"`);
+    const calls = partOf(html, 'architecture-calls');
+    expect(calls).toContain(`href="#/technical/application/${enc(SVC)}"`);
+    expect(calls).toContain(`href="#/technical/system/${enc(SLACK)}"`);
+    expect(calls).not.toContain(`href="#/technical/application/${enc(ADMIN)}"`);
+    const unshown = withFlows(BOTH);
+    unshown.technical!.integrations.push({ system: d('Mail'), use: d('mail'), shown: [], named: [{ application: ADMIN, files: 3 }], namedOutside: 0 });
+    const drawn = partOf(render(unshown, '#/technical/architecture'), 'architecture-calls');
+    expect(drawn).not.toContain(d('Mail'));
+    expect(drawn).not.toContain(`href="#/technical/application/${enc(ADMIN)}"`);
+    expect(decode(partOf(html, 'architecture-systems'))).toContain(d('messages'));
+  });
+
+  it('ends a chapter with links to the previous and the next chapter of the rail', () => {
+    const technical = partOf(render(withFlows(BOTH), '#/technical/business'), 'chapter-nav');
+    expect(technical).toContain('href="#/technical"');
+    expect(technical).toContain('href="#/technical/architecture"');
+    expect(technical).toContain(marked['page.chapter.previous']);
+    const product = partOf(render(withFlows(BOTH), '#/product/business'), 'chapter-nav');
+    expect(product).toContain('href="#/product/matrix/roles"');
+    const first = partOf(render(withFlows(BOTH), '#/product'), 'chapter-nav');
+    expect(first).not.toContain(marked['page.chapter.previous']);
+    expect(first).toContain('href="#/product/business"');
+  });
+
+  it('takes every text from the ui table or the data', () => {
+    for (const hash of ['#/product', '#/technical', '#/product/business', '#/technical/business', '#/technical/architecture']) expect(unmarked(render(withFlows(BOTH), hash)), hash).toEqual([]);
+  });
 });

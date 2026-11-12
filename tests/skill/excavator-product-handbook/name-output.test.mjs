@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { entryDigest } from '../../../skills/excavator-product-handbook/lib/state.mjs';
-import { SHIPPED_UI, judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { SHIPPED_UI, runHandbook, verifyChecked } from './helpers.mjs';
 import { checkedOverviewRun, overviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -34,7 +34,7 @@ const assemble = (run, ...args) => {
 const page = (run) => runHandbook(['page', run.out, '--project', run.root], { env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: stubPath } });
 const dataOf = (run) => JSON.parse(/<script type="application\/json" id="xv-product-handbook-data">([\s\S]*?)<\/script>/.exec(read(run, 'handbook.html'))[1]);
 /** The first lines after the heading of the system overview. */
-const afterOverviewHeading = (text) => text.slice(text.indexOf('## System overview')).split('\n').slice(1, 4);
+const afterOverviewHeading = (text) => text.slice(text.indexOf('## Overview')).split('\n').slice(1, 4);
 
 function verifiedRun(adjust) {
   const run = checkedOverviewRun(cleanups, adjust);
@@ -42,13 +42,10 @@ function verifiedRun(adjust) {
   return run;
 }
 
-/** The run whose name verification removed in both rounds. */
+/** The run whose name an older verification removed. */
 function removedRun() {
   const run = checkedOverviewRun(cleanups);
-  const reason = { verdict: 'unverified', reason: 'No line shown writes that name.' };
-  expect(judge(run, 'overview', 1, (item) => (item.id === 'name' ? reason : 'verified')).status).toBe(0);
-  expect(judge(run, 'overview', 2, () => reason).status).toBe(0);
-  expect(traceFeature(run, 'overview').status).toBe(0);
+  verifyChecked(run, 'overview', [{ path: 'name', claim: 'System name > handbook-fixture', verdict: 'unverified', reason: 'No line shown writes that name.' }]);
   return run;
 }
 
@@ -127,9 +124,9 @@ describe('page data: the project is the system name', () => {
     const run = verifiedRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(data.project).toBe('handbook-fixture');
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'outline', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
   });
 
   for (const [what, make] of UNNAMED) {

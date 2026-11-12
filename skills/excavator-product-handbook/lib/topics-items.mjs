@@ -38,8 +38,7 @@ export function topicFacts(outDir, root, laneId) {
   const lane = requireLane(context, laneId);
   const entry = currentEntry(context.run.state, lane);
   const note = (text) => ({ status: 0, lines: [`Topics: ${lane.id}: ${text}`] });
-  if (entry.status === 'verified') return note('verified; nothing to write');
-  if (entry.status === 'checked') return note('checked; next: run topic-judge');
+  if (entry.status === 'verified' || entry.status === 'checked') return note(`${entry.status}; nothing to write`);
   if (entry.status === 'failed' && entry.attempts >= MAX_ATTEMPTS) return note(`failed (${MAX_ATTEMPTS} of ${MAX_ATTEMPTS} attempts); its rows are not written`);
   // A domain lane also sees the other domains (id and name), so a data row can name its provider; those lines are not facts a row may cite.
   const others = lane.kind === 'domain' ? context.facts.domains.filter((domain) => domain.id !== lane.id).map((domain) => `${DOMAIN_PREFIX}${domain.id}\t${domain.name}`) : [];

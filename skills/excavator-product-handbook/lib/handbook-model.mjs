@@ -20,17 +20,18 @@ import { citationLocator } from './citation-locator.mjs';
 import { withPriority } from './priority-model.mjs';
 import { factsOf } from './remedies-facts.mjs';
 import { withRemedies } from './remedies-model.mjs';
+import { resolveOutline } from './outline.mjs';
 import { buildSummary } from './summary.mjs';
 import { loadTopicFacts } from './topics-facts.mjs';
 import { withTopics } from './topics-model.mjs';
 import { buildSystem } from './system-facts.mjs';
 
-/** `{ summary, system, entities, locations, data, dictionaries, findings, remedies, topics, history, appendix }`; `history` is history-model.mjs's and `appendix` appendix.mjs's, both for every view; `remedies` is remedies-model.mjs's; `topics` is topics-model.mjs's; `findings` is `{ list, groups, locations, applications, priority }` (findings-model.mjs, priority-model.mjs), its `locations` null unless `views` holds `technical`; `locations`, `data` (the data section, data-section.mjs) and `dictionaries` (the status dictionary, dict-section.mjs) are null unless `views` holds `technical`. */
+/** `{ summary, system, entities, locations, data, dictionaries, findings, remedies, topics, history, appendix, outline }`; `outline` is outline.mjs's `resolveOutline`, for every view; `history` is history-model.mjs's and `appendix` appendix.mjs's, both for every view; `remedies` is remedies-model.mjs's; `topics` is topics-model.mjs's; `findings` is `{ list, groups, locations, applications, priority }` (findings-model.mjs, priority-model.mjs), its `locations` null unless `views` holds `technical`; `locations`, `data` (the data section, data-section.mjs) and `dictionaries` (the status dictionary, dict-section.mjs) are null unless `views` holds `technical`. */
 export function handbookModel(run, root, views) {
   const scan = scanProject(root);
   const summary = buildSummary(run, root);
   const system = buildSystem(run, root, scan);
-  const entities = buildEntities({ map: run.map, domains: run.domains, entries: run.entries, candidates: run.candidates, summary, system, scan });
+  const entities = buildEntities({ map: run.map, domains: run.domains, domainFlowState: run.domainFlows, entries: run.entries, candidates: run.candidates, summary, system, scan });
   const technical = views.includes('technical');
   const findings = withPriority(buildFindings(run, root, { technical, roots: scan.roots, applicationRows: system.applications }), run.priority);
   // The data section is read once: the technical view shows it, and the remedies' facts count the tables that several applications mention.
@@ -40,5 +41,7 @@ export function handbookModel(run, root, views) {
   const topics = withTopics(run.topics, loadTopicFacts(run, root, scan), { locate: technical ? citationLocator(root) : null, findingPlaces: findings.locations });
   const history = buildHistory(run.outDir, { roots: scan.roots, entries: run.entries });
   const appendix = buildAppendix(run, { entities, findings, remedies, topics, applications: findings.applications.length });
-  return { summary, system, entities, findings, remedies, topics, history, appendix, locations: technical ? buildLocations(run, root) : null, data: technical ? dataSection : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
+  // The outline (openspec change handbook-outline) is resolved once here: both outputs follow it, or the default one and say so.
+  const outline = resolveOutline(run.outDir, { map: run.map, check: run.check, t: (key) => run.ui[key], domainBasis: entities.domainBasis });
+  return { summary, system, entities, findings, remedies, topics, history, appendix, outline, locations: technical ? buildLocations(run, root) : null, data: technical ? dataSection : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
 }

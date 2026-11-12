@@ -6,8 +6,8 @@
  * application root (openspec change handbook-system-findings), whose id is
  * `app<n>.system`. The id `priority` is the ranking of the findings, whose state is
  * kept by `mark` through here and whose checks are in priority-*.mjs; the id `remedies` is the
- * causes, measures and recommendations of the findings (checks in remedies-*.mjs); an id `topics:<lane>` is a lane of the cross-cutting topics, kept under `state.topics` (checks in topics-*.mjs). The slices, verdicts, trace,
- * trace-verdicts, mark and check commands go through the unit for everything
+ * causes, measures and recommendations of the findings (checks in remedies-*.mjs); an id `topics:<lane>` is a lane of the cross-cutting topics, kept under `state.topics` (checks in topics-*.mjs). The
+ * mark and check commands go through the unit for everything
  * that differs: the shape, the items and claims, the trim, the checks and where
  * the state is kept. The verification rules themselves are written once.
  *
@@ -43,10 +43,18 @@ export const isPriority = (id) => id === PRIORITY_ID;
 export const isRemedies = (id) => id === REMEDIES_ID;
 export { isLaneUnitId as isTopics };
 
+/**
+ * The items of a feature entry the tracers do not read (design D5 of openspec change handbook-deep-entry): the purpose,
+ * the navigation path, the screens and the field labels, whose claims are a label or one sentence of purpose. The two
+ * verifiers still settle them; a field's rules and every other item are traced.
+ */
+const UNTRACED = /^(purpose|where\[\d+\]|screens\[\d+\](\.fields\[\d+\])?)$/;
+
 const FEATURE = Object.freeze({
   kind: 'feature',
   shapeProblems: entryShapeProblems,
   items: entryItems,
+  untraced: (path) => UNTRACED.test(path),
   claims: itemClaims,
   trim: trimEntry,
   problems: entryProblems,
@@ -74,7 +82,8 @@ const FINDINGS = Object.freeze({
   kind: 'findings',
   shapeProblems: findingsShapeProblems,
   items: findingsItems,
-  claims: findingsClaims,
+  // The third argument of a unit's claims is the run context ({ map }); a finding's claim needs none of it.
+  claims: (doc, ui) => findingsClaims(doc, ui),
   trim: trimFindings,
   /** The scope words of the statement of the item `path` (design D9): its trace item carries them. */
   scopeWords: findingScopeWords,
@@ -131,5 +140,10 @@ export function setUnitState(state, id, value) {
     const root = state.systemFindings?.[systemKey(id)]?.root;
     state.systemFindings = { ...state.systemFindings, [systemKey(id)]: root !== undefined && value.root === undefined ? { ...value, root } : value };
   } else if (isFindingsId(id)) state.findings = { ...state.findings, [featureOfFindings(id)]: value };
-  else state.features[id] = value;
+  else {
+    // The chapter a /3 entry's check recorded (openspec change handbook-free-chapter) stays through every later write of the
+    // feature; only a write that records a chapter of its own (check-entry) replaces it.
+    const chapter = state.features[id]?.chapter;
+    state.features[id] = chapter !== undefined && value.chapter === undefined ? { ...value, chapter } : value;
+  }
 }
