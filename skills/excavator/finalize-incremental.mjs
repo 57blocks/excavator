@@ -9,7 +9,11 @@
  * dangling-reference cleanup and local layer placement, forces `tour: []`, then atomically saves
  * knowledge-graph.jsonl. Only after that succeeds does it patch fingerprints
  * and advance meta.json. SKIP applies the fingerprint/meta patch only; a
- * generated-artifact-only SKIP deliberately advances nothing.
+ * generated-artifact-only SKIP deliberately advances nothing. *
+ * Those two actions also set `project.layersFrom` to "incremental": the layer
+ * records are then the newest layers, because this path never writes
+ * semantic-graph.json and keeps the previous `factsDigest`. lazy-analyze.mjs
+ * rebuilds `project` without the field, so a later Full run drops it.
  */
 
 import { createRequire } from 'node:module';
@@ -37,6 +41,8 @@ try {
 }
 
 const { resolveDataDir } = core;
+/** `project.layersFrom` on a graph whose layer records an incremental update wrote. */
+const LAYERS_FROM_INCREMENTAL = 'incremental';
 const LAYER_NODE_TYPES = new Set([
   'file',
   'config',
@@ -437,6 +443,7 @@ async function main() {
       project: {
         ...projectMetadata(previousGraph.project, plan, scan),
         analyzedAt: now,
+        layersFrom: LAYERS_FROM_INCREMENTAL,
       },
       nodes: assembled.nodes,
       edges: assembled.edges,
@@ -482,5 +489,6 @@ export {
   assignLayers,
   commonParentDepth,
   hasAnalyzedFileCoverage,
+  LAYERS_FROM_INCREMENTAL,
   refreshGraphImports,
 };
