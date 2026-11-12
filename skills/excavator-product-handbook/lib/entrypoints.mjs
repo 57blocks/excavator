@@ -31,6 +31,8 @@ export const KINDS = Object.freeze(['route', 'page', 'job', 'main']);
 export const SKIPPED_DIRECTORIES = Object.freeze(['.git', '.excavator', 'node_modules', 'vendor', 'dist', 'build']);
 export const TEST_FILE = /_test\.go$|\.test\.|\.spec\./;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+/** A line whose trimmed start is a comment opener; only the line start is read, never the extent of a block comment. */
+export const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
 const TEXT_CAP = 200;
 const GRAPH_FILE = join('.excavator', 'knowledge-graph.jsonl');
 const HEADER_CAP_BYTES = 16 * 1024 * 1024;
@@ -40,7 +42,7 @@ const RESIDUAL = Object.freeze({
   size: `Files over ${MAX_FILE_BYTES} bytes and files with a NUL byte are not scanned; they are counted under files.skipped.`,
   oneLine: 'A pattern matches one line, or the line and the next one for the entries the catalog marks "lines": 2 (express routes); a registration spread over more lines is not listed.',
   oneCandidate: 'One candidate per line: a line that patterns of two frameworks match is credited to the framework listed first in the catalog.',
-  react: 'Under react and react-router, route objects (path:) are listed only in files whose path contains "router", and under react <Route> elements too; a route declared in another file is not listed.',
+  react: 'Under react and react-router, route objects (path:) are listed only in files whose path contains "rout", and under react <Route> elements too; a route declared in another file is not listed.',
   gin: 'The gin route pattern (.GET(, .POST( and the other verbs) also matches outbound HTTP-client calls of the same shape; such lines are expected to be left unassigned.',
   graphIgnored: 'The knowledge graph is not read (the caller asked for detection from the build files only): frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
   noGraph: 'No knowledge graph: frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
@@ -317,6 +319,7 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
     const hintPath = `/${file.rel}`.toLowerCase();
     const lines = bytes.toString('utf-8').split('\n').map((raw) => (raw.endsWith('\r') ? raw.slice(0, -1) : raw));
     lines.forEach((line, index) => {
+      if (COMMENT_LINE.test(line)) return;
       for (const group of groupsForFile) {
         for (const entry of group.entries) {
           if (entry.pathHint !== null && !hintPath.includes(entry.pathHint)) continue;

@@ -60,8 +60,9 @@ export function handoffDiagram(rows, domainNames) {
 export function topicsChapter({ topics, view, t }) {
   if (!topics.hasLanes) return [];
   const out = [`## ${t('md.topics.heading')}`, '', t('md.topics.note'), ''];
+  if (topics.unverified === true) out.push(inline(t('md.topics.unverified')), '');
   if (!topics.anyVerified) return [...out, t('md.topics.notFinished'), ''];
-  out.push(fill(t('md.topics.counts'), { lanes: topics.lanes.filter((lane) => lane.status === 'verified').length, entries: topics.entriesRead, groups: topics.groupsRead, rows: topics.rowsKept }), '');
+  out.push(fill(t('md.topics.counts'), { lanes: topics.lanes.filter((lane) => ['verified', 'checked'].includes(lane.status)).length, entries: topics.entriesRead, groups: topics.groupsRead, rows: topics.rowsKept }), '');
   for (const topic of TOPICS) {
     const rows = topics.topics[topic.id];
     out.push(`### ${t(`md.topics.${topic.id}.heading`)}`, '');
@@ -77,12 +78,13 @@ export function topicsChapter({ topics, view, t }) {
 }
 
 /** The status of a lane as the coverage writes it. */
-const statusText = (status, t) => t(status === 'verified' ? 'md.topics.laneStatus.verified' : status === 'stale' ? 'md.topics.laneStatus.stale' : `md.status.${status}`);
+const statusText = (status, t) => t(status === 'verified' ? 'md.topics.laneStatus.verified' : status === 'checked' ? 'md.topics.laneStatus.checked' : status === 'stale' ? 'md.topics.laneStatus.stale' : `md.status.${status}`);
 
 /** The part of the coverage section about the topics: each lane with its status, the rows the judges left out with their reasons, or that a lane did not finish. */
 export function topicsCoverage({ topics, t }) {
   const out = [`### ${t('md.coverage.topicsHeading')}`, ''];
   if (!topics.hasLanes) return [...out, t('md.none'), ''];
+  if (topics.unverified === true) out.push(t('md.coverage.topicsUnverified'), '');
   out.push(table(
     [t('md.topics.tableLane'), t('md.table.status'), t('md.topics.tableKept'), t('md.topics.tableLeftOut')],
     topics.lanes.map((lane) => [lane.name === null ? t('md.topics.repeated.heading') : lane.name, statusText(lane.status, t), String(lane.kept), String(lane.dropped)]),

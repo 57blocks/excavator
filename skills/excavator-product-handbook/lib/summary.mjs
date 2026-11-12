@@ -73,7 +73,8 @@ export function buildSummary(run, root) {
     jobs,
     counts: {
       featureTotal: map.features.length,
-      featuresWithEntry: map.features.filter((feature) => entries.has(feature.id)).length,
+      // Labelled verified, so a checked /3 entry (in `entries`, not verified) is not counted.
+      featuresWithEntry: map.features.filter((feature) => entries.has(feature.id) && !(run.chapters?.has(feature.id))).length,
       notificationRows: notifications.length,
       jobRows: jobs.length,
       schedule: { literal: bucket('literal'), computed: bucket('computed'), absent: bucket('absent') },

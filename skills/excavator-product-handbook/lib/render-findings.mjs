@@ -16,12 +16,13 @@
  * hold for it (openspec change handbook-remedies, render-remedy-category.mjs) come before its groups. Pure and deterministic.
  */
 
-import { FINDING_CATEGORIES, categoryKey } from './findings-shape.mjs';
+import { FINDING_CATEGORIES, categoryKey, findingsId } from './findings-shape.mjs';
 import { findingsStatus } from './findings-model.mjs';
 import { inline, table } from './markdown.mjs';
 import { EMPTY_PRIORITY } from './priority-model.mjs';
 import { LEVELS } from './priority-shape.mjs';
 import { categoryRemedyLines } from './render-remedy-category.mjs';
+import { unverifiedCounts } from './unverified.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -63,18 +64,27 @@ function groupLine(group, first, context) {
 }
 
 /** The Findings chapter: the counts line, then one list per category that has a group. */
-export function findingsChapter({ map, state, findings, remedies = null, view, t }) {
+export function findingsChapter({ map, state, findings, remedies = null, unverified = new Set(), view, t }) {
   const { list, groups, locations, applications } = findings;
-  const verified = map.features.filter((feature) => findingsStatus(state, feature.id) === 'verified').length;
+  // Written units: verified ones and checked ones (openspec change handbook-light-scheme); the checked ones are also counted as not verified.
+  const marks = unverifiedCounts(unverified);
+  const verified = map.features.filter((feature) => findingsStatus(state, feature.id) === 'verified' || unverified.has(findingsId(feature.id))).length;
   const counts = categoryCounts(groups);
   const out = [`## ${t('md.findings.heading')}`, '', t('md.findings.note'), ''];
+  // A part written and not verified (openspec change handbook-light-scheme) says so at the head of the chapter, each with its own sentence.
+  if (marks.findings > 0) out.push(inline(t('md.findings.unverifiedFeature')), '');
+  if (marks.systemFindings > 0) out.push(inline(t('md.findings.unverifiedSystem')), '');
+  if (findings.priority?.unverified === true && groups.length > 0) out.push(inline(t('md.priority.unverified')), '');
+  if (remedies?.unverified === true && remedies.categories.length > 0) out.push(inline(t('md.remedies.unverified')), '');
   out.push(fill(t('md.findings.counts'), {
     total: groups.length,
     statements: list.length,
     merged: groups.filter((group) => group.items.length > 1).length,
     verified,
     featureTotal: map.features.length,
-    systemVerified: applications.filter((application) => application.status === 'verified').length,
+    unverified: marks.findings,
+    systemVerified: applications.filter((application) => application.status === 'verified' || unverified.has(`${application.id}.system`)).length,
+    systemUnverified: marks.systemFindings,
     systemTotal: applications.length,
     categories: counts.map(({ category, count }) => fill(t('md.findings.categoryCount'), { category: t(categoryKey(category)), count })).join('; '),
     priority: priorityCountsText((findings.priority ?? EMPTY_PRIORITY).counts, t),
@@ -97,35 +107,45 @@ export function findingsChapter({ map, state, findings, remedies = null, view, t
 /**
  * The findings list at the end of a feature's section: its own findings with
  * their category, or the fixed none text when its unit is verified with none;
- * nothing when the unit is not verified (the coverage section says where it stopped).
+ * a checked unit (written, not verified) has its own not-verified sentence first;
+ * nothing when the unit is neither (the coverage section says where it stopped).
  */
-export function featureFindingsLines(featureId, { state, findings, t }) {
-  if (findingsStatus(state, featureId) !== 'verified') return [];
+export function featureFindingsLines(featureId, { state, findings, unverified = new Set(), t }) {
+  const light = unverified.has(findingsId(featureId));
+  if (findingsStatus(state, featureId) !== 'verified' && !light) return [];
   const own = findings.list.filter((finding) => finding.owner.kind === 'feature' && finding.owner.id === featureId);
   const out = [`#### ${t('md.findings.heading')}`, ''];
+  if (light) out.push(inline(t('md.findings.unverifiedFeature')), '');
   if (own.length === 0) out.push(t('md.none'), '');
   else out.push(...own.map((finding) => `- ${inline(fill(t('md.findings.featureItem'), { category: t(categoryKey(finding.category)), text: finding.text }))}`), '');
   return out;
 }
 
 /** The two parts of the coverage section about findings: the units not verified (features, then application roots) and the findings removed. */
-export function findingsCoverage({ map, state, findings, t, areaName }) {
+export function findingsCoverage({ map, state, findings, unverified = new Set(), t, areaName }) {
   const label = (key, feature, extra = {}) => fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area), ...extra });
   const { applications } = findings;
   const out = [`### ${t('md.coverage.findingsUnfinishedHeading')}`, ''];
-  const notVerified = map.features.filter((feature) => findingsStatus(state, feature.id) !== 'verified');
+  // A unit that is checked is written, not unfinished (openspec change handbook-light-scheme): it is counted on its own line.
+  const light = (feature) => unverified.has(findingsId(feature.id));
+  const notVerified = map.features.filter((feature) => findingsStatus(state, feature.id) !== 'verified' && !light(feature));
+  const featuresUnverified = map.features.filter(light).length;
   // Units never written (planned) are one line with their count; every other unit not verified has its own row.
   const unfinished = notVerified.filter((feature) => findingsStatus(state, feature.id) !== 'planned');
   const planned = notVerified.length - unfinished.length;
-  if (notVerified.length === 0) out.push(t('md.coverage.findingsAllVerified'));
+  if (notVerified.length === 0 && featuresUnverified === 0) out.push(t('md.coverage.findingsAllVerified'));
+  if (featuresUnverified > 0) out.push(fill(t('md.coverage.findingsUnverified'), { count: featuresUnverified, total: map.features.length }), '');
   if (planned > 0) out.push(fill(t('md.coverage.findingsNotWritten'), { count: planned }), '');
   if (unfinished.length > 0) out.push(table([t('md.table.feature'), t('md.table.status')], unfinished.map((feature) => [label('md.coverage.findingsUnfinishedItem', feature), t(`md.status.${findingsStatus(state, feature.id)}`)])));
   // The same for the system findings of the application roots: one count line for the units never written, a row for each other unit not verified.
-  const systemNotVerified = applications.filter((application) => application.status !== 'verified');
+  const systemLight = (application) => unverified.has(`${application.id}.system`);
+  const systemNotVerified = applications.filter((application) => application.status !== 'verified' && !systemLight(application));
+  const systemUnverified = applications.filter(systemLight).length;
   const systemUnfinished = systemNotVerified.filter((application) => application.status !== 'planned');
   const systemPlanned = systemNotVerified.length - systemUnfinished.length;
   out.push('');
-  if (applications.length > 0 && systemNotVerified.length === 0) out.push(t('md.coverage.systemFindingsAllVerified'), '');
+  if (applications.length > 0 && systemNotVerified.length === 0 && systemUnverified === 0) out.push(t('md.coverage.systemFindingsAllVerified'), '');
+  if (systemUnverified > 0) out.push(fill(t('md.coverage.systemFindingsUnverified'), { count: systemUnverified, total: applications.length }), '');
   if (systemPlanned > 0) out.push(fill(t('md.coverage.systemFindingsNotWritten'), { count: systemPlanned }), '');
   if (systemUnfinished.length > 0) {
     out.push(table([t('md.table.application'), t('md.table.status')], systemUnfinished.map((application) => [fill(t('md.findings.applicationOwner'), { name: application.name }), t(`md.status.${application.status}`)])), '');
@@ -151,9 +171,11 @@ export function findingsCoverage({ map, state, findings, t, areaName }) {
  * statement that the ranking did not finish (the unit is not verified, so every group is without one), or that every group has one.
  */
 export function priorityCoverage({ findings, t }) {
-  const { finished, unranked } = findings.priority ?? EMPTY_PRIORITY;
+  const { finished, unranked, unverified } = findings.priority ?? EMPTY_PRIORITY;
   const out = [`### ${t('md.coverage.priorityHeading')}`, ''];
   if (findings.groups.length === 0) return [...out, t('md.none'), ''];
+  // A checked ranking is written, not verified (openspec change handbook-light-scheme): the coverage counts it as written.
+  if (unverified === true) out.push(t('md.coverage.priorityUnverified'), '');
   if (!finished) return [...out, fill(t('md.coverage.priorityNotFinished'), { count: findings.groups.length }), ''];
   if (unranked.length === 0) return [...out, t('md.coverage.priorityAllRanked'), ''];
   const rows = unranked.map(({ group, reasons }) => [fill(t('md.findings.featureItem'), { category: t(categoryKey(group.category)), text: group.items[0].text }), reasons.length === 0 ? t('md.priority.notJudged') : reasons.join('; ')]);

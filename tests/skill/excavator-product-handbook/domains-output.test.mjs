@@ -57,19 +57,20 @@ describe('handbook.md groups the features by business domain', () => {
     const run = domainsRun();
     assemble(run);
     const md = text(run, 'handbook.md');
-    const top = sectionOf(md, '## Domains and features', '| Access |');
+    const top = sectionOf(md, '## Business domains', '| Access |');
     expect(top).toContain('- **Customer orders**\n  - Orders (Menu)\n  - Archive (Direct link)\n  - Orders (Interface for other systems)');
     expect(top).toContain('- **System upkeep**\n  - Reminders (Automatic)\n  - Admin tool (Operator command)');
     expect(md).not.toContain(FROM_AREAS);
-    expect(md).not.toContain('## Areas and features');
+    expect(md).not.toContain('## Areas\n');
   });
 
   it('writes the chapter of a verified feature under its domain, with the area it sits in as a property', () => {
     const run = domainsRun();
     assemble(run);
     const md = text(run, 'handbook.md');
-    expect(md).toContain('## Customer orders\n\n### Orders\n\nAccess: Menu');
-    expect(md).not.toContain('## Order handling');
+    expect(md).toContain('### Customer orders\n\n#### What it does');
+    expect(md).toContain('#### Orders\n\nAccess: Menu');
+    expect(md).not.toContain('### Order handling');
     expect(md).toContain('Navigation area: Order handling');
   });
 
@@ -77,12 +78,14 @@ describe('handbook.md groups the features by business domain', () => {
     const run = domainsRun();
     assemble(run);
     const md = text(run, 'handbook.md');
-    const domains = sectionOf(md, '## Domains\n', '\n## Roles');
-    expect(domains).toContain('### Customer orders\n\nFeatures: 3. Features with a verified entry: 1.');
-    expect(domains).toContain('### System upkeep\n\nFeatures: 2. Features with a verified entry: 0.');
+    const domains = sectionOf(md, '## Business domains\n', '\n## All notifications');
+    // D11 of handbook-deep-entry: no line counting a domain's features; the overview table counts them.
+    expect(domains).toContain('### Customer orders\n\n#### What it does');
+    expect(domains).toContain('### System upkeep\n\n#### What it does');
+    expect(domains).not.toContain('Features with an entry');
     expect(domains).not.toContain(FROM_AREAS);
-    const overview = sectionOf(md, '### Domains and roles', '## Domains and features');
-    expect(overview).toContain('| Domain | Features | Verified entries | Roles |');
+    const overview = sectionOf(md, '### Domains and roles', '## Business flow');
+    expect(overview).toContain('| Domain | Features | Entries written | Roles |');
     expect(overview).toContain('| Customer orders | 3 | 1 | Clerk |');
     expect(overview).toContain('| System upkeep | 2 | 0 | - |');
   });
@@ -99,13 +102,14 @@ describe('without a passing domains file the handbook falls back to the map\'s a
   const fallbackChecks = (run) => {
     assemble(run);
     const md = text(run, 'handbook.md');
-    const top = sectionOf(md, '## Areas and features', '| Access |');
+    const top = sectionOf(md, '\n## Areas\n', '| Access |');
     expect(top).toContain(FROM_AREAS);
     expect(top).toContain('- **Order handling**\n  - Orders (Menu)\n  - Archive (Direct link)');
-    expect(md).toContain('## Order handling\n\n### Orders');
+    expect(md).toContain('### Order handling\n\n#### What it does');
+    expect(md).toContain('#### Orders');
     expect(md).not.toContain('Navigation area:');
-    expect(sectionOf(md, '## Domains\n', '\n## Roles')).toContain(FROM_AREAS);
-    expect(sectionOf(md, '### Areas and roles', '## Areas and features')).toContain('| Area | Features | Verified entries | Roles |');
+    expect(sectionOf(md, '## Areas\n', '\n## All notifications')).toContain(FROM_AREAS);
+    expect(sectionOf(md, '### Areas and roles', '## Business flow')).toContain('| Area | Features | Entries written | Roles |');
     expect(sectionOf(text(run, 'handbook-technical.md'), '## Applications by domain')).toContain('| Application | Order handling | Automatic work |');
   };
 
@@ -132,8 +136,8 @@ describe('the page data', () => {
     const run = domainsRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities', 'technical']);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'outline', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities', 'technical']);
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(data.domainBasis).toBe('domains');
     expect(data.domains).toEqual([{ id: 'D1', name: 'Customer orders' }, { id: 'D2', name: 'System upkeep' }]);
     expect(data.areas).toEqual([{ id: 'A1', name: 'Order handling' }, { id: 'A2', name: 'Automatic work' }]);
@@ -179,7 +183,7 @@ describe('every output is the same bytes twice, and the domains change nothing b
     assemble(run);
     expect(digests(run.out, names)).toEqual(before);
     expect(text(run, 'handbook.md')).not.toBe(fallback);
-    expect(text(run, 'handbook.md')).toContain('## Domains and features');
+    expect(text(run, 'handbook.md')).toContain('## Business domains');
     expect(readdirSync(run.out).sort()).toEqual(expect.arrayContaining(['domains.json', 'handbook.md']));
   });
 
@@ -223,7 +227,7 @@ describe('a run in a language with its own script', () => {
     expect(run.run('check-domains').status).toBe(0);
     expect(run.run('assemble').status).toBe(0);
     const md = text(run, 'handbook.md');
-    expect(md).toContain(`## ${MARK}Domains and features`);
+    expect(md).toContain(`## ${MARK}Business domains`);
     expect(md).toContain(`- **${MARK}Customer orders**`);
     expect(md).toContain(`${MARK}Navigation area: `);
     expect(md).not.toContain(FROM_AREAS);

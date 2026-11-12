@@ -1,5 +1,5 @@
 // O1 of openspec change handbook-remedies: remedy-facts, check-remedies,
-// remedy-judge, remedy-verdicts and the state of the unit `remedies`.
+// and the state of the unit `remedies`.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -135,7 +135,8 @@ describe('check-remedies', () => {
     expect(state.remedies.entryDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(state.remedies.factsDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(run.goodRemedies().recommendations[1].text).toContain('should');
-    expect(run.run('check-remedies').lines).toEqual(['remedies: checked (2 categories, 2 recommendations)', 'Next: run remedy-judge']);
+    // A second check of the same file is unchanged (a checked unit is final).
+    expect(run.run('check-remedies').lines).toEqual(['remedies: checked, unchanged since it was checked']);
   });
 
   const REJECTED = [
@@ -271,125 +272,16 @@ describe('the state of the unit', () => {
   });
 });
 
-describe('remedy-judge', () => {
-  it('refuses remedies that were not checked', () => {
-    const run = rankedRun(cleanups);
-    const result = run.run('remedy-judge');
-    expect(result.status).toBe(1);
-    expect(result.lines[0]).toBe('remedies: is planned; only checked remedies are judged');
-  });
-
-  it('writes one judge file with the text of each paragraph and everything it cites, nothing else, and prints the paths', () => {
-    const run = checkedRemediesRun(cleanups);
-    const result = run.run('remedy-judge');
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('remedies: 2 categories and 2 recommendations');
-    expect(result.lines[1]).toBe(`Judge file: ${join(run.out, 'remedies', 'judge.json')} | Verdict files: ${join(run.out, 'remedies', 'verdicts', 'a.json')} ${join(run.out, 'remedies', 'verdicts', 'b.json')}`);
-    const file = run.readJson('remedies/judge.json');
-    expect(Object.keys(file)).toEqual(['unit', 'items']);
-    expect(file.items.map((item) => item.id)).toEqual(['category:authorization', 'category:hard-coded', 'recommendation:1', 'recommendation:2']);
-    expect(Object.keys(file.items[0])).toEqual(['id', 'kind', 'cause', 'measure', 'cites']);
-    expect(Object.keys(file.items[2])).toEqual(['id', 'kind', 'title', 'text', 'cites']);
-    expect(file.items[0].cites).toEqual([{ id: run.groupOf('authorization'), content: 'P0 | authorization | Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.' }]);
-    expect(file.items[2].cites[1]).toEqual({ id: 'counts', content: 'counts | groups=4 | P0=1 | P1=2 | P2=1 | unranked=0 | authorization=1 | error-handling=1 | hard-coded=1 | time=1' });
-    expect(JSON.stringify(file)).not.toMatch(/src\//);
-  });
-
-  it('refuses remedies whose file changed after it was checked, or whose facts changed', () => {
-    const run = checkedRemediesRun(cleanups);
-    const doc = run.readJson('entries/remedies.json');
-    doc.recommendations[0].title = 'Another title';
-    run.writeJson(run.remediesPath(), doc);
-    expect(run.run('remedy-judge').lines[0]).toBe('remedies: entries/remedies.json changed after it was checked');
-    const other = checkedRemediesRun(cleanups);
-    const state = other.readState();
-    state.remedies.factsDigest = '1'.repeat(64);
-    other.writeJson(join(other.out, 'state.json'), state);
-    expect(other.run('remedy-judge').lines[0]).toBe('remedies: the facts changed after the remedies were checked');
-  });
-});
-
-describe('remedy-verdicts', () => {
-  it('keeps a paragraph only when both judges say follows, and records the unit as verified', () => {
-    const run = checkedRemediesRun(cleanups);
-    const result = judgeRemedies(run);
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['remedies: verified (4 paragraphs, 4 kept, 0 removed)']);
-    const entry = run.readState().remedies;
-    expect(entry).toMatchObject({ status: 'verified', attempts: 1 });
-    expect(entry.dropped).toBeUndefined();
-  });
-
-  it('one judge that says follows is not enough: a paragraph on which one judge says doesNotFollow is dropped with that reason', () => {
-    const run = checkedRemediesRun(cleanups);
-    const result = judgeRemedies(run, (item, letter) => (item.id === 'recommendation:1' && letter === 'b' ? { verdict: 'doesNotFollow', reason: 'The text says one finding, which no cited fact says.' } : 'follows'));
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['remedies: verified (4 paragraphs, 3 kept, 1 removed)']);
-    expect(run.readState().remedies.dropped).toEqual([{ id: 'recommendation:1', reasons: ['The text says one finding, which no cited fact says.'] }]);
-  });
-
-  it('records both reasons in letter order when both judges say doesNotFollow', () => {
-    const run = checkedRemediesRun(cleanups);
-    judgeRemedies(run, (item, letter) => (item.id === 'category:hard-coded' ? { verdict: 'doesNotFollow', reason: `Judge ${letter} found a fact that is not cited.` } : 'follows'));
-    expect(run.readState().remedies.dropped).toEqual([{ id: 'category:hard-coded', reasons: ['Judge a found a fact that is not cited.', 'Judge b found a fact that is not cited.'] }]);
-  });
-
-  const BAD_FILES = [
-    ['misses a paragraph', (verdicts) => verdicts.slice(1), 'no verdict'],
-    ['has an extra id', (verdicts) => [...verdicts, { id: 'recommendation:9', verdict: 'follows', reason: 'Fine.' }], 'is not a group of the judge file'],
-    ['repeats an id', (verdicts) => [...verdicts, verdicts[0]], 'more than one verdict'],
-    ['has another verdict word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'verified' } : one)), 'is not one of follows, doesNotFollow'],
-    ['has a reason of two lines', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, reason: 'One.\nTwo.' } : one)), 'the reason must be one line'],
-    ['has a reason with a code word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'doesNotFollow', reason: 'The text never mentions delete_order.' } : one)), 'is not allowed in reader text'],
-  ];
-  for (const [name, edit, text] of BAD_FILES) {
-    it(`exits 1 and records nothing for a verdict file that ${name}`, () => {
-      const run = checkedRemediesRun(cleanups);
-      const plan = remedyJudgePlan(run);
-      writeRemedyVerdicts(plan);
-      const file = JSON.parse(readFileSync(plan.b, 'utf-8'));
-      run.writeJson(plan.b, { verdicts: edit(file.verdicts) });
-      const before = readFileSync(join(run.out, 'state.json'), 'utf-8');
-      const result = run.run('remedy-verdicts');
-      expect(result.status, name).toBe(1);
-      expect(result.lines.join('\n'), name).toContain('judge b: ');
-      expect(result.lines.join('\n'), name).toContain(text);
-      expect(result.lines.at(-1), name).toContain('nothing was recorded');
-      expect(readFileSync(join(run.out, 'state.json'), 'utf-8'), name).toBe(before);
-    });
-  }
-
-  it('exits 1 for a verdict file that is missing, and names the verdict file to dispatch again', () => {
-    const run = checkedRemediesRun(cleanups);
-    const plan = remedyJudgePlan(run);
-    writeRemedyVerdicts(plan);
-    run.writeJson(plan.a, { verdicts: [] });
-    const result = run.run('remedy-verdicts');
-    expect(result.status).toBe(1);
-    expect(result.lines.at(-1)).toContain('judge a');
-  });
-
-  it('refuses a judge file that is not the one remedy-judge wrote', () => {
-    const run = checkedRemediesRun(cleanups);
-    const plan = remedyJudgePlan(run);
-    writeRemedyVerdicts(plan);
-    const judge = JSON.parse(readFileSync(plan.judge, 'utf-8'));
-    judge.items[0].cause = 'Another cause.';
-    run.writeJson(plan.judge, judge);
-    const result = run.run('remedy-verdicts');
-    expect(result.status).toBe(1);
-    expect(result.lines[0]).toContain('is not the one remedy-judge wrote for these remedies');
-  });
-
-  it('after the verdicts, remedy-facts prints a note: the remedies are current, so nothing is written again', () => {
+describe('remedy-facts on settled or checked remedies', () => {
+  it('settled remedies print a note: the remedies are current, so nothing is written again', () => {
     const run = checkedRemediesRun(cleanups);
     judgeRemedies(run);
     expect(run.run('remedy-facts').lines).toEqual(['Remedies: verified; nothing to write']);
   });
 
-  it('before the judges, remedy-facts prints the note that the remedies wait for them', () => {
+  it('for checked remedies, remedy-facts prints the note that there is nothing to write', () => {
     const run = checkedRemediesRun(cleanups);
-    expect(run.run('remedy-facts').lines).toEqual(['Remedies: checked; next: run remedy-judge']);
+    expect(run.run('remedy-facts').lines).toEqual(['Remedies: checked; nothing to write']);
   });
 });
 

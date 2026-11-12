@@ -1,6 +1,6 @@
 /**
  * The page's routes live in the URL fragment so the back button and shared
- * links work: `#/`, `#/feature/<id>`, `#/domain/<id>`, `#/role/<label>`,
+ * links work: `#/`, `#/business`, `#/architecture` (technical view only), `#/feature/<id>`, `#/domain/<id>`, `#/role/<label>`,
  * `#/application/<dir>`, `#/system/<name>`, `#/matrix/roles`,
  * `#/matrix/applications`, `#/notifications`, `#/jobs`, `#/findings`, `#/recommendations`, `#/topics`, `#/history`, `#/coverage`, `#/open-questions`, `#/glossary`, `#/sources` and (technical view only) `#/data` and `#/dictionaries`. A page
  * that has both views puts the view in front of each (`#/technical/feature/F1`);
@@ -13,6 +13,8 @@ import type { View } from './types';
 
 export type RouteBody =
   | { name: 'overview' }
+  | { name: 'business' }
+  | { name: 'architecture' }
   | { name: 'feature'; id: string }
   | { name: 'domain'; id: string }
   | { name: 'role'; label: string }
@@ -55,6 +57,8 @@ const KEYED: Record<string, (value: string) => RouteBody> = {
 
 function parseBody(rest: string[], hash: string): RouteBody {
   if (rest.length === 0) return { name: 'overview' };
+  if (rest.length === 1 && rest[0] === 'business') return { name: 'business' };
+  if (rest.length === 1 && rest[0] === 'architecture') return { name: 'architecture' };
   if (rest.length === 1 && rest[0] === 'coverage') return { name: 'coverage' };
   if (rest.length === 1 && rest[0] === 'notifications') return { name: 'notifications' };
   if (rest.length === 1 && rest[0] === 'jobs') return { name: 'jobs' };
@@ -94,6 +98,8 @@ export function parseHash(hash: string): Route {
 function segments(route: RouteBody): string[] {
   switch (route.name) {
     case 'overview': return [];
+    case 'business': return ['business'];
+    case 'architecture': return ['architecture'];
     case 'feature': return ['feature', encodeURIComponent(route.id)];
     case 'domain': return ['domain', encodeURIComponent(route.id)];
     case 'role': return ['role', encodeURIComponent(route.label)];
@@ -123,7 +129,7 @@ export function routeHash(route: RouteBody, prefix: View | null): string {
   return parts.length === 0 ? '#/' : `#/${parts.join('/')}`;
 }
 
-/** The pages only the technical view has: the application and external-system pages, the applications-by-domain matrix, the data page and the dictionaries page. */
-const TECHNICAL_ONLY: readonly RouteBody['name'][] = ['application', 'system', 'applications-matrix', 'data', 'dictionaries'];
+/** The pages only the technical view has: the technical structure, the application and external-system pages, the applications-by-domain matrix, the data page and the dictionaries page. */
+const TECHNICAL_ONLY: readonly RouteBody['name'][] = ['architecture', 'application', 'system', 'applications-matrix', 'data', 'dictionaries'];
 
 export const isInView = (route: RouteBody, view: View): boolean => view === 'technical' || !TECHNICAL_ONLY.includes(route.name);

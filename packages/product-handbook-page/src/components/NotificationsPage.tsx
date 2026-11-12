@@ -2,6 +2,7 @@ import { useLinks } from '../lib/links';
 import { systemName, useText } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { Item, ItemField, ItemList } from './ui/ItemList';
+import { PageTitle } from '../lib/outline';
 
 /** Every notification of every verified entry, in the order of the map, in the entries' own words. */
 export function NotificationsPage({ data }: { data: PageData }) {
@@ -14,7 +15,7 @@ export function NotificationsPage({ data }: { data: PageData }) {
     <article className="page" data-view="notifications">
       <header className="page-head">
         <p className="eyebrow">{systemName(data.project, t)}</p>
-        <h1 className="page-title">{heading}</h1>
+        <PageTitle fallback={heading} />
       </header>
       <p className="summary-counts">{t('md.summary.notifications.counts', { verified: counts.featuresWithEntry, total: counts.featureTotal, count: counts.notificationRows })}</p>
       <p className="muted summary-note">{t('md.summary.notifications.note')}</p>

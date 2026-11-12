@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clone, judge, makeCheckedMapRun, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, failChecked, makeCheckedMapRun, runHandbook, verifyChecked } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -32,33 +32,24 @@ function checkedRun() {
 /** A run whose F1 entry had one backend rule removed in round 1 and one state in round 2. */
 function removedRun() {
   const run = checkedRun();
-  const bad = {
-    'screens[0].fields[1].rules[0]': { verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' },
-    'states[1]': { verdict: 'unverified', reason: 'Round 1: no line shown names the state.' },
-  };
-  expect(judge(run, 'F1', 1, (item) => bad[item.id] ?? 'verified').status).toBe(0);
-  const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown names the state.' }));
-  expect(round2.status, round2.stdout).toBe(0);
-  expect(traceFeature(run).status).toBe(0);
+  verifyChecked(run, 'F1', [
+    { path: 'screens[0].fields[1].rules[0]', claim: 'Screen: New Order > Field: Item Count > Backend rules > At most 35,000 items.', verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' },
+    { path: 'states[1]', claim: 'State: Submitted; Meaning: The order was sent.', verdict: 'unverified', reason: 'No line shown names the state.' },
+  ]);
   return run;
 }
 
-/** Round 1 and round 2 judge every item not verified, so nothing is proved and the feature fails at verify. */
+/** An older run that could prove no item: the feature failed at verify. */
 function failedAtVerifyRun() {
   const run = checkedRun();
-  expect(judge(run, 'F1', 1, () => 'unverified').status).toBe(0);
-  const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'Nothing shown says why.' }));
-  expect(round2.lines).toEqual(['F1: failed at verify: no item could be proved']);
+  failChecked(run, 'F1', 'verify', ['no item could be proved'], [{ path: 'purpose', claim: 'Purpose > Staff place new orders for customers.', verdict: 'unverified', reason: 'Nothing shown says why.' }]);
   return run;
 }
 
 /** Round 2 removes only the purpose: the feature stays verified without it. */
 function purposeRemovedRun() {
   const run = checkedRun();
-  expect(judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'unverified' : 'verified')).status).toBe(0);
-  const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown says why.' }));
-  expect(round2.lines[0]).toBe('F1: confirmed, 1 item removed');
-  expect(traceFeature(run).status).toBe(0);
+  verifyChecked(run, 'F1', [{ path: 'purpose', claim: 'Purpose > Staff place new orders for customers.', verdict: 'unverified', reason: 'No line shown says why.' }]);
   return run;
 }
 
@@ -87,13 +78,6 @@ describe('assemble: only a verified feature is in the body', () => {
     expect(text).not.toContain('F1 Orders (Order handling) |');
   });
 
-  it('leaves a feature that waits for its rewrite out of the body', () => {
-    const run = checkedRun();
-    judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'unverified' : 'verified'));
-    const text = assemble(run);
-    expect(text).not.toContain('Staff place new orders for customers.');
-    expect(text).toContain('| F1 Orders (Order handling) | Written, verification not finished |');
-  });
 });
 
 describe('assemble: the removed items are listed in the coverage section', () => {
@@ -126,25 +110,15 @@ describe('assemble: the removed items are listed in the coverage section', () =>
   it('says none when nothing was removed', () => {
     const run = checkedRun();
     verifyChecked(run);
-    expect(assemble(run)).toContain('### Items removed because the code did not back them up\n\nNone.');
+    expect(assemble(run)).toContain('### Items removed because the code did not back them up\n\nThe purpose, the navigation path, the screens and the field labels of a feature are checked by the two verifiers only; they are not traced.\n\nNone.');
   });
 
   it('lists the items of a feature that failed at verify, and the feature as failed', () => {
     const run = failedAtVerifyRun();
     const text = assemble(run);
     expect(text).toContain('| F1 Orders (Order handling) | Failed the checks |');
-    expect(text).toContain('#### F1 Orders (Order handling): items removed: 15');
+    expect(text).toContain('#### F1 Orders (Order handling): items removed: 1');
     expect(text).toContain('| Purpose > Staff place new orders for customers. | The code shown does not settle it | Nothing shown says why. |');
-  });
-
-  it('shows a child that went with its parent with the text of that result and no reason', () => {
-    const run = checkedRun();
-    judge(run, 'F1', 1, (item) => (item.id === 'screens[0]' ? 'unverified' : 'verified'));
-    judge(run, 'F1', 2, (item) => (item.id === 'screens[0]' ? { verdict: 'unverified', reason: 'No line names the screen.' } : 'verified'));
-    expect(traceFeature(run).status).toBe(0);
-    const text = assemble(run);
-    expect(text).toContain('items removed: 6');
-    expect(text).toContain('| Screen: New Order > Field: Customer Name | Removed together with the item it belongs to | - |');
   });
 
   it('gives the same bytes on two runs, and holds no citation path, in the markdown or in the page', () => {

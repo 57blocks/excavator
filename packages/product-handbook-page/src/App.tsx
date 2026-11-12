@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { ApplicationPage, ApplicationsMatrixPage } from './components/ApplicationPages';
+import { ArchitecturePage, BusinessPage } from './components/ChapterPages';
+import { ChapterNav } from './components/ChapterNav';
 import { CoveragePage } from './components/CoveragePage';
 import { DataPage } from './components/DataPage';
 import { DictionariesPage } from './components/DictionariesPage';
@@ -19,7 +21,9 @@ import { TopicsPage } from './components/TopicsPage';
 import { Sidebar } from './components/Sidebar';
 import { SystemPage } from './components/SystemPage';
 import { TopBar } from './components/TopBar';
+import { LoaderContext, createLoader } from './lib/chunks';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
+import { ChapterTitleContext, chapterTitle, isBlockRoute } from './lib/outline';
 import type { Route } from './lib/route';
 import { TextContext, makeText } from './lib/text';
 import type { PageData, View } from './lib/types';
@@ -33,6 +37,8 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
   const technical = view === 'technical' ? data.technical : undefined;
   switch (body.name) {
     case 'overview': return <Overview data={data} />;
+    case 'business': return <BusinessPage data={data} />;
+    case 'architecture': return technical === undefined ? <NotFound /> : <ArchitecturePage data={data} technical={technical} />;
     case 'coverage': return <CoveragePage data={data} />;
     case 'notifications': return <NotificationsPage data={data} />;
     case 'jobs': return <JobsPage data={data} />;
@@ -58,7 +64,7 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
       const feature = data.features.find((item) => item.id === body.id);
       return feature === undefined
         ? <NotFound />
-        : <FeaturePage feature={feature} findings={data.findings.filter((group) => group.owners.some((owner) => owner.kind === 'feature' && owner.id === feature.id))} domain={data.domains.find((item) => item.id === feature.domain)} area={data.domainBasis === 'domains' ? data.areas.find((item) => item.id === feature.area) : undefined} locations={technical?.locations.find((unit) => unit.id === feature.id)} />;
+        : <FeaturePage feature={feature} findings={data.findings.filter((group) => group.owners.some((owner) => owner.kind === 'feature' && owner.id === feature.id))} domain={data.domains.find((item) => item.id === feature.domain)} area={data.domainBasis === 'domains' ? data.areas.find((item) => item.id === feature.area) : undefined} locations={technical?.locations.find((unit) => unit.id === feature.id)} featureNames={new Map(data.features.map((item) => [item.id, item.name]))} />;
     }
     case 'not-found': return <NotFound />;
   }
@@ -71,6 +77,9 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
   const view = viewOf(data, route);
   const current: View = view ?? data.views[0];
   const links = useMemo(() => makeLinks(data.views.length > 1 ? current : null), [data.views.length, current]);
+  // The title of the chapter the route is (a block's page), for the heading of the page; an entity page keeps its entity's name.
+  const body = bodyOf(route);
+  const titles = useMemo(() => ({ outline: data.outline, current: isBlockRoute(body.name) ? chapterTitle(data.outline, body.name) ?? null : null }), [data.outline, body.name]);
   const switchTo = Object.fromEntries(data.views.map((item) => [item, switchTarget(data, route, item)])) as Record<View, string>;
 
   useEffect(() => {
@@ -85,14 +94,16 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
     <TextContext.Provider value={t}>
       <ViewContext.Provider value={current}>
         <LinksContext.Provider value={links}>
+         <ChapterTitleContext.Provider value={titles}>
           <div className="app">
             <TopBar project={data.project} menuOpen={menuOpen} onMenu={() => setMenuOpen(!menuOpen)} views={data.views} current={current} switchTo={switchTo} />
             <div className="shell">
               {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
               <Sidebar data={data} route={route} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
-              <main className="main" id="main"><PageView data={data} route={route} view={view} /></main>
+              <main className="main" id="main"><PageView data={data} route={route} view={view} />{view !== null && <ChapterNav data={data} route={route} />}</main>
             </div>
           </div>
+         </ChapterTitleContext.Provider>
         </LinksContext.Provider>
       </ViewContext.Provider>
     </TextContext.Provider>
@@ -102,8 +113,13 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
 /** The title of the page a route shows. */
 function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>): string {
   const body = bodyOf(route);
+  // A block's page is titled by the chapter of the outline that holds it; the fixed title is for a block the outline leaves out.
+  const own = isBlockRoute(body.name) ? chapterTitle(data.outline, body.name) : undefined;
+  if (own !== undefined) return own;
   switch (body.name) {
     case 'overview': return t('page.nav.overview');
+    case 'business': return t('page.nav.business');
+    case 'architecture': return t('page.nav.architecture');
     case 'coverage': return t('page.nav.coverage');
     case 'notifications': return t('page.nav.notifications');
     case 'jobs': return t('page.nav.jobs');
@@ -153,5 +169,6 @@ export function App({ data }: { data: PageData }) {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [route]);
-  return <AppView data={data} route={route} />;
+  const loader = useMemo(() => createLoader(data.chunks), [data.chunks]);
+  return <LoaderContext.Provider value={loader}><AppView data={data} route={route} /></LoaderContext.Provider>;
 }

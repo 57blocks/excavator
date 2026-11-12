@@ -3,6 +3,7 @@ import { systemName, useText } from '../lib/text';
 import type { ApplicationFacts, PageData, Technical } from '../lib/types';
 import { Crumbs } from './Crumbs';
 import { Cell, TableScroll } from './Tables';
+import { PageTitle } from '../lib/outline';
 
 function Facts({ application }: { application: ApplicationFacts }) {
   const t = useText();
@@ -119,7 +120,7 @@ export function ApplicationsMatrixPage({ data, technical }: { data: PageData; te
     <article className="page" data-view="applications-matrix">
       <header className="page-head">
         <p className="eyebrow">{systemName(data.project, t)}</p>
-        <h1 className="page-title">{heading}</h1>
+        <PageTitle fallback={heading} />
       </header>
       <p className="muted summary-note">{t('md.matrix.applicationDomain.note')}</p>
       {applications.length === 0 && unattributed.length === 0 ? <p className="muted">{t('md.none')}</p> : (

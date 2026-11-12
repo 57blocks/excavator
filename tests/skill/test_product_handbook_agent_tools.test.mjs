@@ -14,11 +14,6 @@ const skillDir = join(repoRoot, 'skills/excavator-product-handbook');
 const agentsDir = join(repoRoot, 'agents');
 
 const EXPECTED_TOOLS = {
-  'excavator-handbook-verifier': 'Read, Write',
-  'excavator-handbook-priority-judge': 'Read, Write',
-  'excavator-handbook-remedy-judge': 'Read, Write',
-  'excavator-handbook-topic-judge': 'Read, Write',
-  'excavator-handbook-tracer': 'Read, Grep, Glob, Bash, Write',
   'excavator-handbook-writer': 'Read, Grep, Glob, Bash, Write, Edit',
 };
 
@@ -46,6 +41,11 @@ describe('handbook agent definitions list only the tools their task uses', () =>
       .map((f) => f.replace(/\.md$/, ''))
       .sort();
     expect(found).toEqual(Object.keys(EXPECTED_TOOLS).sort());
+  });
+
+  it('O2: the writer is the only handbook agent (the verifier, tracer and judge agents are gone)', () => {
+    const found = readdirSync(agentsDir).filter((f) => /^excavator-handbook-.+\.md$/.test(f));
+    expect(found).toEqual(['excavator-handbook-writer.md']);
   });
 
   for (const [name, tools] of Object.entries(EXPECTED_TOOLS)) {

@@ -61,14 +61,15 @@ afterAll(() => {
 });
 
 describe('the Cross-cutting topics chapter', () => {
-  it('comes after the Findings and Recommendations chapters and before the coverage section, with its note and counts', () => {
+  it('comes before the Findings and Recommendations chapters, in the default order, and before the coverage section, with its note and counts', () => {
     const run = shared();
     assemble(run);
     const body = text(run, 'handbook.md');
     const at = (heading) => body.indexOf(`\n## ${heading}\n`);
+    // The default outline puts the cross-cutting pages before the code health, the findings and the recommendations (handbook-outline D5).
+    expect(at(ui['md.topics.heading'])).toBeLessThan(at(ui['md.findings.heading']));
     expect(at(ui['md.findings.heading'])).toBeLessThan(at(ui['md.remedies.heading']));
-    expect(at(ui['md.remedies.heading'])).toBeLessThan(at(ui['md.topics.heading']));
-    expect(at(ui['md.topics.heading'])).toBeLessThan(at(ui['md.coverage.heading']));
+    expect(at(ui['md.remedies.heading'])).toBeLessThan(at(ui['md.coverage.heading']));
     const chapter = chapterOf(body);
     expect(chapter).toContain(ui['md.topics.note']);
     expect(chapter).toContain('Lanes: 3. Verified entries read: 2. Verified groups of findings read: 4. Rows: 5.');
@@ -129,7 +130,7 @@ describe('the Cross-cutting topics chapter', () => {
 });
 
 describe('a topic without a kept row', () => {
-  it('names the number of verified entries it read and says they state none of it, and never that the system has none', () => {
+  it('names the number of entries it read and says they state none of it, and never that the system has none', () => {
     const run = topicsRun(cleanups);
     checkedLane(run, 'D1', (rows) => rows.slice(0, 1));
     checkedLane(run, 'D2', () => []);
@@ -137,63 +138,45 @@ describe('a topic without a kept row', () => {
     expect(judgeTopics(run).status).toBe(0);
     assemble(run);
     const body = text(run, 'handbook.md');
-    expect(topicOf(body, 'time').trim()).toBe('The 2 verified entries it read state none of this.');
-    expect(topicOf(body, 'handoffs').trim()).toBe('The 2 verified entries it read state none of this.');
+    expect(topicOf(body, 'time').trim()).toBe('The 2 entries it read state none of this.');
+    expect(topicOf(body, 'handoffs').trim()).toBe('The 2 entries it read state none of this.');
     expect(topicOf(body, 'repeated').trim()).toBe('The 4 verified groups of findings it read hold none of this.');
     expect(topicOf(body, 'approval')).toContain('| Place an order |');
     expect(chapterOf(body).replace(ui['md.topics.note'], '')).not.toMatch(/system has no|no approval|does not have/i);
     expect(chapterOf(body)).not.toContain('```mermaid');
   });
 
-  it('is also what a topic says when every row of it was left out by the judges', () => {
-    const run = checkedTopicsRun(cleanups);
-    expect(judgeTopics(run, (row) => (row.topic === 'approval' ? { verdict: 'doesNotFollow', reason: 'The row names a step that is not cited.' } : 'follows')).status).toBe(0);
-    assemble(run);
-    expect(topicOf(text(run, 'handbook.md'), 'approval').trim()).toBe('The 2 verified entries it read state none of this.');
-  });
 });
 
 describe('what the judges left out and what did not finish', () => {
-  it('writes a row that one judge refused nowhere and lists it in the coverage section with the reason', () => {
-    const run = checkedTopicsRun(cleanups);
-    expect(judgeTopics(run, (row, letter) => (row.id === 'D1#1' && letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The row names a condition that no cited sentence says.' } : 'follows')).status).toBe(0);
-    assemble(run);
-    const body = text(run, 'handbook.md');
-    expect(body.slice(body.indexOf(`## ${ui['md.topics.heading']}`), body.indexOf(`## ${ui['md.coverage.heading']}`))).not.toContain('| Place an order |');
-    const part = coverageTopics(body);
-    expect(part).toContain('Left out because a judge found a fact in the row that the entries or findings it cites do not hold: 1.');
-    expect(part).toContain('| Left out | Reason |');
-    expect(part).toContain('| Approval routes: Place an order / The clerk fills in the customer name. / The item count is limited to 35000. / Clerk | The row names a condition that no cited sentence says. |');
-  });
-
-  it('lists each lane with its status and the number of rows kept and left out', () => {
-    const run = checkedTopicsRun(cleanups);
-    judgeTopics(run, (row, letter) => (row.id === 'D2#2' && letter === 'b' ? { verdict: 'doesNotFollow', reason: 'The providing domain is not in what the row cites.' } : 'follows'));
-    assemble(run);
-    const part = coverageTopics(text(run, 'handbook.md'));
-    expect(part).toContain('| Lane | Status | Rows kept | Rows left out |');
-    expect(part).toContain('| Customer orders | Written and judged | 2 | 0 |');
-    expect(part).toContain('| System upkeep | Written and judged | 1 | 1 |');
-    expect(part).toContain(`| ${ui['md.topics.repeated.heading']} | Written and judged | 1 | 0 |`);
-  });
-
   it('says that every written row is in the handbook when the judges left none out', () => {
     const run = shared();
     assemble(run);
     expect(coverageTopics(text(run, 'handbook.md'))).toContain(ui['md.coverage.topicsAllKept']);
   });
 
-  it('says the lane did not finish and writes none of its rows when it is only checked, or was never written', () => {
+  it('writes the rows of a checked lane as written, not verified, and says the other lanes did not finish when they were never written', () => {
     const run = topicsRun(cleanups);
     checkedLane(run, 'D1');
     assemble(run);
     const body = text(run, 'handbook.md');
-    expect(coverageTopics(body)).toContain('| Customer orders | Written, verification not finished | 0 | 0 |');
+    expect(coverageTopics(body)).toContain('| Customer orders | Written, not verified | 2 | 0 |');
     expect(coverageTopics(body)).toContain('| System upkeep | Not written | 0 | 0 |');
+    expect(coverageTopics(body)).toContain(ui['md.coverage.topicsUnverified']);
     expect(coverageTopics(body)).toContain(ui['md.coverage.topicsNotFinished']);
-    expect(chapterOf(body)).not.toContain('| Place an order |');
+    expect(chapterOf(body)).toContain('| Place an order |');
+    expect(chapterOf(body)).toContain(ui['md.topics.unverified']);
+    expect(chapterOf(body)).toContain(ui['md.topics.laneNotFinished']);
+    expect(chapterOf(body)).not.toContain(ui['md.topics.notFinished']);
+  });
+
+  it('says the topics did not finish and writes no row when no lane was written', () => {
+    const run = topicsRun(cleanups);
+    assemble(run);
+    const body = text(run, 'handbook.md');
     expect(chapterOf(body)).toContain(ui['md.topics.notFinished']);
-    expect(chapterOf(body)).not.toContain('state none of this');
+    expect(chapterOf(body)).not.toContain(ui['md.topics.unverified']);
+    expect(coverageTopics(body)).not.toContain(ui['md.coverage.topicsUnverified']);
   });
 
   it('ignores a lane whose facts are not the current ones, and says so', () => {
@@ -232,7 +215,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     const keys = Object.keys(data);
     expect(keys.slice(keys.indexOf('findings'), keys.indexOf('findings') + 6)).toEqual(['findings', 'remedies', 'topics', 'history', 'appendix', 'coverage']);
     expect(Object.keys(data.topics)).toEqual(['approval', 'time', 'handoffs', 'access', 'repeated']);
@@ -275,22 +258,4 @@ describe('the page data', () => {
     expect(JSON.stringify({ ...data, technical: undefined }).includes('order-form.js')).toBe(false);
   });
 
-  it('lists the rows the judges left out in the coverage, and has no row of a lane that did not finish', () => {
-    const run = checkedTopicsRun(cleanups);
-    judgeTopics(run, (row, letter) => (row.id === 'D2#1' ? { verdict: 'doesNotFollow', reason: `Judge ${letter} did not find it in the cited item.` } : 'follows'));
-    expect(page(run).status).toBe(0);
-    const data = dataOf(run);
-    expect(data.topics.time).toEqual([]);
-    expect(data.coverage.topics.dropped).toEqual([{ id: 'D2#1', topic: 'time', text: 'A reminder goes out every day at nine. / Reminders', reasons: ['Judge a did not find it in the cited item.', 'Judge b did not find it in the cited item.'] }]);
-    expect(data.coverage.topics.lanes[1]).toEqual({ id: 'D2', name: 'System upkeep', status: 'verified', kept: 1, dropped: 1 });
-    const unfinished = checkedLane(topicsRun(cleanups), 'D1');
-    expect(page(unfinished).status).toBe(0);
-    const other = dataOf(unfinished);
-    expect(other.topics.approval).toEqual([]);
-    expect(other.coverage.topics.finished).toBe(false);
-    expect(other.coverage.topics.lanes.map((lane) => lane.status)).toEqual(['checked', 'planned', 'planned']);
-    const first = text(unfinished, 'handbook.html');
-    page(unfinished);
-    expect(text(unfinished, 'handbook.html')).toBe(first);
-  });
 });

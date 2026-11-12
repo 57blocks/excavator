@@ -4,14 +4,17 @@
  * business domain (or area, when the handbook groups by area) that has at least
  * one verified entry, and `repeated` when verified groups of findings exist.
  *
- * A domain lane lists the verified items of the entries of its features, one
+ * A domain lane lists the verified items of the entries of its features (and the items of a checked /3 entry, marked as not verified), one
  * line each, tab-separated, the first field the id a row cites:
  *
  *   <featureId>#<item path> <feature name> <kind> <text>
  *
  * with the kinds who (`<role>: <can>`), sentence (`<operation>: <sentence>`),
  * state (`<label>: <meaning>`), automatic (`<when>: <effect>`) and notification
- * (`<trigger> | <channel> | <recipient>`); the item paths are those of items.mjs.
+ * (`<trigger> | <channel> | <recipient>`), and the parts of an operation and the state transitions of an entry
+ * of format /2: trigger, calculation, change and handoff (`<operation>: <text>`; a handoff line ends with a fourth
+ * field, the id of the feature it hands to), edge (`<operation>: <when>: <then>`) and transition
+ * (`<from> -> <to>: <by>`); the item paths are those of items.mjs.
  * The repeated lane lists the groups of the verified findings as remedy-facts
  * does, plus the names of the applications the group's passages are in (the
  * system name when the overview is verified, else the directory):
@@ -25,6 +28,7 @@
 import { createHash } from 'node:crypto';
 
 import { isUnder, scanProject } from './applications.mjs';
+import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
 import { domainGrouping } from './domain-grouping.mjs';
 import { buildFindings } from './findings-model.mjs';
 import { groupKey } from './priority-groups.mjs';
@@ -43,9 +47,15 @@ export const factLine = (row) => [row.id, ...row.fields].join('\t');
 /** The digest of a lane's fact lines: the input of the lane, kept in state.json. */
 export const factsDigest = (rows) => createHash('sha256').update(rows.map(factLine).join('\n')).digest('hex');
 
-/** The facts of one verified entry, in the order of the kinds: `{ id, kind: 'item', itemKind, feature, text, path, evidence, fields }`. */
-export function entryFactRows(feature, entry) {
-  const row = (path, itemKind, text, evidence) => ({
+/**
+ * The facts of one entry, in the order of the kinds: `{ id, kind: 'item', itemKind, feature, text, path, evidence, fields }`. A checked /3 entry
+ * (openspec change handbook-free-chapter D11) is given with its `chapter` (`{ items }` as check-entry recorded them) and the fixed `mark` of
+ * a feature that is not verified: the items of its chapter are rows `<feature id>#chapter.<n>` of kind `chapter` (a heading is no fact), its
+ * hand-overs are rows at the top level, and every line of it ends with the mark.
+ */
+export function entryFactRows(feature, entry, { chapter = undefined, mark = '' } = {}) {
+  const marked = chapter !== undefined;
+  const row = (path, itemKind, text, evidence, extra = {}) => ({
     id: `${feature.id}#${path}`,
     kind: 'item',
     itemKind,
@@ -53,12 +63,25 @@ export function entryFactRows(feature, entry) {
     path,
     text: oneLine(text),
     evidence,
-    fields: [oneLine(feature.name), itemKind, oneLine(text)],
+    fields: [oneLine(feature.name), itemKind, oneLine(text), ...(extra.toFeature === undefined ? [] : [extra.toFeature]), ...(marked ? [mark] : [])],
+    ...extra,
   });
+  const chapterRows = (chapter?.items ?? []).filter((item) => item.kind !== 'heading')
+    .map((item) => row(item.id, 'chapter', item.claim, item.cites.map((cite) => ({ file: cite.file, passage: cite.passage }))));
   return [
     ...entry.who.map((who, i) => row(`who[${i}]`, 'who', `${who.role}: ${who.can}`, who.evidence)),
-    ...entry.operations.flatMap((operation, i) => operation.sentences.map((sentence, j) => row(`operations[${i}].sentences[${j}]`, 'sentence', `${operation.name}: ${sentence.text}`, sentence.evidence))),
+    ...chapterRows,
+    ...(entry.handoffs ?? []).map((handoff, i) => row(`handoffs[${i}]`, 'handoff', handoff.text, handoff.evidence, { toFeature: handoff.feature })),
+    ...(entry.operations ?? []).flatMap((operation, i) => [
+      ...operation.sentences.map((sentence, j) => row(`operations[${i}].sentences[${j}]`, 'sentence', `${operation.name}: ${sentence.text}`, sentence.evidence)),
+      ...OPERATION_PARTS.flatMap((part) => partList(operation, part).map((element, k) => {
+        const path = `operations[${i}].${part.key}[${k}]`;
+        const text = part.key === 'edges' ? `${operation.name}: ${element.when}: ${element.then}` : `${operation.name}: ${element.text}`;
+        return row(path, part.itemKind, text, element.evidence, part.key === 'handoffs' ? { toFeature: element.feature } : {});
+      })),
+    ]),
     ...entry.states.map((state, i) => row(`states[${i}]`, 'state', `${state.label}: ${state.meaning}`, state.evidence)),
+    ...transitionList(entry).map((transition, i) => row(`transitions[${i}]`, 'transition', `${transition.from} -> ${transition.to}: ${transition.by}`, transition.evidence)),
     ...entry.automatic.map((item, i) => row(`automatic[${i}]`, 'automatic', `${item.when}: ${item.effect}`, item.evidence)),
     ...entry.notifications.map((n, i) => row(`notifications[${i}]`, 'notification', `${n.trigger} | ${n.channel} | ${n.recipient}`, n.evidence)),
   ];
@@ -102,14 +125,14 @@ const lane = (id, kind, name, rows, extra = {}) => ({ id, kind, name, rows, byId
  * are among them); `features`: id -> name of the map's features. `groups` are the groups of the verified findings with their `key` and `priority`;
  * `places` maps a finding's id to the places of its passages.
  */
-export function laneFactsOf({ map, domains, entries, groups, roots, places, nameOf }) {
+export function laneFactsOf({ map, domains, entries, chapters = new Map(), mark = '', groups, roots, places, nameOf }) {
   const grouping = domainGrouping(map, domains);
   const featureOf = new Map(map.features.map((feature) => [feature.id, feature]));
   const lanes = [];
   for (const group of grouping.groups) {
     const featureIds = group.features.filter((id) => entries.has(id));
     if (featureIds.length === 0) continue;
-    const rows = featureIds.flatMap((id) => entryFactRows(featureOf.get(id), entries.get(id)));
+    const rows = featureIds.flatMap((id) => entryFactRows(featureOf.get(id), entries.get(id), chapters.has(id) ? { chapter: chapters.get(id), mark } : {}));
     lanes.push(lane(group.id, 'domain', oneLine(group.name), rows, { featureIds }));
   }
   if (groups.length > 0) lanes.push(lane(REPEATED_LANE, 'repeated', NONE, groups.map((group) => groupFactRow(group, { roots, places, nameOf })), { featureIds: [] }));
@@ -127,5 +150,5 @@ export function loadTopicFacts(run, root, scan = scanProject(root)) {
   const groups = findings.groups.map((group) => ({ ...group, key: group.key ?? groupKey(group) }));
   const applications = buildSystem(run, root, scan).applications;
   const nameOf = (dir) => applications.find((row) => row.dir === dir)?.name ?? dir;
-  return laneFactsOf({ map: run.map, domains: run.domains, entries: run.entries, groups, roots: scan.roots, places: findings.locations, nameOf });
+  return laneFactsOf({ map: run.map, domains: run.domains, entries: run.entries, chapters: run.chapters, mark: run.ui['md.status.unverified'], groups, roots: scan.roots, places: findings.locations, nameOf });
 }

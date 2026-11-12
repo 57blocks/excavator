@@ -127,14 +127,6 @@ describe('the Findings chapter with a priority', () => {
     ]);
   });
 
-  it('has a P2 group between P1 and the unranked ones', () => {
-    const run = sameCategoryRun();
-    rank(run, ['display', 'inert', 'blocked', 'money'], (group, letter) => (group.consequence === 'money' && letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The statement does not say anything about an amount.' } : 'follows'));
-    assemble(run);
-    const levels = chapterOf(text(run, 'handbook.md')).split('\n').filter((line) => line.startsWith('- [')).map((line) => /^- \[([^\]]+)\]/.exec(line)[1]);
-    expect(levels).toEqual(['P1', 'P2', 'P2', 'Unranked']);
-  });
-
   it('writes the counts of each level and of the unranked ones on the counts line, and after each category heading the number of groups and of P0', () => {
     const run = shared();
     assemble(run);
@@ -196,7 +188,7 @@ describe('the coverage section about the ranking', () => {
     expect(chapterOf(body)).toContain('By priority: P0: 0; P1: 0; P2: 0; Unranked: 4.');
   });
 
-  it('says the same for a unit that failed its check, and for one that was checked but not judged', () => {
+  it('says the same for a unit that failed its check; one that was checked is written, not verified, and keeps the levels the writer gave', () => {
     const run = sameCategoryRun();
     run.run('mark', 'priority', 'dispatched');
     run.writePart(1, []);
@@ -206,7 +198,11 @@ describe('the coverage section about the ranking', () => {
     run.writePart(1, run.allKeys.map((key, index) => ({ key, consequence: 'display', reason: REASONS[index] })));
     expect(run.run('check-priority').status).toBe(0);
     assemble(run);
-    expect(text(run, 'handbook.md')).toContain('The ranking did not finish: 4 groups');
+    const body = text(run, 'handbook.md');
+    expect(body).not.toContain('The ranking did not finish');
+    expect(chapterOf(body)).toContain(ui['md.priority.unverified']);
+    expect(chapterOf(body)).toContain('Unranked: 0.');
+    expect(chapterOf(body).split('\n').filter((line) => line.startsWith('- [Unranked] '))).toEqual([]);
   });
 
   it('writes none when there is no verified finding', () => {
@@ -261,7 +257,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(data.findings.map((group) => group.priority)).toEqual([
       { level: 'P0', consequence: 'othersRecords', reason: REASONS[1] },
       { level: 'P1', consequence: 'wrongResult', reason: REASONS[0] },

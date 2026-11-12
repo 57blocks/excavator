@@ -13,6 +13,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { Appendix, PageData } from '../src/lib/types';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -46,6 +47,7 @@ const feature = (id: string, name: string, domain: string): PageData['features']
 function dataFor(appendix: Appendix = APPENDIX, views: ('product' | 'technical')[] = ['product', 'technical']): PageData {
   return {
     format: PAGE_FORMAT,
+    chunks: { parts: [], units: {} },
     project: d('Acme'),
     language: d('language'),
     languageTag: 'xx',
@@ -54,6 +56,7 @@ function dataFor(appendix: Appendix = APPENDIX, views: ('product' | 'technical')
     areas: [{ id: d('A1'), name: d('area') }],
     domains: [{ id: 'D1', name: d('Customer orders') }, { id: 'D2', name: d('System upkeep') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [feature('F1', 'Orders', 'D1'), feature('F2', 'Reminders', 'D2')],
     findings: [],
     remedies: { categories: [], recommendations: [] },
@@ -93,13 +96,14 @@ describe('the appendix routes and links', () => {
     }
   });
 
-  it('has the three sidebar links right after the coverage link in both views, in the order of the appendix', () => {
+  // Since handbook-deep-entry D11 the open questions close the health group, after the recommendations, and the appendix group is the glossary, the sources and coverage.
+  it('has the open questions right after the recommendations and the glossary, the sources and coverage in the appendix group, in both views', () => {
     for (const view of ['product', 'technical']) {
       const html = render(dataFor(), `#/${view}`);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       const links = Array.from(rail.matchAll(/href="([^"]*)"/g), (match) => match[1]);
-      const at = links.indexOf(`#/${view}/coverage`);
-      expect(links.slice(at + 1, at + 4), view).toEqual([`#/${view}/open-questions`, `#/${view}/glossary`, `#/${view}/sources`]);
+      const at = links.indexOf(`#/${view}/recommendations`);
+      expect(links.slice(at + 1), view).toEqual([`#/${view}/open-questions`, `#/${view}/glossary`, `#/${view}/sources`, `#/${view}/coverage`]);
       for (const key of ['md.appendix.openHeading', 'md.appendix.glossaryHeading', 'md.appendix.sourcesHeading']) expect(rail).toContain(marked[key]);
     }
   });
