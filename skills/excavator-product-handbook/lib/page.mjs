@@ -1,8 +1,8 @@
 /**
  * `handbook.mjs page <out> --project <root>` (design D13): write
  * `<out>/handbook.html`, and `<out>/handbook-data/` when the data is large
- * (page-chunks.mjs). The data comes from the same loaded, re-checked run
- * `assemble` uses, so the two refuse the same runs; the template is the one
+ * (page-chunks.mjs). The data (format /19, page-data.mjs) comes from the same loaded,
+ * checked Markdown run `assemble` uses, so the two refuse the same runs; the template is the one
  * `packages/product-handbook-page` builds. Only the template's two markers are
  * replaced (page-template.mjs); every other byte is the template's. No time,
  * no machine path: the same run gives the same bytes. The page and the
@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chunkLimits, PAGE_FILE, PARTS_DIR, writePageFiles } from './page-chunks.mjs';
-import { loadCheckedRun } from './load-run.mjs';
+import { loadMdRun } from './md-run.mjs';
 import { buildPageData } from './page-data.mjs';
 import { checkTemplate, readTemplate } from './page-template.mjs';
 import { restorePageData, splitPageData } from './page-units.mjs';
@@ -49,7 +49,7 @@ export function writePage(outDirArg, root, options = {}) {
   // Before any check that can fail: a failed run leaves nothing of an earlier run behind.
   rmSync(target, { force: true });
   rmSync(join(outDir, PARTS_DIR), { recursive: true, force: true });
-  const run = loadCheckedRun(outDir, root);
+  const run = loadMdRun(outDir, root);
   if (!run.ok) return { status: 1, lines: run.lines };
   const limits = chunkLimits();
   const data = buildPageData(run, [root, ...(options.rootAliases ?? [])], { views: options.views ?? DEFAULT_VIEWS });

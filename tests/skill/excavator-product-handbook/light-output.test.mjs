@@ -132,30 +132,6 @@ describe('a run with every model-written part checked and none verified', () => 
     // The fixture's features have no verified entry, so no feature section is written; the chapter holds every finding.
     expect(text(run, 'handbook.md')).not.toContain(`##### ${ui['md.findings.heading']}`);
   });
-
-  it('has the page data with every part and its mark, no unfinished unit, and the same bytes from the same input', () => {
-    const run = shared();
-    const made = page(run);
-    expect(made.status, made.stdout + made.stderr).toBe(0);
-    const data = dataOf(run);
-    expect(data.unverifiedParts).toEqual({ overview: true, findings: 6, systemFindings: 2, priority: true, remedies: true, topics: true });
-    expect(data.features.filter((feature) => feature.findingsUnverified === true).map((feature) => feature.id)).toEqual(['F1', 'F2', 'F3', 'F4', 'F5', 'F6']);
-    expect(data.system.overview.summary).toEqual(['Staff look after shop orders and stock.']);
-    expect(data.findings).toHaveLength(8);
-    expect(data.findings.every((group) => group.priority !== null)).toBe(true);
-    expect(data.remedies.categories).toHaveLength(1);
-    expect(data.remedies.recommendations).toHaveLength(1);
-    expect(data.topics.repeated).toHaveLength(1);
-    expect(data.coverage.findingsUnfinished).toEqual([]);
-    expect(data.coverage.systemFindingsUnfinished).toEqual([]);
-    expect(data.coverage.findingsNotWritten).toBe(0);
-    expect(data.coverage.priority).toEqual({ finished: true, unranked: [] });
-    expect(data.coverage.remedies).toEqual({ finished: true, stale: false, dropped: [] });
-    expect(data.coverage.topics).toMatchObject({ finished: true, lanes: [{ id: 'repeated', status: 'checked', kept: 1, dropped: 0 }] });
-    const first = text(run, 'handbook.html');
-    page(run);
-    expect(text(run, 'handbook.html')).toBe(first);
-  });
 });
 
 describe('the inputs of the ranking, the remedies and the topics', () => {

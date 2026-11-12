@@ -9,17 +9,16 @@
  * the coverage section is last. The file of a view that was not selected is removed.
  */
 
-import { existsSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { scanProject } from './applications.mjs';
-import { DATA_FILE, loadDataSection } from './data-section.mjs';
-import { DICT_FILE, loadDictionariesSection } from './dict-section.mjs';
-import { buildHistory } from './history-model.mjs';
+import { loadDataSection } from './data-section.mjs';
+import { loadDictionariesSection } from './dict-section.mjs';
 import { writeTextAtomic } from './json-file.mjs';
 import { coverageLines } from './md-coverage.mjs';
+import { TECHNICAL_ONLY_BLOCKS, historyOf, scriptBlockNames } from './md-blocks.mjs';
 import { loadMdRun } from './md-run.mjs';
-import { noticeSentences, productText, withSentences } from './md-views.mjs';
+import { chapterMarkdown } from './md-views.mjs';
 import { dataBlock } from './render-data.mjs';
 import { dictionaryBlock } from './render-dict.mjs';
 import { historyChapter } from './render-history.mjs';
@@ -31,27 +30,21 @@ export const HANDBOOK_FILE = 'handbook.md';
 export const TECHNICAL_HANDBOOK_FILE = 'handbook-technical.md';
 /** The file each view is written to. */
 export const HANDBOOK_FILES = Object.freeze({ product: HANDBOOK_FILE, technical: TECHNICAL_HANDBOOK_FILE });
-const HISTORY_FILE = join('entries', 'history.json');
 
 /** The script-written blocks that exist: `{ name, lines(view) }`; data and dictionaries are technical-only, the code health is in both views. */
 function scriptBlocks(run, root) {
   const t = (key) => run.ui[key];
-  const has = (file) => existsSync(join(run.outDir, file));
-  const blocks = new Map();
-  if (has(DATA_FILE)) blocks.set('data', { technical: true, lines: () => dataBlock(loadDataSection(run.outDir), t) });
-  if (has(DICT_FILE)) blocks.set('dictionaries', { technical: true, lines: () => shiftHeadings(dictionaryBlock(loadDictionariesSection(run.outDir), t), -1) });
-  if (has(HISTORY_FILE)) {
-    const entries = new Map(run.map.features.filter((feature) => run.chapters.has(feature.id)).map((feature) => [feature.id, true]));
-    blocks.set('history', { technical: false, lines: (view) => historyChapter({ history: buildHistory(run.outDir, { roots: scanProject(root).roots, entries }), map: run.map, view, t }) });
-  }
-  return blocks;
+  const lines = {
+    data: () => dataBlock(loadDataSection(run.outDir), t),
+    dictionaries: () => shiftHeadings(dictionaryBlock(loadDictionariesSection(run.outDir), t), -1),
+    history: (view) => historyChapter({ history: historyOf(run, root), map: run.map, view, t }),
+  };
+  return new Map(scriptBlockNames(run).map((name) => [name, { technical: TECHNICAL_ONLY_BLOCKS.includes(name), lines: lines[name] }]));
 }
 
 /** One chapter in a view, its headings one level down so the handbook title is the only level-1 heading. */
 function chapterText(run, name, view) {
-  const chapter = run.chapters.get(name);
-  const body = view === 'product' ? productText(chapter.text) : chapter.text;
-  const text = withSentences(body.replace(/\s+$/, ''), noticeSentences(chapter.record, run.ui));
+  const text = chapterMarkdown(run.chapters.get(name), view, run.ui);
   return shiftHeadings(text.split('\n'), 1).join('\n').replace(/\s+$/, '');
 }
 

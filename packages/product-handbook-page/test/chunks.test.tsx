@@ -1,14 +1,10 @@
 // @vitest-environment happy-dom
-// O2 of openspec change handbook-page-chunked-data: one loading function gives the same data in both forms of
-// the page (from the core when the page has no part files, from the parts when it has), a feature page, the
-// dictionaries page and the data page show a loading state and then their detail, a part that is missing is
-// named on the page that needs it and the other pages still work, and a table or list of more than 200 rows is
-// shown 200 rows at a time. The expectations are written by hand; the part files are made by the script's own
-// split (page-units.mjs), so the two merges are held together.
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
+// O2 of openspec change handbook-page-chunked-data, carried over to the page data /19 of openspec change handbook-skill-first:
+// one loading function gives the same data in both forms of the page (from the core when the page has no part files, from the
+// parts when it has), a chapter page, the coverage page, the dictionaries page and the code health page show a loading state and
+// then their detail, a part that is missing is named on the page that needs it and the other pages still work, and a table or list
+// of more than 200 rows is shown 200 rows at a time. The expectations are written by hand; the part files are made by the script's
+// own split (page-units.mjs), so the two merges are held together.
 import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -17,36 +13,16 @@ import { splitPageData } from '../../../skills/excavator-product-handbook/lib/pa
 import { AppView } from '../src/App';
 import { Cell, TableScroll } from '../src/components/Tables';
 import { Item, ItemList } from '../src/components/ui/ItemList';
-import { LoaderContext, assembleDictionaries, assembleFeature, createLoader, installPartRegistry } from '../src/lib/chunks';
+import { LoaderContext, assembleChapterTexts, assembleCoverage, assembleDictionaries, assembleHistory, createLoader, installPartRegistry } from '../src/lib/chunks';
 import type { Loader, PartWindow, Piece } from '../src/lib/chunks';
 import { TextContext, makeText } from '../src/lib/text';
 import { parseHash } from '../src/lib/route';
-import type { DictionariesSection, Entry, PageData } from '../src/lib/types';
+import type { DictionariesSection, History, PageData } from '../src/lib/types';
 import { cleanup, mount, settle } from './dom';
-import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
-import { defaultOutline } from './outline-fixture';
-
-const MARK = '@@';
-const DATA = 'd~';
-const shipped = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')) as { strings: Record<string, string> };
-const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
-const d = (text: string): string => `${DATA}${text}`;
+import { MARK, chapter, d, marked, pageData, shipped } from './page-fixture';
 
 afterEach(cleanup);
 
-const entry: Entry = {
-  purpose: d('purpose'),
-  who: [{ role: d('role'), can: d('can') }],
-  where: [d('menu')],
-  screens: [{ name: d('screen one'), fields: [] }, { name: d('screen two'), fields: [] }],
-  operations: [{ name: d('operation one'), sentences: [d('a sentence.')], triggers: [], calculations: [], changes: [], edges: [], handoffs: [], sequence: { participants: [d('starter'), d('app')], steps: [{ from: 0, to: 1 }] } }],
-  states: [],
-  transitions: [],
-  notifications: [],
-  automatic: [],
-  unknowns: [],
-};
-const locations = { id: 'F1', items: [{ claim: d('claim one'), citations: [{ file: d('a.js'), startLine: 1, endLine: 2 }] }, { claim: d('claim two'), citations: [{ file: d('b.js'), startLine: 3, endLine: 3 }] }] };
 const dictionary = (id: string) => ({ id: d(id), application: d('app'), form: 'ts-enum' as const, name: d(id), file: d('a.ts'), line: 1, members: [{ name: d('M'), value: 1, computed: true, file: d('a.ts'), line: 2, comments: [], labels: [] }], skippedMembers: 0 });
 const counts: DictionariesSection['counts'] = {
   dictionaries: { total: 2, goType: 0, tsEnum: 2, tsConstObject: 0, jsObject: 0 },
@@ -67,51 +43,45 @@ const counts: DictionariesSection['counts'] = {
 };
 const section: DictionariesSection = { recognized: ['ts-enum'], applications: [{ directory: d('app'), dictionaries: 2 }], dictionaries: [dictionary('Alpha'), dictionary('Beta')], mismatches: [], counts };
 
-/** A page whose F1 has a verified entry with source locations and whose dictionaries are written; F2 has no entry. */
+const F1_PRODUCT = `# ${d('Orders')}\n\n${d('product words')}\n\n| ${d('Role')} | ${d('Can')} |\n| --- | --- |\n| ${d('Clerk')} | ${d('Creates')} |\n`;
+const F1_TECHNICAL = `# ${d('Orders')}\n\n${d('technical words')} \`src/a.js:3-5\`\n`;
+const history: History = {
+  state: 'ok', noHistory: null,
+  years: [{ year: 2022, commits: 3, byApp: { [d('api')]: 3 } }, { year: 2023, commits: 1, byApp: { [d('api')]: 1 } }],
+  apps: [{ dir: d('api'), first: '2022-01-01', last: '2023-02-02', commits: 4, authors: 2, authors80: 1, reason: null }],
+  hotspots: [{ name: d('orders.js'), app: d('api'), commits: 4, authors: 2, lines: 9, last: '2023-02-02', uncertain: 0, features: ['F1'] }],
+  coChange: [{ a: d('orders.js'), appA: d('api'), b: d('page.js'), appB: null, commits: 2 }],
+  tests: [{ dir: d('api'), sourceFiles: 3, testFiles: 1 }],
+  conventions: ['goTest'],
+};
+
+/** A page whose F1 has a table in its text, whose dictionaries and code health are written. */
 function fullData(): PageData {
-  return {
-    format: 'excavator-product-handbook-page/18',
-    chunks: { parts: [], units: {} },
-    project: d('project'),
-    language: d('language'),
-    languageTag: 'xx',
-    ui: { strings: marked },
-    views: ['product', 'technical'],
-    areas: [{ id: 'A1', name: d('area') }],
-    domains: [{ id: 'D1', name: d('domain') }],
-    domainBasis: 'domains',
-    outline: defaultOutline(marked, 'domains'),
-    features: [
-      { id: 'F1', name: d('feature one'), area: 'A1', domain: 'D1', reach: 'menu', status: 'verified', entry, findingsStatus: 'planned' },
-      { id: 'F2', name: d('feature two'), area: 'A1', domain: 'D1', reach: 'menu', status: 'planned', entry: null, findingsStatus: 'planned' },
-    ],
-    findings: [],
-    remedies: { categories: [], recommendations: [] },
-    topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
-    history: NO_HISTORY,
-    appendix: NO_APPENDIX,
-    coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
-    summary: { notifications: [], jobs: [], counts: { featureTotal: 2, featuresWithEntry: 1, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
-    system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 2, featuresWithEntry: 1, roles: 0 }, areas: [], domains: [] },
-    entities: { domains: [{ id: 'D1', name: d('domain'), features: ['F1', 'F2'], purposes: [] }], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
-    technical: {
-      featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-      integrations: [], jobs: [], locations: [locations], findingLocations: [], topicLocations: [], history: { hotspots: [], coChange: [] },
-      data: null, dataState: 'missing', dictionaries: section, dictionariesState: 'ok',
-    },
-  };
+  const data = pageData({
+    history,
+    technical: { dictionaries: section, dictionariesState: 'ok', history: { hotspots: [d('src/orders.js')], coChange: [{ a: d('src/orders.js'), b: d('src/page.js') }] } },
+    chapters: [chapter('system', 'System chapter'), { id: 'F1', texts: { product: F1_PRODUCT, technical: F1_TECHNICAL } }, chapter('F2', 'Reminders')],
+  });
+  return data;
 }
 
-/** The page data as a chunked run writes it: the core and the parts, the first part holding F1 and the second the dictionaries. */
-function chunkedData(): { core: PageData; parts: Record<string, Record<string, Piece[]>> } {
-  const { core, units } = splitPageData(fullData()) as { core: PageData; units: () => Iterable<{ key: string; pieces: unknown[] }> };
-  const listed = [...units()] as { key: string; pieces: Piece[] }[];
+type Listed = { key: string; pieces: Piece[] };
+
+/** The page data as a chunked run writes it: the core and the parts; chapter F1 spans parts 1 and 2, the dictionaries and the code health are in part 2. */
+function chunkedData(): { core: PageData; parts: Record<string, Record<string, Piece[]>>; listed: Listed[] } {
+  const { core, units } = splitPageData(fullData()) as { core: PageData; units: () => Iterable<Listed> };
+  const listed = [...units()];
+  const by = (key: string): Listed => listed.find((unit) => unit.key === key) as Listed;
+  const f1 = by('chapter:F1');
   const parts: Record<string, Record<string, Piece[]>> = {
-    'part-0001': { [listed[0].key]: listed[0].pieces.slice(0, 3) },
-    'part-0002': { [listed[0].key]: listed[0].pieces.slice(3), [listed[1].key]: listed[1].pieces },
+    'part-0001': { 'chapter:system': by('chapter:system').pieces, 'chapter:F1': f1.pieces.slice(0, 1), 'chapter:F2': by('chapter:F2').pieces, coverage: by('coverage').pieces },
+    'part-0002': { 'chapter:F1': f1.pieces.slice(1), dictionaries: by('dictionaries').pieces, history: by('history').pieces },
   };
-  core.chunks = { parts: Object.keys(parts), units: { [listed[0].key]: ['part-0001', 'part-0002'], [listed[1].key]: ['part-0002'] } };
-  return { core, parts };
+  core.chunks = {
+    parts: Object.keys(parts),
+    units: { 'chapter:system': ['part-0001'], 'chapter:F1': ['part-0001', 'part-0002'], 'chapter:F2': ['part-0001'], coverage: ['part-0001'], dictionaries: ['part-0002'], history: ['part-0002'] },
+  };
+  return { core, parts, listed };
 }
 
 /** A loader whose `insert` answers from `parts` on a later tick, as a script would; a part not in `parts` fails like a missing file. */
@@ -141,6 +111,7 @@ const page = (data: PageData, hash: string, loader?: Loader) => (
 );
 const emptyLoader = createLoader({ parts: [], units: {} }, { win: {} as PartWindow, insert: () => undefined });
 const wait = async (): Promise<void> => { await settle(); await settle(); };
+const LOADING = `${MARK}${shipped.strings['page.chunk.loading']}`;
 
 describe('the part registry', () => {
   it('the function a part file calls stores the data under the id of the part', () => {
@@ -156,10 +127,9 @@ describe('the loader', () => {
     const data = fullData();
     const inserted: string[] = [];
     const loader = createLoader(data.chunks, { win: {} as PartWindow, insert: (src) => { inserted.push(src); } });
-    expect(loader.state('feature:F1')).toEqual({ status: 'core' });
-    const html = renderToStaticMarkup(page(data, '#/technical/feature/F1', loader));
-    expect(html).toContain(d('screen two'));
-    expect(html).toContain(d('claim two'));
+    expect(loader.state('chapter:F1')).toEqual({ status: 'core' });
+    expect(renderToStaticMarkup(page(data, '#/technical/chapter/F1', loader))).toContain(d('technical words'));
+    expect(renderToStaticMarkup(page(data, '#/product/chapter/F1', loader))).toContain('<table');
     expect(inserted).toEqual([]);
   });
 
@@ -167,40 +137,41 @@ describe('the loader', () => {
     const { core, parts } = chunkedData();
     const inserted: string[] = [];
     const { loader } = fakeLoader(core, parts, inserted);
-    expect(loader.state('feature:F1')).toEqual({ status: 'loading' });
-    loader.load('feature:F1');
-    loader.load('feature:F1');
+    expect(loader.state('chapter:F1')).toEqual({ status: 'loading' });
+    loader.load('chapter:F1');
+    loader.load('chapter:F1');
     await wait();
     expect(inserted).toEqual(['handbook-data/part-0001.js', 'handbook-data/part-0002.js']);
-    const state = loader.state('feature:F1');
+    const state = loader.state('chapter:F1');
     expect(state.status).toBe('ready');
     if (state.status !== 'ready') return;
-    const whole = fullData();
-    const feature = core.features[0];
-    expect(feature.entry).toBeNull();
-    expect(assembleFeature(core.technical?.locations[0], state.pieces)).toEqual({ entry: whole.features[0].entry, locations: whole.technical?.locations[0] });
-    // The dictionaries are in part 2, which is already loaded: no further script.
+    expect(core.chapters[1].texts).toEqual({});
+    expect(assembleChapterTexts(state.pieces)).toEqual({ product: F1_PRODUCT, technical: F1_TECHNICAL });
+    // The other units are in part 2, which is already loaded: no further script.
     loader.load('dictionaries');
+    loader.load('history');
     await wait();
     expect(inserted).toHaveLength(2);
     const dictionaries = loader.state('dictionaries');
     expect(dictionaries.status === 'ready' && assembleDictionaries(core.technical?.dictionaries as DictionariesSection, dictionaries.pieces)).toEqual(section);
+    const health = loader.state('history');
+    expect(health.status === 'ready' && assembleHistory(core.history as History, core.technical?.history ?? null, health.pieces)).toEqual({ history, places: fullData().technical?.history });
+    loader.load('coverage');
+    await wait();
+    const coverage = loader.state('coverage');
+    expect(coverage.status === 'ready' && assembleCoverage(coverage.pieces)).toEqual(fullData().coverage);
   });
 
   it('a part that fails to load is named, only the units that need it are missing, and the others load', async () => {
     const { core, parts } = chunkedData();
     const { loader } = fakeLoader(core, { 'part-0001': parts['part-0001'] });
-    loader.load('feature:F1');
+    loader.load('chapter:F1');
     loader.load('dictionaries');
+    loader.load('chapter:system');
     await wait();
-    expect(loader.state('feature:F1')).toEqual({ status: 'missing', parts: ['part-0002'] });
+    expect(loader.state('chapter:F1')).toEqual({ status: 'missing', parts: ['part-0002'] });
     expect(loader.state('dictionaries')).toEqual({ status: 'missing', parts: ['part-0002'] });
-    const second = fakeLoader(core, { 'part-0002': parts['part-0002'] });
-    second.loader.load('dictionaries');
-    second.loader.load('feature:F1');
-    await wait();
-    expect(second.loader.state('dictionaries').status).toBe('ready');
-    expect(second.loader.state('feature:F1')).toEqual({ status: 'missing', parts: ['part-0001'] });
+    expect(loader.state('chapter:system').status).toBe('ready');
   });
 
   it('a script that runs but does not register its part counts as missing', async () => {
@@ -215,57 +186,62 @@ describe('the loader', () => {
 });
 
 describe('the pages', () => {
-  it('a feature page shows the loading text, then the entry and the source locations; the findings and the name are there at once', async () => {
+  it('a chapter page shows the loading text, then the Markdown of the chapter; the navigation is there at once', async () => {
     const { core, parts } = chunkedData();
     const { loader } = fakeLoader(core, parts);
-    const host = mount(page(core, '#/technical/feature/F1', loader));
-    expect(host.textContent).toContain(d('feature one'));
-    expect(host.textContent).toContain(`${MARK}${shipped.strings['page.chunk.loading']}`);
-    expect(host.textContent).not.toContain(d('screen one'));
+    const host = mount(page(core, '#/technical/chapter/F1', loader));
+    expect(host.querySelector('.rail')?.textContent).toContain(d('Orders'));
+    expect(host.textContent).toContain(LOADING);
+    expect(host.textContent).not.toContain(d('technical words'));
     await wait();
-    expect(host.textContent).toContain(d('purpose'));
-    expect(host.textContent).toContain(d('screen two'));
-    expect(host.textContent).toContain(d('claim two'));
+    expect(host.textContent).toContain(d('technical words'));
+    expect(host.querySelector('.cite')?.textContent).toBe('src/a.js:3-5');
     expect(host.textContent).not.toContain(shipped.strings['page.chunk.loading']);
   });
 
-  it('a feature page whose part is missing says which part, and a feature with no entry loads nothing', async () => {
+  it('a chapter page whose part is missing says which part, and a chapter in a part that is there still shows', async () => {
     const { core, parts } = chunkedData();
-    const inserted: string[] = [];
-    const { loader } = fakeLoader(core, { 'part-0001': parts['part-0001'] }, inserted);
-    const host = mount(page(core, '#/technical/feature/F1', loader));
+    const { loader } = fakeLoader(core, { 'part-0001': parts['part-0001'] });
+    const host = mount(page(core, '#/technical/chapter/F1', loader));
     await wait();
     expect(host.textContent).toContain(`${MARK}A file with data for this page is missing: handbook-data/part-0002.js.`);
-    expect(host.textContent).not.toContain(d('screen two'));
-    const other = mount(page(core, '#/technical/feature/F2', loader));
+    expect(host.textContent).not.toContain(d('technical words'));
+    const other = mount(page(core, '#/technical/chapter/F2', loader));
     await wait();
-    expect(other.textContent).toContain(`${MARK}${shipped.strings['page.feature.noEntry']}`);
-    expect(inserted.filter((src) => src.includes('part-0002'))).toHaveLength(1);
+    expect(other.querySelector('.prose')?.textContent).toContain(d('paragraph of F2'));
   });
 
-  it('the dictionaries page loads its parts and then shows the value sets; the overview loads nothing', async () => {
+  it('the dictionaries page and the code health page load their parts and then show; the coverage page loads its own', async () => {
     const { core, parts } = chunkedData();
     const inserted: string[] = [];
     const { loader } = fakeLoader(core, parts, inserted);
-    mount(page(core, '#/technical', loader));
+    const dictionaries = mount(page(core, '#/technical/dictionaries', loader));
+    expect(dictionaries.textContent).toContain(LOADING);
     await wait();
-    expect(inserted).toEqual([]);
-    const host = mount(page(core, '#/technical/dictionaries', loader));
-    expect(host.textContent).toContain(`${MARK}${shipped.strings['page.chunk.loading']}`);
+    expect(dictionaries.textContent).toContain(d('Alpha'));
+    expect(dictionaries.textContent).toContain(d('Beta'));
+    const health = mount(page(core, '#/technical/history', loader));
     await wait();
-    expect(host.textContent).toContain(d('Alpha'));
-    expect(host.textContent).toContain(d('Beta'));
+    expect(health.querySelector('[data-part="history-hotspots"]')?.textContent).toContain(d('src/orders.js'));
+    expect(health.querySelector('[data-part="history-hotspots"] a')?.getAttribute('href')).toBe('#/technical/chapter/F1');
     expect(inserted).toEqual(['handbook-data/part-0002.js']);
+    const coverage = mount(page(core, '#/technical/coverage', loader));
+    await wait();
+    expect(coverage.querySelector('.prose')?.textContent).toContain(d('coverage text'));
+    expect(inserted).toEqual(['handbook-data/part-0002.js', 'handbook-data/part-0001.js']);
   });
 
   it('the same page in the two forms shows the same text', async () => {
-    const single = fullData();
-    const singleHost = mount(page(single, '#/technical/feature/F1'));
-    const { core, parts } = chunkedData();
-    const { loader } = fakeLoader(core, parts);
-    const chunkedHost = mount(page(core, '#/technical/feature/F1', loader));
-    await wait();
-    expect(chunkedHost.innerHTML).toBe(singleHost.innerHTML);
+    for (const hash of ['#/technical/chapter/F1', '#/product/chapter/F1', '#/technical/history', '#/technical/dictionaries', '#/technical/coverage']) {
+      const singleHost = mount(page(fullData(), hash));
+      const { core, parts } = chunkedData();
+      const { loader } = fakeLoader(core, parts);
+      const chunkedHost = mount(page(core, hash, loader));
+      await wait();
+      // Text, not markup: the select of the dictionaries page numbers its ids by the order of mounting.
+      expect(chunkedHost.textContent, hash).toBe(singleHost.textContent);
+      expect(chunkedHost.querySelectorAll('*').length, hash).toBe(singleHost.querySelectorAll('*').length);
+    }
   });
 });
 

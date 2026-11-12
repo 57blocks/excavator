@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 
-import type { ChapterBlock, Chunks, DataSection, DictionariesSection, Entry, Feature, UnitLocations } from './types';
+import type { ChapterData, Chunks, DataSection, DictionariesSection, History, Technical, View, ViewTexts } from './types';
 
 /**
  * Loading of the part files of a page whose data is large (design D3, D4 of openspec change
- * handbook-page-chunked-data). The core of the page data is inline; the detail of a unit (the entry of a
- * feature, the data section, the dictionaries) is in `handbook-data/part-NNNN.js` files, each a call of
+ * handbook-page-chunked-data). The core of the page data is inline; the detail of a unit (the Markdown of
+ * a chapter, the coverage section, the data section, the dictionaries, the code health) is in `handbook-data/part-NNNN.js` files, each a call of
  * `window.__xvHandbookPart(id, json)`. A part is loaded by inserting a `<script src>` (a fetch of a file next to
  * a page opened from disk is blocked by the browser), and only when a page needs one of its units.
  *
@@ -115,21 +115,29 @@ export function useUnit(key: string | null): UnitState {
 export type Detail<T> = { status: 'loading' } | { status: 'missing'; parts: string[] } | { status: 'ready'; value: T };
 
 const tagged = <T,>(pieces: Piece[], tag: string): T[] => pieces.filter((piece) => has(piece, tag)).map((piece) => piece[tag] as T);
+const textsOf = (pieces: Piece[], tag: string): ViewTexts => Object.fromEntries(tagged<{ view: View; text: string }>(pieces, tag).map(({ view, text }) => [view, text]));
 
-export const featureUnitKey = (id: string): string => `feature:${id}`;
+export const chapterUnitKey = (id: string): string => `chapter:${id}`;
+export const COVERAGE_UNIT = 'coverage';
+export const DATA_UNIT = 'data';
+export const DICTIONARIES_UNIT = 'dictionaries';
+export const HISTORY_UNIT = 'history';
 
-/** The entry and the source locations of a verified feature from its pieces (the merge `restorePageData` of the script makes). */
-export function assembleFeature(locations: UnitLocations | undefined, pieces: Piece[]): { entry: Entry | null; locations: UnitLocations | undefined } {
-  const head = pieces[0].entry as Entry;
+/** The merges below are the ones `restorePageData` of the script makes (page-units.mjs); a test holds the two together. */
+export const assembleChapterTexts = (pieces: Piece[]): ViewTexts => textsOf(pieces, 'text');
+export const assembleCoverage = (pieces: Piece[]): ViewTexts => textsOf(pieces, 'coverageText');
+export const assembleData = (section: DataSection, pieces: Piece[]): DataSection => ({ ...section, tables: tagged(pieces, 'table'), dropped: tagged(pieces, 'dropped') });
+export const assembleDictionaries = (section: DictionariesSection, pieces: Piece[]): DictionariesSection => ({ ...section, dictionaries: tagged(pieces, 'dictionary'), mismatches: tagged(pieces, 'mismatch') });
+
+/** The code health and the paths of its files, as one value. */
+export interface HistoryDetail { history: History; places: Technical['history'] }
+
+export function assembleHistory(history: History, places: Technical['history'], pieces: Piece[]): HistoryDetail {
   return {
-    entry: { ...head, screens: tagged(pieces, 'screen'), operations: tagged(pieces, 'operation'), ...(head.chapter === undefined ? {} : { chapter: tagged<ChapterBlock>(pieces, 'chapterBlock') }) },
-    locations: locations === undefined ? undefined : { ...locations, items: tagged(pieces, 'locationItem') },
+    history: { ...history, years: tagged(pieces, 'year'), apps: tagged(pieces, 'app'), hotspots: tagged(pieces, 'hotspot'), coChange: tagged(pieces, 'pair'), tests: tagged(pieces, 'test') },
+    places: places === null ? null : { hotspots: tagged(pieces, 'hotspotPath'), coChange: tagged(pieces, 'pairPath') },
   };
 }
-
-export const assembleData = (section: DataSection, pieces: Piece[]): DataSection => ({ ...section, tables: tagged(pieces, 'table'), dropped: tagged(pieces, 'dropped') });
-
-export const assembleDictionaries = (section: DictionariesSection, pieces: Piece[]): DictionariesSection => ({ ...section, dictionaries: tagged(pieces, 'dictionary'), mismatches: tagged(pieces, 'mismatch') });
 
 function detailOf<T>(state: UnitState, fromCore: () => T, fromPieces: (pieces: Piece[]) => T): Detail<T> {
   switch (state.status) {
@@ -140,20 +148,32 @@ function detailOf<T>(state: UnitState, fromCore: () => T, fromPieces: (pieces: P
   }
 }
 
-/** The entry and the source locations of a feature: from the core in a page without part files, else once the unit is loaded. */
-export function useFeatureDetail(feature: Feature, locations: UnitLocations | undefined): Detail<{ entry: Entry | null; locations: UnitLocations | undefined }> {
-  const state = useUnit(featureUnitKey(feature.id));
-  return useMemo(() => detailOf(state, () => ({ entry: feature.entry, locations }), (pieces) => assembleFeature(locations, pieces)), [state, feature, locations]);
+/** The Markdown of a chapter in each view: from the core in a page without part files, else once the unit is loaded. */
+export function useChapterTexts(chapter: ChapterData): Detail<ViewTexts> {
+  const state = useUnit(chapterUnitKey(chapter.id));
+  return useMemo(() => detailOf(state, () => chapter.texts, assembleChapterTexts), [state, chapter]);
 }
 
-/** The data section, null when it was not written; the same rules as `useFeatureDetail`. */
+/** The coverage section by view; the same rules as `useChapterTexts`. */
+export function useCoverage(texts: ViewTexts): Detail<ViewTexts> {
+  const state = useUnit(COVERAGE_UNIT);
+  return useMemo(() => detailOf(state, () => texts, assembleCoverage), [state, texts]);
+}
+
+/** The data section, null when it was not written; the same rules. */
 export function useDataSection(section: DataSection | null): Detail<DataSection | null> {
-  const state = useUnit(section === null ? null : 'data');
+  const state = useUnit(section === null ? null : DATA_UNIT);
   return useMemo(() => detailOf(state, () => section, (pieces) => assembleData(section as DataSection, pieces)), [state, section]);
 }
 
-/** The status dictionary, null when it was not written; the same rules as `useFeatureDetail`. */
+/** The status dictionary, null when it was not written; the same rules. */
 export function useDictionaries(section: DictionariesSection | null): Detail<DictionariesSection | null> {
-  const state = useUnit(section === null ? null : 'dictionaries');
+  const state = useUnit(section === null ? null : DICTIONARIES_UNIT);
   return useMemo(() => detailOf(state, () => section, (pieces) => assembleDictionaries(section as DictionariesSection, pieces)), [state, section]);
+}
+
+/** The code health with the paths of its files; the same rules. */
+export function useHistory(history: History, places: Technical['history']): Detail<HistoryDetail> {
+  const state = useUnit(HISTORY_UNIT);
+  return useMemo(() => detailOf(state, () => ({ history, places }), (pieces) => assembleHistory(history, places, pieces)), [state, history, places]);
 }

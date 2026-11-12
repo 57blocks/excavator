@@ -1,13 +1,12 @@
 import { useState } from 'react';
 
 import { useDataSection } from '../lib/chunks';
-import { systemName, useText } from '../lib/text';
+import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
-import type { DataSection, DataTable, PageData, Technical } from '../lib/types';
+import type { DataSection, DataTable, Technical } from '../lib/types';
 import { ChunkNotice } from './ChunkNotice';
 import { Cell, TableScroll } from './Tables';
 import { Item, ItemField, ItemList } from './ui/ItemList';
-import { PageTitle } from '../lib/outline';
 
 /** The bucket of the places that belong to no application. */
 const NO_APPLICATION = '';
@@ -164,15 +163,14 @@ function SectionBody({ section }: { section: DataSection }) {
 }
 
 /** The technical view's data page: the tables the migrations and models give, the migrations of each application and where each table name appears; the same content as the handbook's data chapter. A section that was not written, or is malformed, is one line. */
-export function DataPage({ data, technical }: { data: PageData; technical: Technical }) {
+export function DataPage({ technical }: { technical: Technical }) {
   const t = useText();
   const { dataState } = technical;
   const detail = useDataSection(technical.data);
   return (
     <article className="page" data-view="data">
       <header className="page-head">
-        <p className="eyebrow">{systemName(data.project, t)}</p>
-        <PageTitle fallback={t('md.data.heading')} />
+        <h1 className="page-title">{t('md.data.heading')}</h1>
       </header>
       {detail.status !== 'ready' ? <ChunkNotice state={detail} /> : detail.value === null
         ? <p className="muted" data-part="data-status">{t(dataState === 'malformed' ? 'md.data.malformed' : 'md.data.notWritten')}</p>

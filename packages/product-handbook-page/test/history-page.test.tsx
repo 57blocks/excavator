@@ -3,24 +3,13 @@
 // the files that change most by name in the product view and by path in the technical view with each feature as a link, the pairs changed
 // together, the source and test files with the conventions; a project with no version history says so with the reason and still shows the
 // test files; a missing or malformed file has one line; and every fixed text comes from the ui table.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { AppView, documentTitle } from '../src/App';
 import { parseHash, routeHash } from '../src/lib/route';
-import { PAGE_FORMAT } from '../src/lib/types';
 import type { History, PageData } from '../src/lib/types';
-import { NO_APPENDIX } from './empty-parts';
-import { defaultOutline } from './outline-fixture';
-
-const MARK = '@@';
-const DATA = 'd~';
-const shipped = JSON.parse(readFileSync(fileURLToPath(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url)), 'utf-8')) as { strings: Record<string, string> };
-const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
-const d = (text: string): string => `${DATA}${text}`;
+import { BOTH, MARK, d, marked, pageData } from './page-fixture';
 
 const HISTORY: History = {
   state: 'ok',
@@ -43,44 +32,12 @@ const HISTORY: History = {
   conventions: ['goTest', 'dotTest', 'testsDir'],
 };
 
-const feature = (id: string, name: string): PageData['features'][number] => ({ id, name: d(name), area: d('A1'), domain: d('A1'), reach: 'menu', status: 'verified', entry: null, findingsStatus: 'planned' });
-
-function dataFor(history: History = HISTORY, views: ('product' | 'technical')[] = ['product', 'technical']): PageData {
-  return {
-    format: PAGE_FORMAT,
-    chunks: { parts: [], units: {} },
-    project: d('Acme'),
-    language: d('language'),
-    languageTag: 'xx',
-    ui: { strings: marked },
+function dataFor(history: History = HISTORY, views: ('product' | 'technical')[] = BOTH): PageData {
+  return pageData({
     views,
-    areas: [{ id: d('A1'), name: d('area') }],
-    domains: [{ id: d('A1'), name: d('area') }],
-    domainBasis: 'areas',
-    outline: defaultOutline(marked, 'areas'),
-    features: [feature('F1', 'Orders'), feature('F2', 'Reminders')],
-    findings: [],
-    remedies: { categories: [], recommendations: [] },
-    topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
     history,
-    appendix: NO_APPENDIX,
-    coverage: {
-      candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [],
-      systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] },
-      topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] },
-    },
-    summary: { notifications: [], jobs: [], counts: { featureTotal: 0, featuresWithEntry: 0, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
-    system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 0, features: 0, featuresWithEntry: 0, roles: 0 }, areas: [], domains: [] },
-    entities: { domains: [], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
-    ...(views.includes('technical') ? {
-      technical: {
-        featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] }, integrations: [], jobs: [], locations: [],
-        topicLocations: [], findingLocations: [],
-        history: { hotspots: [d('api/src/orders.js'), d('misc.js')], coChange: [{ a: d('api/src/orders.js'), b: d('web/src/page.js') }] },
-        data: null, dataState: 'missing' as const, dictionaries: null, dictionariesState: 'missing' as const,
-      },
-    } : {}),
-  };
+    technical: { history: { hotspots: [d('api/src/orders.js'), d('misc.js')], coChange: [{ a: d('api/src/orders.js'), b: d('web/src/page.js') }] } },
+  });
 }
 
 const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
@@ -102,15 +59,14 @@ describe('the history route and link', () => {
     expect(routeHash({ name: 'history' }, 'technical')).toBe('#/technical/history');
   });
 
-  // Since handbook-deep-entry D11 the code health opens the health group, before the findings.
-  it('has the sidebar link right before the findings link in both views, with the heading from the ui table', () => {
+  it('has the sidebar link right before the coverage link in both views, with the heading from the ui table', () => {
     for (const view of ['product', 'technical']) {
       const html = render(dataFor(), `#/${view}`);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       const links = Array.from(rail.matchAll(/href="([^"]*)"/g), (match) => match[1]);
       const at = links.indexOf(`#/${view}/history`);
       expect(at, view).toBeGreaterThan(-1);
-      expect(links[at + 1]).toBe(`#/${view}/findings`);
+      expect(links[at + 1]).toBe(`#/${view}/coverage`);
       expect(rail).toContain(marked['md.history.heading']);
     }
   });
@@ -118,7 +74,7 @@ describe('the history route and link', () => {
   it('has the page title from the ui table', () => {
     const title = documentTitle(dataFor(), parseHash('#/product/history'));
     expect(title).toContain(marked['md.history.heading']);
-    expect(title).toContain(d('Acme'));
+    expect(title).toContain(d('Handbook'));
   });
 });
 
@@ -145,13 +101,13 @@ describe('the history page', () => {
     expect(apps).toMatch(/<td data-empty="true"><\/td><td data-empty="true"><\/td><td data-empty="true"><\/td><td data-empty="true"><\/td>/);
   });
 
-  it('writes the file name and each feature as a link to its page in the product view, and no path', () => {
+  it('writes the file name and each feature that has a chapter as a link to it in the product view, and no path', () => {
     const html = render(dataFor(), '#/product/history');
     const hotspots = part(main(html), 'history-hotspots');
     expect(hotspots).toContain(`<th scope="col">${marked['md.history.table.file']}</th>`);
     expect(hotspots).toContain(`<th scope="row">${d('orders.js')}</th>`);
-    expect(hotspots).toContain(`<a href="#/product/feature/F1">${d('Orders')}</a>`);
-    expect(hotspots).toContain(`<a href="#/product/feature/F2">${d('Reminders')}</a>`);
+    expect(hotspots).toContain(`<a href="#/product/chapter/F1">${d('Orders')}</a>`);
+    expect(hotspots).toContain(`<a href="#/product/chapter/F2">${d('Reminders')}</a>`);
     expect(hotspots).toMatch(/<th scope="row">d~misc\.js<\/th><td data-empty="true"><\/td>/);
     expect(html).not.toContain('api/src');
   });

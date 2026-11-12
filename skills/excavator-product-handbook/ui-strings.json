@@ -616,6 +616,7 @@
     "page.coverage.moreCandidates": "+{count} more",
     "page.feature.noEntry": "This feature has no verified entry yet, so the handbook has nothing to say about it beyond its name.",
     "page.chunk.loading": "Loading the data of this page",
+    "page.diagram.failed": "This diagram could not be drawn. Its source is shown instead.",
     "page.chunk.missing": "A file with data for this page is missing: {parts}. Keep the folder handbook-data next to handbook.html.",
     "page.paging.label": "Pages of the list",
     "page.paging.previous": "Previous page",
@@ -672,7 +673,7 @@
     "chapter.openQuestions": "Open questions",
     "chapter.problems": "Problems",
     "chapter.none": "None found.",
-    "chapter.notVerified": "Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code; each fact cites the lines it rests on.",
+    "chapter.notVerified": "Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.",
     "chapter.notPassed": "This chapter did not pass the final check; {count} problems remain, and the chapter is kept as written."
   }
 }

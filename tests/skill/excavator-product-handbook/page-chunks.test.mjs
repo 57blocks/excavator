@@ -1,22 +1,20 @@
-// O1 of openspec change handbook-page-chunked-data: `page` writes one self-contained handbook.html below
-// the size threshold and handbook.html plus handbook-data/part-NNNN.js above it; every part is within
-// the limit and a single call; the same input gives the same bytes; the data restored from the parts
-// equals the single-file data; no step turns the whole data into one string; a failed run leaves neither
-// the page nor the directory. The CLI half runs a purpose-built fixture run through `handbook.mjs page`
-// with the threshold lowered by environment variables (the skill never sets them); the writer half calls
-// the writer in process with synthetic units.
+// O1 of openspec change handbook-page-chunked-data, carried over to the page data /19 of openspec change
+// handbook-skill-first: `page` writes one self-contained handbook.html below the size threshold and
+// handbook.html plus handbook-data/part-NNNN.js above it; every part is within the limit and a single call;
+// the same input gives the same bytes; the data restored from the parts equals the single-file data; no
+// step turns the whole data into one string; a failed run leaves neither the page nor the directory. The
+// CLI half runs a purpose-built fixture run through `handbook.mjs page` with the threshold lowered by
+// environment variables (the skill never sets them); the writer half calls the writer in process with
+// synthetic units.
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { extractData } from '../../../skills/excavator-product-handbook/lib/data-extract.mjs';
-import { extractDictionaries } from '../../../skills/excavator-product-handbook/lib/dict-extract.mjs';
 import { restorePageData, splitPageData } from '../../../skills/excavator-product-handbook/lib/page-units.mjs';
 import { PART_FUNCTION, PARTS_DIR, writePageFiles } from '../../../skills/excavator-product-handbook/lib/page-chunks.mjs';
 import { PAGE_CSP } from '../../../skills/excavator-product-handbook/lib/page.mjs';
-import { repoRoot, runHandbook, verifyChecked } from './helpers.mjs';
-import { checkedOverviewRun } from './overview-fixture.mjs';
+import { STUB, dataOf, html, pageRun, runPage } from './page-md-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -24,7 +22,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const STUB = '<!doctype html><html lang="und"><head><meta charset="UTF-8"><!-- xv:csp --></head><body><div id="root"></div><!-- xv:data --></body></html>';
 const stubDir = mkdtempSync(join(tmpdir(), 'xhb-chunk-stub-'));
 const stubPath = join(stubDir, 'template.html');
 writeFileSync(stubPath, STUB);
@@ -32,27 +29,10 @@ afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
 
 const THRESHOLD = 'EXCAVATOR_PRODUCT_HANDBOOK_PAGE_CHUNK_THRESHOLD';
 const PART_LIMIT = 'EXCAVATOR_PRODUCT_HANDBOOK_PAGE_PART_LIMIT';
-const dictionaries = extractDictionaries(join(repoRoot, 'tests/fixtures/product-handbook/dict-project'));
-const dataSection = extractData(join(repoRoot, 'tests/fixtures/product-handbook/data-project'));
 
-/** A run with a verified overview, a verified F1, a data section and a status dictionary. */
-function run() {
-  const made = checkedOverviewRun(cleanups);
-  made.writeEntry('F1', made.entry);
-  expect(made.run('check-entry', 'F1').status).toBe(0);
-  verifyChecked(made);
-  verifyChecked(made, 'overview');
-  writeFileSync(join(made.out, 'dictionaries.json'), `${JSON.stringify(dictionaries, null, 2)}\n`);
-  writeFileSync(join(made.out, 'data.json'), `${JSON.stringify(dataSection, null, 2)}\n`);
-  return made;
-}
-
-const page = (made, env = {}) => runHandbook(['page', made.out, '--project', made.root, '--views', 'product,technical'], {
-  env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: stubPath, ...env },
-});
+const run = () => pageRun(cleanups);
+const page = (made, env = {}, extra = {}) => runPage(made, { template: stubPath, env, ...extra });
 const chunked = { [THRESHOLD]: '1', [PART_LIMIT]: '4000' };
-const html = (made) => readFileSync(join(made.out, 'handbook.html'), 'utf-8');
-const dataOf = (text) => JSON.parse(/<script type="application\/json" id="xv-product-handbook-data">([\s\S]*?)<\/script>/.exec(text)[1]);
 const partNames = (made) => (existsSync(join(made.out, PARTS_DIR)) ? readdirSync(join(made.out, PARTS_DIR)).sort() : []);
 const policyOf = (text) => /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(text)[1];
 
@@ -78,9 +58,9 @@ describe('page: below the threshold it is one file', () => {
     expect(existsSync(join(made.out, PARTS_DIR))).toBe(false);
     const before = readFileSync(join(made.out, 'handbook.html'));
     const data = dataOf(html(made));
-    expect(data.format).toBe('excavator-product-handbook-page/18');
+    expect(data.format).toBe('excavator-product-handbook-page/19');
     expect(data.chunks).toEqual({ parts: [], units: {} });
-    expect(data.features[0].entry).not.toBeNull();
+    expect(data.chapters[1].texts.technical).toContain('# Orders');
     expect(data.technical.dictionaries.dictionaries).toHaveLength(31);
     expect(page(made).status).toBe(0);
     expect(readFileSync(join(made.out, 'handbook.html')).equals(before)).toBe(true);
@@ -103,15 +83,19 @@ describe('page: above the threshold it is the page plus handbook-data/', () => {
     }
     const core = dataOf(html(made));
     expect(core.chunks.parts).toEqual(names.map((name) => name.replace(/\.js$/, '')));
-    expect(Object.keys(core.chunks.units)).toEqual(expect.arrayContaining(['feature:F1', 'dictionaries', 'data']));
-    expect(core.features.every((feature) => feature.entry === null)).toBe(true);
-    expect(core.technical.locations.find((unit) => unit.id === 'F1').items).toEqual([]);
-    expect(core.technical.locations.find((unit) => unit.id === 'overview').items.length).toBeGreaterThan(0);
+    expect(Object.keys(core.chunks.units)).toEqual(['chapter:system', 'chapter:F1', 'coverage', 'data', 'dictionaries', 'history']);
+    expect(core.chapters.map((chapter) => chapter.texts)).toEqual([{}, {}]);
+    expect(core.coverage).toEqual({});
     expect(core.technical.dictionaries.dictionaries).toEqual([]);
     expect(core.technical.dictionaries.mismatches).toEqual([]);
     expect(core.technical.data.tables).toEqual([]);
-    expect(core.technical.dictionaries.counts).toEqual(dictionaries.counts);
+    expect(core.history.hotspots).toEqual([]);
+    expect(core.technical.history).toEqual({ hotspots: [], coChange: [] });
+    // What the navigation needs stays in the core.
+    expect(core.outline.parts.length).toBeGreaterThan(0);
+    expect(core.history.conventions.length).toBeGreaterThan(0);
     expect(html(made)).not.toContain('TicketStatus');
+    expect(html(made)).not.toContain('Placing an order');
     // A unit that does not fit one part spans consecutive parts.
     const spans = Object.values(core.chunks.units).filter((ids) => ids.length > 1);
     expect(spans.length).toBeGreaterThan(0);
@@ -146,6 +130,16 @@ describe('page: above the threshold it is the page plus handbook-data/', () => {
     expect(JSON.stringify(restored)).toBe(JSON.stringify(single));
   });
 
+  it('restores a product-only page too, which has no technical part', () => {
+    const made = run();
+    expect(page(made, {}, { views: 'product' }).status).toBe(0);
+    const single = dataOf(html(made));
+    expect(page(made, chunked, { views: 'product' }).status).toBe(0);
+    const core = dataOf(html(made));
+    expect(Object.keys(core.chunks.units)).toEqual(['chapter:system', 'chapter:F1', 'coverage', 'history']);
+    expect(restorePageData({ ...core, chunks: single.chunks }, unitsFromParts(made, core))).toEqual(single);
+  });
+
   it('allows the origin of the page for scripts, and nothing else more than the single-file policy', () => {
     const made = run();
     expect(page(made, chunked).status).toBe(0);
@@ -161,7 +155,7 @@ describe('page: above the threshold it is the page plus handbook-data/', () => {
     expect(page(made).status).toBe(0);
     expect(existsSync(join(made.out, PARTS_DIR))).toBe(false);
     expect(page(made, chunked).status).toBe(0);
-    const failed = page(made, { ...chunked, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: join(stubDir, 'missing.html') });
+    const failed = runPage(made, { template: join(stubDir, 'missing.html'), env: chunked });
     expect(failed.status).toBe(2);
     expect(existsSync(join(made.out, PARTS_DIR))).toBe(false);
     expect(existsSync(join(made.out, 'handbook.html'))).toBe(false);
@@ -253,45 +247,50 @@ describe('the writer in process', () => {
 });
 
 describe('splitPageData and restorePageData', () => {
-  const entry = { purpose: 'p', who: [], where: [], screens: [{ name: 'S1' }, { name: 'S2' }], operations: [{ name: 'O1' }], states: [], notifications: [], automatic: [], unknowns: [] };
+  const history = () => ({ state: 'ok', noHistory: null, years: [{ year: 2020 }], apps: [{ dir: '.' }], hotspots: [{ name: 'a.js' }, { name: 'b.js' }], coChange: [{ a: 'a.js', b: 'b.js' }], tests: [], conventions: ['x'] });
   const data = () => ({
     format: 'f',
     chunks: { parts: [], units: {} },
-    features: [{ id: 'F1', entry }, { id: 'F2', entry: null }, { id: 'F3', entry: { ...entry, screens: [] } }],
+    chapters: [{ id: 'system', texts: { product: '# S', technical: '# S `a.js:1`' } }, { id: 'F1', texts: { product: '# One', technical: '# One' } }],
+    coverage: { product: '# C', technical: '# C' },
+    history: history(),
     technical: {
-      locations: [{ id: 'F1', items: [{ claim: 'a' }, { claim: 'b' }] }, { id: 'overview', items: [{ claim: 'o' }] }, { id: 'F3', items: [] }],
       data: { tables: [{ name: 't' }], dropped: [], counts: 1 },
       dataState: 'ok',
       dictionaries: { dictionaries: [{ id: 'd' }], mismatches: [{ key: 'k' }], counts: 2 },
       dictionariesState: 'ok',
+      history: { hotspots: ['src/a.js', 'src/b.js'], coChange: [{ a: 'src/a.js', b: 'src/b.js' }] },
     },
   });
 
-  it('moves the detail of verified features, the data section and the dictionaries into units, in a fixed order', () => {
+  it('moves the chapter texts, the coverage, the data, the dictionaries and the code health into units, in a fixed order', () => {
     const { core, units } = splitPageData(data());
     const listed = [...units()];
-    expect(listed.map((unit) => unit.key)).toEqual(['feature:F1', 'feature:F3', 'data', 'dictionaries']);
-    expect(core.features.map((feature) => feature.entry)).toEqual([null, null, null]);
-    expect(core.technical.locations).toEqual([{ id: 'F1', items: [] }, { id: 'overview', items: [{ claim: 'o' }] }, { id: 'F3', items: [] }]);
+    expect(listed.map((unit) => unit.key)).toEqual(['chapter:system', 'chapter:F1', 'coverage', 'data', 'dictionaries', 'history']);
+    expect(core.chapters).toEqual([{ id: 'system', texts: {} }, { id: 'F1', texts: {} }]);
+    expect(core.coverage).toEqual({});
     expect(core.technical.data).toEqual({ tables: [], dropped: [], counts: 1 });
     expect(core.technical.dictionaries).toEqual({ dictionaries: [], mismatches: [], counts: 2 });
+    expect(core.technical.history).toEqual({ hotspots: [], coChange: [] });
+    expect(core.history).toEqual({ state: 'ok', noHistory: null, years: [], apps: [], hotspots: [], coChange: [], tests: [], conventions: ['x'] });
     expect(restorePageData(core, listed)).toEqual(data());
   });
 
-  it('splits an entry at its screens, operations and location items, and restores it', () => {
-    const { core, units } = splitPageData(data());
-    const [first] = [...units()];
-    expect(first.pieces.length).toBe(1 + 2 + 1 + 2);
-    expect(restorePageData(core, [...units()])).toEqual(data());
+  it('gives each chapter unit one piece per view, in the order of the views', () => {
+    const [first] = [...splitPageData(data()).units()];
+    expect(first.pieces).toEqual([{ text: { view: 'product', text: '# S' } }, { text: { view: 'technical', text: '# S `a.js:1`' } }]);
   });
 
-  it('leaves a page without a technical part, and one with a section that was not written, as it is', () => {
-    const plain = { format: 'f', chunks: { parts: [], units: {} }, features: [{ id: 'F1', entry: null }] };
-    expect([...splitPageData(plain).units()]).toEqual([]);
+  it('leaves a page without a technical part, without a history, and with a section that was not written, as it is', () => {
+    const plain = { format: 'f', chunks: { parts: [], units: {} }, chapters: [{ id: 'F1', texts: { product: '# One' } }], coverage: { product: '# C' }, history: null };
+    expect([...splitPageData(plain).units()].map((unit) => unit.key)).toEqual(['chapter:F1', 'coverage']);
+    expect(restorePageData(splitPageData(plain).core, [...splitPageData(plain).units()])).toEqual(plain);
     const missing = data();
     missing.technical.data = null;
     missing.technical.dataState = 'missing';
-    expect([...splitPageData(missing).units()].map((unit) => unit.key)).toEqual(['feature:F1', 'feature:F3', 'dictionaries']);
+    missing.history = { ...history(), state: 'missing', years: [], apps: [], hotspots: [], coChange: [], tests: [] };
+    missing.technical.history = null;
+    expect([...splitPageData(missing).units()].map((unit) => unit.key)).toEqual(['chapter:system', 'chapter:F1', 'coverage', 'dictionaries']);
     expect(restorePageData(splitPageData(missing).core, [...splitPageData(missing).units()])).toEqual(missing);
   });
 });

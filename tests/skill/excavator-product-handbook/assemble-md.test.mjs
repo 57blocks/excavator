@@ -20,7 +20,7 @@ const make = (chapters, options) => {
   return run;
 };
 
-const NOT_VERIFIED = 'Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code; each fact cites the lines it rests on.';
+const NOT_VERIFIED = 'Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.';
 const ANY_CITATION = /`[^`\n]*:\d+(?:-\d+)?`/;
 const outputs = (run) => ({ product: run.read('handbook.md'), technical: run.read('handbook-technical.md') });
 

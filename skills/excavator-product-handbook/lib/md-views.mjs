@@ -69,3 +69,22 @@ export function noticeSentences(record, strings) {
   if (record.status === 'failed' && record.attempts >= 2) out.push(fill(strings['chapter.notPassed'], { count: record.reasons.length }));
   return out;
 }
+
+/** One chapter as one view shows it, headings as written: the view's text of the file, then the fixed sentences. Assemble shifts the headings; the page shows it as is. */
+export function chapterMarkdown(chapter, view, strings) {
+  const body = view === 'product' ? productText(chapter.text) : chapter.text;
+  return withSentences(body.replace(/\s+$/, ''), noticeSentences(chapter.record, strings)).replace(/\s+$/, '');
+}
+
+/** The text of the first level-1 heading outside fences, or `name` when the chapter has none. */
+export function chapterTitle(text, name) {
+  let fenced = false;
+  for (const line of text.split('\n')) {
+    if (FENCE.test(line)) fenced = !fenced;
+    else if (!fenced) {
+      const found = /^#\s+(.*?)\s*#*\s*$/.exec(line);
+      if (found !== null && found[1] !== '') return found[1];
+    }
+  }
+  return name;
+}

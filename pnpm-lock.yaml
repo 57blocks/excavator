@@ -279,12 +279,21 @@ importers:
       '@radix-ui/react-select':
         specifier: 2.4.1
         version: 2.4.1(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      mermaid:
+        specifier: 12.2.0
+        version: 12.2.0
       react:
         specifier: 19.2.8
         version: 19.2.8
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
+      react-markdown:
+        specifier: 10.1.0
+        version: 10.1.0(@types/react@19.2.18)(react@19.2.8)
+      remark-gfm:
+        specifier: 4.0.1
+        version: 4.0.1
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.3.3

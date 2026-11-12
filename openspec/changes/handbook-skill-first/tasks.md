@@ -63,7 +63,7 @@
 
 ## 4. 页面
 
-- [ ] 4.1 先写红页面测试，覆盖 design O4：
+- [x] 4.1 先写红页面测试，覆盖 design O4：
   - Markdown 表格；
   - 坏的 mermaid 显示原文；
   - 产品视图隐藏引文、技术视图显示文件与行；
@@ -71,7 +71,7 @@
   - 侧栏按目录分组；
   - 超过 32 MB 时分块；
   - 改模板后重新生成页面不派发子代理。
-- [ ] 4.2 `product-handbook-page` 的内容组件换成 Markdown 渲染：
+- [x] 4.2 `product-handbook-page` 的内容组件换成 Markdown 渲染：
   - 加 `react-markdown`、`remark-gfm`、`mermaid`，版本与 `prd-report-page` 相同；
   - 页面数据改为 design D7 的形状；
   - `page` 命令写出新数据。

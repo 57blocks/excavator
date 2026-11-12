@@ -1,7 +1,7 @@
 // O3 of openspec change handbook-data-tables: the technical view shows the
 // data section, the product view never does; a missing and a malformed
-// data.json each give one visible line; the count line equals the lists; the
-// page data carries the section (format /7) in its technical part only.
+// data.json each give one visible line; the count line equals the lists. (The
+// page data's half is in page-scripts.test.mjs.)
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -207,42 +207,5 @@ describe('a missing or malformed data.json is one visible line in the technical 
       expect(lines).toEqual([`## ${ui['md.data.heading']}`, ui['md.data.malformed']]);
       cleanups.pop()();
     }
-  });
-});
-
-describe('the page data carries the data section in its technical part only', () => {
-  it('uses format /7; the technical part holds the lists the page shows and none of the ledgers', () => {
-    const made = run(data);
-    expect(page(made, 'product,technical').status).toBe(0);
-    const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/18');
-    expect(Object.keys(got.technical).slice(-4)).toEqual(['data', 'dataState', 'dictionaries', 'dictionariesState']);
-    expect(got.technical.dataState).toBe('ok');
-    expect(Object.keys(got.technical.data)).toEqual(['recognized', 'applications', 'tables', 'dropped', 'changedNeverCreated', 'declaredOnly', 'removedButDeclared', 'onlyInMigrations', 'gaps', 'counts']);
-    expect(got.technical.data.tables).toHaveLength(30);
-    expect(got.technical.data.counts).toEqual(data.counts);
-    const users = got.technical.data.tables.find((entry) => entry.name === 'users');
-    expect(Object.keys(users)).toEqual(['name', 'sources', 'createdBy', 'lastChangedBy', 'mentions']);
-    expect(users.mentions['node-app']).toHaveLength(3);
-  });
-
-  it('a product-only page has no technical part and so no data and no table name', () => {
-    const made = run(data);
-    expect(page(made, 'product').status).toBe(0);
-    const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/18');
-    expect(Object.hasOwn(got, 'technical')).toBe(false);
-    expect(text(made, 'handbook.html')).not.toContain('ledger_entries');
-  });
-
-  it('missing and malformed data.json give a null section and the reason', () => {
-    const missing = run(null);
-    expect(page(missing, 'technical').status).toBe(0);
-    expect(pageData(missing).technical.data).toBeNull();
-    expect(pageData(missing).technical.dataState).toBe('missing');
-    const malformed = run('{ not json');
-    expect(page(malformed, 'technical').status).toBe(0);
-    expect(pageData(malformed).technical.data).toBeNull();
-    expect(pageData(malformed).technical.dataState).toBe('malformed');
   });
 });

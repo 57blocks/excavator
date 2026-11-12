@@ -100,7 +100,7 @@ describe('B: fact lines must cite', () => {
   accepts('a fenced block without citations', (t) => t.replace('## Open questions', '```text\nplain words\nwithout citations\n```\n\n## Open questions'));
   accepts('the open questions section holds uncited lines', (t) => t.replace('Nobody can tell how long drafts live.', 'Nobody can tell how long drafts live.\n\n- Is a draft kept?\n\n| Q | A |\n| --- | --- |\n| Who | Unknown |'));
   accepts('a fixed-text line (None found.) under Problems', (t) => t);
-  accepts('the not-verified fixed line as a quote', (t) => t.replace('## Open questions', '> Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code; each fact cites the lines it rests on.\n\n## Open questions'));
+  accepts('the not-verified fixed line as a quote', (t) => t.replace('## Open questions', '> Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.\n\n## Open questions'));
   accepts('the not-passed fixed line with a count', (t) => t.replace('None found.', 'This chapter did not pass the final check; 3 problems remain, and the chapter is kept as written.'));
   rejects('an uncited sentence after a dotted path in a citation', (t) => t.replace(`(${c('5')}).`, `(${c('5')}). It also holds ${c('2', 'src/menu.js')} and more. Third without any.`), /a fact without a citation: Third without any\./);
 });

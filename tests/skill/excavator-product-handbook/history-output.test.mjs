@@ -2,8 +2,8 @@
 // coverage section, the Appendix chapter after the coverage section, both in the product and the technical view; the product view
 // shows a file by its name and the application it is in and never a path; a project with no version history, a missing file and a
 // malformed file each have their own line; the appendix writes the open questions, the glossary and the sources and scope from
-// the verified entries and the records of the run; no fixed text or written line advises or evaluates; and the page data is /14
-// with `history` and `appendix`, the paths only in the technical part.
+// the verified entries and the records of the run; no fixed text or written line advises or evaluates. (The page data's half is in
+// page-scripts.test.mjs.)
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -284,67 +284,5 @@ describe('no advice and no evaluation', () => {
       expect(wordsIn(historyOf(body), words), name).toEqual([]);
       expect(wordsIn(appendixOfBody(body), words), name).toEqual([]);
     }
-  });
-});
-
-describe('the page data', () => {
-  it('has the format /14, history and appendix between topics and coverage, and no path outside the technical part', () => {
-    const run = shared();
-    const made = page(run);
-    expect(made.status, made.stdout).toBe(0);
-    const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/18');
-    const keys = Object.keys(data);
-    expect(keys.slice(keys.indexOf('topics'), keys.indexOf('topics') + 4)).toEqual(['topics', 'history', 'appendix', 'coverage']);
-    const { technical, ...product } = data;
-    expect(JSON.stringify(product)).not.toContain('src/routes');
-    expect(JSON.stringify(product)).not.toContain('src/app.js');
-    expect(JSON.stringify(technical)).toContain('src/routes/orders.js');
-  });
-
-  it('holds the history with the file names, the features still verified, and the conventions', () => {
-    const run = shared();
-    page(run);
-    const { history } = dataOf(run);
-    expect(Object.keys(history)).toEqual(['state', 'noHistory', 'years', 'apps', 'hotspots', 'coChange', 'tests', 'conventions']);
-    expect(history.state).toBe('ok');
-    expect(history.hotspots[0]).toEqual({ name: 'orders.js', app: '.', commits: 5, authors: 2, lines: 20, last: '2024-09-09', uncertain: 0, features: ['F1', 'F3'] });
-    expect(history.coChange).toEqual([{ a: 'app.js', appA: '.', b: 'orders.js', appB: '.', commits: 4 }]);
-    expect(history.years).toEqual(goodHistory().years);
-    expect(history.conventions).toEqual(['goTest', 'dotTest', 'dotSpec', 'pyPrefix', 'pySuffix', 'javaTest', 'testsDir']);
-  });
-
-  it('holds the uncertain count of each hotspot file in the page data', () => {
-    const run = appendixRun(cleanups);
-    const doc = goodHistory();
-    doc.hotspots[1].uncertain = 4;
-    writeHistory(run, doc);
-    page(run);
-    expect(dataOf(run).history.hotspots.map((row) => row.uncertain)).toEqual([0, 4]);
-  });
-
-  it('holds the paths of the hotspot files and of each file of a pair in the technical part, in the order of the rows', () => {
-    const run = shared();
-    page(run);
-    const { technical } = dataOf(run);
-    expect(technical.history).toEqual({ hotspots: ['src/routes/orders.js', 'src/app.js'], coChange: [{ a: 'src/app.js', b: 'src/routes/orders.js' }] });
-  });
-
-  it('holds the appendix with the ids of the features and the domains', () => {
-    const run = shared();
-    page(run);
-    const { appendix } = dataOf(run);
-    expect(Object.keys(appendix)).toEqual(['open', 'glossary', 'sources']);
-    expect(appendix.open.map((row) => [row.feature, row.domain])).toEqual([['F1', 'D1'], ['F3', 'D2']]);
-    expect(appendix.glossary.map((row) => row.term)).toEqual(['Clerk', 'Draft', 'New Order', 'Orders']);
-    expect(appendix.sources.parts.map((part) => part.id)).toEqual(['overview', 'features', 'findings', 'system-findings']);
-  });
-
-  it('says the history is missing in the page data when the file is not there, and the appendix is still there', () => {
-    const run = appendixRun(cleanups);
-    page(run, 'product');
-    const data = dataOf(run);
-    expect(data.history).toEqual({ state: 'missing', noHistory: null, years: [], apps: [], hotspots: [], coChange: [], tests: [], conventions: ['goTest', 'dotTest', 'dotSpec', 'pyPrefix', 'pySuffix', 'javaTest', 'testsDir'] });
-    expect(data.appendix.open).toHaveLength(2);
   });
 });

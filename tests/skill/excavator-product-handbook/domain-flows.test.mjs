@@ -249,20 +249,6 @@ describe('the domain flow in the outputs', () => {
     expect(section).not.toContain(ui['md.entities.domain.flowFailed']);
   });
 
-  it('is in the page data for the domain, in the order of the file, and the domain with none has none', () => {
-    const run = flowRun();
-    run.writeFlows(goodFlows());
-    expect(run.check().status).toBe(0);
-    const [first, second] = pageData(run).entities.domains;
-    expect(first.flow.status).toBe('drawn');
-    expect(first.flow.nodes.map((node) => [node.id, node.kind, node.feature, node.label])).toEqual([
-      ['n1', 'feature', 'F1', 'Orders'], ['n2', 'feature', 'F2', 'Archive'], ['n3', 'state', 'F1', 'Draft'], ['n4', 'state', 'F1', 'Submitted'], ['n5', 'item', 'F1', 'Draft'], ['n6', 'item', 'F1', 'Submitted'],
-    ]);
-    expect(first.flow.edges[0]).toEqual({ from: 'n1', to: 'n2', text: 'archive' });
-    expect(first.flow.edges[1]).toEqual({ from: 'n2', to: 'n1' });
-    expect(second).not.toHaveProperty('flow');
-  });
-
   it('is the same bytes when written again', () => {
     const run = flowRun();
     run.writeFlows(goodFlows());
