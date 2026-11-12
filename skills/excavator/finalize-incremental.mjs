@@ -10,6 +10,18 @@
  * knowledge-graph.jsonl. Only after that succeeds does it patch fingerprints
  * and advance meta.json. SKIP applies the fingerprint/meta patch only; a
  * generated-artifact-only SKIP deliberately advances nothing.
+ *
+ * PARTIAL_UPDATE and ARCHITECTURE_UPDATE set `project.layersFrom` to
+ * "incremental": the layer records are then the newest layers, because this
+ * path never writes semantic-graph.json and keeps the previous `factsDigest`.
+ * lazy-analyze.mjs rebuilds `project` without the field, so a later Full run
+ * drops it.
+ *
+ * Without new layers from Phase 4, an update starts from the newest layers the
+ * project has, picked as the graph skills' Reading Layers rule picks them: the
+ * graph's layer records when `layersFrom` says an earlier update wrote them,
+ * else a Full run's semantic-graph.json made from the same facts, else the
+ * layer records the graph carries.
  */
 
 import { createRequire } from 'node:module';
@@ -24,6 +36,7 @@ import {
 } from 'node:fs';
 import { validateIncrementalSymbols, formatSymbolReport } from './validate-incremental-symbols.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, writeKnowledgeGraphAtomic } from './knowledge-graph-store.mjs';
+import { SEMANTIC_GRAPH_FILE } from './semantic-graph.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -37,6 +50,8 @@ try {
 }
 
 const { resolveDataDir } = core;
+/** `project.layersFrom` on a graph whose layer records an incremental update wrote. */
+const LAYERS_FROM_INCREMENTAL = 'incremental';
 const LAYER_NODE_TYPES = new Set([
   'file',
   'config',
@@ -65,6 +80,29 @@ function readJson(path, fallback = null) {
 
 function readGraph(path, fallback = null) {
   return existsSync(path) ? readKnowledgeGraph(path) : fallback;
+}
+
+/**
+ * The layers an update without Phase 4 starts from, and where they came from.
+ * A Full run writes its layers to semantic-graph.json, not to the graph, so the
+ * first update after it would otherwise start from no layers and put every
+ * file in the fallback layer.
+ */
+function startingLayers(previousGraph, dataDir) {
+  const records = { layers: previousGraph.layers ?? [], source: 'the graph\'s layer records' };
+  if (previousGraph.project?.layersFrom === LAYERS_FROM_INCREMENTAL) return records;
+  const factsDigest = previousGraph.project?.factsDigest;
+  const semanticPath = join(dataDir, SEMANTIC_GRAPH_FILE);
+  if (typeof factsDigest !== 'string' || factsDigest === '' || !existsSync(semanticPath)) return records;
+  let semantic;
+  try {
+    semantic = JSON.parse(readFileSync(semanticPath, 'utf-8'));
+  } catch (error) {
+    process.stderr.write(`${SEMANTIC_GRAPH_FILE} is not readable (${error.message}); the layers start from ${records.source}\n`);
+    return records;
+  }
+  if (semantic?.factDigest !== factsDigest || !Array.isArray(semantic.layers)) return records;
+  return { layers: semantic.layers, source: SEMANTIC_GRAPH_FILE };
 }
 
 /** Atomically write the line-oriented graph, then verify the durable
@@ -427,9 +465,14 @@ async function main() {
     if (plan.rerunArchitecture && !existsSync(join(intermediateDir, 'layers.json'))) {
       throw new Error('Architecture update requires layers.json; baseline not advanced');
     }
-    const rawLayers = plan.rerunArchitecture
-      ? readJson(join(intermediateDir, 'layers.json'))
-      : previousGraph.layers ?? [];
+    let rawLayers;
+    if (plan.rerunArchitecture) {
+      rawLayers = readJson(join(intermediateDir, 'layers.json'));
+    } else {
+      const start = startingLayers(previousGraph, dataDir);
+      process.stderr.write(`Layers start from ${start.source} (${start.layers.length})\n`);
+      rawLayers = start.layers;
+    }
     const now = new Date().toISOString();
     const graph = {
       ...previousGraph,
@@ -437,6 +480,7 @@ async function main() {
       project: {
         ...projectMetadata(previousGraph.project, plan, scan),
         analyzedAt: now,
+        layersFrom: LAYERS_FROM_INCREMENTAL,
       },
       nodes: assembled.nodes,
       edges: assembled.edges,
@@ -482,5 +526,7 @@ export {
   assignLayers,
   commonParentDepth,
   hasAnalyzedFileCoverage,
+  LAYERS_FROM_INCREMENTAL,
   refreshGraphImports,
+  startingLayers,
 };
