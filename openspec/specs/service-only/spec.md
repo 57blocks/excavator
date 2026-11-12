@@ -11,7 +11,7 @@ Excavator SHALL ship code-analysis and terminal-question-answering capabilities 
 
 The one exception is `/excavator-view`: it MAY write a single self-contained static HTML file of existing products and hand that file to the operating system's default browser. It SHALL NOT start an HTTP server, run any analysis, or be invoked by another skill.
 
-The page's front end SHALL come from the one workspace package `packages/report-view`, built by `pnpm build` into one HTML file that opens from `file://` with nothing but a browser. That package SHALL have no script that starts a development, preview or other HTTP server, and no other package SHALL ship an HTML front end.
+The page's front end SHALL come from the one workspace package `packages/explorer`, built by `pnpm build` into one HTML file that opens from `file://` with nothing but a browser. That package SHALL have no script that starts a development, preview or other HTTP server, and no other package SHALL ship an HTML front end.
 
 #### Scenario: Analyze a repository
 
@@ -44,5 +44,6 @@ The page's front end SHALL come from the one workspace package `packages/report-
 #### Scenario: Build the front end
 
 - **WHEN** `pnpm build` runs
-- **THEN** `packages/report-view` produces exactly one HTML file with every script, style and worker inline
-- **AND** `packages/report-view/package.json` has no `dev`, `preview`, `serve` or `start` script
+- **THEN** `packages/explorer` produces exactly one HTML file with every script, style and worker inline
+- **AND** `packages/explorer/package.json` has no `dev`, `preview`, `serve` or `start` script
+- **AND** no other package under `packages/` ships an HTML page

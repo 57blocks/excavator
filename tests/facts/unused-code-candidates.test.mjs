@@ -115,6 +115,42 @@ describe('candidates and clusters', () => {
     expect(product.conservation).toEqual({ functionNodes: 3, routeReachable: 2, candidates: 1, holds: true });
   });
 
+  // spring-xml-method-calls, task 4.3: the target of an invokes edge is a root as the target of a routes edge is
+  it('OrderService#start is the target of an invokes edge and calls loadCache: neither is a candidate; the invokes target count is 1', () => {
+    const descriptor = { id: 'file:ctx.xml', type: 'file', name: 'ctx.xml', filePath: 'ctx.xml' };
+    const product = build({
+      nodes: [descriptor, ...labels(['start', 'loadCache', 'orphan'])],
+      edges: [edge('invokes', descriptor.id, fnId('start')), call('start', 'loadCache')],
+    });
+    expect(candidateLabels(product)).toEqual(['orphan']);
+    expect(product.counts).toMatchObject({ functionNodes: 3, routeReachable: 2, candidates: 1, roots: { routes: 0, invokes: 1 } });
+    expect(product.conservation).toEqual({ functionNodes: 3, routeReachable: 2, candidates: 1, holds: true });
+  });
+
+  it('counts the roots by edge type; a method that is both a route handler and an invoked method is in both counts, once each', () => {
+    const endpoint = endpointNode('GET /x');
+    const descriptor = { id: 'file:ctx.xml', type: 'file', name: 'ctx.xml', filePath: 'ctx.xml' };
+    const product = build({
+      nodes: [endpoint, descriptor, ...labels(['both', 'routed', 'invoked', 'lone'])],
+      edges: [
+        routeTo(endpoint, fnId('both')), routeTo(endpoint, fnId('routed')), routeTo(endpoint, fnId('routed')),
+        edge('invokes', descriptor.id, fnId('both')), edge('invokes', descriptor.id, fnId('invoked')), edge('invokes', 'file:other.xml', fnId('invoked')),
+      ],
+    });
+    expect(product.counts.roots).toEqual({ routes: 2, invokes: 2 });
+    expect(candidateLabels(product)).toEqual(['lone']);
+  });
+
+  it('an invokes edge to a node that is no function is no root, and is not counted', () => {
+    const descriptor = { id: 'file:ctx.xml', type: 'file', name: 'ctx.xml', filePath: 'ctx.xml' };
+    const product = build({
+      nodes: [descriptor, classNode('K'), ...labels(['a'])],
+      edges: [edge('invokes', descriptor.id, classId('K')), edge('invokes', descriptor.id, 'function:gone')],
+    });
+    expect(product.counts.roots).toEqual({ routes: 0, invokes: 0 });
+    expect(candidateLabels(product)).toEqual(['a']);
+  });
+
   it('a route that targets a non-function node seeds nothing; a call from a route-reachable node reaches transitively', () => {
     const endpoint = endpointNode('GET /x');
     const product = build({
@@ -577,6 +613,7 @@ describe('features from a Java fixture', () => {
     expect(product.counts).toEqual({
       functionNodes: 7,
       routeReachable: 0,
+      roots: { routes: 0, invokes: 0 },
       candidates: 7,
       entries: 7,
       entryComponents: 7,

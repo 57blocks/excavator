@@ -1,11 +1,16 @@
 ---
 name: excavator-diff
 description: Use when you need to analyze git diffs or pull requests to understand what changed, affected components, and risks
+argument-hint: "[--language <lang>]"
 ---
 
 # /excavator-diff
 
 Analyze the current code changes against the knowledge graph in the project's data directory (`.excavator/knowledge-graph.jsonl`).
+
+## Options
+
+`--language <lang>` — the language of the analysis and everything said to the user during the run; English when it is not given.
 
 ## Graph Structure Reference
 
@@ -31,6 +36,8 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 ## Instructions
 
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
 1. **Check that `.excavator/knowledge-graph.jsonl` exists.** If not, tell the user to run `/excavator` first.
 
 2. **Get the changed files list** (do NOT read the graph yet):
@@ -42,6 +49,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
      ```bash
      PROJECT_ROOT="$(pwd)"
+     LANGUAGE="English"   # or the --language value
      SKILL_REAL=$(realpath ~/.agents/skills/excavator-diff 2>/dev/null || readlink -f ~/.agents/skills/excavator-diff 2>/dev/null || echo "")
      SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
      PLUGIN_ROOT=""
@@ -57,8 +65,8 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
      node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
      ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
-   - `stale`: warn before impact analysis that the graph may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
-   - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
+   - `stale`: the analysis says, as the first line under its first heading, that the graph may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
+   - `missing` (no `source-manifest.json` yet): the analysis gives a brief best-effort note in the same place; continue instead of blocking.
    - `fresh`: proceed with no warning.
 
 4. **Find nodes for changed files** — for each changed file path, use Grep to search the knowledge graph for:
@@ -73,9 +81,22 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 6. **Identify affected layers** — Grep for the matched node IDs in the `"layers"` section to determine which architectural layers are touched.
 
-7. **Provide structured analysis**:
-   - **Changed Components**: What was directly modified (with summaries from matched nodes)
-   - **Affected Components**: What might be impacted (from 1-hop edges)
-   - **Affected Layers**: Which architectural layers are touched and cross-layer concerns
-   - **Risk Assessment**: Based on node `complexity` values, number of cross-layer edges, and blast radius (number of affected components)
-   - Suggest what to review carefully and any potential issues
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+7. **Write the analysis** in `$LANGUAGE`, as markdown, to `.excavator/diff-analysis.md` in the project, replacing any earlier one, under these five `##` headings, in this order:
+   - **Changed Components**: what was directly modified (with summaries from matched nodes)
+   - **Affected Components**: what might be impacted (from 1-hop edges)
+   - **Affected Layers**: which architectural layers are touched and cross-layer concerns
+   - **Risk Assessment**: based on node `complexity` values, number of cross-layer edges, and blast radius (number of affected components)
+   - **Review Focus**: what to review carefully and any potential issues
+
+   The file starts with the first heading and ends with the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are.
+
+8. **Reply.** Print the analysis with this command, run from the project root:
+
+   ```bash
+   # the reply: the analysis
+   cat .excavator/diff-analysis.md
+   ```
+
+   Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
