@@ -65,7 +65,7 @@ The product does not depend on the knowledge graph: no `/excavator` run is neede
    node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT" --since 2025-01-01
    node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT" --groups "$FEATURE_GROUPS"   # add --since as above when given
    ```
-   A non-zero exit writes no product. A message that begins `groups file` or names `groups[` means the groups file is malformed: run again without `--groups`, keep the message for the report, and do not change the file. For any other, report the script's message as it stands. A message that git could not be started, or does not accept a `.git`, means a history exists but cannot be read here: never describe that project as having no history. A refused window means the date was not a real `YYYY-MM-DD` day: ask the user for one; do not convert a phrase such as "last year" into a date yourself.
+   A non-zero exit writes no product. A message that begins `groups file` or names `groups[` means the groups file is malformed: run again without `--groups`, keep the message for the report, and do not change the file. For any other, report the script's message as it stands. A message that git could not be started or does not work here, or does not accept a `.git`, means a history exists but cannot be read here: never describe that project as having no history. A refused window means the date was not a real `YYYY-MM-DD` day: ask the user for one; do not convert a phrase such as "last year" into a date yourself.
 
 ## Step 2 — Read the header
 
