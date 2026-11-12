@@ -19,8 +19,10 @@
  *
  * Nothing that lacks history is reported as 0. A plain directory has no history
  * (all history fields `null`) and `noHistory` says why (hotspots/no-history.mjs:
- * not a repository, or a subdirectory of one); a `.git` that cannot be read is
- * an Error and nothing is written. In a multi-repo parent every member repository
+ * not a repository, or a subdirectory of one); a `.git` that cannot be read (git
+ * does not start or does not work, or does not accept the `.git` of the project
+ * root or of a direct child, also inside another repository and in a multi-repo
+ * parent) is an Error and nothing is written. In a multi-repo parent every member repository
  * is read on its own and files outside the members have none; a shallow clone
  * skips its boundary commit and says so in its `repos` row; a binary file has
  * no lines and no score.
@@ -86,7 +88,7 @@ import { countBlobLines, countBufferLines } from './hotspots/blob-lines.mjs';
 import { MAX_FILES_PER_COMMIT, coChangeWithoutHistory, countCoChanges } from './hotspots/co-change.mjs';
 import { countGroups, matchGroups, readGroupsFile } from './hotspots/groups.mjs';
 import { readRepoHistory } from './hotspots/history.mjs';
-import { explainNoHistory } from './hotspots/no-history.mjs';
+import { assertGitAccepted, explainNoHistory } from './hotspots/no-history.mjs';
 import { assertDataDir, assertDataFile, bindProjectRoot } from './project-paths.mjs';
 import { serializeJsonProduct } from './product-serialization.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
@@ -154,6 +156,7 @@ export async function buildHotspots(root, { since = null, groups = null, readHis
   const sinceMs = since === null ? null : sinceToMs(since);
   const snapshot = resolveSourceSnapshot(root);
   const repos = reposOf(snapshot);
+  if (snapshot.kind === 'multi-repo') assertGitAccepted(root); // before any history is read
   const noHistory = repos.length > 0 ? null : explainNoHistory(root);
   const selected = snapshot.listFiles();
 
