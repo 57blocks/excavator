@@ -180,15 +180,15 @@ describe('handbook.mjs history: the hotspots', () => {
     expect(readHistory(out).hotspots).toHaveLength(15);
   });
 
-  it('names the verified features whose entries cite the file, in the order of the state, and no feature that is not verified', () => {
+  it('names the recorded feature chapters that cite the file, in feature-number order, and no chapter state.json does not record', () => {
     const root = multiRepoProject(cleanups);
     const out = tempDir(cleanups, 'xh-out-');
-    const cite = (...files) => ({ evidence: files.map((file) => ({ file, passage: 'p' })), nested: [{ evidence: [{ file: files[0], passage: 'q' }] }] });
-    writeFileSync(join(out, 'state.json'), `${JSON.stringify({ format: 'excavator-product-handbook-state/1', features: { F1: { status: 'verified', attempts: 1 }, F2: { status: 'checked', attempts: 1 }, F3: { status: 'verified', attempts: 1 } } })}\n`);
-    mkdirSync(join(out, 'entries'), { recursive: true });
-    writeFileSync(join(out, 'entries/F1.json'), `${JSON.stringify({ purpose: cite('mono/api/main.go') })}\n`);
-    writeFileSync(join(out, 'entries/F2.json'), `${JSON.stringify({ purpose: cite('solo/index.js', 'mono/api/main.go') })}\n`);
-    writeFileSync(join(out, 'entries/F3.json'), `${JSON.stringify({ who: [cite('mono/web/app.js', 'mono/api/main.go')] })}\n`);
+    const record = { status: 'passed', attempts: 1, reasons: [], sha256: 'x' };
+    writeFileSync(join(out, 'state.json'), `${JSON.stringify({ format: 'excavator-product-handbook-state/2', chapters: { F3: record, F1: record } })}\n`);
+    mkdirSync(join(out, 'chapters'), { recursive: true });
+    writeFileSync(join(out, 'chapters/F1.md'), '# One\n\nIt starts (`mono/api/main.go:1`).\n');
+    writeFileSync(join(out, 'chapters/F2.md'), '# Two\n\nNot recorded (`solo/index.js:1`; `mono/api/main.go:1`).\n');
+    writeFileSync(join(out, 'chapters/F3.md'), '# Three\n\nIt shows (`mono/web/app.js:1`; `mono/api/main.go:1-2`).\n');
     expect(runHistory(out, root).status).toBe(0);
     const byPath = Object.fromEntries(readHistory(out).hotspots.map((row) => [row.path, row.features]));
     expect(byPath['mono/api/main.go']).toEqual(['F1', 'F3']);

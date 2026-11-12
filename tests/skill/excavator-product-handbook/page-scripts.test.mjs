@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { extractData } from '../../../skills/excavator-product-handbook/lib/data-extract.mjs';
 import { extractDictionaries } from '../../../skills/excavator-product-handbook/lib/dict-extract.mjs';
-import { goodHistory, writeHistory } from './appendix-fixture.mjs';
+import { goodHistory, writeHistory } from './history-doc-fixture.mjs';
 import { repoRoot } from './helpers.mjs';
 import { STUB, dataOf, html, pageRun, runPage } from './page-md-fixture.mjs';
 

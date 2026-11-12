@@ -8,7 +8,7 @@ import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'n
 import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
 
-import { writeHistory } from './appendix-fixture.mjs';
+import { writeHistory } from './history-doc-fixture.mjs';
 import { repoRoot, runHandbook } from './helpers.mjs';
 import { chapterText, cite, newMdRun } from './md-run-fixture.mjs';
 
@@ -52,7 +52,6 @@ export function pageRun(cleanups, { withScripts = true } = {}) {
   if (withScripts) {
     writeFileSync(join(run.out, 'data.json'), `${JSON.stringify(extractData(join(repoRoot, 'tests/fixtures/product-handbook/data-project')), null, 2)}\n`);
     writeFileSync(join(run.out, 'dictionaries.json'), `${JSON.stringify(extractDictionaries(join(repoRoot, 'tests/fixtures/product-handbook/dict-project')), null, 2)}\n`);
-    mkdirSync(join(run.out, 'entries'), { recursive: true });
     writeHistory(run);
   }
   return run;

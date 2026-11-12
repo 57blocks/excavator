@@ -2,9 +2,7 @@
  * The application roots of a project (openspec change handbook-system-overview):
  * the topmost directories that hold a build manifest. The walk and its skip
  * rules are the candidate lister's (entrypoints.mjs `walk`): the same skipped
- * directories, no link followed. The system overview names one directory per
- * application; check-overview holds that list to these roots, and the system
- * facts (system-facts.mjs) count the files under each. A directory that declares a
+ * directories, no link followed. Each application is one directory; the code health counts the files under each. A directory that declares a
  * JavaScript workspace (a `pnpm-workspace.yaml`, or a `package.json` with `workspaces`)
  * is no application when manifest directories lie below it: its topmost ones are
  * (openspec change handbook-run-precision D2). A directory is a

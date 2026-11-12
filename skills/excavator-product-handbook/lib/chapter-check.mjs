@@ -4,7 +4,7 @@
  * keeps its numbers, quoted texts, code-shaped words, advice words and language
  * within what its own citations say. Returns every problem in one run, the
  * items with their citations resolved to `{ file, lines: [a, b], passage }`
- * (the record later steps work from), and the counts check-chapter prints.
+ * (the record later steps work from), and the counts of the chapter.
  *
  * Content findings are notes, not refusals (scope of this slice; fabrication is fixed in a later change).
  *
@@ -97,11 +97,3 @@ export function checkChapter(source, { files, memberDirs = [], languageCheck = n
   };
   return { problems, notes: notes.map(({ id, kind, detail }) => ({ id, kind, detail })), noteLines: notes.map((note) => `note: ${note.id} (${note.itemKind}, line ${note.line}) ${note.kind}: ${note.detail}`), items, counts };
 }
-
-const NOTE_KINDS = ['number', 'quote', 'code', 'advice', 'language'];
-
-/** The summary line of the notes, one count per kind. */
-export const notesLine = (notes) => `Notes: ${notes.length} (${NOTE_KINDS.map((kind) => `${kind} ${notes.filter((note) => note.kind === kind).length}`).join(', ')})`;
-
-/** The counts line check-chapter prints. */
-export const countsLine = (counts) => `Chapter: ${counts.sentences} sentences, ${counts.rows} table rows, ${counts.citations} citations, ${counts.diagrams} diagrams, ${counts.arrows} arrows`;

@@ -2,39 +2,30 @@
 // data section, the product view never does; a missing and a malformed
 // data.json each give one visible line; the count line equals the lists. (The
 // page data's half is in page-scripts.test.mjs.)
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { afterEach, describe, expect, it } from 'vitest';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { extractData } from '../../../skills/excavator-product-handbook/lib/data-extract.mjs';
-import { SHIPPED_UI, clone, repoRoot, runHandbook, verifyChecked } from './helpers.mjs';
-import { checkedOverviewRun } from './overview-fixture.mjs';
+import { SHIPPED_UI, clone, repoRoot } from './helpers.mjs';
+import { chapterText, newMdRun } from './md-run-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()();
 });
 
-const STUB = '<!doctype html><html lang="und"><head><meta charset="UTF-8"><!-- xv:csp --></head><body><div id="root"></div><!-- xv:data --></body></html>';
-const stubDir = mkdtempSync(join(tmpdir(), 'xhb-stub-'));
-const stubPath = join(stubDir, 'template.html');
-writeFileSync(stubPath, STUB);
-afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
-
 const FIXTURE = join(repoRoot, 'tests/fixtures/product-handbook/data-project');
 const ui = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8')).strings;
 const data = extractData(FIXTURE);
 
 const assemble = (run, views) => run.run('assemble', '--views', views);
-const page = (run, views) => runHandbook(['page', run.out, '--project', run.root, '--views', views], { env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: stubPath } });
 const text = (run, name) => readFileSync(join(run.out, name), 'utf-8');
-const pageData = (run) => JSON.parse(/<script type="application\/json" id="xv-product-handbook-data">([\s\S]*?)<\/script>/.exec(text(run, 'handbook.html'))[1]);
 
-/** A run with a verified overview, which is all assemble and page need; `dataJson` is written to data.json unless null. */
+/** A run with a checked system chapter, which is all assemble needs; `dataJson` is written to data.json unless null. */
 function run(dataJson) {
-  const made = checkedOverviewRun(cleanups);
-  verifyChecked(made, 'overview');
+  const made = newMdRun({ system: chapterText('System') });
+  cleanups.push(made.cleanup);
   if (dataJson !== null) writeFileSync(join(made.out, 'data.json'), typeof dataJson === 'string' ? dataJson : `${JSON.stringify(dataJson, null, 2)}\n`);
   return made;
 }
@@ -73,16 +64,13 @@ describe('the technical handbook has a data chapter after the system overview', 
     expect(Object.keys(ui)).not.toContain('md.data.note.orm');
   });
 
-  it('puts the chapter between the system overview and the domains, with the fixed note, the recognized forms and the count line', () => {
+  it('puts the chapter after the system chapter, with the fixed note, the recognized forms and the count line', () => {
     const made = run(data);
     expect(assemble(made, 'technical').status).toBe(0);
     const body = text(made, 'handbook-technical.md');
     const at = (needle) => body.indexOf(needle);
-    expect(at('## Overview')).toBeGreaterThan(0);
-    expect(at(`## ${ui['md.data.heading']}`)).toBeGreaterThan(at('## Overview'));
-    const grouping = body.search(/^## (Business domains|Areas)$/m);
-    expect(grouping).toBeGreaterThan(0);
-    expect(at(`## ${ui['md.data.heading']}`)).toBeLessThan(grouping);
+    expect(at('## System')).toBeGreaterThan(0);
+    expect(at(`## ${ui['md.data.heading']}`)).toBeGreaterThan(at('## System'));
     const text_ = chapter(body);
     for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrationsAnyRule']) expect(text_, key).toContain(ui[key]);
     expect(text_).toContain(ui['md.data.recognized'].replace('{forms}', ['migration-calls', 'migration-sql', 'go-table-name', 'js-table-name', 'sql-file-create-table'].map((form) => ui[`md.data.form.${form.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}`]).join('; ')));
@@ -189,12 +177,13 @@ describe('the product view never shows the data section', () => {
   });
 });
 
-describe('a missing or malformed data.json is one visible line in the technical view', () => {
-  it('missing: the heading and the one line that says the data section was not written', () => {
+describe('a missing data.json writes no chapter and a malformed one is one visible line in the technical view', () => {
+  it('missing: the run has no data chapter at all, and the coverage section is still last', () => {
     const made = run(null);
     expect(assemble(made, 'technical').status).toBe(0);
-    const lines = chapter(text(made, 'handbook-technical.md')).split('\n').filter((line) => line.trim() !== '');
-    expect(lines).toEqual([`## ${ui['md.data.heading']}`, ui['md.data.notWritten']]);
+    const body = text(made, 'handbook-technical.md');
+    expect(body).not.toContain(`\n## ${ui['md.data.heading']}\n`);
+    expect(body).toContain(`\n## ${ui['md.coverage.heading']}\n`);
   });
 
   it('malformed (a JSON that fails the shape check, or text that is not JSON): the heading and the one line that says so', () => {

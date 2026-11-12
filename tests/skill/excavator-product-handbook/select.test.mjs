@@ -2,7 +2,7 @@
 // names is resolved against the checked map. Each item must match exactly one
 // feature; anything else stops the run with every id and name printed.
 import { afterEach, describe, expect, it } from 'vitest';
-import { readFileSync, rmSync } from 'node:fs';
+import { readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { clone, makeCheckedMapRun, runHandbook } from './helpers.mjs';
@@ -48,9 +48,10 @@ describe('select: a list that resolves', () => {
 
   it('changes no file of the run', () => {
     const run = newRun();
-    const before = readFileSync(join(run.out, 'state.json'), 'utf-8');
+    const snapshot = () => readdirSync(run.out).sort().map((name) => [name, readFileSync(join(run.out, name), 'utf-8')]);
+    const before = snapshot();
     expect(select(run, 'F2').status).toBe(0);
-    expect(readFileSync(join(run.out, 'state.json'), 'utf-8')).toBe(before);
+    expect(snapshot()).toEqual(before);
   });
 });
 
