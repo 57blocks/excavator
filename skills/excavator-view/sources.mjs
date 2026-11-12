@@ -17,6 +17,8 @@
  * listed and counted.
  */
 
+import { bufferLines } from '../excavator/jsonl-lines.mjs';
+
 export const SOURCE_LIMIT_BYTES = 1024 * 1024;
 export const BINARY_PROBE_BYTES = 8 * 1024;
 export const SOURCE_PAYLOAD_ID = 'sources';
@@ -34,13 +36,13 @@ const addPath = (set, value) => {
 
 /**
  * The path of every file node of the knowledge graph (`filePath` of a record of type `file`), so a graph node whose
- * file no other product names can still open its code. A line that is not JSON is skipped: the page reports it.
+ * file no other product names can still open its code. A line that is not JSON is skipped: reading the graph for the page reports it.
  */
 function graphFilePaths(payloads) {
   const payload = payloads.find((p) => p.id === 'knowledge-graph');
   if (!payload) return [];
   const paths = [];
-  for (const line of payload.bytes.toString('utf-8').split('\n')) {
+  for (const line of bufferLines(payload.bytes)) {
     if (line === '') continue;
     let record;
     try {

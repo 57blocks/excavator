@@ -99,8 +99,8 @@ describe('TS/JS calls resolve through the file\'s own bindings', () => {
   const callGap = (kind, scope) => graph.gaps.find((g) => g.kind === kind && g.scope === scope);
 
   it('moves the pipeline version so graphs built by the same-name search are rebuilt', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/16');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/16');
   });
 
   it('does not call a module-level name the file never imports', () => {

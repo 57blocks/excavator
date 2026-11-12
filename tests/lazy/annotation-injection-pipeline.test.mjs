@@ -18,6 +18,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { auditGraphShape } from '@excavator/core';
 
 import { PIPELINE_VERSION, runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
+import { XML_METHOD_CALL_GAP_KINDS } from '../../skills/excavator/xml-method-call-resolution.mjs';
 import { buildFactGraph } from '../../skills/excavator/build-fact-graph.mjs';
 import { createProjectService } from '../../skills/excavator/project-service.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
@@ -108,8 +109,8 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
     // /12: the by-type injection stage (openspec: changes/by-type-injection)
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/16');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/16');
   });
 
   it('records the framework its Seam descriptor declares in the header', () => {
@@ -419,8 +420,8 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
     expect(without.coverage.injections).toEqual({ status: 'not-run' });
     expect(graph.nodes.length).toBe(without.nodes.length);
     // `without` has no mentions stage either: those edges and gaps are an earlier step's
-    expect(graph.edges.filter((e) => !['injects', 'mentions', 'references'].includes(e.type)).length).toBe(without.edges.length);
-    const added = new Set([...Object.values(ANNOTATION_INJECTION_GAP_KINDS), 'mention-ambiguous', 'mention-target-unindexed', 'path-mention-unresolved']);
+    expect(graph.edges.filter((e) => !['injects', 'invokes', 'mentions', 'references'].includes(e.type)).length).toBe(without.edges.length);
+    const added = new Set([...Object.values(ANNOTATION_INJECTION_GAP_KINDS), ...Object.values(XML_METHOD_CALL_GAP_KINDS), 'mention-ambiguous', 'mention-target-unindexed', 'path-mention-unresolved']);
     expect(graph.gaps.filter((g) => !added.has(g.kind) && !g.kind.startsWith('name-reference-'))).toEqual(without.gaps);
   });
 
@@ -595,7 +596,7 @@ describe('a product of the previous pipeline version (design D10, task 4.4)', ()
     expect(synced.data.kind).toBe('synced');
     expect(synced.data.factCoverage.annotationInjections).toMatchObject({ status: 'ran', siteCount: 38 });
     const graph = readProduct(root);
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/16');
     expect(graph.edges.filter((e) => e.type === 'injects')).toHaveLength(EXPECTED_INJECTS.length);
     expect(service.projectStatus().snapshot.freshness).toBe('fresh');
   });

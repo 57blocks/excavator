@@ -1,0 +1,9 @@
+{
+  "name": "express-app",
+  "private": true,
+  "bin": { "express-app-admin": "bin/admin.js" },
+  "dependencies": {
+    "express": "^4.18.0",
+    "node-schedule": "^2.1.0"
+  }
+}

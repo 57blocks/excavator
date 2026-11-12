@@ -118,7 +118,7 @@ If Bedrock model-invocation logging is enabled, the logged payloads contain the 
 COMMIT=$(git rev-parse HEAD); TAG=${COMMIT:0:8}-amd64
 docker buildx build --platform linux/amd64 --load -f deploy/Dockerfile \
   --build-arg EXCAVATOR_COMMIT=$COMMIT -t excavator-runner:$TAG .
-docker run --rm --network none --entrypoint excavator-selftest excavator-runner:$TAG   # 12 PASS lines
+docker run --rm --network none --entrypoint excavator-selftest excavator-runner:$TAG   # 14 PASS lines
 docker save excavator-runner:$TAG | gzip > excavator-runner-$TAG.tar.gz
 sha256sum excavator-runner-$TAG.tar.gz > excavator-runner-$TAG.tar.gz.sha256          # macOS: shasum -a 256
 aws s3 cp excavator-runner-$TAG.tar.gz        s3://<BUCKET>/<PREFIX>/
@@ -133,10 +133,10 @@ aws s3 cp s3://<BUCKET>/<PREFIX>/excavator-runner-<TAG>.tar.gz .
 aws s3 cp s3://<BUCKET>/<PREFIX>/excavator-runner-<TAG>.tar.gz.sha256 .
 sha256sum -c excavator-runner-<TAG>.tar.gz.sha256
 docker load -i excavator-runner-<TAG>.tar.gz
-docker run --rm --network none --entrypoint excavator-selftest excavator-runner:<TAG>   # 12 PASS lines
+docker run --rm --network none --entrypoint excavator-selftest excavator-runner:<TAG>   # 14 PASS lines
 ```
 
-The self-test makes no model call and needs no credentials. It checks the Claude Code version, the image commit, plugin validity and loading, Python, the git safe-directory setting, the Node heap limit, a Lazy run, settings isolation and the MCP server.
+The self-test makes no model call and needs no credentials. It checks the Claude Code version, the image commit, plugin validity and loading, Python, `jq`, the git safe-directory setting, the Node heap limit, a Lazy run, a hotspots history read of a repository owned by another uid, settings isolation and the MCP server.
 
 ## 6. Preparing `/work/repo`
 
@@ -189,7 +189,33 @@ docker run --rm \
 - Credentials come from the instance role through IMDS. Do not pass access keys.
 - Set the three `ANTHROPIC_DEFAULT_*_MODEL` variables to a profile the role may invoke.
 
-Other Excavator skills (for example `/excavator-prd`) run with Claude Code as the entrypoint, against a repository that already has Lazy products:
+Skopo modes (a skopository: intent documentation recovered from the code, see `/skopo-plan`, `/skopo-create` and `/skopo-report`). Three runs, one after another, sharing the same `/work/out`; each continues from the one before:
+
+```sh
+for mode in skopo-plan skopo-create skopo-report; do
+  scope=(-e EXCAVATOR_SCOPE=<subdir>)      # leave out for the whole repository
+  [ "$mode" = skopo-report ] && scope=()   # skopo-report reads the scope its run recorded
+  docker run --rm \
+    -v /srv/excavator/<name>:/work/repo \
+    -v /srv/excavator/out/<name>:/work/out \
+    -e EXCAVATOR_MODE=$mode \
+    "${scope[@]}" \
+    -e EXCAVATOR_MAX_BUDGET_USD=<USD> \
+    -e AWS_REGION=eu-central-1 \
+    -e ANTHROPIC_MODEL=<PROFILE> \
+    -e ANTHROPIC_DEFAULT_OPUS_MODEL=<PROFILE> \
+    -e ANTHROPIC_DEFAULT_SONNET_MODEL=<PROFILE> \
+    -e ANTHROPIC_DEFAULT_HAIKU_MODEL=<PROFILE> \
+    excavator-runner:<TAG> || break
+done
+```
+
+- Leave out `EXCAVATOR_SCOPE` (and give it to `skopo-plan` and `skopo-create` only) to recover the whole repository. Above about 300,000 lines of code, `skopo-plan` without a scope writes a split of the system and names a first scope instead of a plan; `skopo-create` then stops and the run exits `4`: run the three modes again with that scope and another `/work/out`.
+- A finished `skopo-create` whose products fail the verdict stays failed when run again: run it with `EXCAVATOR_FORCE=true` to start over (plan included).
+- A skopo mode first builds the facts (`lazy`, no model call) when `.excavator/` is missing or stale, so `/work/repo` must be writable as for `full`.
+- The skills write only to `/work/out/skopo`: `run/` (the plan, the research reports, the questions, the notes, the lint passes and `metrics.json`), `skopo/` (the skopository; never locked by a run) and `report/` (`report.md` and `report.html`, a page that opens from disk).
+
+Other Excavator skills (for example `/excavator-prd-report`) run with Claude Code as the entrypoint, against a repository that already has Lazy products:
 
 ```sh
 docker run -d --name prd-<name> \
@@ -201,13 +227,16 @@ docker run -d --name prd-<name> \
   -e ANTHROPIC_DEFAULT_SONNET_MODEL=<PROFILE> \
   -e ANTHROPIC_DEFAULT_HAIKU_MODEL=<PROFILE> \
   --entrypoint claude excavator-runner:<TAG> \
-  -p "/excavator:excavator-prd /work/repo --scope <subdir> --language <lang>
-Write the PRD to /work/out/PRD.md without asking for confirmation." \
+  -p "/excavator:excavator-prd-report /work/repo --scope <subdir> --language <lang> --out /work/out/prd-report --concurrency 3" \
   --plugin-dir /opt/excavator --setting-sources user --settings '{"disableAllHooks": true}' \
   --model <PROFILE> --permission-mode bypassPermissions --permission-prompts none \
   --max-budget-usd <USD> --no-session-persistence --output-format stream-json --verbose
 docker logs -f prd-<name> > /srv/excavator/out/<name>/run.jsonl    # or: docker wait prd-<name>
 ```
+
+`/excavator-prd-report` writes only to `--out` (default `<repo>/.excavator/prd-report/`): `index.json` (the entrypoints and the features they are grouped into), one chapter and one findings file per feature, the verification reports, the assembled `PRD.md` and `report.html` (the report page: one self-contained file built from a template that `pnpm -r build` writes to `packages/prd-report-page/dist/`, which the image's build stage already runs). It never runs `/excavator` or rebuilds the facts in `.excavator/`. Each feature is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: verified features are kept and the rest are finished; `--fresh` starts over.
+
+`/excavator-product-handbook` runs the same way (swap the prompt for `/excavator:excavator-product-handbook /work/repo --language <lang> --out /work/out/product-handbook --concurrency 3`; `--features "<ids or names>"` writes entries for only those features). It writes only to `--out` (default `<repo>/.excavator/product-handbook/`): the entrypoint candidates, the product map, one entry per feature, the run state, the assembled `handbook.md` and `handbook.html` (one self-contained page built from a template that `pnpm -r build` writes to `packages/product-handbook-page/dist/`, which the image's build stage already runs). It never runs `/excavator`, rebuilds the facts in `.excavator/` or builds the target project. Each feature entry is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: checked entries are kept and the rest are finished; `--fresh` starts over.
 
 Run long jobs detached (`docker run -d`) so they do not depend on an interactive Session Manager session.
 
@@ -228,13 +257,14 @@ This is the exact set exported by `deploy/run-excavator.mjs`'s `RUNTIME_PARAMS` 
 
 | Variable | Required | Default | Meaning |
 |---|---|---|---|
-| `EXCAVATOR_MODE` | Yes | — | `lazy` or `full`. Any other value is a configuration error. |
-| `EXCAVATOR_MAX_BUDGET_USD` | Only in `full` mode | — | Positive number (USD). Passed to Claude Code as `--max-budget-usd`; the run stops and is judged a run failure if it is exceeded. Not read in `lazy` mode. |
-| `EXCAVATOR_FORCE` | No | `false` | Boolean-like (`1`/`0`/`true`/`false`/`yes`/`no`). When true, forces a full rebuild (`--full`) in `full` mode even if existing full-mode products already match HEAD. |
+| `EXCAVATOR_MODE` | Yes | — | `lazy`, `full`, `skopo-plan`, `skopo-create` or `skopo-report`. Any other value is a configuration error. The skopo modes need the same parameters as `full`. |
+| `EXCAVATOR_MAX_BUDGET_USD` | In `full` and the skopo modes | — | Positive number (USD). Passed to Claude Code as `--max-budget-usd`; the run stops and is judged a run failure if it is exceeded. Not read in `lazy` mode. |
+| `EXCAVATOR_FORCE` | No | `false` | Boolean-like (`1`/`0`/`true`/`false`/`yes`/`no`). When true, forces a full rebuild (`--full`) in `full` mode even if existing full-mode products already match HEAD. In `skopo-plan` and `skopo-create`, starts the skill over (`--fresh`): it deletes `/work/out/skopo` first. Set with `skopo-report`, it is a configuration error. |
 | `EXCAVATOR_MAX_CONTRADICTED` | No | `0` | Non-negative integer. Maximum number of `contradicted` nodes+edges (combined) the post-run independent re-validation may find before the run is judged fabrication. `full` mode only. |
 | `EXCAVATOR_TIMEOUT_MINUTES` | No | `180` | Positive number. Wall-clock timeout for the `full` Claude Code run; on expiry the process is sent `SIGINT`, then `SIGTERM` after a grace period, and the run is judged a run failure. Not used by `lazy`. |
-| `AWS_REGION` | Only in `full` mode | — | Claude Code's own variable; the Bedrock region, e.g. `eu-central-1`. |
-| `ANTHROPIC_MODEL` | Only in `full` mode | — | Claude Code's own variable; the model/inference-profile ID, e.g. `eu.anthropic.claude-sonnet-5`. Recorded into the knowledge graph as the run's model. |
+| `AWS_REGION` | In `full` and the skopo modes | — | Claude Code's own variable; the Bedrock region, e.g. `eu-central-1`. |
+| `ANTHROPIC_MODEL` | In `full` and the skopo modes | — | Claude Code's own variable; the model/inference-profile ID, e.g. `eu.anthropic.claude-sonnet-5`. Recorded into the knowledge graph as the run's model. |
+| `EXCAVATOR_SCOPE` | No | — | `skopo-plan` and `skopo-create` only: a directory of the repository, relative and without `..`, to recover instead of the whole repository. Given in any other mode, or leaving the repository, it is a configuration error. |
 <!-- runtime-params-table:end -->
 
 A missing or invalid required parameter ends the run with exit code `2` before anything is written.
@@ -250,7 +280,7 @@ Set in `deploy/Dockerfile`; not operator-configurable.
 | Variable | Baked value | Meaning |
 |---|---|---|
 | `EXCAVATOR_IMAGE_COMMIT` | the `EXCAVATOR_COMMIT` build arg (required) | the Excavator commit; also the label `org.opencontainers.image.revision` |
-| `EXCAVATOR_IMAGE_CLAUDE_CODE_VERSION` | the `CLAUDE_CODE_VERSION` build arg (default `2.1.281`) | the pinned Claude Code version; also the label `com.excavator.claude-code-version` |
+| `EXCAVATOR_IMAGE_CLAUDE_CODE_VERSION` | the `CLAUDE_CODE_VERSION` build arg (default `2.1.312`) | the pinned Claude Code version; also the label `com.excavator.claude-code-version` |
 | `CLAUDE_CODE_USE_BEDROCK` | `1` | Claude Code uses Bedrock |
 | `DISABLE_UPDATES` | `1` | Claude Code never self-updates |
 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` | |
@@ -282,7 +312,7 @@ Measured on an 8 vCPU / 32 GB x86_64 host with the image above:
 | `0` | Success, or a `full` run skipped because existing products already match HEAD. |
 | `2` | Configuration error: a required parameter was missing or invalid. Nothing is written; the reason goes to stderr only. |
 | `3` | Run failure: Claude Code failed to start, errored, timed out, stopped at the budget cap or another non-success terminal state, recorded permission denials, or reported failed subagents. `lazy`: the Lazy driver exited non-zero. The underlying API error is in `run.jsonl`. |
-| `4` | Load or product/structural-integrity failure: the plugin, its MCP server, its agents, or the subagent-dispatch tool did not fully load; the produced commit or model stamp did not match; or the independent re-validation found structural integrity issues or could not run. |
+| `4` | Load or product/structural-integrity failure: the plugin, its MCP server, its agents, or the subagent-dispatch tool did not fully load; the produced commit or model stamp did not match; or the independent re-validation found structural integrity issues or could not run. Skopo modes: `skopo.mjs verdict` found the stage's products incomplete (for example a lint error in the skopository, a run that stopped, or a report whose summary cites a statement the skopository lacks); `summary.json` lists what it printed. |
 | `5` | Fabrication over threshold: the independent re-validation found more `contradicted` nodes/edges than `EXCAVATOR_MAX_CONTRADICTED` allows, or summary verification was skipped entirely. |
 
 When several stages fail, the exit code is the first failing stage in the order configuration → load → run → products/integrity → fabrication.
@@ -294,7 +324,8 @@ Files in `/work/out` (none on exit `2`; `run.jsonl`, `validation.json` and `vali
 | File | Content |
 |---|---|
 | `summary.json` | image commit and Claude Code version, repository HEAD, mode, model, one status + reasons per check (a failed model call carries the provider's error message and HTTP status), token counts by kind, estimated cost, contradicted/unverified counts, and `readCoverage` (`full` only: how many lines of the repository the run read, lower and upper bound) |
-| `run.jsonl` | raw `stream-json` events of the Claude Code session (`full` only) |
+| `run.jsonl` | raw `stream-json` events of the Claude Code session (`full` and the skopo modes) |
+| `skopo/` | the skopo modes' products (see section 7) |
 | `validation.json` | independent structural-integrity report (`issues[]`; non-empty means exit `4`) |
 | `validated-graph.jsonl` | the knowledge graph with a per-node/per-edge `verification` status, one JSON record per line like `.excavator/knowledge-graph.jsonl` |
 

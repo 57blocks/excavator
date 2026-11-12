@@ -154,19 +154,38 @@ Writes the counts to `$DATA_DIR/intermediate/domain-annotation.json`. On the
 standalone path (Phase 2, no knowledge graph) it warns and leaves every step
 unanchored rather than inventing ids.
 
-Then run the source-touching validator on the result, which is where a step
-with no resolvable `nodeIds` and no `provenance: "inferred"` is counted as
-`step-unanchored`:
+Then run the source-touching validator on the result. A step's `nodeIds` name
+nodes of the knowledge graph, which the domain graph does not contain, so give
+the validator the knowledge graph as a reference whenever it exists. The
+reference only resolves step anchors; nothing else of it is validated or
+merged. A step with no resolvable `nodeIds` and no `provenance: "inferred"` is
+counted as `step-unanchored`:
 
 ```bash
-node "$PLUGIN_ROOT/skills/excavator/validate-graph.mjs" "$PROJECT_ROOT" \
-  --graph "$DATA_DIR/intermediate/domain-analysis.json" \
-  --out "$DATA_DIR/intermediate/domain-validated.json" \
-  --report "$DATA_DIR/intermediate/domain-validation.json"
+if [ -f "$DATA_DIR/knowledge-graph.jsonl" ]; then
+  node "$PLUGIN_ROOT/skills/excavator/validate-graph.mjs" "$PROJECT_ROOT" \
+    --graph "$DATA_DIR/intermediate/domain-analysis.json" \
+    --out "$DATA_DIR/intermediate/domain-validated.json" \
+    --report "$DATA_DIR/intermediate/domain-validation.json" \
+    --reference "$DATA_DIR/knowledge-graph.jsonl"
+else
+  node "$PLUGIN_ROOT/skills/excavator/validate-graph.mjs" "$PROJECT_ROOT" \
+    --graph "$DATA_DIR/intermediate/domain-analysis.json" \
+    --out "$DATA_DIR/intermediate/domain-validated.json" \
+    --report "$DATA_DIR/intermediate/domain-validation.json"
+fi
 ```
 
-Report the `stepUnanchored`, `anchorMismatch` and `edgeContradicted` counts
-from that report to the user.
+When `knowledge-graph.jsonl` does not exist, the flag is left out and every
+step without `provenance: "inferred"` is reported unanchored. When it exists,
+the flag is passed whichever path produced the analysis, `--full` included.
+
+Report `stepsTotal`, `stepsAnchored`, `stepsInferred` and `stepUnanchored` from
+that report to the user; the last three add up to the first. A domain graph has
+no code nodes and its edges cite no lines, so `nodesChecked` and `edgesChecked`
+are 0 and the anchor and edge checks do not apply to it. Do not report
+`anchorMismatch` or `edgeContradicted` as findings, and never present their
+zero counts as a pass.
 
 If `annotate-domain.mjs` exits 2 with `status=noncanonical-language`, read
 `$DATA_DIR/intermediate/domain-annotation.json`, report its rejected field

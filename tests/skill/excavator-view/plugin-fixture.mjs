@@ -1,7 +1,7 @@
 /**
- * A stand-in for the view template packages/report-view builds, and a plugin
+ * A stand-in for the explorer template packages/explorer builds, and a plugin
  * root laid out like the real one around it, so the packer tests run without a
- * build (one test of the real template lives in view-template.test.mjs).
+ * build of the template (the validator they read is the real built one).
  */
 
 import { cpSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -27,23 +27,27 @@ export const FIXTURE_TEMPLATE = [
   '',
 ].join('\n');
 
-/** A directory holding view.html with the given text; returns its path. */
+/** A directory holding explorer.html with the given text; returns its path. */
 export function writeTemplate(text = FIXTURE_TEMPLATE) {
   const dir = mkdtempSync(join(tmpdir(), 'xv-template-'));
-  const path = join(dir, 'view.html');
+  const path = join(dir, 'explorer.html');
   writeFileSync(path, text);
   return { dir, path };
 }
 
-/** A plugin root with the packer scripts and, when `template` is a string, a built view template under it; null leaves it unbuilt. */
+/**
+ * A plugin root with the packer scripts and, when `template` is a string, a built explorer template with that text
+ * next to the real built explorer validator; null leaves it unbuilt.
+ */
 export function makePluginRoot(template) {
   const root = mkdtempSync(join(tmpdir(), 'xv-plugin-'));
   cpSync(join(repoRoot, 'skills/excavator-view'), join(root, 'skills/excavator-view'), { recursive: true });
   symlinkSync(join(repoRoot, 'skills/excavator'), join(root, 'skills/excavator'));
   symlinkSync(join(repoRoot, 'skills/excavator-domain'), join(root, 'skills/excavator-domain'));
   if (template !== null) {
-    mkdirSync(join(root, 'packages/report-view/dist'), { recursive: true });
-    writeFileSync(join(root, 'packages/report-view/dist/view.html'), template);
+    mkdirSync(join(root, 'packages/explorer/dist'), { recursive: true });
+    writeFileSync(join(root, 'packages/explorer/dist/explorer.html'), template);
+    symlinkSync(join(repoRoot, 'packages/explorer/dist-node'), join(root, 'packages/explorer/dist-node'));
   }
   return root;
 }

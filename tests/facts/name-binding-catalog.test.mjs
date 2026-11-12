@@ -1,6 +1,6 @@
 // name-binding-references, tasks 2.1-2.2, xml-injection-references, tasks 1.1-1.2,
 // and annotation-injection-references, tasks 2.1-2.2: the declarative
-// name-binding catalog (skills/excavator/catalogs/name-bindings.json, version 3)
+// name-binding catalog (skills/excavator/catalogs/name-bindings.json, version 4)
 // and its strict loader. The shipped catalog loads and is frozen; a catalog with
 // an unknown key, a missing field, a wrong type, a duplicate id or a version
 // other than 3 does not load at all.
@@ -105,8 +105,8 @@ describe('the shipped catalog', () => {
     ]);
   });
 
-  it('is version 3', () => {
-    expect(catalog.version).toBe(3);
+  it('is version 4', () => {
+    expect(catalog.version).toBe(4);
   });
 
   const BEANS_NAMESPACE = 'http://www.springframework.org/schema/beans';
@@ -397,7 +397,7 @@ describe('a malformed catalog does not load', () => {
   });
 
   it('names a wrong type', () => {
-    rejects((c) => { c.version = '1'; }, /name-bindings\.version: expected the number 3/);
+    rejects((c) => { c.version = '1'; }, /name-bindings\.version: expected the number 4/);
     rejects((c) => { c.annotationBinders[0].annotations = 'javax.inject.Named'; }, /annotationBinders\[0\]\.annotations: expected an array/);
     rejects((c) => { c.annotationBinders[0].nameArguments = [1]; }, /annotationBinders\[0\]\.nameArguments\[0\]: expected a string/);
     rejects((c) => { c.annotationBinders[0].annotations = []; }, /annotationBinders\[0\]\.annotations: expected at least one entry/);
@@ -488,11 +488,11 @@ describe('a malformed catalog does not load', () => {
   const accepts = (edit) => expect(() => parseNameBindingCatalog(mutate(edit))).not.toThrow();
 
   it('rejects a catalog of version 1 or 2, naming the version, even one that has no xmlInjections or annotationInjections at all', () => {
-    rejects((c) => { c.version = 1; }, /name-bindings\.version: expected the number 3/);
-    rejects((c) => { c.version = 1; delete c.xmlInjections; }, /name-bindings\.version: expected the number 3/);
-    rejects((c) => { c.version = 2; }, /name-bindings\.version: expected the number 3/);
-    rejects((c) => { c.version = 2; delete c.annotationInjections; }, /name-bindings\.version: expected the number 3/);
-    rejects((c) => { c.version = 4; }, /name-bindings\.version: expected the number 3/);
+    rejects((c) => { c.version = 1; }, /name-bindings\.version: expected the number 4/);
+    rejects((c) => { c.version = 1; delete c.xmlInjections; }, /name-bindings\.version: expected the number 4/);
+    rejects((c) => { c.version = 2; }, /name-bindings\.version: expected the number 4/);
+    rejects((c) => { c.version = 2; delete c.annotationInjections; }, /name-bindings\.version: expected the number 4/);
+    rejects((c) => { c.version = 3; }, /name-bindings\.version: expected the number 4/);
     rejects((c) => { delete c.version; }, /name-bindings: missing "version"/);
   });
 
@@ -881,5 +881,109 @@ describe('the member default-name rules and member kinds an injection site may n
 
   it('keeps the member rules apart from the class rules: a binder takes no member rule and a site takes no class rule', () => {
     for (const rule of MEMBER_DEFAULT_NAME_RULES) expect(Object.hasOwn(DEFAULT_NAME_RULES, rule)).toBe(false);
+  });
+});
+
+describe('the method call families (spring-xml-method-calls, tasks 1.1-1.3)', () => {
+  const FAMILY = (c) => c.xmlMethodCalls[0];
+  const SITE = (c, id) => FAMILY(c).sites.find((site) => site.id === id);
+  const accepts = (edit) => expect(() => parseNameBindingCatalog(mutate(edit))).not.toThrow();
+
+  it('ships the Spring family: the call sites and the root defaults of the design', () => {
+    const catalog = loadNameBindingCatalog();
+    expect(catalog.xmlMethodCalls.map((f) => f.id)).toEqual(['spring-xml-method-call']);
+    expect(catalog.xmlMethodCalls[0].sites.map((s) => s.id)).toEqual([
+      'spring-init-method', 'spring-destroy-method', 'spring-factory-method', 'spring-factory-method-bean',
+      'spring-lookup-method-name', 'spring-replaced-method-name', 'spring-property-setter', 'spring-p-setter',
+      'spring-scheduled-method', 'spring-aop-before', 'spring-aop-after', 'spring-aop-after-returning',
+      'spring-aop-after-throwing', 'spring-aop-around',
+    ]);
+    expect(catalog.xmlMethodCalls[0].defaults.map((d) => [d.id, d.attribute, d.like])).toEqual([
+      ['spring-default-init-method', 'default-init-method', 'spring-init-method'],
+      ['spring-default-destroy-method', 'default-destroy-method', 'spring-destroy-method'],
+    ]);
+    expect(Object.isFrozen(catalog.xmlMethodCalls)).toBe(true);
+    expect(Object.isFrozen(catalog.xmlMethodCalls[0].sites[0].owner)).toBe(true);
+  });
+
+  it('requires the xmlMethodCalls list, and each family to be an object', () => {
+    rejects((c) => { delete c.xmlMethodCalls; }, /name-bindings: missing "xmlMethodCalls"/);
+    rejects((c) => { c.xmlMethodCalls = {}; }, /name-bindings\.xmlMethodCalls: expected an array/);
+    rejects((c) => { c.xmlMethodCalls[0] = 'x'; }, /xmlMethodCalls\[0\]: expected an object/);
+    accepts((c) => { c.xmlMethodCalls = []; });
+  });
+
+  it('names an unknown key or a missing field of a family, its consumer, a site and a default', () => {
+    rejects((c) => { FAMILY(c).extra = 1; }, /xmlMethodCalls\[0\]: unknown key "extra"/);
+    for (const key of ['id', 'namespace', 'basis', 'root', 'consumer', 'sites', 'defaults']) {
+      rejects((c) => { delete FAMILY(c)[key]; }, new RegExp(`xmlMethodCalls\\[0\\]: missing "${key}"`));
+    }
+    rejects((c) => { FAMILY(c).consumer.extra = 1; }, /xmlMethodCalls\[0\]\.consumer: unknown key "extra"/);
+    rejects((c) => { delete FAMILY(c).consumer.binder; }, /xmlMethodCalls\[0\]\.consumer: missing "binder"/);
+    rejects((c) => { FAMILY(c).sites[0].extra = 1; }, /xmlMethodCalls\[0\]\.sites\[0\]: unknown key "extra"/);
+    for (const key of ['id', 'method', 'owner', 'arity', 'optional']) {
+      rejects((c) => { delete FAMILY(c).sites[0][key]; }, new RegExp(`xmlMethodCalls\\[0\\]\\.sites\\[0\\]: missing "${key}"`));
+    }
+    rejects((c) => { delete FAMILY(c).sites[0].owner.from; }, /sites\[0\]\.owner: missing "from"/);
+    rejects((c) => { FAMILY(c).sites[0].owner.extra = 1; }, /sites\[0\]\.owner: unknown key "extra"/);
+    rejects((c) => { FAMILY(c).defaults[0].extra = 1; }, /defaults\[0\]: unknown key "extra"/);
+    rejects((c) => { delete FAMILY(c).defaults[0].like; }, /defaults\[0\]: missing "like"/);
+  });
+
+  it('names a wrong type of a field', () => {
+    rejects((c) => { FAMILY(c).sites[0].id = 3; }, /sites\[0\]\.id: expected a string/);
+    rejects((c) => { FAMILY(c).sites[0].optional = 'no'; }, /sites\[0\]\.optional: expected a boolean/);
+    rejects((c) => { FAMILY(c).sites[0].arity = '0'; }, /sites\[0\]\.arity: expected a non-negative integer or null/);
+    rejects((c) => { FAMILY(c).sites[0].arity = -1; }, /sites\[0\]\.arity: expected a non-negative integer or null/);
+    rejects((c) => { FAMILY(c).sites[0].method = 'getter'; }, /sites\[0\]\.method: expected "value" or "setter"/);
+    rejects((c) => { FAMILY(c).sites[0].owner.from = 'parent'; }, /sites\[0\]\.owner\.from: expected "consumer", "declared" or "named"/);
+    rejects((c) => { FAMILY(c).sites[0].when = ''; }, /sites\[0\]\.when: expected a non-empty string/);
+    rejects((c) => { FAMILY(c).defaults[0].attribute = 4; }, /defaults\[0\]\.attribute: expected a string/);
+    accepts((c) => { FAMILY(c).sites[0].arity = 2; });
+    accepts((c) => { FAMILY(c).sites[0].optional = true; });
+  });
+
+  it('wants one of the two shapes of a site, whole', () => {
+    rejects((c) => { delete FAMILY(c).sites[0].element; }, /sites\[0\]: missing "element"/);
+    rejects((c) => { delete FAMILY(c).sites[0].attribute; }, /sites\[0\]: missing "attribute"/);
+    rejects((c) => { FAMILY(c).sites[0].attributeNamespace = 'urn:p'; }, /sites\[0\]: the "element"\/"attribute" shape and "attributeNamespace" cannot be mixed/);
+    rejects((c) => { delete SITE(c, 'spring-p-setter').attributeNamespace; }, /expected either "element" and "attribute", or "attributeNamespace"/);
+    // a namespace site has no attribute value to take the name from
+    rejects((c) => { SITE(c, 'spring-p-setter').method = 'value'; }, /a namespace site needs "setter"/);
+  });
+
+  it('wants a named owner to say which attribute, and nothing else to', () => {
+    rejects((c) => { delete SITE(c, 'spring-scheduled-method').owner.attribute; }, /owner: "named" needs "attribute"/);
+    rejects((c) => { SITE(c, 'spring-init-method').owner.attribute = 'ref'; }, /owner: "attribute" and "ancestors" need "from": "named"/);
+    rejects((c) => { SITE(c, 'spring-factory-method').owner.ancestors = ['aspect']; }, /owner: "attribute" and "ancestors" need "from": "named"/);
+    rejects((c) => { SITE(c, 'spring-aop-before').owner.ancestors = []; }, /owner\.ancestors: expected at least one entry/);
+    rejects((c) => { SITE(c, 'spring-aop-before').owner.ancestors = ['aspect', 'aspect']; }, /owner\.ancestors\[1\]: duplicate ancestor element "aspect"/);
+  });
+
+  it('rejects a condition that names the same attribute twice', () => {
+    rejects((c) => { SITE(c, 'spring-factory-method').when = 'factory-bean'; }, /"when" and "unless" name the same attribute/);
+    accepts((c) => { SITE(c, 'spring-lookup-method-name').when = 'x'; SITE(c, 'spring-lookup-method-name').unless = 'y'; });
+  });
+
+  it('checks the consumer binder: it exists, is of the namespace, and has a class target', () => {
+    rejects((c) => { FAMILY(c).consumer.binder = 'nope'; }, /xmlMethodCalls\[0\]\.consumer\.binder: no XML binder with the id "nope"/);
+    rejects((c) => { FAMILY(c).consumer.binder = 'jsf-xml-managed-bean'; }, /consumer\.binder: "jsf-xml-managed-bean" is in the namespace "el", not "spring"/);
+    rejects((c) => { FAMILY(c).consumer.binder = 'spring-xml-alias'; }, /consumer\.binder: "spring-xml-alias" must have a target of kind "class"/);
+  });
+
+  it('checks a default: its like names a site of the family on the consumer element, read as written, of the consumer\'s class', () => {
+    rejects((c) => { FAMILY(c).defaults[0].like = 'nope'; }, /defaults\[0\]\.like: no site with the id "nope" in the family/);
+    rejects((c) => { FAMILY(c).defaults[0].like = 'spring-property-setter'; }, /defaults\[0\]\.like: "spring-property-setter" is not a site on the consumer element "bean"/);
+    rejects((c) => { FAMILY(c).defaults[0].like = 'spring-factory-method-bean'; }, /defaults\[0\]\.like: "spring-factory-method-bean" has a condition/);
+    rejects((c) => { SITE(c, 'spring-init-method').method = 'setter'; }, /defaults\[0\]\.like: "spring-init-method" must read its method name as "value"/);
+    rejects((c) => { SITE(c, 'spring-init-method').owner = { from: 'declared' }; }, /defaults\[0\]\.like: "spring-init-method" must belong to the consumer's class/);
+    rejects((c) => { FAMILY(c).defaults[1].attribute = 'default-init-method'; }, /defaults\[1\]\[1\]: duplicate default attribute|duplicate default attribute "default-init-method"/);
+  });
+
+  it('keeps one space of ids for every site, injection sites and defaults included', () => {
+    rejects((c) => { FAMILY(c).sites[1].id = 'spring-init-method'; }, /xmlMethodCalls\[0\]\.sites\[1\]: duplicate site id "spring-init-method"/);
+    rejects((c) => { FAMILY(c).sites[0].id = 'spring-property-ref'; }, /xmlMethodCalls\[0\]\.sites\[0\]: duplicate site id "spring-property-ref"/);
+    rejects((c) => { FAMILY(c).defaults[0].id = 'spring-init-method'; }, /xmlMethodCalls\[0\]\.defaults\[0\]: duplicate site id "spring-init-method"/);
+    rejects((c) => { FAMILY(c).id = 'spring-xml-injection'; }, /xmlMethodCalls\[0\]: duplicate id "spring-xml-injection"/);
   });
 });

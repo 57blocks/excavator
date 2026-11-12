@@ -1,0 +1,51 @@
+{
+  "repository": "https://github.com/57blocks/skopo",
+  "commit": "de5a4a651bb27d1da9b61b2aa81c905470ca0d08",
+  "files": {
+    "spec.mjs": {
+      "from": "tools/cli/spec.mjs",
+      "sha256": "bbde490a95965936e173022e05dfd9f21cbacba200b959d13b817ce7470de720",
+      "hashOf": "bytes"
+    },
+    "lint.mjs": {
+      "from": "tools/cli/lint.mjs",
+      "sha256": "f771ff3eb6bbe20e32047bfcd629e17d06244fd4766486daa7f80ef9df970979",
+      "hashOf": "bytes"
+    },
+    "assign-ids.mjs": {
+      "from": "tools/cli/assign-ids.mjs",
+      "sha256": "26dc277a1d2145761a8e08e6555cd7262738b35741d5f80e3e1b02af0ee646fd",
+      "hashOf": "bytes"
+    },
+    "inventory.mjs": {
+      "from": "tools/cli/inventory.mjs",
+      "sha256": "46ad766db43c4e8d1450fbfb10762b447aee98413c51720f02cfa69de93f2abe",
+      "hashOf": "bytes"
+    },
+    "run.mjs": {
+      "from": "tools/cli/run.mjs",
+      "sha256": "57876a046176710a2deb58eb9c96642ea64bf81a0680ca7061763ed25156613f",
+      "hashOf": "bytes"
+    },
+    "keywords.json": {
+      "from": "tools/cli/keywords.json",
+      "sha256": "b58fbdaad0a2c89741bd3d779591b1a5b985eaeb0815f275b05f103abcf7e7de",
+      "hashOf": "parsed"
+    },
+    "guide.md": {
+      "from": "tools/harness-plugins/claude-code/skills/init/guide.md",
+      "sha256": "ea702c0abd4eb954377b63231454933d546e3f9d3d6a4b97149306bfa55de7ba",
+      "hashOf": "bytes"
+    },
+    "examples.md": {
+      "from": "tools/harness-plugins/claude-code/skills/init/examples.md",
+      "sha256": "88937224aeb784209e8263657cf6250a520461b6b40f3e2374220260a6841a9e",
+      "hashOf": "bytes"
+    },
+    "LICENSE": {
+      "from": "tools/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "hashOf": "bytes"
+    }
+  }
+}

@@ -36,7 +36,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -57,9 +57,17 @@ const COMMIT_HEAD = /^\x01([0-9a-f]{40}|[0-9a-f]{64})$/;
 const RAW_RECORD = /^:\d{6} \d{6} [0-9a-f]+ [0-9a-f]+ ([A-Z])\d*$/;
 const NUMSTAT = /^(\d+|-)\t(\d+|-)\t([\s\S]*)$/;
 
-/** The repository's own git directory, found the one time git is allowed to look at the work tree. */
+/**
+ * The repository's own git directory, found the one time git is allowed to look at the work tree.
+ * Switching the machine config off also hides a system `safe.directory`, so a repository owned by
+ * another uid (the usual case in a container) would be refused; this one call is told, through
+ * command-scope config, to trust exactly the repository being read and nothing else.
+ */
 function gitDirOf(dir) {
-  const result = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: dir, env: GIT_ENV, encoding: 'utf-8' });
+  const env = {
+    ...GIT_ENV, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: realpathSync(dir),
+  };
+  const result = spawnSync('git', ['rev-parse', '--absolute-git-dir'], { cwd: dir, env, encoding: 'utf-8' });
   if (result.status !== 0) throw new Error(`git rev-parse failed in ${dir}: ${(result.stderr || '').trim() || result.status}`);
   return result.stdout.trim();
 }

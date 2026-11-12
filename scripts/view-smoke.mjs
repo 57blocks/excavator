@@ -2,20 +2,18 @@
 /**
  * view-smoke.mjs
  *
- * Opens a packed report page in local headless Chrome over the DevTools pipe
- * and reports what the browser saw (openspec: changes/report-viewer, design
- * O3). Zero dependencies; not part of `pnpm test` because it needs a Chrome
- * install.
+ * Opens a packed page in local headless Chrome over the DevTools pipe and
+ * reports what the browser saw (openspec: changes/report-viewer, design O3);
+ * `explorer-smoke.mjs` drives it. Zero dependencies; not part of `pnpm test`
+ * because it needs a Chrome install.
  *
  *   node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--reduced-motion] [--hash <route>] [--eval <js>] [--screenshot <png>]
  *
  * It waits (in real time, 30 s at most) for `data-xv-ready` on <html>, then
  * collects every console error, uncaught exception, CSP violation, inline event
  * attribute in the DOM (the policy allows inline script, so only the DOM shows
- * those) and network request other than the main document, plus every
- * `data-xv-count-*` value, and prints one JSON result. `--hash` opens a route
- * (for example `/code?path=src%2Fa.js&lines=3-9`); the result then lists the line
- * numbers the Code page highlighted and any notice it showed. `--dark` and
+ * those) and network request other than the main document, and prints one JSON
+ * result. `--hash` opens the page at that fragment. `--dark` and
  * `--reduced-motion` emulate those two system settings. `--eval` runs a
  * JavaScript expression in the page once it is ready (to click a filter, say),
  * waits for the page to settle and then collects everything; its value is
@@ -148,10 +146,6 @@ const VIOLATION_RECORDER = `
 
 const PAGE_PROBE = `(function () {
   var root = document.documentElement;
-  var counts = {};
-  Array.prototype.forEach.call(root.attributes, function (attr) {
-    if (attr.name.indexOf('data-xv-count-') === 0) counts[attr.name.slice('data-xv-count-'.length)] = attr.value;
-  });
   // The policy allows inline script, so it cannot flag an inline event attribute: look for them in the DOM.
   var inlineHandlers = [];
   Array.prototype.forEach.call(document.querySelectorAll('*'), function (el) {
@@ -161,24 +155,12 @@ const PAGE_PROBE = `(function () {
   });
   return JSON.stringify({
     ready: root.getAttribute('data-xv-ready'),
-    counts: counts,
     violations: window.__xvViolations || [],
     inlineHandlers: inlineHandlers,
     title: document.title,
     scrollWidth: root.scrollWidth,
     innerWidth: window.innerWidth,
     bodyBackground: getComputedStyle(document.body).backgroundColor,
-    highlighted: Array.prototype.map.call(document.querySelectorAll('.xv-line-hl'), function (el) { return Number(el.getAttribute('data-n')); }),
-    highlightInView: (function () {
-      var line = document.querySelector('.xv-line-hl');
-      var box = document.querySelector('.xv-code');
-      if (!line || !box) return null;
-      var l = line.getBoundingClientRect();
-      var c = box.getBoundingClientRect();
-      return l.top >= c.top && l.bottom <= c.bottom && l.top >= 0 && l.bottom <= window.innerHeight;
-    })(),
-    notice: (document.querySelector('.xv-notice') || {}).textContent || null,
-    codeLines: document.querySelectorAll('.xv-line').length,
     prefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
   });
 })()`;
@@ -326,11 +308,6 @@ async function run(options) {
     ready: timedOut ? 'timeout' : probe.ready,
     elapsedMs: Date.now() - started,
     title: probe ? probe.title : null,
-    counts: probe ? probe.counts : {},
-    highlighted: probe ? probe.highlighted : [],
-    highlightInView: probe ? probe.highlightInView : null,
-    notice: probe ? probe.notice : null,
-    codeLines: probe ? probe.codeLines : 0,
     horizontalOverflow: probe ? probe.scrollWidth > probe.innerWidth : null,
     bodyBackground: probe ? probe.bodyBackground : null,
     prefersDark: probe ? probe.prefersDark : null,
@@ -346,11 +323,12 @@ async function run(options) {
   };
 }
 
+// Exit only once the text is written: on a pipe, process.exit right after a large write cuts the output at the pipe's buffer.
+const finish = (stream, text, code) => stream.write(text, () => process.exit(code));
+
 try {
   const result = await run(parseArgs(process.argv.slice(2)));
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  process.exit(result.ok ? 0 : 1);
+  finish(process.stdout, `${JSON.stringify(result, null, 2)}\n`, result.ok ? 0 : 1);
 } catch (error) {
-  process.stderr.write(`view-smoke failed: ${error.message}\n`);
-  process.exit(1);
+  finish(process.stderr, `view-smoke failed: ${error.message}\n`, 1);
 }

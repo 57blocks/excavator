@@ -19,8 +19,7 @@
  * non-member content.
  */
 
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -33,6 +32,7 @@ import { selectionLedger } from './ignore-rules.mjs';
 import { isGitRepoRoot, headSha } from './git-utils.mjs';
 import { GitCommitSnapshot } from './git-commit-snapshot.mjs';
 import { DirectorySnapshot } from './directory-snapshot.mjs';
+import { makeSnapshotDir } from './snapshot-dir.mjs';
 
 /**
  * Detect member git repositories directly under `root` (one level deep —
@@ -186,7 +186,7 @@ export class MultiRepoSnapshot {
    * @returns {{ dir: string, drifted: boolean, driftedPaths: string[], cleanup: () => void }}
    */
   materialize() {
-    const dest = mkdtempSync(join(tmpdir(), 'excavator-snapshot-multi-'));
+    const dest = makeSnapshotDir('multi');
     for (const [id, member] of this._memberById) {
       const memberMaterialized = member.materialize();
       const memberDest = join(dest, id);
