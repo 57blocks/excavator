@@ -26,15 +26,15 @@
 - [x] 1.2 第一版：`tests/skill/test_graph_skill_layer_step.test.mjs`。
 - [x] 1.3 四个 SKILL.md 按 D1–D3 加 Reading Layers 一节，改分层行的说明、取分层的一步与 onboard 的 Architecture Layers 一行。
 - [x] 1.4 测试按 D4。
-- [ ] 1.5 `finalize-incremental.mjs` 按 D6 写 `layersFrom: "incremental"`。
-- [ ] 1.6 四个 SKILL.md 的 Reading Layers 一节按 D1 加 `layersFrom` 一条与它的命令，建议的命令改为 `/excavator --full`。
-- [ ] 1.7 测试按 D4 加真实流水线的三步与挪动 `layersFrom` 一条的改法。
+- [x] 1.5 `finalize-incremental.mjs` 按 D6 写 `layersFrom: "incremental"`。
+- [x] 1.6 四个 SKILL.md 的 Reading Layers 一节按 D1 加 `layersFrom` 一条与它的命令，建议的命令改为 `/excavator --full`。
+- [x] 1.7 测试按 D4 加真实流水线的三步与挪动 `layersFrom` 一条的改法。
 
 ## 2. 验收
 
 - [ ] 2.1 O1：先在改 skill 之前的检出上跑新测试，记下红的条目；改完后跑绿。O2–O5。
 - [ ] 2.2 验收记录写进 design.md；开 PR，按 `REVIEW.md` 审查。
-- [ ] 2.3 审查第 2 轮：O6、O7，受影响的测试与 O4 的两个静态检查。
+- [x] 2.3 审查第 2 轮：O6、O7，受影响的测试与 O4 的两个静态检查。
 
 ## 3. 归档
 

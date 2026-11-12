@@ -98,3 +98,12 @@
 - 语义图当前但分层为空时，规则 2 适用，不再看分层行。
 - Full 之后的 `PARTIAL_UPDATE`：图谱里还没有分层行，`finalize-incremental.mjs` 把所有文件归入 `layer:other`，规则 1 选中的就是这一个分层。它是最后写出的，照规则用它；Full 的分层不传给增量更新是写出方的问题，不在本变更范围内。
 - `layersFrom` 出现之前写出的增量图谱：见 D6 末段。
+
+## 验收记录（审查第 2 轮）
+
+- **O6：** 在第 1 轮的 skill 上（`finalize-incremental.mjs` 已写 `layersFrom`，测试为本轮版本）：33 条中 15 条红，四个 skill 各缺第 4 条规则、`layersFrom` 与 `/excavator --full`，命令只有 6 条，真实流水线三步都因没有 `layersFrom` 命令而红。改完 skill 后 33 条全绿。增量更新之后那一步同时断言两个摘要仍相等、`jq` 按 `file:src/c.ts` 在语义图里查不到分层：第 1 轮的规则 1 会在这里选中语义图，说新文件不在任何分层里。
+- **装置自检：** 删掉 `finalize-incremental.mjs` 写 `layersFrom` 的一行，只有「增量更新之后」一条变红（33 条中 1 条），还原后全绿。
+- **O3（加两种改法）：** 把 `layersFrom` 一条挪到摘要比较之后、把建议改回 `--mode=full`，四个 skill 各自都报出问题。
+- **O7：** `finalize-incremental.mjs` 只在写分层行的分支写 `layersFrom`，`SKIP` 分支与 `lazy-analyze.mjs` 未改；第 2 轮真实流水线的「再一次 Full」一步确认 F1 去掉了它而分层行保留。
+- **受影响的测试：** 读 `finalize-incremental.mjs` 或四个 SKILL.md 的 21 个测试文件，433 条全绿（本地，`--maxWorkers=3`）；全量交 CI。
+- **O4：** `node scripts/check-refs.mjs` 通过；`openspec validate --all --strict` 64/64。
