@@ -153,11 +153,14 @@
  *       table there when the run's language is English. The fixed text is
  *       written before the map: the language is --language, else map.json's.
  *   assemble <out> --project <root> [--views <list>]
- *       Write <out>/handbook.md (product view) and/or <out>/handbook-technical.md
- *       (technical view), byte for byte the same from the same input.
+ *       Join the checked Markdown chapters of <out>/chapters/ (the order of
+ *       outline.json, else the default) into <out>/handbook.md (product view,
+ *       citations removed) and/or <out>/handbook-technical.md (chapters as
+ *       written), with the fixed sentences and the coverage section; refuses a
+ *       chapter that was not checked or changed after its check.
  *   reply <out> --project <root> [--views <list>]
- *       Print the lines the run ends with (paths, feature counts by status,
- *       candidate conservation), computed from the checked run.
+ *       Print the lines the run ends with (paths, chapter counts, failed and
+ *       unwritten chapters, candidate conservation), computed from state.json.
  *   page <out> --project <root> [--views <list>]
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
@@ -528,29 +531,21 @@ Commands:
       language is --language (the fixed text is written before the map), or
       map.json's language when the option is not given.
   assemble <out> --project <root> [--views <list>]
-      Write the handbook of each selected view from the map and the checked
-      entries: <out>/handbook.md for the product view, <out>/handbook-technical.md
-      for the technical view; the file of a view that is not selected is removed.
-      --views is product, technical or both separated by a comma (default
-      product; any other value exits 1 and prints the two). Each file's first
-      section is the system overview (the verified overview with the facts the
-      script computes: languages, frameworks, files, lines and git history of
-      each application, the counts of the system, the roles of each domain), or
-      a line saying where the overview stopped and the domain table. The
-      features are grouped by the business domains of <out>/domains.json when it
-      passes check-domains, and by the areas of the map, with a fixed text that
-      says they are areas drawn by the navigation, when it does not (or is
-      missing); a feature's area is shown next to it in the first case. After the
-      features come the two cross-cutting tables, the entity sections (the
-      domains, the roles and the roles-by-feature matrix, computed from verified
-      entries only) and the coverage section. The technical file adds the
-      applications (features by where their quoted passages fall), the external
-      systems (the callers the quoted code shows, and the applications whose
-      source contains the name, kept apart), the applications-by-domain matrix
-      and, for each item, the file and lines of its quoted passages. The product
-      file holds no citation path. Checks the map, every checked entry and the
-      fixed-text table again first, and then writes nothing if any of them
-      fails. Prints the paths.
+      Write the handbook of each selected view from the Markdown chapters
+      under <out>/chapters/: <out>/handbook.md for the product view (every
+      citation removed, the sentence punctuation kept) and
+      <out>/handbook-technical.md for the technical view (chapters as written);
+      the file of a view that is not selected is removed. --views is product,
+      technical or both separated by a comma (default product). Every chapter
+      must have a record in state.json (format /2) of its present bytes, or the
+      command exits 1 and writes nothing. Chapters follow outline.json (format
+      excavator-product-handbook-outline/2) when it holds every chapter,
+      data, dictionaries and history block exactly once, else the default order
+      (each break is printed as a line starting "Outline: "). Each chapter
+      starts with the fixed not-verified sentence (and the not-passed sentence
+      when it failed twice); the data and the status dictionary (technical view)
+      and the code health are rendered from their files; the coverage section
+      is last. Prints the Outline: lines, then the paths.
   page <out> --project <root> [--views <list>]
       Write <out>/handbook.html: the same run, checked the same way, as one
       self-contained page (navigation by domain in the product view, by application
@@ -564,11 +559,12 @@ Commands:
       Print the lines a finished run is answered with, in this order: the path
       of each handbook file of the selected views ("Handbook: <path>" for the
       product view, "Technical handbook: <path>" for the technical view);
-      "Page: <path>" or "Page: not written"; "Features: <n>"
-      with the count of each status; "Overview: <status>"; "Failed: <ids>" when a
-      feature or the overview failed; the
-      candidate conservation line. Checks the run again first; exits 1 with a
-      Next: line when a handbook file is missing. Changes no file.
+      "Page: <path>" or "Page: not written"; "Chapters: <total> (passed <p>,
+      failed <f>, not written <n>)" over the system chapter, every map feature
+      and the six chapters across the features; "Failed: <names>" when one
+      failed; "Not written: <feature ids>" when a feature has no chapter; the
+      candidate conservation line. Refuses what assemble refuses; exits 1 with
+      a Next: line when a handbook file is missing. Changes no file.
 
 <out> is the run's output directory (candidates.json, map.json, entries/,
 state.json, ui.json). --project <root> is the project the run documents; files

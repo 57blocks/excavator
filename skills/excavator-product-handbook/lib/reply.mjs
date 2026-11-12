@@ -1,45 +1,42 @@
 /**
- * `handbook.mjs reply <out> --project <root>`: the lines the orchestrator
- * answers the user with at the end of a run, in a fixed order, computed from
- * the checked run so the model adds nothing up and writes none of them: the
- * path of each handbook file written for the selected views (handbook.md for
- * the product view, handbook-technical.md for the technical view), the page line, the feature counts by status, the
- * status of the system overview and the candidate conservation line. Changes no file.
+ * `handbook.mjs reply <out> --project <root> [--views <list>]`: the lines the orchestrator
+ * answers the user with at the end of a run, in a fixed order, computed from the chapters and
+ * state.json so the model adds nothing up: the handbook file of each selected view, the page
+ * line, the chapter counts (system, every map feature and the six chapters across the features),
+ * the failed chapters, the features without a chapter and the candidate conservation line.
+ * Refuses a run `assemble` would refuse. Changes no file.
  */
 
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import { HANDBOOK_FILES } from './assemble.mjs';
-import { loadCheckedRun } from './load-run.mjs';
-import { PAGE_FILE } from './page.mjs';
-import { STATUSES } from './state.mjs';
-import { OVERVIEW_ID, unitState } from './unit.mjs';
+import { CROSS_CHAPTERS, SYSTEM_CHAPTER, candidatesLine, loadMdRun } from './md-run.mjs';
+import { PAGE_FILE } from './page-chunks.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /** The label of each view's handbook line. */
 const HANDBOOK_LABELS = Object.freeze({ product: 'Handbook', technical: 'Technical handbook' });
 
-/** Returns { status, lines }; status 1 with the reasons when the run does not pass its checks or a handbook file of a selected view is missing. */
+/** Returns { status, lines }; status 1 with the reasons when the run is refused or a handbook file of a selected view is missing. */
 export function replyLines(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
-  const run = loadCheckedRun(outDirArg, root);
+  const run = loadMdRun(outDirArg, root);
   if (!run.ok) return { status: 1, lines: run.lines };
-  const outDir = resolve(outDirArg);
-  const missing = views.filter((view) => !existsSync(join(outDir, HANDBOOK_FILES[view])));
+  const missing = views.filter((view) => !existsSync(join(run.outDir, HANDBOOK_FILES[view])));
   if (missing.length > 0) return { status: 1, lines: [...missing.map((view) => `${HANDBOOK_FILES[view]}: missing`), 'Next: run assemble, then this command again'] };
-  const page = join(outDir, PAGE_FILE);
-  const features = run.map.features;
-  const counts = Object.fromEntries(STATUSES.map((status) => [status, features.filter((feature) => run.state.features[feature.id].status === status).length]));
-  const overview = unitState(run.state, OVERVIEW_ID).status;
-  const failed = [...features.filter((feature) => run.state.features[feature.id].status === 'failed').map((feature) => feature.id), ...(overview === 'failed' ? [OVERVIEW_ID] : [])];
-  const assigned = features.reduce((sum, feature) => sum + feature.candidates.length, 0);
+  const featureIds = run.map.features.map((feature) => feature.id);
+  const names = [SYSTEM_CHAPTER, ...featureIds, ...CROSS_CHAPTERS];
+  const written = names.filter((name) => run.chapters.has(name));
+  const failed = written.filter((name) => run.chapters.get(name).record.status === 'failed');
+  const unwritten = featureIds.filter((id) => !run.chapters.has(id));
+  const page = join(run.outDir, PAGE_FILE);
   const lines = [
-    ...views.map((view) => `${HANDBOOK_LABELS[view]}: ${join(outDir, HANDBOOK_FILES[view])}`),
+    ...views.map((view) => `${HANDBOOK_LABELS[view]}: ${join(run.outDir, HANDBOOK_FILES[view])}`),
     existsSync(page) ? `Page: ${page}` : 'Page: not written',
-    `Features: ${features.length} (${STATUSES.map((status) => `${status} ${counts[status]}`).join(', ')})`,
-    `Overview: ${overview}`,
+    `Chapters: ${names.length} (passed ${written.length - failed.length}, failed ${failed.length}, not written ${names.length - written.length})`,
   ];
   if (failed.length > 0) lines.push(`Failed: ${failed.join(', ')}`);
-  lines.push(`Candidates: ${run.candidates.length} listed, ${assigned} in features, ${run.map.unassigned.length} unassigned; none missing, none counted twice`);
+  if (unwritten.length > 0) lines.push(`Not written: ${unwritten.join(', ')}`);
+  lines.push(candidatesLine(run.map, run.candidates));
   return { status: 0, lines };
 }

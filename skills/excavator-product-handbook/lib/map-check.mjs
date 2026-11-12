@@ -47,7 +47,7 @@ function structureProblems(map) {
 }
 
 /** Every candidate id exactly once across the features and `unassigned`; each miss and each double assignment is named. */
-function conservationProblems(map, candidates) {
+export function conservationProblems(map, candidates) {
   const known = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const owners = new Map();
   const claim = (id, owner) => owners.set(id, [...(owners.get(id) ?? []), owner]);
