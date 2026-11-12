@@ -79,6 +79,12 @@
 - 比较提交（`project.gitCommitHash` 与语义图的 `sourceSnapshot`）：同样被 `reuse` 分支打破，非 git 目标没有提交。
 - 让增量更新改写或删掉 `factsDigest`：查看器、`project-service.mjs` 与 F3 的判据都读它，影响面超出读分层的 skill。
 
+### D7 增量更新从哪里起步（审查第 3 轮）
+
+Full 运行把分层写进 `semantic-graph.json`，不写进图谱。没有 D7 时，Full 之后第一次 `PARTIAL_UPDATE` 从空分层起步，`assignLayers` 把所有文件归入 `layer:other`；有了 `layersFrom`，读图谱的 skill 就会报这一个兜底分层，旧文件不再在 Full 给的分层里。
+
+`finalize-incremental.mjs` 不重跑 Phase 4 时，起步分层按 D1 的同一个顺序取：文件头的 `layersFrom` 是 `incremental` 时用图谱的分层行；否则 `semantic-graph.json` 的 `factDigest` 等于上一次的 `factsDigest` 时用它的分层；否则用图谱带着的分层行。语义图读不了时照旧用分层行，并在 stderr 说明。起步来源每次都写到 stderr。`ARCHITECTURE_UPDATE` 用 Phase 4 新给的 `layers.json`，不变。
+
 `ProjectMetaSchema` 是 passthrough，多一个字段不影响读图谱的代码。这个字段出现之前写出的增量图谱没有它，规则 2 仍会选中语义图，直到下一次增量更新。
 
 ## 验收 oracle（动手前写死；审查第 1 轮后改为 D1–D4 的版本）
@@ -90,13 +96,14 @@
 - **O5：** 四个 SKILL.md 的 diff 只含 Reading Layers 一节、分层行的说明、取分层的一步，onboard 另加 Architecture Layers 一行，其余措辞逐字不变。
 - **O6（审查第 2 轮）：** D4 的真实流水线测试在第 1 轮的 skill 上（`finalize-incremental.mjs` 已写 `layersFrom`）是红的，增量更新之后那一步选中的是语义图；改完 skill 后全绿。三步里每一步选中的来源与 D4 所列一致。
 - **O7（审查第 2 轮）：** `finalize-incremental.mjs` 只在写分层行的分支写 `layersFrom`；`SKIP` 分支与 `lazy-analyze.mjs` 的输出不变。
+- **O8（审查第 3 轮）：** 真实流水线里增量更新之后，旧文件 `file:src/a.ts` 仍在 Full 给的 `layer:service`，新文件归入同一分层，分层行只有 Full 给的两个分层；第二次 Full 把分层改名为 `layer:core` 后，第二次增量更新的分层行是 `layer:core`，不是第二次 Full 带过来的旧分层行。在 D7 之前的 `finalize-incremental.mjs` 上这两条都是红的。
 
 ## Risks / Trade-offs
 
 - 契约测试只认加粗标题含 layer 的编号步骤。将来改标题去掉 layer，测试会因为「恰好一个」而变红，不会静默放过。
 - 测试证明 skill 写的命令在真实产物上取到规则所说的输入，不证明模型照规则做；照做与否要真实运行看。
 - 语义图当前但分层为空时，规则 2 适用，不再看分层行。
-- Full 之后的 `PARTIAL_UPDATE`：图谱里还没有分层行，`finalize-incremental.mjs` 把所有文件归入 `layer:other`，规则 1 选中的就是这一个分层。它是最后写出的，照规则用它；Full 的分层不传给增量更新是写出方的问题，不在本变更范围内。
+- Full 之后的 `PARTIAL_UPDATE`：由 D7 从语义图起步，旧文件保留 Full 给的分层，新文件按目录、连接与分层顺序归入（`assignLayers`）。
 - `layersFrom` 出现之前写出的增量图谱：见 D6 末段。
 
 ## 验收记录（审查第 2 轮）
@@ -107,3 +114,8 @@
 - **O7：** `finalize-incremental.mjs` 只在写分层行的分支写 `layersFrom`，`SKIP` 分支与 `lazy-analyze.mjs` 未改；第 2 轮真实流水线的「再一次 Full」一步确认 F1 去掉了它而分层行保留。
 - **受影响的测试：** 读 `finalize-incremental.mjs` 或四个 SKILL.md 的 21 个测试文件，433 条全绿（本地，`--maxWorkers=3`）；全量交 CI。
 - **O4：** `node scripts/check-refs.mjs` 通过；`openspec validate --all --strict` 64/64。
+
+## 验收记录（审查第 3 轮）
+
+- **O8：** 测试在 D7 之前的 `finalize-incremental.mjs` 上：34 条中 2 条红，正是增量更新之后与第二次增量更新之后两条；加上 D7 后 34 条全绿。
+- **未覆盖：** 起步顺序里「`layersFrom` 先于语义图」一条没有能区分两者的夹具：连续两次 `PARTIAL_UPDATE` 时，从分层行起步与从语义图起步按目录归入后结果相同；只有中间夹一次 `ARCHITECTURE_UPDATE` 才会不同，测试没有造这种情形。

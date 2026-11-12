@@ -2,7 +2,7 @@
 
 ### Requirement: 读图谱的 skill 从最后写出分层的地方取分层
 
-`finalize-incremental.mjs` 写出分层行（`PARTIAL_UPDATE` 与 `ARCHITECTURE_UPDATE`）时，SHALL 在图谱文件头的 `project` 里写 `layersFrom: "incremental"`，标明分层行是最后写出的分层；`lazy-analyze.mjs` 组装的 `project` MUST NOT 带这个字段。
+`finalize-incremental.mjs` 写出分层行（`PARTIAL_UPDATE` 与 `ARCHITECTURE_UPDATE`）时，SHALL 在图谱文件头的 `project` 里写 `layersFrom: "incremental"`，标明分层行是最后写出的分层；`lazy-analyze.mjs` 组装的 `project` MUST NOT 带这个字段。不重跑 Phase 4 时，`finalize-incremental.mjs` SHALL 按下面同一个顺序选起步分层（规则 4 时从空分层起步），MUST NOT 在有可用分层时从空分层起步。
 
 读 `knowledge-graph.jsonl` 的 skill 取分层时，SHALL 按顺序用第一个适用的来源：
 1. 图谱文件头的 `fields.project.layersFrom` 是 `incremental`：图谱里的 `{"record":"layer",…}` 行；
@@ -21,6 +21,10 @@
 #### Scenario: Full 之后又做增量更新
 - **WHEN** Full 运行之后，增量更新加了 `src/c.ts` 并写出分层行；`factsDigest` 沿用上一次，仍等于语义图的 `factDigest`，文件头的 `layersFrom` 是 `incremental`
 - **THEN** `excavator-explain src/c.ts` 说出分层行里列出 `file:src/c.ts` 的分层，并说明语义图的分层比分层行旧
+
+#### Scenario: Full 之后第一次增量更新的起步分层
+- **WHEN** Full 运行把 `src/a.ts` 放进 Service 分层，之后的 `PARTIAL_UPDATE` 加了 `src/c.ts`
+- **THEN** 写出的分层行里 `file:src/a.ts` 仍在 Service 分层，`file:src/c.ts` 按目录归入，不是所有文件都落进 `layer:other`
 
 #### Scenario: 增量更新之后又跑 Full
 - **WHEN** 增量更新之后再跑 Full：F1 重建文件头，没有 `layersFrom`，分层行原样带过来；F3 写出 `factDigest` 等于新 `factsDigest` 的语义图

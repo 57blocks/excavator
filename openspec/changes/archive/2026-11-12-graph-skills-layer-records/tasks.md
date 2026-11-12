@@ -29,6 +29,7 @@
 - [x] 1.5 `finalize-incremental.mjs` 按 D6 写 `layersFrom: "incremental"`。
 - [x] 1.6 四个 SKILL.md 的 Reading Layers 一节按 D1 加 `layersFrom` 一条与它的命令，建议的命令改为 `/excavator --full`。
 - [x] 1.7 测试按 D4 加真实流水线的三步与挪动 `layersFrom` 一条的改法。
+- [x] 1.8 审查第 3 轮：`finalize-incremental.mjs` 按 D7 选起步分层；测试加 O8 的两步。
 
 ## 2. 验收
 
