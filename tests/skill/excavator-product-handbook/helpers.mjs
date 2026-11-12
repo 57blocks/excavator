@@ -1,0 +1,358 @@
+/**
+ * Shared helpers for the excavator-product-handbook script tests: run
+ * `handbook.mjs` as a CLI and build a throwaway run (a copy of the synthetic
+ * fixture project, an out directory with its candidates.json, and a map and an
+ * entry that pass every check). Every project here is purpose-built; nothing
+ * is derived from a real project.
+ */
+
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { entryPath } from '../../../skills/excavator-product-handbook/lib/entry-check.mjs';
+import { entryDigest, loadState, saveState } from '../../../skills/excavator-product-handbook/lib/state.mjs';
+import { setUnitState, unitState } from '../../../skills/excavator-product-handbook/lib/unit.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+export const repoRoot = resolve(here, '../../..');
+export const HANDBOOK_SCRIPT = join(repoRoot, 'skills/excavator-product-handbook/handbook.mjs');
+export const SHIPPED_UI = join(repoRoot, 'skills/excavator-product-handbook/ui-strings.json');
+export const FIXTURE_PROJECT = join(repoRoot, 'tests/fixtures/product-handbook/project');
+
+/**
+ * Run `node handbook.mjs <args>`; returns { status, stdout, stderr, lines } (lines: the non-empty stdout lines).
+ * The many runs here that build verified /2 entries set the variable that lets check-entry read a /2 file
+ * (a new entry is /3); the tests of the /3 rules pass `env: { EXCAVATOR_HANDBOOK_ALLOW_V2_ENTRY: '' }` to drop it.
+ */
+export function runHandbook(args, options = {}) {
+  const env = { ...process.env, EXCAVATOR_HANDBOOK_ALLOW_V2_ENTRY: '1', ...options.env };
+  const result = spawnSync(process.execPath, [HANDBOOK_SCRIPT, ...args], { encoding: 'utf-8', ...options, env });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr, lines: result.stdout.split('\n').filter((line) => line !== '') };
+}
+
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const ev = (file, passage) => ({ file, passage });
+
+let candidatesCache = null;
+/** The fixture's candidates, listed once through the CLI. */
+function fixtureCandidates() {
+  if (candidatesCache === null) {
+    const out = runHandbook(['candidates', FIXTURE_PROJECT]);
+    if (out.status !== 0) throw new Error(`candidates failed: ${out.stderr}`);
+    candidatesCache = JSON.parse(out.stdout);
+  }
+  return candidatesCache;
+}
+
+/** The map that passes check-map on the fixture, with candidate ids filled in. */
+export function goodMap(idOf) {
+  return {
+    format: 'excavator-product-handbook-map/1',
+    language: 'English',
+    areas: [
+      { id: 'A1', name: 'Order handling' },
+      { id: 'A2', name: 'Automatic work' },
+    ],
+    features: [
+      {
+        id: 'F1', name: 'Orders', area: 'A1', reach: 'menu', label: 'Orders',
+        evidence: [ev('src/menu.js', "{ label: 'Orders', path: '/orders' },")],
+        candidates: [idOf('src/routes/orders.js', 5), idOf('src/routes/orders.js', 6)],
+        seedFiles: ['src/routes/orders.js', 'src/menu.js', 'src/forms/order-form.js'],
+      },
+      {
+        id: 'F2', name: 'Archive', area: 'A1', reach: 'link', label: 'Archive',
+        evidence: [ev('src/menu.js', "// { label: 'Archive', path: '/archive' },")],
+        candidates: [idOf('src/routes/archive.js', 5)],
+        seedFiles: ['src/routes/archive.js'],
+      },
+      {
+        id: 'F3', name: 'Reminders', area: 'A2', reach: 'automated',
+        candidates: [idOf('src/jobs/reminders.js', 4)],
+        seedFiles: ['src/jobs/reminders.js'],
+      },
+      {
+        id: 'F4', name: 'Admin tool', area: 'A2', reach: 'operator',
+        candidates: [idOf('bin/admin.js', 1)],
+        seedFiles: ['bin/admin.js'],
+      },
+      {
+        id: 'F5', name: 'Orders', area: 'A2', reach: 'interface',
+        candidates: [idOf('src/routes/orders.js', 7)],
+        seedFiles: ['src/routes/orders.js'],
+      },
+    ],
+    unassigned: [{ candidate: idOf('src/app.js', 8), reason: 'A health check that no reader uses.' }],
+    roles: [
+      { label: 'Clerk', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] },
+      { label: 'Approver', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] },
+    ],
+    names: [{ label: 'WorkBoard', evidence: [ev('src/menu.js', "{ label: 'WorkBoard', path: '/board' },")] }],
+  };
+}
+
+/**
+ * The domains file that passes check-domains on the good map: orders, their
+ * archive and the interface that also serves orders in one domain, the two
+ * features that run by themselves or by an operator in another. The areas of
+ * the map are A1 (F1, F2) and A2 (F3, F4, F5), so the first domain crosses them.
+ */
+export function goodDomains() {
+  return {
+    format: 'excavator-product-handbook-domains/1',
+    language: 'English',
+    domains: [
+      { id: 'D1', name: 'Customer orders', features: ['F1', 'F2', 'F5'] },
+      { id: 'D2', name: 'System upkeep', features: ['F3', 'F4'] },
+    ],
+  };
+}
+
+/** The entry of F1 that passes check-entry: numbers with and without thousands commas, labels, rules on both sides. */
+export function goodEntry() {
+  const form = 'src/forms/order-form.js';
+  const nameField = "{ label: 'Customer Name', required: true },";
+  const countField = "{ label: 'Item Count', max: 35000 },";
+  return {
+    format: 'excavator-product-handbook-entry/2',
+    id: 'F1',
+    purpose: { text: 'Staff place new orders for customers.', evidence: [ev(form, "title: 'New Order',")] },
+    who: [{ role: 'Clerk', can: 'Create an order.', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] }],
+    where: [
+      { label: 'Orders', evidence: [ev('src/menu.js', "{ label: 'Orders', path: '/orders' },")] },
+      { label: 'New Order', evidence: [ev(form, "title: 'New Order',")] },
+    ],
+    screens: [{
+      name: 'New Order',
+      evidence: [ev(form, "title: 'New Order',")],
+      fields: [
+        {
+          label: 'Customer Name',
+          evidence: [ev(form, nameField)],
+          rules: [{ side: 'frontend', text: 'The field is required.', evidence: [ev(form, nameField)] }],
+        },
+        {
+          label: 'Item Count',
+          evidence: [ev(form, countField)],
+          rules: [
+            { side: 'backend', text: 'At most 35,000 items.', evidence: [ev(form, countField)] },
+            { side: 'frontend', text: 'An upload may hold up to 100,000 bytes.', evidence: [ev(form, 'const MAX_UPLOAD = 100_000;')] },
+          ],
+        },
+      ],
+    }],
+    operations: [{
+      name: 'Place an order',
+      sentences: [
+        { text: 'The clerk fills in the customer name.', evidence: [ev(form, nameField)] },
+        { text: 'The item count is limited to 35000.', evidence: [ev(form, countField)] },
+      ],
+      triggers: [],
+      calculations: [],
+      changes: [],
+      edges: [],
+      handoffs: [],
+    }],
+    states: [
+      { label: 'Draft', meaning: 'The order is not sent yet.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] },
+      { label: 'Submitted', meaning: 'The order was sent.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] },
+    ],
+    transitions: [],
+    notifications: [],
+    automatic: [],
+    unknowns: [{ item: 'Who approves a large order', searched: 'the order form and the routes of the orders area' }],
+  };
+}
+
+/**
+ * A throwaway run: { root, out, candidates, idOf, map, domains, entry, writeMap, writeDomains, writeEntry, writeJson, readJson,
+ * run, cleanup }. `root` is a copy of the fixture project; `out` holds candidates.json already.
+ */
+export function makeRun() {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'xhb-')));
+  const root = join(base, 'project');
+  const out = join(base, 'out');
+  cpSync(FIXTURE_PROJECT, root, { recursive: true });
+  mkdirSync(join(out, 'entries'), { recursive: true });
+  const listed = clone(fixtureCandidates());
+  listed.projectRoot = root;
+  writeFileSync(join(out, 'candidates.json'), `${JSON.stringify(listed, null, 2)}\n`);
+  const idOf = (file, line) => {
+    const hit = listed.items.find((item) => item.file === file && item.line === line);
+    if (!hit) throw new Error(`no candidate at ${file}:${line}`);
+    return hit.id;
+  };
+  const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  const run = {
+    base,
+    root,
+    out,
+    candidates: listed,
+    idOf,
+    map: goodMap(idOf),
+    domains: goodDomains(),
+    entry: goodEntry(),
+    writeJson,
+    readJson: (name) => JSON.parse(readFileSync(join(out, name), 'utf-8')),
+    writeMap: (map = run.map) => writeJson(join(out, 'map.json'), map),
+    writeDomains: (domains = run.domains) => writeJson(join(out, 'domains.json'), domains),
+    writeEntry: (id = 'F1', entry = run.entry) => writeJson(join(out, 'entries', `${id}.json`), entry),
+    run: (command, ...args) => runHandbook([command, out, ...args, '--project', root]),
+    cleanup: () => rmSync(base, { recursive: true, force: true }),
+  };
+  return run;
+}
+
+/** Run check-map on a fresh good run and return it, so a test starts from a map that passed. */
+export function makeCheckedMapRun() {
+  const run = makeRun();
+  run.writeMap();
+  const result = run.run('check-map');
+  if (result.status !== 0) throw new Error(`the good map failed check-map:\n${result.stdout}${result.stderr}`);
+  return run;
+}
+
+/** Delete the item at `path` (`who[1]`, `screens[0].fields[1].rules[0]`, `purpose`) from an entry document. */
+function dropPath(doc, path) {
+  const keys = [...path.matchAll(/([A-Za-z_]+)|\[(\d+)\]/g)].map((found) => found[1] ?? Number(found[2]));
+  let target = doc;
+  for (const key of keys.slice(0, -1)) target = target[key];
+  if (Array.isArray(target)) target.splice(keys.at(-1), 1);
+  else delete target[keys.at(-1)];
+}
+
+/**
+ * Settle a checked unit as an older run left it: the status `confirmed` or `verified` with the digest of its entry
+ * file. The statuses stay valid and count as done (openspec change handbook-drop-verification); no command sets
+ * them any more, so a test writes the state itself. `removed` is the list of records `[{ path, verdict, reason, step?,
+ * reasons?, at?, claim? }]` an older run kept for items it took out: the items are deleted from the entry file here
+ * (give the paths of one array in descending index order) and the records go to state.json.
+ */
+function settle(run, id, status, removed = []) {
+  const loaded = loadState(run.out);
+  if (!loaded.ok) throw new Error(loaded.problem);
+  const { state } = loaded;
+  const current = unitState(state, id);
+  if (current.status !== 'checked') throw new Error(`${id} is ${current.status}, not checked`);
+  const file = join(run.out, entryPath(id));
+  if (removed.length > 0) {
+    const doc = JSON.parse(readFileSync(file, 'utf-8'));
+    for (const record of removed) dropPath(doc, record.path);
+    writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`);
+  }
+  const next = { status, attempts: current.attempts, entryDigest: entryDigest(file) };
+  if (removed.length > 0) next.removed = removed.map((record) => ({ claim: record.path, reason: '', ...record }));
+  setUnitState(state, id, next);
+  saveState(run.out, state);
+}
+
+/** Settle a checked unit as `failed` at an older verification step, as an older run left it. */
+export function failChecked(run, id, step, reasons, removed = []) {
+  const loaded = loadState(run.out);
+  if (!loaded.ok) throw new Error(loaded.problem);
+  const { state } = loaded;
+  const current = unitState(state, id);
+  setUnitState(state, id, { status: 'failed', attempts: current.attempts, failure: { step, reasons }, ...(removed.length > 0 ? { removed: removed.map((record) => ({ claim: record.path, reason: '', ...record })) } : {}) });
+  saveState(run.out, state);
+}
+
+/** Settle a checked unit as `confirmed` (an older run's two verifiers agreed). */
+export function confirmChecked(run, id = 'F1', removed = []) {
+  settle(run, id, 'confirmed', removed);
+}
+
+/** Settle a checked unit as `verified` (an older run's tracers found nothing); `removed` as in `settle`. */
+export function verifyChecked(run, id = 'F1', removed = []) {
+  settle(run, id, 'verified', removed);
+}
+
+/**
+ * Settle a checked derived unit (the ranking, the remedies, every checked topics lane) as `verified`, as an older run's
+ * judges left it with nothing dropped. Returns a passing result so a test can keep its `.status` check.
+ */
+export function settleDerived(run, kind) {
+  const loaded = loadState(run.out);
+  if (!loaded.ok) throw new Error(loaded.problem);
+  const { state } = loaded;
+  if (kind === 'topics') {
+    for (const [lane, entry] of Object.entries(state.topics ?? {})) if (entry.status === 'checked') state.topics[lane] = { ...entry, status: 'verified' };
+  } else {
+    if (state[kind]?.status !== 'checked') throw new Error(`${kind} is not checked`);
+    state[kind] = { ...state[kind], status: 'verified' };
+  }
+  saveState(run.out, state);
+  return { status: 0, lines: [] };
+}
+
+/** Non-ASCII text from code points, so that test sources hold only ASCII. */
+export const cjk = (...points) => String.fromCodePoint(...points);
+/** A CJK mark (two characters) put in front of every narrative text of a non-Latin test run. */
+export const MARK = cjk(0x624b, 0x518c);
+
+const markText = (text, mark) => `${mark}${text}`;
+
+/**
+ * A translation of the shipped table for the language `language`: every value
+ * gets `mark(index)` in front (`mark` returns '' to leave a value alone), the
+ * placeholders stay. The default mark is a CJK mark on every value.
+ */
+export function translatedUi(language = 'Chinese', mark = () => MARK) {
+  const table = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8'));
+  table.language = language;
+  Object.keys(table.strings).forEach((key, index) => {
+    table.strings[key] = markText(table.strings[key], mark(index));
+  });
+  return table;
+}
+
+/** A table for a language written in Latin letters: fewer than half of the values hold an accented letter. */
+export const latinUi = (language = 'French') => translatedUi(language, (index) => (index % 4 === 0 ? cjk(0xe9) : ''));
+
+/** The good map with the texts a model writes (area names without evidence, feature names without a label, unassigned reasons) marked. */
+export function markedMap(map, language = 'Chinese', mark = MARK) {
+  const marked = clone(map);
+  marked.language = language;
+  for (const area of marked.areas) if (area.evidence === undefined) area.name = markText(area.name, mark);
+  for (const feature of marked.features) if (feature.label === undefined) feature.name = markText(feature.name, mark);
+  for (const entry of marked.unassigned) entry.reason = markText(entry.reason, mark);
+  return marked;
+}
+
+/** The good domains with every name marked (the domain names of the good file carry no evidence). */
+export function markedDomains(domains, language = 'Chinese', mark = MARK) {
+  const marked = clone(domains);
+  marked.language = language;
+  for (const domain of marked.domains) if (domain.evidence === undefined) domain.name = markText(domain.name, mark);
+  return marked;
+}
+
+/** The good entry with every narrative text marked. */
+export function markedEntry(entry, mark = MARK) {
+  const marked = clone(entry);
+  marked.purpose.text = markText(marked.purpose.text, mark);
+  for (const who of marked.who) who.can = markText(who.can, mark);
+  for (const screen of marked.screens) for (const field of screen.fields) for (const rule of field.rules) rule.text = markText(rule.text, mark);
+  for (const operation of marked.operations) {
+    operation.name = markText(operation.name, mark);
+    for (const sentence of operation.sentences) sentence.text = markText(sentence.text, mark);
+  }
+  for (const state of marked.states) state.meaning = markText(state.meaning, mark);
+  for (const n of marked.notifications) for (const key of ['trigger', 'recipient', 'channel', 'content']) n[key] = markText(n[key], mark);
+  for (const a of marked.automatic) for (const key of ['when', 'effect']) a[key] = markText(a[key], mark);
+  for (const u of marked.unknowns) for (const key of ['item', 'searched']) u[key] = markText(u[key], mark);
+  return marked;
+}
+
+/** Set `value` at a dotted path of an object, e.g. set(map, 'features.0.label', 'x'). */
+export function set(object, path, value) {
+  const keys = path.split('.');
+  let target = object;
+  for (const key of keys.slice(0, -1)) target = target[key];
+  target[keys.at(-1)] = value;
+  return object;
+}
+
+export { clone };

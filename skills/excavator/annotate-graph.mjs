@@ -10,9 +10,10 @@
  *     record supports it, else `inferred`) and, where a record exists, the
  *     `evidence` line to check it against;
  *   - counts what disagrees: edges whose cited line is wrong, `extracted`
- *     edges no record supports, records with no edge, declarations with no
- *     node, nodes with no declaration, and declarations the model merged into
- *     one node (identity collisions);
+ *     edges no record supports, `calls` edges to a file other than the only
+ *     one their call scope declares the callee in, records with no edge,
+ *     declarations with no node, nodes with no declaration, and declarations
+ *     the model merged into one node (identity collisions);
  *   - adds the coverage ledger, the gap list and the source/facts digests;
  *   - marks the nodes of files an incremental run classified as COSMETIC and
  *     therefore did NOT re-analyse with `verification: "dirty"`, and records
@@ -304,7 +305,8 @@ export function buildExpectedRecords({ structure, importMap }) {
  * and the files it imports, by the fact graph's own scope (`callScopePaths`:
  * a file only a re-export reaches is not in it). Only these are eligible for
  * `edge-missing`: an ambiguous or unresolvable callee is a gap in the readers,
- * not a hole in the model's graph.
+ * not a hole in the model's graph. For the same reason only these pin a model
+ * `calls` edge to one target file (`edge-target-mismatch`).
  */
 export function resolveUniqueCallSites({ structure, importMap, expected }) {
   const declarationsByName = new Map();
@@ -437,6 +439,12 @@ export function annotate({
   const expected = buildExpectedRecords({ structure, importMap });
   const nodes = indexNodes(annotated.nodes);
   const samples = sampler(sampleLimit);
+  const uniqueCalls = resolveUniqueCallSites({ structure, importMap, expected });
+  // `<file>|<callee>` -> the one file a uniquely resolved call site reaches.
+  // Every site of one callee text in one file has the same scope and so the
+  // same resolution, which is what lets one key stand for all of them.
+  const uniqueCallTargets = new Map();
+  for (const site of uniqueCalls.unique) uniqueCallTargets.set(`${site.file}|${site.callee}`, site.targets[0]);
 
   const counts = {
     edgesTotal: annotated.edges.length,
@@ -446,6 +454,7 @@ export function annotate({
     edgeAutoInferred: {},
     edgeContradicted: 0,
     edgeUnsupported: 0,
+    edgeTargetMismatch: 0,
     evidenceVerified: 0,
     evidenceCorrected: 0,
     supplementAdded: {},
@@ -473,7 +482,22 @@ export function annotate({
     if (!edge || typeof edge !== 'object') continue;
     const source = nodes.byId.get(edge.source);
     const target = nodes.byId.get(edge.target);
-    const record = findRecord(edge, source, target, expected);
+    const found = findRecord(edge, source, target, expected, uniqueCallTargets);
+    // A target mismatch is not a match: the edge is treated as one no record
+    // supports, and the site it named stays eligible for `edge-missing`, so
+    // an edge to another declaration never stands in for the missing one.
+    // It is not marked `contradicted`: the call scope is a name lookup, and
+    // where it misses a file (same-package files, member calls recorded by
+    // method name) its one declaration is not where the call goes.
+    const mismatch = found?.mismatch ? found : null;
+    const record = mismatch ? null : found;
+    if (mismatch) {
+      counts.edgeTargetMismatch += 1;
+      samples.add(
+        'edge-target-mismatch',
+        `${edge.source} -> ${edge.target}: ${mismatch.file}:${mismatch.line} ${mismatch.callee} is declared in scope only in ${mismatch.resolved}`,
+      );
+    }
 
     if (record) matchedRecordKeys.add(record.key);
 
@@ -641,7 +665,6 @@ export function annotate({
     }
   }
 
-  const uniqueCalls = resolveUniqueCallSites({ structure, importMap, expected });
   for (const site of uniqueCalls.unique) {
     const key = `calls|${site.file}|${site.callee}`;
     if (matchedRecordKeys.has(key)) continue;
@@ -739,6 +762,11 @@ export function annotate({
   gap('edge-unsupported', 'graph',
     `${counts.edgeUnsupported} edge(s) claim provenance "extracted" with no extractor record`,
     counts.edgeUnsupported);
+  gap('edge-target-mismatch', 'calls',
+    `${counts.edgeTargetMismatch} calls edge(s) target a file other than the only one in the ` +
+    "caller's call scope (its file and import targets, less those only a re-export reaches) " +
+    'that declares the callee',
+    counts.edgeTargetMismatch);
   gap('evidence-corrected', 'graph',
     `${counts.evidenceCorrected} edge(s) had the extractor's line appended beside a disagreeing citation`,
     counts.evidenceCorrected);
@@ -834,8 +862,14 @@ function describeRecord(kind, record) {
 /**
  * Find the extractor record a model edge corresponds to, using the endpoints'
  * own `filePath`/`name` fields — never the shape of the model's ids.
+ *
+ * A `calls` edge whose callee's sites resolve to exactly one declaration
+ * (`uniqueCallTargets`) matches only when its target is in that file;
+ * otherwise, including a target with no `filePath`, the result is
+ * `{ mismatch: true, ... }`, never a record. Sites that are ambiguous or
+ * unresolved still match by caller file and name.
  */
-function findRecord(edge, source, target, expected) {
+function findRecord(edge, source, target, expected, uniqueCallTargets) {
   if (!STRUCTURAL_EDGE_TYPES.includes(edge.type)) return null;
 
   if (edge.type === 'imports') {
@@ -871,7 +905,12 @@ function findRecord(edge, source, target, expected) {
   if (!file || !callee) return null;
   const key = `calls|${file}|${callee}`;
   const record = expected.calls.get(key);
-  return record ? { key, file, line: record.line, evidenceSource: 'tree-sitter' } : null;
+  if (!record) return null;
+  const resolved = uniqueCallTargets.get(`${file}|${callee}`);
+  if (resolved !== undefined && target.filePath !== resolved) {
+    return { mismatch: true, file, line: record.line, callee, resolved };
+  }
+  return { key, file, line: record.line, evidenceSource: 'tree-sitter' };
 }
 
 /**
@@ -1001,7 +1040,8 @@ async function main() {
   process.stderr.write(
     `annotate-graph: edges=${c.edgesTotal} extracted=${c.edgesExtracted} inferred=${c.edgesInferred} ` +
     `edge-auto-inferred=${sum(c.edgeAutoInferred)} edge-contradicted=${c.edgeContradicted} ` +
-    `edge-unsupported=${c.edgeUnsupported} evidence-corrected=${c.evidenceCorrected} ` +
+    `edge-unsupported=${c.edgeUnsupported} edge-target-mismatch=${c.edgeTargetMismatch} ` +
+    `evidence-corrected=${c.evidenceCorrected} ` +
     `edge-missing=${sum(c.edgeMissing)} node-missing=${c.nodeMissing} ` +
     `node-unsupported=${c.nodeUnsupported} identity-collision=${c.identityCollision} ` +
     `supplement-added=${sum(c.supplementAdded)} dirty-files=${c.dirtyFiles} ` +

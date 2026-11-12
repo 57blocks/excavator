@@ -1,0 +1,251 @@
+## Context
+
+- `excavator-prd-report`（规格 `prd-report`）由泳道各写一章，`assemble` 按 `chapter` 顺序拼成 `PRD.md`：总览、角色表、各章、附录。单篇 `excavator-prd`（规格 `prd-generation`）由一个代理写全文。
+- 在同一个 51 文件的后端成员上各跑一次（`--scope` 指向该子目录）：单个流程的写法两边一致；差在文档骨架、前端一侧与一个失败功能整章缺席（见 proposal 的 Why）。
+- 章节 front-matter 由 `lib/front-matter.mjs` 读，只支持标量、`[a, b]` 与 `- item` 字符串列表；新字段都在这个子集里。
+- `excavator-verify --fix` 会在被核对文档的文末追加核对摘要，标题级别不固定（真实运行里有 `##` 也有 `###`）。
+- 本变更在 `prd-report-finding-priority` 合并之后实现，基于它的 `aggregate`、`reply` 与报告页。
+
+## Goals / Non-Goals
+
+**Goals**
+- 拼出的 `PRD.md` 有单篇的文档骨架：术语表、能力地图、流程索引、全局角色与权限、集中的待确认项、核对只在附录。
+- 骨架里的表与索引全部由脚本从结构字段生成，模型只写叙述与声明。
+- `--scope` 指向子目录时，流程的前端与调用方一侧有内容。
+- 一个功能的失败不会因为编排者漏了重派而静默停在第一次。
+
+**Non-Goals**
+- 见 proposal 的「不做」。
+
+## Decisions
+
+### D1 为什么写代码（AI-first scope gate）
+
+- 术语表、流程索引、角色两张表、待确认项的汇集、范围外读取的计数是全表事实：模型转写会漏行、改名、错链接，所以由脚本从 `index.json` 与章节 front-matter 生成。
+- 哪些是流程、哪些角色是参与者、哪些是权限角色、哪些事项待确认是判断：由泳道写进 front-matter，脚本只核对声明与正文一致。
+- 能力地图（消费方表与能力流程图）是概括性叙述，由编排者写进总览；脚本只检查总览有 mermaid 图。
+
+### D2 共享模型章节：`kind: "reference"`
+
+- 功能的 `kind` 增加 `reference`：多个流程共用的模型（角色与权限、令牌或会话模型、共用的状态字典）。章节写字典表（值 | 含义）、角色 × 能力矩阵、判定过程与一张图；流程章节引用它，不重复。
+- `reference` 功能的 `entrypoints` 可以为空，`seedFiles` 必填；它的 findings 与其他功能相同。
+- `check-index`：所有 `reference` 功能的 `chapter` 小于所有 `flow`、`automated` 功能的 `chapter`，否则打印 `F<n>: reference chapter <c> comes after flow chapter <c2>`。
+- Phase 1c：范围内有权限模型（角色、策略、守卫）时，SHALL 建一个名为 `Roles and permissions`（译成 `$LANGUAGE`）的 `reference` 功能，种子为定义角色、状态、策略与守卫的文件；其他被多个流程共用的模型同样处理。
+
+### D3 章节 front-matter 的新字段与 `check-lane` 检查
+
+```markdown
+---
+id: F1
+name: Sign-in and token refresh
+kind: flow
+actors: [Employee, Third-party application]
+permissionRoles: [normal, admin]
+triggers:
+  - ...
+flows:
+  - "Flow 1: Password sign-in"
+  - "Flow 2: Google sign-in"
+openItems: Open items
+chapter: 2
+---
+```
+
+- `roles` 删除，换成 `actors`（发起或参与流程的用户类别与外部系统：员工、客户、第三方应用、其他服务、运维）与 `permissionRoles`（权限模型里的具名角色，原样拼写）。两者都是列表，可以为空。
+- `flows`：本章每个流程的 `###` 标题，与正文里的标题逐字相同。`flow` 与 `automated` 功能至少一个；`reference` 功能为空列表。
+- `openItems`：集中列出本章待确认项的那个 `###` 标题（标题文字用 `$LANGUAGE`），没有待确认项时省略该键。这一小节是本章最后一个 `###`；内容是表格（事项 | 搜过什么）或列表。
+- `check-lane` 新增的问题行（每种各一个测试，见 O2）：
+  - `front-matter roles is no longer read; write actors and permissionRoles`（出现 `roles` 键）；
+  - `front-matter actors is not a list` / `permissionRoles is not a list` / `flows is not a list`；
+  - `<name> is both an actor and a permission role`；
+  - `flow "<title>" is not a ### heading of the chapter`；
+  - `a flow feature lists no flow` / `an automated feature lists no flow` / `a reference feature lists flows`；
+  - `open items heading "<h>" is not a ### heading of the chapter` / `open items heading "<h>" is not the last ### heading`；
+  - `the chapter has <n> ## headings; it has one, ## <name>, as its first heading`（正文的 `##` 标题恰好一个且是第一个标题）。
+- `aggregate` 对已核对的章节也重算这些检查（它本来就对每个写成的功能重跑 `laneResult`），所以核对改坏了结构时功能变为 `failed`，原因可见。
+
+### D4 拼装顺序与脚本生成的小节
+
+`PRD.md` 依次为（脚本生成的标题与固定词为英文）：
+
+1. `overview.md`：`# <标题>`、Doc Info、目的与能力地图（消费方表与一张 mermaid 能力图）、自动行为。总览 MUST NOT 写词表、角色、流程清单与待确认项。`assemble` 检查总览以一个 `#` 标题开头、含至少一个 mermaid 块，否则退出 1 并打印 `index: overview.md ...`。
+2. `## Terminology`：`| Term | Meaning |`，按 `index.json` 的 `glossary` 顺序；`aggregate` 写 `tables/terminology.md`。
+3. `## Flow index`：`| # | Flow | Feature | Kind |`。每个写成的功能按章节顺序：`reference` 功能一行（`#` 为功能 id，`Flow` 为章节名），其他功能每个 `flows` 一行（`#` 为 `<id>.<n>`）。`Flow` 一格是指向该标题的链接；锚点按 GitHub 的规则从拼好的全文算出（小写、去掉标点、空格变 `-`、重复的依次加 `-1`、`-2`），所以由 `assemble` 生成。
+4. `## Roles`：`### Actors by feature`（行是写成的功能，列是全部 `actors`，按首次出现的顺序）与 `### Permission roles`（`| Role | Features |`，角色按首次出现的顺序）；`aggregate` 写 `tables/roles.md`。
+5. 各章，按 `chapter` 顺序（`reference` 在前，见 D2）。每章去掉它的 `openItems` 小节。
+6. `## Open items`：每个有待确认项小节的功能一个 `### <id> <name>`，下面是该小节的原文；都没有时为 `None.`。`aggregate` 写 `tables/open-items.md`。
+7. `## Appendix`：覆盖、核对、失败的功能、未写成的功能，同前；覆盖小节加一行范围外读取（D7）。
+
+同一输入 SHALL 得到字节相同的 `PRD.md`。章节拆分（正文、`openItems` 小节）由一个函数完成，`assemble`、`aggregate` 与 `page-data` 共用。
+
+### D5 核对摘要不进章节：`excavator-verify --no-summary`
+
+- `excavator-verify` 新增 `--no-summary`：与 `--fix` 同用时，不在文档末尾追加核对摘要；报告照常写计数。没有 `--fix` 时它不起作用。
+- `excavator-prd-report` Phase 3 核对每章时带 `--no-summary`。计数在附录的核对表里（已有），完整报告在 `verification/<id>.md`。
+- 若核对仍在章节里加了 `##` 标题，D3 的单一 `##` 检查使该功能 `failed`，不静默。
+
+### D6 失败后的下一步写在命令输出里
+
+- `check-lane` 失败（含 `lane-wrote-nothing`）时最后一行打印下一步：`attempts` 小于 2 时 `Next: delete <id>'s files, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)`；否则 `Next: <id> stays failed (2 of 2 attempts)`。SKILL.md 第 3 步改为「照 `Next:` 行做」。
+- 重派前删的文件补上核对产物：Phase 2 第 1 步与 `Next:` 行所说的「删掉它的文件」都是 `features/<id>.md`、`findings/<id>.json`、`verification/<id>.txt`、`verification/<id>.md`。原来只删前两个：一个在核对步骤失败（`attempts` 1）的功能重派后，旧的 `verification/<id>.txt` 留着，`aggregate` 又把它判为核对失败，新章节从未被核对。契约测试钉住这四个路径。
+- `summarize` 加 `retryable`：`failed` 且 `attempts` 小于 2 的功能 id，按章节顺序。`reply` 在计数行之后、无模式框架行之前，`retryable` 非空时打印 `Retry: <ids> failed after one attempt; running the same command again retries them`（id 以空格分隔）。
+
+### D7 范围外的调用方
+
+- Phase 1c：`--scope` 指向子目录时，编排者在范围外搜寻范围内每个入口的调用方（发出该请求的页面与客户端、调用它的其他服务），把含调用方的文件加入该功能的 `seedFiles`。这些调用方自己的流程仍在范围外，不建功能。
+- 泳道提示词：种子文件里有范围外的调用方时，Frontend 与衔接部分据此描述。
+- 覆盖小节：`index.scope` 是项目内存在的目录时，脚本把不在该目录下的种子文件按第一级目录计数，打印 `Seed files read outside the scope: <dir> <n>, ...`；没有时 `Seed files read outside the scope: none.`；`scope` 为空或不是目录时没有这一行。
+
+### D8 锚点只指项目代码
+
+- 泳道提示词：只引用项目根内的文件；项目外的代码（依赖缓存、标准库、安装的包）不能作为证据，依赖的行为按项目自己的代码与配置描述，或写成待确认。
+- `check-lane` 拒绝路径含入口扫描跳过的目录段（`SKIPPED_DIRECTORIES`：`node_modules`、`vendor`、`dist`、`build` 等）的锚点与引文：`anchor <a>: the path is under <dir>, which holds dependencies or build output, not the project's code`。`check-index` 对种子文件做同样检查。
+
+### D9 格式升级
+
+- `index.json` 的 `format` 升为 `excavator-prd-report/2`。`check-index`、`aggregate` 等读索引的命令遇到 `/1` 打印 `index: <out> was written by an earlier version (excavator-prd-report/1); run again with --fresh` 并退出 1。Phase 0 续跑遇到这一行时告诉用户用 `--fresh` 并停止，不去修索引。
+- `--fresh` 可以删除 `/1` 或 `/2` 的产物目录。
+- `findings.json` 与报告页数据的 `format` 不变。
+
+### D10 报告页
+
+- 页面数据的功能加 `actors`、`permissionRoles`、`flows`，去掉 `roles`；`body` 是去掉 `openItems` 小节后的正文；表加 `terminology`、`roles`、`openItems`。
+- 总览在 `overview.md` 之后依次显示 Terminology、Flow index（由数据生成，链接到功能页 `#/feature/<id>`，不用 PRD 里的标题锚点，以免和片段路由冲突）、Roles、Open items。
+- 功能页显示 actors 与 permission roles 两行。
+
+### D12 参与者用索引里的规范名（O5、O6 之后补）
+
+- O5 的真实运行里各泳道各自给参与者起名，`Actors by feature` 有 23 列，O6 审读者归并后只有 12 个真实参与者（同一个员工写成 4–5 种名字）。参与者名单是全表事实，所以由编排者在索引里定一次，泳道只能从中选。
+- `index.json` 新增 `actors`：字符串列表，每个真实参与者（用户类别、外部系统、其他服务、运维）一项、产品里的叫法、不重复。Phase 1c 与功能分组一起写出，经 `plan.json` 进索引。`check-index`：缺失、不是非空字符串列表或有重复时打印 `index: actors must list each actor of the project once`。
+- 泳道提示词给出这份名单；章节 front-matter 的 `actors` 只能取名单里的名字，逐字相同。`check-lane` 对名单外的名字打印 `actor "<name>" is not one of the index's actors`。
+- `Actors by feature` 的列按索引 `actors` 的顺序，只列至少一个写成的功能用到的名字。
+- 索引格式不变（`/2` 尚未发布）。
+- 同时收紧泳道提示词两处（O6 的发现，提示词层面，不加脚本检查）：`flows` 只列流程（从一个触发到一个结果的路径），不列概览、配置、权限或发现小节；章节里不写发现小节、不提 findings 文件，发现只写进 findings 文件。
+- O6 的其余发现（参考章节的字典在流程章节里重复、错误响应没有汇总表、待确认项小节里留着已定论的项、流程索引没有入口列、跨章节的一处矛盾）照记在验收记录里，本变更不处理：前两项是并行泳道互不可见的结果，后三项需要新的结构字段或跨章节核对。
+
+### D11 提交顺序
+
+1. `docs(openspec): propose prd-report-prd-shape`
+2. `feat(prd-report): declare flows, actors and open items in each chapter` — `lane-check`、`index-check`（`reference`、章节顺序、格式、跳过目录）、`Next:` 行与测试。
+3. `feat(prd-report): assemble the document skeleton` — `aggregate` 的新表与覆盖行、章节拆分、`assemble` 的顺序与流程索引、`summarize`/`reply` 的 `retryable`、`page-data` 的新字段与测试。
+4. `feat(excavator-verify): leave the summary out with --no-summary`
+5. `feat(prd-report-page): show the document skeleton`
+6. `feat(prd-report): write the document skeleton` — `SKILL.md`、契约测试、`README.md`。
+6a. `docs(openspec): add canonical actors to prd-report-prd-shape` — D12 与相应的规格、任务。
+6b. `feat(prd-report): pick actors from the index's list` — `index-check`、`lane-check`、`roles.md` 的列、泳道提示词、契约测试。
+7. `docs(openspec): record prd-report-prd-shape acceptance`
+8. `docs(openspec): archive prd-report-prd-shape`
+
+每个提交单独是绿的。
+
+## Risks / Trade-offs
+
+- 声明与正文的一致性要靠泳道第二次尝试修；标题写错一个字就失败一次，多花一次泳道。换来的是索引不会和正文对不上。
+- 核对改了流程标题时功能会 `failed`：可见，但比原来严。
+- 范围外的种子文件让泳道读得更多，花费随调用方数量增长；只加调用方文件，不加它们的依赖链。
+- 锚点算法按 GitHub 的规则；别的 Markdown 预览器可能生成不同的锚点，链接在那里不可用，正文不受影响。
+
+## Acceptance oracles
+
+动手前写死。真实语料的路径、名字与输出不进仓库，记录只写代号与数字。
+
+- **O1 门**：每个代码提交在临时克隆（不用 worktree）里跑三件套、`node scripts/check-refs.mjs`、`pnpm run typecheck`、`openspec validate --all --strict`、legacy-literals、CI 模拟重跑（短 TMPDIR、`user.useConfigOnly=true`）。
+- **O2 检查**：D2、D3、D8、D9 列出的每种问题行各一个测试，先红后绿；`Next:` 两种行各一个测试；一个全部合格的正例。
+- **O3 拼装**：夹具含一个 `reference` 功能、两个流程功能（其中一个有待确认项小节，另一个有两个同名流程标题以产生重复锚点）、一个失败功能：小节顺序与 D4 完全相同；流程索引行数等于 `reference` 功能数加全部 `flows` 数；每个链接的锚点等于另一份独立实现（`github-slugger`，在测试里用；不可用时用手写的含重复与非 ASCII 标题的固定样例）对 `PRD.md` 标题算出的锚点；待确认项小节不在章节里、在 `## Open items` 下原文出现；两次 `assemble` 字节相同。
+- **O4 页面（无头 Chrome，`file://`）**：夹具与一份真实产物副本：总览的术语行数等于词表条数，流程索引行数等于数据里的流程数，每个链接打开对应功能页；控制台错误与 CSP 违例为 0。**装置先验**：从页面数据删掉一个流程，探针必须报出。
+- **O5 真实冒烟**：对上述 51 文件的成员，以 `claude -p` 跑 `/excavator-prd-report --scope <成员> --fresh`，`--out` 在 scratchpad，钉 `--model` 为 Sonnet、`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`。脚本核对：每个功能 `verified`，或 `failed` 且 `attempts` 为 2（没有停在 1 的）；每章正文恰好一个 `##`；有一个 `reference` 功能写权限模型；范围外种子文件数大于 0，且至少一章的证据锚点在范围外；`Actors by feature` 的列与 `Permission roles` 的行不相交；`Actors by feature` 的每一列都在索引 `actors` 里（D12）；没有标题含 Findings 的 `###` 小节、正文不提 findings 文件（D12 的提示词收紧，只照记）；语料 `.excavator/` 运行前后文件清单与修改时间相同。记录花费与耗时。
+- **O6 与单篇对照（独立审读）**：一个只拿到两份 PRD 与源码的 Opus 审读者，对单篇流程索引的每一行判断拼装版的流程索引是否有覆盖它的行，并逐项判断骨架清单（术语表、能力地图、流程索引、全局角色与权限、集中的待确认项、核对只在附录）是否具备。**硬性不通过**：单篇的某个流程在拼装版没有对应行，且不是某个 `failed` 功能（`attempts` 为 2）的范围。
+
+## 验收记录
+
+2026-10-26 至 27。实现由编码代理（Sonnet）按切片完成，门、真实运行与对照审读由我与独立审读代理（Opus）完成。克隆、产物、探针与运行输出都在会话 scratchpad，不进仓库。输入代号：**夹具**（`tests/fixtures/prd-report-pipeline/lanes` 及测试辅助函数造的骨架夹具）、**真实成员**（多仓库语料里 51 文件的后端成员，`--scope` 指向它）、**单篇**（同一成员上 `excavator-prd` 的既有产物）。
+
+### O1 门
+
+每个代码提交在一份新的 `git clone --no-hardlinks` 里跑：`pnpm install --frozen-lockfile`、`pnpm -r build`、`pnpm test`、check-refs、typecheck、`openspec validate --all --strict`、legacy-literals、CI 模拟（短 TMPDIR、`user.useConfigOnly=true`）。
+
+| 提交 | `pnpm test` | 其余 |
+|---|---|---|
+| 873762b4 章节声明 | 5310 通过、4 跳过 | 全部 0 |
+| 28cf580c 拼装骨架 | 5353 通过、4 跳过 | 全部 0 |
+| 16dab671 `--no-summary` | 5357 通过、4 跳过 | CI 模拟 1 条失败：`tests/deploy/e2e.test.mjs` 的信号时序断言（与本变更无关，编码代理同时在跑全量），该文件在同一克隆以 CI 模拟设置单独重跑 8/8 通过 |
+| a01102e6 报告页 | 5364 通过、4 跳过 | 全部 0 |
+| 0b4b56a3 skill 接线 | 5384 通过、4 跳过 | 全部 0 |
+| a8e4a412 规范参与者（D12） | 5398 通过、4 跳过 | 全部 0 |
+
+- **满足。**
+
+### O2 检查
+
+- D2、D3、D8、D9 的每种问题行各有测试（`check-lane.test.mjs`、`check-index.test.mjs`），两种 `Next:` 行与 `lane-wrote-nothing` 加 `Next:` 各一条，另有一个全部合格的正例；D12 的两种问题行（索引 `actors` 的 7 种坏形状、名单外参与者）各有测试。
+- 先红后绿：实现前 `check-lane.test.mjs` 33 条失败、7 条通过，实现后 40 条全部通过。
+- 变异：故意弄坏 `skippedDirectoryReason`，D8 的 3 条测试（锚点、引文、种子文件）变红；还原后绿。
+- 契约测试里的脚本字符串（`Next:` 两行、`/1` 行、总览两行、`Retry:` 行、名单外参与者行）从脚本模块读取或在夹具上实跑得到，不手抄。对 SKILL.md 做 15 处变异全部变红；对脚本里 4 个字符串做变异，相应的固定也全部变红。
+- **满足。**
+
+### O3 拼装
+
+- 骨架夹具：1 个 `reference` 功能、2 个流程功能（一个有待确认项小节、一个有两个同名流程标题）、1 个失败功能。
+- 断言：小节顺序与 D4 相同；流程索引 4 行（reference 1 + flows 3）；同名标题的锚点为 `#cancel-an-order` 与 `#cancel-an-order-1`，等于对 `PRD.md` 全文标题算出的锚点；待确认项不在章节里、在 `## Open items` 下原文出现；两次 `assemble` 字节相同；总览缺 `#` 标题或缺 mermaid 时退出 1。
+- `github-slugger` 不在依赖里，锚点用手写的固定样例核对（重复标题、标点、非 ASCII 标题、含行内代码与链接的标题）。
+- 先红后绿：新的 `assemble.test.mjs` 在旧代码上 18 条中 13 条失败。变异：去掉重复后缀 6 条红、保留标点 7 条红、待确认项留在章节 6 条红、`retryable` 不看 `attempts` 4 条红、重复标题都链到第一个 2 条红、Roles 放到 Flow index 之前 27 条红。
+- **满足。**
+
+### O4 页面（无头 Chrome，`file://`，DevTools 协议）
+
+- 探针的期望值从运行目录读（`index.json` 词表、章节 front-matter、`tables/open-items.md`），不读页面数据块。
+- 结果：
+
+  | 输入 | 术语行 | 流程索引行 | 功能 | 不符 | 控制台错误 / CSP 违例 |
+  |---|---|---|---|---|---|
+  | 骨架夹具 | 2 | 4 | 4 | 0 | 0 / 0 |
+  | 真实成员第一次运行的产物 | 34 | 28 | 9 | 0 | 0 / 0 |
+  | 真实成员第二次运行的产物 | 34 | 28 | 10 | 0 | 0 / 0 |
+
+  两次运行的词表内容不同，条数相同是巧合（逐条 `diff` 过）。
+- 每个流程行都链接 `#/feature/<id>`，真实点击打开对应功能页。浅色、深色、375px 宽三种视图都检查过。
+- 装置先验：
+  - 夹具上删一个流程，探针报出行数 3≠4；删词表行、清空参与者也都报出。
+  - 真实产物副本上删一个流程，探针报出行数 27≠28。
+  - 编码代理写的探针最初把待确认项的检查写死成夹具里的一句话，在真实产物上误报。改为「`tables/open-items.md` 的每个功能标题都在页面上」后通过。
+- **满足。**
+
+### O5 真实冒烟
+
+- 运行：
+  - `claude -p "/excavator:excavator-prd-report <语料根> --scope <成员> --out <scratchpad> --fresh"`，`--model claude-sonnet-5-5`，`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`，`--plugin-dir` 为该提交的已构建克隆，`--max-budget-usd 40`。
+  - `dontAsk`、沙箱 Bash（只许写输出目录）、只限输出目录的 Write/Edit，禁用三个写 facts 的 MCP 工具。
+  - 后台运行，没有并行的其他运行。
+
+| | 第一次（0b4b56a3） | 第二次（a8e4a412，加 D12） |
+|---|---|---|
+| 功能 | 9 个全部 `verified`；F4、F9 第一次 `check-lane` 失败后按 `Next:` 行重派，`attempts` 2 | 10 个全部 `verified`；F10 重派一次 |
+| 停在 `attempts` 1 的 `failed` | 0 | 0 |
+| 每章正文 `##` 数 | 全部 1 | 全部 1 |
+| `reference` 功能 | 1（Roles and permissions） | 2（Roles and permissions；Access and refresh tokens） |
+| 范围外种子文件 | 18（前端 12、另一服务 6） | 14（前端 11、另两个服务 3） |
+| 章节里指向范围外的代码锚点 | 422 个中 122 个 | 395 个中 100 个 |
+| `Actors by feature` 列数 | 23 | 7，全部在索引 `actors` 里 |
+| 列与 `Permission roles` 行相交 | 0 | 0 |
+| 标题含 Findings 的小节 | 4 章有 | 0 |
+| findings | 113（P0 11） | 128（P0 11） |
+| 语料 `.excavator/` 清单、修改时间与内容 | 不变 | 不变 |
+| 花费 / 墙钟 | $36.20 / 3093 秒 | $35.53 / 3513 秒 |
+
+- 第一次运行的参与者列有 23 个，审读者归并后只有 12 个真实参与者。这是 D12 的来由；第二次运行降到 7 列。
+- **满足。**
+
+### O6 与单篇对照（独立审读，Opus）
+
+- 第一次运行：单篇 20 行流程索引里，18 个流程行全部有覆盖行；另 2 行不是流程（「没有通知或定时任务」与依赖表），它们在拼装版的正文里有。拼装版独有 6 行，其中 4 行有代码依据，2 行不是流程（概览、配置）。骨架六项齐备。**硬性不通过：无。**
+- 第二次运行：单篇 14 个流程全部有覆盖行（14/14），28 个链接都指到唯一标题；单篇另 6 行不是流程，不计。骨架六项齐备。7 个参与者列没有两列指同一参与者。**硬性不通过：无。**
+- 审读者列出的差异照记，本变更不处理（D12 已说明理由）：
+  - 拼装版 3406 行，单篇 838 行；
+  - 角色字典与能力矩阵在参考章节与流程章节里重复；
+  - 待确认项约 90 行，分在 10 张格式不一的表里，夹着已定论的行；
+  - 「Resource service」一列指三个服务；
+  - 流程索引没有入口列；
+  - 没有跨端点的错误响应汇总表；
+  - 两处跨章节的矛盾。
+- 两次审读各记了一处两份文档的分歧，代码都与拼装版一致。
+- **满足。**

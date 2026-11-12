@@ -1,0 +1,581 @@
+/** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
+
+export const PAGE_FORMAT = 'excavator-product-handbook-page/18';
+
+/** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
+export const VIEWS = ['product', 'technical'] as const;
+export type View = (typeof VIEWS)[number];
+
+export const REACHES = ['menu', 'link', 'automated', 'interface', 'operator'] as const;
+export type Reach = (typeof REACHES)[number];
+
+/** The state of a feature's entry: only `verified` features carry an entry; `checked` and `confirmed` mean its verification did not finish. */
+export type Status = 'planned' | 'dispatched' | 'checked' | 'confirmed' | 'verified' | 'failed';
+
+export type EntrypointKind = 'route' | 'page' | 'job' | 'main';
+
+/** The root causes a finding is sorted by, in the order the handbook lists them (the fixed text of each is `findingCategoryKey(value)`). */
+export const FINDING_CATEGORIES = ['authorization', 'error-handling', 'notification', 'consistency', 'calculation', 'hard-coded', 'contract', 'security', 'display', 'time', 'other'] as const;
+export type FindingCategory = (typeof FINDING_CATEGORIES)[number];
+/** The key of a category's display name in the ui table: `error-handling` is `errorHandling`, since keys hold letters and dots only. */
+export const findingCategoryKey = (category: FindingCategory): string => `md.findings.category.${category.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
+
+/** The levels of the ranking of the findings (openspec change handbook-findings-priority), most urgent first. */
+export const LEVELS = ['P0', 'P1', 'P2'] as const;
+export type Level = (typeof LEVELS)[number];
+/** The consequences a lane picks, each deciding a level (the fixed text of each is `consequenceKey(value)`). */
+export const CONSEQUENCES = ['othersRecords', 'money', 'dataLoss', 'secret', 'wrongResult', 'notification', 'blocked', 'display', 'inert'] as const;
+export type Consequence = (typeof CONSEQUENCES)[number];
+export const consequenceKey = (consequence: Consequence): string => `md.priority.consequence.${consequence}`;
+/** The rank of a group of findings: the level its consequence decides and the reason, which only repeats what the statements say. */
+export interface Priority { level: Level; consequence: Consequence; reason: string }
+
+/** A group a recommendation rests on: the first finding's id (the technical part holds its places), the category, the level (null for a group without one) and the representative statement. */
+export interface RemedyGroup { id: string; category: FindingCategory; level: Level | null; text: string }
+
+/** A cited fact that is not a group, with the values the script computed; the page writes it in words from the run's fixed text. */
+export type RemedyFact =
+  | { kind: 'app'; name: string; language: string | null; files: number; lines: number; commits: number | null; authors: number | null }
+  | { kind: 'tables'; count: number | null; tables: { name: string; applications: string[] }[] }
+  | { kind: 'counts'; groups: number; levels: { P0: number; P1: number; P2: number; unranked: number }; categories: { category: FindingCategory; count: number }[] };
+
+/** The remedies the judges confirmed (openspec change handbook-remedies): the common cause and measure of each category, and the recommendations in the order they are to be done. */
+export interface Remedies {
+  categories: { category: FindingCategory; cause: string; measure: string }[];
+  recommendations: { title: string; text: string; groups: RemedyGroup[]; facts: RemedyFact[] }[];
+}
+
+/** The five cross-cutting topics (openspec change handbook-topics) with their columns, in the order of the chapter; the fixed text of a column is `md.topics.col.<topic>.<column>`. */
+export const TOPICS = [
+  { id: 'approval', columns: ['business', 'route', 'skips', 'conditions', 'actors'] },
+  { id: 'time', columns: ['rule', 'calendar', 'scope'] },
+  { id: 'handoffs', columns: ['from', 'to', 'content'] },
+  { id: 'access', columns: ['feature', 'who', 'pageCheck', 'serverCheck'] },
+  { id: 'repeated', columns: ['mechanism', 'places'] },
+] as const;
+export type TopicId = (typeof TOPICS)[number]['id'];
+
+/** What a topic row rests on: a verified item of an entry (the feature's name and the item's text), or a group of findings (`id` the first finding's id, `level` null for a group without one). */
+export type TopicBasis =
+  | { id: string; kind: 'item'; feature: string; text: string }
+  | { id: string; kind: 'group'; category: FindingCategory; level: Level | null; text: string };
+
+/** A row the judges kept: its columns as the reader sees them (a data row's domains and an access row's feature by name) and its basis. */
+export interface TopicRow { fields: Record<string, string>; basis: TopicBasis[] }
+export type Topics = Record<TopicId, TopicRow[]>;
+
+/** Why a project, or one of its applications, has no version history (the keys of `md.history.reason.*` are these in camel case). */
+export type HistoryReason = 'not-a-repository' | 'inside-repository' | 'no-commits';
+
+/** The commits of one year: the distinct commits of all applications, and the commits of each application that has some. */
+export interface HistoryYear { year: number; commits: number; byApp: Record<string, number> }
+
+/** One application's history facts, or null in every fact with the reason when it has none. */
+export interface HistoryApp { dir: string; first: string | null; last: string | null; commits: number | null; authors: number | null; authors80: number | null; reason: HistoryReason | null }
+
+/** A file that changes much: its name (the technical part holds the path), the application it is in (null when none), its counts, the day of its last change and the verified features that cite it. */
+export interface HistoryHotspot { name: string; app: string | null; commits: number; authors: number; lines: number; last: string; uncertain: number; features: string[] }
+
+/** Two files, by name and application, changed together in `commits` commits. */
+export interface HistoryPair { a: string; appA: string | null; b: string; appB: string | null; commits: number }
+
+/** The source files and the test files of one application. */
+export interface HistoryTests { dir: string; sourceFiles: number; testFiles: number }
+
+/** The code health (openspec change handbook-history-appendix): `state` is `ok`, or says why there is nothing to show; `noHistory` is set when the project has no version history, with the reason; `conventions` are the keys of the naming conventions a test file follows (the fixed text of each is `md.history.test.<key>`). */
+export interface History {
+  state: 'ok' | 'missing' | 'malformed';
+  noHistory: { reason: 'not-a-repository' | 'inside-repository' } | null;
+  years: HistoryYear[];
+  apps: HistoryApp[];
+  hotspots: HistoryHotspot[];
+  coChange: HistoryPair[];
+  tests: HistoryTests[];
+  conventions: string[];
+}
+
+/** The kinds of a glossary term (the fixed text of each is `md.appendix.kind.<kind>`). */
+export const GLOSSARY_KINDS = ['entry', 'screen', 'state', 'role'] as const;
+export type GlossaryKind = (typeof GLOSSARY_KINDS)[number];
+
+/** One term of the glossary, as the verified entries write it: its kinds, the ids of the features it occurs in, and each meaning with the ids of the features that say it. */
+export interface GlossaryTerm { term: string; kinds: GlossaryKind[]; features: string[]; meanings: { text: string; features: string[] }[] }
+
+/** What a section of the run wrote and what the checks left of it (the fixed text of the name is `md.appendix.section.<id>` in camel case). */
+export interface SourcesPart { id: 'overview' | 'features' | 'findings' | 'system-findings'; units: number; verified: number; items: number; removedVerify: number; removedTrace: number; again: number }
+
+/** The appendix: the open questions (the overview's have no feature and no domain), the glossary and the sources and scope. */
+export interface Appendix {
+  open: { feature: string | null; domain: string | null; item: string; searched: string }[];
+  glossary: GlossaryTerm[];
+  sources: { parts: SourcesPart[]; ranked: { priority: { kept: number; left: number }; remedies: { kept: number; left: number }; topics: { kept: number; left: number } } };
+}
+
+export interface Rule { side: 'frontend' | 'backend'; text: string }
+export interface Field { label: string; rules: Rule[] }
+export interface Screen { name: string; fields: Field[] }
+
+/** The sequence diagram of an operation, computed by the script from the steps' citations: participant names, and per step the indices of the participants its arrow joins. */
+export interface Sequence { participants: string[]; steps: { from: number; to: number }[] }
+
+/** An operation as a flow (entry format /2): an operation of an older entry has empty lists. */
+export interface Operation {
+  name: string;
+  sentences: string[];
+  triggers: string[];
+  calculations: string[];
+  changes: string[];
+  edges: { when: string; then: string }[];
+  handoffs: { feature: string; text: string }[];
+  sequence: Sequence;
+}
+
+/**
+ * One block of the free chapter of a /3 entry (openspec change handbook-free-chapter), as the page draws it, with no citation: a heading, a
+ * paragraph, one list item, a table, or a sequence diagram whose arrows show only their number and whose arrow texts are listed under it.
+ */
+export type ChapterBlock =
+  | { kind: 'heading'; level: number; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'list'; ordered: boolean; text: string }
+  | { kind: 'table'; header: string[]; rows: string[][] }
+  | { kind: 'diagram'; sequence: Sequence; arrows: string[] };
+
+/** A verified entry as the page shows it: the text, never the evidence. */
+export interface Entry {
+  /** Absent when the purpose was removed as not verified. */
+  purpose?: string;
+  who: { role: string; can: string }[];
+  where: string[];
+  screens: Screen[];
+  operations: Operation[];
+  states: { label: string; meaning: string }[];
+  transitions: { from: string; to: string; by: string }[];
+  notifications: { trigger: string; recipient: string; channel: string; content: string }[];
+  automatic: { when: string; effect: string }[];
+  unknowns: { item: string; searched: string }[];
+  /** Only an entry of format /3 (not verified) has these: its hand-overs and the blocks of its chapter. */
+  handoffs?: { feature: string; text: string }[];
+  chapter?: ChapterBlock[];
+}
+
+export interface Area { id: string; name: string }
+
+/** What the page's domains are: the business domains of domains.json, or the map's areas drawn by the navigation when there are none. */
+export type DomainBasis = 'domains' | 'areas';
+
+export interface Feature {
+  id: string;
+  name: string;
+  /** The map's area, a property of the feature. */
+  area: string;
+  /** The id of the domain the feature is grouped in (an area id when `domainBasis` is `areas`). */
+  domain: string;
+  reach: Reach;
+  /** The label readers see in the product, for `menu` and `link` features. */
+  label?: string;
+  status: Status;
+  /** True for a feature written but not verified (a checked /3 entry): its page and its place in the lists say so. */
+  unverified?: boolean;
+  entry: Entry | null;
+  /** Where the verification of the feature's findings stands: only `verified` ones are in `PageData.findings`. */
+  findingsStatus: Status;
+  /** True when the feature's findings unit is checked and not verified (final in the light scheme): its findings are in `PageData.findings` under the not-verified text. */
+  findingsUnverified?: boolean;
+}
+
+/** Who a finding belongs to: a feature, or an application (`id` is `app<n>`, `name` the verified overview's name for its directory, else the directory). */
+export interface FindingOwner { kind: 'feature' | 'application'; id: string; name: string }
+
+/** One verified finding: `id` is the unit id and the item path (`F3.findings[0]`, `app1.system[0]`), the text the statement of the defect and when it happens. */
+export interface FindingItem { id: string; owner: FindingOwner; text: string }
+
+/** Findings of one category at the same place, which the handbook counts as one: `items` in the order of the handbook (the first is the representative), `owners` the distinct owners of the items in that order. */
+export interface FindingGroup { category: FindingCategory; owners: FindingOwner[]; items: FindingItem[]; /** Null when no two judges confirmed a rank for the group, or the ranking did not finish. */ priority: Priority | null }
+
+/** An item the verification removed from a feature's entry: its claim, why it went, and the verifier's reason. */
+export interface RemovedItem { claim: string; verdict: 'unverified' | 'contradicted' | 'withParent'; reason: string }
+
+export interface Coverage {
+  candidateTotal: number;
+  assigned: number;
+  unassigned: { candidate: string; kind: EntrypointKind; reason: string }[];
+  reachCounts: { reach: Reach; count: number }[];
+  /** The features written but not verified (checked /3 entries), each with the count of every kind of content note the chapter check recorded. */
+  unverified?: { feature: string; notes: { number: number; quote: number; code: number; advice: number; language: number } }[];
+  /** The items the verification removed from the system overview (empty when it lost none). */
+  removedOverview: RemovedItem[];
+  /** The features that lost items to verification, with those items. */
+  removed: { feature: string; items: RemovedItem[] }[];
+  /** The features whose findings unit is not verified with where it stands; the units never written are not rows, see `findingsNotWritten`. */
+  findingsUnfinished: { feature: string; status: Status }[];
+  /** How many features have a findings unit that was never written (planned); they are one count, not rows. */
+  findingsNotWritten: number;
+  /** The features that lost findings to verification, with those findings. */
+  findingsRemoved: { feature: string; items: RemovedItem[] }[];
+  /** How many application roots there are, one system findings unit each. */
+  systemFindingsTotal: number;
+  /** The application roots whose system findings unit is not verified with where it stands; the units never written are one count, see `systemFindingsNotWritten`. */
+  systemFindingsUnfinished: { id: string; name: string; status: Status }[];
+  /** How many application roots have a system findings unit that was never written (planned). */
+  systemFindingsNotWritten: number;
+  /** The application roots that lost system findings to verification, with those findings. */
+  systemFindingsRemoved: { id: string; name: string; items: RemovedItem[] }[];
+  /** The ranking of the findings: `finished` false when the unit is not verified (every group is then unranked); the groups without a priority, each by its representative finding, with the reasons of the judges (empty when none judged it). */
+  priority: { finished: boolean; unranked: { id: string; category: FindingCategory; text: string; reasons: string[] }[] };
+  /** The remedies: `finished` false when the unit is not verified or was written for other findings (`stale`), and then none is shown; `dropped` the paragraphs and recommendations a judge refused, `text` the cause or the recommendation's text, with the judges' reasons. */
+  remedies: { finished: boolean; stale: boolean; dropped: { id: string; kind: 'category' | 'recommendation'; category?: FindingCategory; title?: string; text: string; reasons: string[] }[] };
+  /** The topics: `finished` false when a lane is not verified for the facts now (`stale` when it was written for other ones); `entriesRead` and `groupsRead` what the verified lanes read; each lane (`name` null for the repeated lane) with its status and rows kept and left out; `dropped` the rows a judge refused, `text` their columns joined, with the judges' reasons. */
+  topics: {
+    finished: boolean;
+    stale: boolean;
+    entriesRead: number;
+    groupsRead: number;
+    lanes: { id: string; name: string | null; status: string; kept: number; dropped: number }[];
+    dropped: { id: string; topic: TopicId; text: string; reasons: string[] }[];
+  };
+}
+
+/** One notification of a verified entry, in the entry's words; `feature` is the id of the feature. */
+export interface NotificationRow { feature: string; trigger: string; recipient: string; channel: string; content: string }
+
+/** Where a scheduled job's time table was found: written out on the registration line, worked out when the job is registered, or not in that line's text. */
+export type ScheduleBucket = 'literal' | 'computed' | 'absent';
+
+/** One scheduled-job candidate. `feature` is null when the map left it unassigned, then `reason` is the map's. */
+export interface JobRow {
+  kind: 'job';
+  candidate: string;
+  feature: string | null;
+  reason: string | null;
+  schedule: { bucket: ScheduleBucket; literal: string | null };
+  /** The verified automatic items whose citation covers the registration line. */
+  automatic: { when: string; effect: string }[];
+}
+
+/** The two cross-cutting tables and their counts. */
+export interface Summary {
+  notifications: NotificationRow[];
+  jobs: JobRow[];
+  counts: {
+    featureTotal: number;
+    featuresWithEntry: number;
+    notificationRows: number;
+    jobRows: number;
+    schedule: { literal: number; computed: number; absent: number };
+    described: number;
+  };
+}
+
+/** One row of the applications table: what the script found in an application root (or a listed application below one); `name` and `does` are null when no verified application stands for the directory; `history` is null when it has no version history. */
+export interface ApplicationFacts {
+  dir: string;
+  name: string | null;
+  does: string | null;
+  languages: { language: string; files: number }[];
+  frameworks: { framework: string; candidates: number }[];
+  files: number;
+  lines: number;
+  history: { first: string; last: string; commits: number; authors: number } | null;
+}
+
+/** The text of a verified system overview, without its evidence. */
+export interface OverviewText {
+  /** The system name of the overview, or null (it has none, verification removed it, or the overview is older than the name). */
+  name: string | null;
+  summary: string[];
+  audiences: { who: string; does: string }[];
+  integrations: { system: string; use: string; callers: string[] }[];
+  unknowns: { item: string; searched: string }[];
+}
+
+/** One group of features (a domain, or an area of the map) with the counts and roles the script computes from the verified entries. */
+export interface AreaRow { id: string; name: string; features: number; verified: number; roles: string[] }
+
+/** The system overview and the facts of the script: `overview` is null unless the overview is verified (`status` says where it stopped); the application rows, counts and areas do not depend on it. */
+export interface System {
+  status: Status;
+  overview: OverviewText | null;
+  applications: ApplicationFacts[];
+  counts: { applications: number; files: number; lines: number; areas: number; domains?: number | null; features: number; featuresWithEntry: number; roles: number };
+  areas: AreaRow[];
+  /** The same rows over the domains the page groups by (the areas again when `domainBasis` is `areas`). */
+  domains: AreaRow[];
+}
+
+/** The flow diagram of a domain (openspec change handbook-free-chapter, D8): drawn from checked nodes and edges, or failed its checks; a domain with none has no `flow`. */
+export type DomainFlow =
+  | { status: 'failed' }
+  | { status: 'drawn'; nodes: { id: string; kind: 'feature' | 'state' | 'item'; feature: string; label: string }[]; edges: { from: string; to: string; text?: string }[] };
+
+/** A domain (a business domain, or an area of the map when there is no domains file): its features, and the purposes of those that were verified, in the words of their entries. */
+export interface Domain {
+  id: string;
+  name: string;
+  features: string[];
+  purposes: { feature: string; text: string }[];
+  /** The handoffs of verified entries that cross into or out of the domain (openspec change handbook-domain-page, D1): `out` first, then `in`; `domain` is the other domain. */
+  relations?: DomainRelation[];
+  /** The states and transitions of the domain's verified entries, by feature. */
+  states?: { feature: string; label: string; meaning: string }[];
+  transitions?: { feature: string; from: string; to: string; by: string }[];
+  flow?: DomainFlow;
+}
+
+/** One handoff between a feature of this domain and a feature of another domain, in the words of the verified entry. */
+export interface DomainRelation { direction: 'out' | 'in'; domain: string; from: string; to: string; text: string }
+
+/** What the verified entry of a feature says a role can do; a role-feature pair the entries do not name has no cell. */
+export interface RoleFeatureMatrix { roles: string[]; features: string[]; cells: { role: string; feature: string; can: string[] }[] }
+
+/** The product part of the entities: no application, no citation path. */
+export interface Entities {
+  domains: Domain[];
+  /** The handoffs between two domains summed per direction (openspec change handbook-domain-page, D4), in the order they first appear. */
+  domainFlows?: { from: string; to: string; count: number }[];
+  roles: { label: string }[];
+  roleFeature: RoleFeatureMatrix;
+}
+
+/** Quoted passages of the domain's verified features in each application; `unattributed` counts those in no application. */
+export interface ApplicationDomainMatrix {
+  applications: string[];
+  domains: string[];
+  cells: { application: string; domain: string; citations: number }[];
+  unattributed: { domain: string; citations: number }[];
+}
+
+/**
+ * An external system of the verified overview with the two relations to applications, kept apart: `shown` are the callers
+ * the quoted code shows (checked), `named` the applications whose source files hold the name as written (the script's
+ * search; it does not say the application calls the system), `namedOutside` the files holding the name that no application holds.
+ */
+export interface IntegrationRelations { system: string; use: string; shown: string[]; named: { application: string; files: number }[]; namedOutside: number }
+
+/** The file and lines of each passage quoted for each item of a verified unit (a feature id, or `overview`); null lines when the passage could not be located. */
+export interface UnitLocations {
+  id: string;
+  items: { claim: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
+}
+
+/** One place where a table name appears outside the migrations; `rule` is `a` (a string that is the whole name), `b` (the name after FROM, JOIN, INTO, UPDATE or TABLE, or at the start of the string of a Table( call) or `c` (the name right after many2many:). */
+export interface NameMention { file: string; line: number; rule: 'a' | 'b' | 'c' }
+
+/** One table of the data section: where it is declared, the migrations that created and last changed it, and where its name appears by application (the empty key is the places that belong to no application). */
+export interface DataTable {
+  name: string;
+  /** `as` is the name the line shows when it is an earlier name of the table (the table was renamed later). */
+  sources: { kind: 'migration' | 'model' | 'sql'; file: string; line: number; as?: string }[];
+  createdBy: string | null;
+  lastChangedBy: string | null;
+  mentions: Record<string, NameMention[]>;
+}
+
+/** The data section as the page draws it (data.json without its ledgers): the lists, the gaps and the counts the script computed. */
+export interface DataSection {
+  /** The keys of the declaration forms this version recognizes; the page words each by a fixed text. */
+  recognized: string[];
+  applications: { directory: string; migrations: number }[];
+  tables: DataTable[];
+  dropped: { name: string; file: string; line: number; createdBy: string | null; directory: string }[];
+  changedNeverCreated: string[];
+  declaredOnly: string[];
+  removedButDeclared: string[];
+  onlyInMigrations: string[];
+  gaps: {
+    unsplitMigrations: { file: string }[];
+    unnamedOperations: { file: string; line: number; op: string; via: 'call' | 'sql' }[];
+    unresolvedModelNames: { file: string; line: number; expression: string; matches: number | null }[];
+    otherMigrationFiles: { file: string; reason: string }[];
+  };
+  counts: {
+    tables: number;
+    migrations: number;
+    migrationsReplayed: number;
+    migrationsUnsplit: number;
+    migrationsDownOnly: number;
+    otherMigrationFiles: number;
+    operations: { total: number; create: number; drop: number; rename: number; change: number; unnamed: number };
+    declarations: { total: number; model: number; sql: number; unresolved: number };
+    dropped: number;
+    changedNeverCreated: number;
+    declaredOnly: number;
+    removedButDeclared: number;
+    onlyInMigrations: number;
+    tablesInSeveralApplications: number;
+    gaps: number;
+  };
+}
+
+/** One comment next to a member, as written; `where` is above the member or on its line. */
+export interface DictionaryComment { text: string; file: string; line: number; endLine?: number; where: 'above' | 'same-line' }
+
+/** One member of a value set: the value (a string, a number, or the expression as written when it is not computed; null when there is none), the comments and display names the code gives it, and its place. */
+export interface DictionaryMember {
+  name: string;
+  value: string | number | null;
+  computed: boolean;
+  reason?: 'expression' | 'after-uncomputed';
+  /** `var` for a member of a Go value set that was declared with var; absent for const. */
+  declaredAs?: 'var';
+  file: string;
+  line: number;
+  comments: DictionaryComment[];
+  labels: { text: string; file: string; line: number }[];
+}
+
+export type DictionaryForm = 'go-type' | 'ts-enum' | 'ts-const-object' | 'js-object';
+
+/** One value set; `application` is the empty string for a file that belongs to no application. */
+export interface DictionaryEntry {
+  id: string;
+  application: string;
+  form: DictionaryForm;
+  name: string;
+  file: string;
+  line: number;
+  /** The underlying type of a Go named type. */
+  baseType?: string;
+  members: DictionaryMember[];
+  skippedMembers: number;
+}
+
+/** A value with the member names that have it. */
+export interface DictionaryValue { value: string | number; members: string[] }
+
+/** Two value sets of the same name in two applications whose values differ. */
+export interface DictionaryMismatch {
+  key: string;
+  left: { id: string; application: string; name: string };
+  right: { id: string; application: string; name: string };
+  onlyLeft: DictionaryValue[];
+  onlyRight: DictionaryValue[];
+  both: { value: string | number; left: string[]; right: string[] }[];
+  uncompared: { left: string[]; right: string[] };
+}
+
+/** The status dictionary as the page draws it (dictionaries.json without its candidate ledger and scan counts). */
+export interface DictionariesSection {
+  /** The keys of the forms this version recognizes; the page words each by a fixed text. */
+  recognized: string[];
+  applications: { directory: string; dictionaries: number }[];
+  dictionaries: DictionaryEntry[];
+  mismatches: DictionaryMismatch[];
+  counts: {
+    dictionaries: { total: number; goType: number; tsEnum: number; tsConstObject: number; jsObject: number };
+    members: { total: number; computed: number; notComputed: number };
+    comments: number;
+    labels: number;
+    skippedMembers: number;
+    candidates: {
+      goTypes: { total: number; dictionary: number; noConstants: number; duplicate: number };
+      goConstants: { total: number; member: number; untypedIota: number; otherType: number; plain: number };
+      goVars: { total: number; member: number; otherType: number };
+      tsEnums: { total: number; dictionary: number };
+      tsConstObjects: { total: number; dictionary: number; noLiteralMembers: number };
+      jsObjects: { total: number; dictionary: number; noLiteralMembers: number };
+      mapEntries: { total: number; label: number; unmatchedKey: number; ambiguousKey: number };
+    };
+    mismatches: number;
+  };
+}
+
+/** The technical part: only in a page that has the technical view. Holds the only citation paths of the page data. */
+/**
+ * The architecture section of the technical part (openspec change handbook-architecture-chapter): only a status when it is not there
+ * (`none`: not selected, `failed`, `missing`: a file is gone), else the chapter blocks (no citation) and the checked fact sheet:
+ * the components, each with the layer its kind puts it in (users 0, frontends 1, backends and shared libraries 2, databases, external and cloud services 3),
+ * and the links with their short texts.
+ */
+export type ArchitectureSection =
+  | { status: 'none' | 'failed' | 'missing' }
+  | {
+    status: 'checked';
+    chapter: ChapterBlock[];
+    components: { id: string; label: string; kind: 'users' | 'frontend' | 'backend' | 'library' | 'database' | 'external' | 'cloud'; layer: number; application?: string; stack?: string }[];
+    links: { from: string; to: string; text: string }[];
+  };
+
+export interface Technical {
+  /** Absent in the data of a page made before the section existed; the page reads that as not selected. */
+  architecture?: ArchitectureSection;
+  featureApplication: { feature: string; application: string; citations: number }[];
+  unattributed: { feature: string; citations: number }[];
+  applicationDomain: ApplicationDomainMatrix;
+  integrations: IntegrationRelations[];
+  jobs: { candidate: string; feature: string | null; application: string | null }[];
+  locations: UnitLocations[];
+  /** The file and lines of each passage quoted for each finding of the items of `PageData.findings`, by item id; null lines when a passage could not be located. */
+  /** The file and lines of each verified item that a kept topic row cites, by item id. */
+  topicLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
+  /** The path of each hotspot file and of each file of a pair of `PageData.history`, in the order of its rows. */
+  history: { hotspots: string[]; coChange: { a: string; b: string }[] };
+  /** The files the verified entries of each domain quote, with the number of passages, most quoted first (openspec change handbook-domain-page, D2). */
+  domainFiles?: { domain: string; files: { file: string; citations: number }[] }[];
+  findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
+  /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
+  data: DataSection | null;
+  dataState: 'ok' | 'missing' | 'malformed';
+  /** The status dictionary; null when `<out>/dictionaries.json` is missing or malformed, and `dictionariesState` says which. */
+  dictionaries: DictionariesSection | null;
+  dictionariesState: 'ok' | 'missing' | 'malformed';
+}
+
+/**
+ * The index of the part files of a page whose data is large (openspec change handbook-page-chunked-data): the ids of the
+ * parts in order and, for each unit, the parts that hold it in order. Both are empty when the page is one file. A unit is the
+ * detail shown on one page: `feature:<id>` (the entry and source locations of a verified feature), `data` and `dictionaries`.
+ */
+export interface Chunks {
+  parts: string[];
+  units: Record<string, string[]>;
+}
+
+/** One chapter of the outline: one block (its id is the route name of its page) or one list of entity pages; `technical` when only the technical view has it. */
+export interface OutlineChapter { title: string; block?: string; list?: string; technical: boolean }
+
+/** A block the outline leaves out: its id, its default title in the run's fixed text and the reason. */
+export interface OutlineUnplaced { block: string; title: string; reason: string }
+
+/** The outline both outputs follow: `source` is `outline` for a written one that passed its check, `default` otherwise, with the lines of why in `problems`. */
+export interface Outline {
+  source: 'outline' | 'default';
+  problems: string[];
+  parts: { title: string; chapters: OutlineChapter[] }[];
+  unplaced: OutlineUnplaced[];
+}
+
+/** The parts written but not verified (a checked unit, final in the light scheme); a key is there only when it holds. */
+export interface UnverifiedParts { overview?: boolean; findings?: number; systemFindings?: number; priority?: boolean; remedies?: boolean; topics?: boolean }
+
+export interface PageData {
+  format: typeof PAGE_FORMAT;
+  chunks: Chunks;
+  /** The system name the verified overview kept, or null; never the directory of the project. */
+  project: string | null;
+  language: string;
+  languageTag: string;
+  ui: { strings: Record<string, string> };
+  /** The selected views in the fixed order; the page has a switch only when there are two. */
+  views: View[];
+  areas: Area[];
+  /** The groups the page navigates by. */
+  domains: Area[];
+  domainBasis: DomainBasis;
+  /** The parts and chapters the navigation, the chapter titles and the order follow (openspec change handbook-outline). */
+  outline: Outline;
+  features: Feature[];
+  /** The verified findings of the features and the application roots as groups, in the order of the first finding of each: the features in the map's order, then the application roots, each in its file's order. */
+  findings: FindingGroup[];
+  remedies: Remedies;
+  topics: Topics;
+  history: History;
+  appendix: Appendix;
+  coverage: Coverage;
+  /** The parts written but not verified; absent when there is none. */
+  unverifiedParts?: UnverifiedParts;
+  summary: Summary;
+  system: System;
+  entities: Entities;
+  technical?: Technical;
+}

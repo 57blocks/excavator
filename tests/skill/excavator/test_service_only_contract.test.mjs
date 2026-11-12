@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const read = (path) => readFileSync(join(repoRoot, path), 'utf-8');
+const skillNames = (baseDir) => readdirSync(join(baseDir, 'skills'), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name);
+const browserOpenerSkills = (baseDir, allowed = ['excavator-view']) => skillNames(baseDir)
+  .filter((name) => !allowed.includes(name))
+  .filter((name) => /\bxdg-open\b|cmd\.exe \/c start|\bopen "\$/.test(
+    readFileSync(join(baseDir, 'skills', name, 'SKILL.md'), 'utf-8'),
+  ));
 
 describe('service-only distribution contract', () => {
   it('ships no HTML dashboard, viewer, dashboard skill, tour builder, or thumbnail helper', () => {
@@ -59,50 +68,69 @@ describe('service-only distribution contract', () => {
 
   // The one exception: /excavator-view writes a static page and opens it (openspec: changes/report-viewer, design D8).
   describe('the /excavator-view exception stays narrow', () => {
-    const walk = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => (
-      entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)]
-    ));
+    // The front end is the one package packages/explorer, a copy of the Understand Anything dashboard built into one file
+    // and never served (openspec: changes/viewer-explorer, design D1 and D3; changes/retire-view-html). Its copied sources
+    // keep the upstream token gate, which nothing imports, with its fetch: the page's policy (connect-src 'none') and
+    // scripts/explorer-smoke.mjs, which sees zero requests, hold the no-network rule instead of a source scan.
+    const EXPLORER_PACKAGE = 'packages/explorer';
+    // The second HTML package is the report page of /excavator-prd-report (openspec: changes/prd-report-page, design D2):
+    // its own template, built into one file the same way and never served.
+    const REPORT_PAGE_PACKAGE = 'packages/prd-report-page';
+    // The third is the handbook page of /excavator-product-handbook (openspec: changes/product-handbook-map, design D13), built the same way.
+    const HANDBOOK_PAGE_PACKAGE = 'packages/product-handbook-page';
+    const HTML_PACKAGES = [EXPLORER_PACKAGE, REPORT_PAGE_PACKAGE, HANDBOOK_PAGE_PACKAGE];
 
-    // The front end is the one package packages/report-view, built into one file and never served (openspec: changes/viewer-app, design D10).
-    const VIEW_PACKAGE = 'packages/report-view';
-
-    it('gives the report-view package no script that starts a server', () => {
-      const scripts = JSON.parse(read(`${VIEW_PACKAGE}/package.json`)).scripts ?? {};
+    it.each(HTML_PACKAGES)('gives %s no script that starts a server', (pkg) => {
+      const scripts = JSON.parse(read(`${pkg}/package.json`)).scripts ?? {};
       for (const name of ['dev', 'preview', 'serve', 'start']) expect(scripts, name).not.toHaveProperty(name);
       for (const [name, command] of Object.entries(scripts)) {
-        // vite runs only as `vite build`; a bare `vite`, `vite dev`, `vite serve` or `vite preview` starts a server.
         expect(command, name).not.toMatch(/\bvite\b(?!\s+build\b)/);
       }
     });
 
-    it('has no server or preview configuration in the report-view vite config', () => {
-      const config = read(`${VIEW_PACKAGE}/vite.config.ts`);
+    it.each(HTML_PACKAGES)('has no server or preview configuration in the vite config of %s', (pkg) => {
+      const config = read(`${pkg}/vite.config.ts`);
       expect(config).not.toMatch(/\b(server|preview)\s*:/);
       expect(config).not.toMatch(/configureServer|configurePreviewServer/);
     });
 
-    it('has no network or server call in the report-view source', () => {
-      const files = walk(`${VIEW_PACKAGE}/src`);
-      expect(files.length).toBeGreaterThan(0);
-      for (const path of files) {
-        const text = read(path);
-        for (const call of ['createServer', 'listen(', 'fetch(', 'XMLHttpRequest', 'WebSocket', 'EventSource']) {
-          expect(text, `${path}: ${call}`).not.toContain(call);
-        }
-      }
-    });
-
-    it('ships no HTML page from any other package', () => {
-      const others = readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && `packages/${entry.name}` !== VIEW_PACKAGE)
-        .map((entry) => `packages/${entry.name}`);
-      expect(others.length).toBeGreaterThan(0);
+    // Pure matcher: the HTML pages under every package directory of baseDir that is not in the allowed list.
+    const htmlPagesOutside = (baseDir, allowed) => {
       const skipped = new Set(['node_modules', 'dist']);
-      const pages = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+      const pages = (dir) => readdirSync(join(baseDir, dir), { withFileTypes: true }).flatMap((entry) => {
         if (entry.isDirectory()) return skipped.has(entry.name) ? [] : pages(join(dir, entry.name));
         return /\.html?$/i.test(entry.name) ? [join(dir, entry.name)] : [];
       });
-      expect(others.flatMap(pages)).toEqual([]);
+      const others = readdirSync(join(baseDir, 'packages'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !allowed.includes(`packages/${entry.name}`))
+        .map((entry) => `packages/${entry.name}`);
+      return { others, pages: others.flatMap(pages) };
+    };
+
+    it('ships no HTML page from any other package', () => {
+      const { others, pages } = htmlPagesOutside(repoRoot, HTML_PACKAGES);
+      expect(others.length).toBeGreaterThan(0);
+      expect(pages).toEqual([]);
+    });
+
+    it('instrument: the matcher sees an HTML page in another package and lets the allowed package through', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'html-pages-instrument-'));
+      try {
+        for (const [dir, file] of [
+          ['packages/explorer', 'index.html'],
+          ['packages/third/src', 'page.html'],
+          ['packages/third/node_modules/x', 'skipped.html'],
+          ['packages/third/dist', 'skipped.html'],
+        ]) {
+          mkdirSync(join(tmp, dir), { recursive: true });
+          writeFileSync(join(tmp, dir, file), '<html></html>\n');
+        }
+        expect(htmlPagesOutside(tmp, HTML_PACKAGES).pages).toEqual([join('packages/third/src', 'page.html')]);
+        // With the package left off the allowed list its page is found too, so the allowance is what lets it through.
+        expect(htmlPagesOutside(tmp, []).pages).toContain(join('packages/explorer', 'index.html'));
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
     });
 
     it('starts no server from the packer or the skill', () => {
@@ -116,10 +144,12 @@ describe('service-only distribution contract', () => {
 
     it('is referenced by no other skill, agent or hook', () => {
       const others = [
-        ...readdirSync(join(repoRoot, 'skills')).filter((name) => name !== 'excavator-view').map((name) => `skills/${name}/SKILL.md`),
-        ...readdirSync(join(repoRoot, 'agents')).map((name) => `agents/${name}`),
-        ...readdirSync(join(repoRoot, 'hooks')).map((name) => `hooks/${name}`),
-      ].filter((path) => existsSync(join(repoRoot, path)) && /\.(md|json)$/.test(path));
+        ...skillNames(repoRoot).filter((name) => name !== 'excavator-view').map((name) => `skills/${name}/SKILL.md`),
+        ...[
+          ...readdirSync(join(repoRoot, 'agents')).map((name) => `agents/${name}`),
+          ...readdirSync(join(repoRoot, 'hooks')).map((name) => `hooks/${name}`),
+        ].filter((path) => existsSync(join(repoRoot, path)) && /\.(md|json)$/.test(path)),
+      ];
       expect(others.length).toBeGreaterThan(10);
       for (const path of others) {
         expect(read(path), path).not.toMatch(/excavator-view/);
@@ -127,9 +157,38 @@ describe('service-only distribution contract', () => {
     });
 
     it('is the only skill that mentions a browser opener', () => {
-      for (const name of readdirSync(join(repoRoot, 'skills')).filter((n) => n !== 'excavator-view')) {
-        const text = read(`skills/${name}/SKILL.md`);
-        expect(text, name).not.toMatch(/\bxdg-open\b|cmd\.exe \/c start|\bopen "\$/);
+      expect(browserOpenerSkills(repoRoot)).toEqual([]);
+    });
+
+    it('instrument: skips regular files while detecting a browser opener in a non-view skill', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'skill-browser-opener-instrument-'));
+      try {
+        for (const [name, text] of [
+          ['excavator-view', 'xdg-open "$OUT"'],
+          ['unexpected', 'cmd.exe /c start "" "$OUT"'],
+          ['ordinary', 'Write a JSON product.'],
+        ]) {
+          mkdirSync(join(tmp, 'skills', name), { recursive: true });
+          writeFileSync(join(tmp, 'skills', name, 'SKILL.md'), text);
+        }
+        for (const name of ['.DS_Store', 'README.md']) {
+          writeFileSync(join(tmp, 'skills', name), 'xdg-open "$OUT"');
+        }
+        expect(skillNames(tmp).sort()).toEqual(['excavator-view', 'ordinary', 'unexpected']);
+        expect(browserOpenerSkills(tmp)).toEqual(['unexpected']);
+        expect(browserOpenerSkills(tmp, [])).toEqual(['excavator-view', 'unexpected']);
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('does not hide a missing SKILL.md in a genuine skill directory', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'skill-document-instrument-'));
+      try {
+        mkdirSync(join(tmp, 'skills', 'missing'), { recursive: true });
+        expect(() => browserOpenerSkills(tmp)).toThrow(/ENOENT/);
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
       }
     });
   });

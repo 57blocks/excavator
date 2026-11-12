@@ -60,3 +60,11 @@ describe('incremental execution contract', () => {
     expect(analyzer).toContain('explicitly report an error with its ID/name');
   });
 });
+
+describe('F3 semantic-graph write records the model', () => {
+  it('takes --model from EXCAVATOR_MODEL, then ANTHROPIC_MODEL, then unknown', () => {
+    const write = skill.slice(skill.indexOf('semantic-graph.mjs" "$PROJECT_ROOT" write'));
+    const line = write.split('\n').find((l) => l.includes('--model'));
+    expect(line).toContain('--model "${EXCAVATOR_MODEL:-${ANTHROPIC_MODEL:-unknown}}"');
+  });
+});

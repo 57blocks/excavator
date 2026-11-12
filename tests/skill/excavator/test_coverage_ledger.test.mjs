@@ -307,6 +307,35 @@ describe('import map — unresolved specifiers are recorded', () => {
   });
 });
 
+describe('import map - ambiguous alias specifiers are their own gap', () => {
+  it('records a specifier two referenced tsconfigs map to different files', () => {
+    const root = setupTree({
+      'tsconfig.json': JSON.stringify({
+        files: [],
+        references: [{ path: './tsconfig.app.json' }, { path: './tsconfig.web.json' }],
+      }),
+      'tsconfig.app.json': JSON.stringify({ compilerOptions: { paths: { '@/*': ['./app/*'] } } }),
+      'tsconfig.web.json': JSON.stringify({ compilerOptions: { paths: { '@/*': ['./web/*'] } } }),
+      'app/foo.ts': 'export const foo = 1;\n',
+      'web/foo.ts': 'export const foo = 2;\n',
+      'main.ts': "import { foo } from '@/foo';\nimport React from 'react';\nexport const m = [foo, React];\n",
+    });
+    const scan = runScan(root);
+    const importMap = runImportMap(root, scan);
+    expect(importMap.ambiguous).toEqual({ 'main.ts': { '@/foo': ['app/foo.ts', 'web/foo.ts'] } });
+
+    const structure = runStructure(root, scan);
+    const { gaps } = buildCoverageLedger({ scan, structure, importMap });
+    expect(gaps.filter((gap) => gap.kind.startsWith('imports-'))).toEqual([
+      expect.objectContaining({
+        kind: 'imports-ambiguous', scope: 'typescript', count: 1,
+        samples: ['main.ts \u2192 @/foo (app/foo.ts | web/foo.ts)'],
+      }),
+      expect.objectContaining({ kind: 'imports-unresolved', scope: 'typescript', count: 1 }),
+    ]);
+  });
+});
+
 describe('reader lines that could not be placed are a gap', () => {
   it('counts the lines of a .feature file with no Gherkin structure', () => {
     const root = setupTree({

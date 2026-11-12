@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -229,9 +229,9 @@ describe('missing nodeIds are derived from file plus line intersection', () => {
 });
 
 describe('the validator counts an unanchored step on a domain graph', () => {
-  function validate(domainGraph) {
+  function validate(domainGraph, referenceNodeIds) {
     const root = tempRoot();
-    return validateAgainstSource({ graph: domainGraph, reader: createSourceReader(root) });
+    return validateAgainstSource({ graph: domainGraph, reader: createSourceReader(root), referenceNodeIds });
   }
 
   it('reports step-unanchored for a step with neither nodeIds nor inferred', () => {
@@ -254,8 +254,9 @@ describe('the validator counts an unanchored step on a domain graph', () => {
   });
 
   it('accepts a step whose nodeIds are in the graph', () => {
-    // The domain graph carries its own copy of the anchored node, as the
-    // domain graph consumers receive it.
+    // A graph that does contain the node still resolves it. This is not the
+    // shape a domain graph has in practice: its steps name knowledge-graph
+    // nodes it lacks, which the reference-graph tests below cover.
     const domainGraph = domain([step('step:create-order:validate', {
       lineRange: [12, 31], nodeIds: ['function:src/orders/create.ts:validateOrder'],
     })]);
@@ -273,6 +274,129 @@ describe('the validator counts an unanchored step on a domain graph', () => {
     delete nodes[0].filePath;
     const { report } = validate(domain(nodes));
     expect(report.counts.stepUnanchored).toBe(0);
+  });
+});
+
+describe('a step anchored in the reference graph', () => {
+  const VALIDATE_GRAPH = resolve(repoRoot, 'skills/excavator/validate-graph.mjs');
+  const ANCHOR = 'function:src/orders/create.ts:validateOrder';
+
+  function validate(domainGraph, referenceNodeIds) {
+    return validateAgainstSource({
+      graph: domainGraph, reader: createSourceReader(tempRoot()), referenceNodeIds,
+    });
+  }
+
+  function anchoredOnlyInReference() {
+    return domain([step('step:create-order:validate', { nodeIds: [ANCHOR] })]);
+  }
+
+  it('is anchored with the reference graph and unanchored without it', () => {
+    const withReference = validate(anchoredOnlyInReference(), new Set([ANCHOR])).report;
+    expect(withReference.counts.stepUnanchored).toBe(0);
+    expect(withReference.counts.stepsAnchored).toBe(1);
+    expect(withReference.findings.stepUnanchored).toEqual([]);
+
+    const without = validate(anchoredOnlyInReference()).report;
+    expect(without.counts.stepsAnchored).toBe(0);
+    expect(without.counts.stepUnanchored).toBe(1);
+    expect(without.findings.stepUnanchored[0].reason).toContain('none of the step');
+  });
+
+  it('does not merge the reference nodes into the validated graph', () => {
+    const { validated, report } = validate(anchoredOnlyInReference(), new Set([ANCHOR]));
+    expect(validated.nodes.some(n => n.id === ANCHOR)).toBe(false);
+    expect(report.stats.totalNodes).toBe(3);
+  });
+
+  it('puts every step in exactly one bucket and the buckets add up', () => {
+    const graph = domain([
+      step('step:a:in-reference', { nodeIds: [ANCHOR] }),
+      step('step:b:mixed-ids', { nodeIds: ['function:src/ghost.ts:nope', ANCHOR] }),
+      step('step:c:judged', { filePath: undefined, provenance: 'inferred' }),
+      step('step:d:inferred-but-resolves', { nodeIds: [ANCHOR], provenance: 'inferred' }),
+      step('step:e:ghost', { nodeIds: ['function:src/ghost.ts:nope'] }),
+      step('step:f:bare', { filePath: undefined }),
+    ]);
+    const { counts } = validate(graph, new Set([ANCHOR])).report;
+    expect(counts.stepsTotal).toBe(6);
+    expect(counts.stepsAnchored).toBe(3);
+    expect(counts.stepsInferred).toBe(1);
+    expect(counts.stepUnanchored).toBe(2);
+    expect(counts.stepsAnchored + counts.stepsInferred + counts.stepUnanchored).toBe(counts.stepsTotal);
+  });
+
+  describe('CLI --reference', () => {
+    function fixture() {
+      const root = tempRoot();
+      const intermediate = join(root, '.excavator', 'intermediate');
+      mkdirSync(intermediate, { recursive: true });
+      const graphPath = join(intermediate, 'domain-analysis.json');
+      writeFileSync(graphPath, JSON.stringify(anchoredOnlyInReference()), 'utf-8');
+      return {
+        root, graphPath,
+        outPath: join(intermediate, 'domain-validated.json'),
+        reportPath: join(intermediate, 'domain-validation.json'),
+      };
+    }
+
+    function run({ root, graphPath, outPath, reportPath }, extra) {
+      return spawnSync(process.execPath, [
+        VALIDATE_GRAPH, root, '--graph', graphPath, '--out', outPath, '--report', reportPath, ...extra,
+      ], { encoding: 'utf-8', cwd: repoRoot });
+    }
+
+    it('resolves step anchors against a knowledge-graph .jsonl reference', () => {
+      const f = fixture();
+      const referencePath = join(f.root, '.excavator', 'knowledge-graph.jsonl');
+      writeKnowledgeGraph(referencePath, knowledge());
+      const result = run(f, ['--reference', referencePath]);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain('steps-total=1 steps-anchored=1 steps-inferred=0 step-unanchored=0');
+
+      const report = JSON.parse(readFileSync(f.reportPath, 'utf-8'));
+      expect(report.counts.stepsAnchored).toBe(1);
+      expect(report.counts.nodesChecked).toBe(0);
+      expect(report.counts.edgesChecked).toBe(0);
+    });
+
+    it('resolves step anchors against a whole-document .json reference', () => {
+      const f = fixture();
+      const referencePath = join(f.root, 'reference.json');
+      writeFileSync(referencePath, JSON.stringify(knowledge()), 'utf-8');
+      const result = run(f, ['--reference', referencePath]);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain('steps-anchored=1');
+    });
+
+    it('fails naming the path and writes nothing when the reference does not exist', () => {
+      const f = fixture();
+      const missing = join(f.root, '.excavator', 'no-such-graph.jsonl');
+      const result = run(f, ['--reference', missing]);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(missing);
+      expect(existsSync(f.reportPath)).toBe(false);
+      expect(existsSync(f.outPath)).toBe(false);
+    });
+
+    it('fails and writes nothing when the reference is not a graph', () => {
+      const f = fixture();
+      const notGraph = join(f.root, 'not-a-graph.json');
+      writeFileSync(notGraph, JSON.stringify({ hello: 'world' }), 'utf-8');
+      const result = run(f, ['--reference', notGraph]);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(notGraph);
+      expect(existsSync(f.reportPath)).toBe(false);
+      expect(existsSync(f.outPath)).toBe(false);
+    });
+
+    it('without --reference keeps counting the same step as unanchored', () => {
+      const f = fixture();
+      const result = run(f, []);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stderr).toContain('steps-anchored=0');
+      expect(result.stderr).toContain('step-unanchored=1');
+    });
   });
 });
 
@@ -344,6 +468,8 @@ describe('the domain skill wires the anchoring phase in additively', () => {
     expect(section).toContain('skills/excavator/validate-graph.mjs');
     expect(section).toContain('step-unanchored');
     expect(section).toContain('step-nodeid-unresolved');
+    expect(section).toContain('--reference "$DATA_DIR/knowledge-graph.jsonl"');
+    expect(section).toContain('`stepsTotal`, `stepsAnchored`, `stepsInferred` and `stepUnanchored`');
     expect(section).toContain('status=noncanonical-language');
     expect(section).toContain('Do not save or publish `domain-graph.json`');
     expect(section).toContain('source-touching validator remains supplementary and non-fatal');

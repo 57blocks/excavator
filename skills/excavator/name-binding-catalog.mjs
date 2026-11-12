@@ -11,7 +11,10 @@
  * write the name of another declaration (an injection site) and which element is
  * the consumer it is injected into, and - version 3 - which annotations on which
  * members of a Java class do the same, and which bindings manage the class they
- * are on; the stages that read bindings and resolve names only execute it.
+ * are on; and - version 4 (changes/spring-xml-method-calls) - which XML attributes
+ * name a method the container calls, how the method name is got from them and
+ * which class the method belongs to; the stages that read bindings and resolve
+ * names only execute it.
  *
  * Validation is strict and total: an unknown key, a missing field, a wrong type
  * or a repeated id throws, naming where. There is no partial catalog - a typo
@@ -29,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 /** The catalog that ships with the skill. */
 export const SHIPPED_NAME_BINDING_CATALOG = join(dirname(fileURLToPath(import.meta.url)), 'catalogs', 'name-bindings.json');
 
-const CATALOG_VERSION = 3;
+const CATALOG_VERSION = 4;
 const ROOT = 'name-bindings';
 const TARGET_KINDS = ['class', 'bundle', 'name'];
 const SITE_SCOPES = ['unit', 'file', 'outside'];
@@ -188,6 +191,9 @@ function checkAnnotationBinder(path, binder) {
   }
 }
 
+const METHOD_NAME_RULES = ['value', 'setter'];
+const METHOD_OWNER_SOURCES = ['consumer', 'declared', 'named'];
+
 const SITE_ELEMENT_SHAPE = ['element', 'attribute'];
 const SITE_NAMESPACE_SHAPE = ['attributeNamespace', 'attributeSuffix'];
 
@@ -215,6 +221,105 @@ function checkInjectionSite(path, site) {
     if (site[key] === undefined) fail(path, `missing ${JSON.stringify(key)}`);
     checkString(`${path}.${key}`, site[key]);
   }
+}
+
+/**
+ * One method call site: an id, where the call is written (the same two shapes
+ * as an injection site, the namespace shape without a suffix: every attribute
+ * of the namespace), optional conditions on the element's other attributes
+ * (`when` must be written, `unless` must not), how the method name is got
+ * (`method`), which class the method belongs to (`owner`), how many arguments
+ * it takes (`arity`: a count, or null for any) and whether a missing method is
+ * no gap (`optional`).
+ */
+function checkMethodCallSite(path, site) {
+  checkObject(path, site, ['id', 'method', 'owner', 'arity', 'optional'], [...SITE_ELEMENT_SHAPE, 'attributeNamespace', 'when', 'unless']);
+  checkString(`${path}.id`, site.id);
+  const elementShape = SITE_ELEMENT_SHAPE.filter((key) => site[key] !== undefined);
+  if (elementShape.length > 0 && site.attributeNamespace !== undefined) {
+    fail(path, 'the "element"/"attribute" shape and "attributeNamespace" cannot be mixed');
+  }
+  if (elementShape.length === 0 && site.attributeNamespace === undefined) {
+    fail(path, 'expected either "element" and "attribute", or "attributeNamespace"');
+  }
+  if (site.attributeNamespace !== undefined) {
+    checkString(`${path}.attributeNamespace`, site.attributeNamespace);
+  } else {
+    for (const key of SITE_ELEMENT_SHAPE) {
+      if (site[key] === undefined) fail(path, `missing ${JSON.stringify(key)}`);
+      checkString(`${path}.${key}`, site[key]);
+    }
+  }
+  for (const key of ['when', 'unless']) {
+    if (site[key] !== undefined) checkString(`${path}.${key}`, site[key]);
+  }
+  if (site.when !== undefined && site.when === site.unless) fail(path, '"when" and "unless" name the same attribute');
+
+  if (!METHOD_NAME_RULES.includes(site.method)) fail(`${path}.method`, 'expected "value" or "setter"');
+  // An attribute in a namespace is named by its local name, so the name is not its value.
+  if (site.attributeNamespace !== undefined && site.method !== 'setter') fail(`${path}.method`, 'a namespace site needs "setter"');
+
+  checkObject(`${path}.owner`, site.owner, ['from'], ['attribute', 'ancestors']);
+  if (!METHOD_OWNER_SOURCES.includes(site.owner.from)) fail(`${path}.owner.from`, 'expected "consumer", "declared" or "named"');
+  if (site.owner.from === 'named') {
+    if (site.owner.attribute === undefined) fail(`${path}.owner`, '"named" needs "attribute"');
+    checkString(`${path}.owner.attribute`, site.owner.attribute);
+    if (site.owner.ancestors !== undefined) {
+      checkStrings(`${path}.owner.ancestors`, site.owner.ancestors, { atLeastOne: true });
+      checkNoRepeats(`${path}.owner.ancestors`, site.owner.ancestors, 'ancestor element');
+    }
+  } else if (site.owner.attribute !== undefined || site.owner.ancestors !== undefined) {
+    fail(`${path}.owner`, '"attribute" and "ancestors" need "from": "named"');
+  }
+
+  if (site.arity !== null && (!Number.isInteger(site.arity) || site.arity < 0)) fail(`${path}.arity`, 'expected a non-negative integer or null');
+  checkBoolean(`${path}.optional`, site.optional);
+}
+
+/**
+ * A default: an attribute of the root element that stands for another site on
+ * every consumer element that does not write that site's attribute, as an
+ * optional call. `like` names an element-shaped site on the consumer element
+ * that reads its method name as written.
+ */
+function checkMethodCallDefault(path, entry) {
+  checkObject(path, entry, ['id', 'attribute', 'like']);
+  for (const key of ['id', 'attribute', 'like']) checkString(`${path}.${key}`, entry[key]);
+}
+
+function checkXmlMethodCall(path, family) {
+  checkObject(path, family, ['id', 'namespace', 'basis', 'root', 'consumer', 'sites', 'defaults'], ['rootNamespace']);
+  for (const key of ['id', 'namespace', 'basis', 'root']) checkString(`${path}.${key}`, family[key]);
+  if (family.rootNamespace !== undefined) checkRootNamespaces(`${path}.rootNamespace`, family.rootNamespace);
+
+  checkObject(`${path}.consumer`, family.consumer, ['element', 'binder']);
+  checkString(`${path}.consumer.element`, family.consumer.element);
+  checkString(`${path}.consumer.binder`, family.consumer.binder);
+
+  checkArray(`${path}.sites`, family.sites, { atLeastOne: true });
+  family.sites.forEach((site, i) => checkMethodCallSite(`${path}.sites[${i}]`, site));
+  checkArray(`${path}.defaults`, family.defaults);
+  family.defaults.forEach((entry, i) => checkMethodCallDefault(`${path}.defaults[${i}]`, entry));
+}
+
+/**
+ * The cross-references of a method call family: its consumer binder is a class
+ * binder of its namespace, each default's `like` is a site of the family that
+ * sits on the consumer element and reads a name as written, no two defaults
+ * write the same root attribute.
+ */
+function checkMethodCallFamily(path, family, xmlBinders) {
+  checkConsumerBinder(path, family, xmlBinders);
+  family.defaults.forEach((entry, i) => {
+    const like = family.sites.find((site) => site.id === entry.like);
+    const where = `${path}.defaults[${i}].like`;
+    if (like === undefined) fail(where, `no site with the id ${JSON.stringify(entry.like)} in the family`);
+    if (like.element !== family.consumer.element) fail(where, `${JSON.stringify(entry.like)} is not a site on the consumer element ${JSON.stringify(family.consumer.element)}`);
+    if (like.method !== 'value') fail(where, `${JSON.stringify(entry.like)} must read its method name as "value"`);
+    if (like.when !== undefined || like.unless !== undefined) fail(where, `${JSON.stringify(entry.like)} has a condition, which a default does not evaluate`);
+    if (like.owner.from !== 'consumer') fail(where, `${JSON.stringify(entry.like)} must belong to the consumer's class`);
+  });
+  checkNoRepeats(`${path}.defaults`, family.defaults.map((entry) => entry.attribute), 'default attribute');
 }
 
 function checkXmlInjection(path, family) {
@@ -410,7 +515,7 @@ export function parseNameBindingCatalog(value) {
   if (isPlainObject(value) && value.version !== undefined && value.version !== CATALOG_VERSION) {
     fail(`${ROOT}.version`, `expected the number ${CATALOG_VERSION}`);
   }
-  checkObject(ROOT, value, ['version', 'unitDescriptors', 'xmlBinders', 'annotationBinders', 'expressionLanguages', 'xmlInjections', 'annotationInjections']);
+  checkObject(ROOT, value, ['version', 'unitDescriptors', 'xmlBinders', 'annotationBinders', 'expressionLanguages', 'xmlInjections', 'xmlMethodCalls', 'annotationInjections']);
   checkStrings(`${ROOT}.unitDescriptors`, value.unitDescriptors);
 
   const lists = [
@@ -418,6 +523,7 @@ export function parseNameBindingCatalog(value) {
     ['annotationBinders', checkAnnotationBinder],
     ['expressionLanguages', checkExpressionLanguage],
     ['xmlInjections', checkXmlInjection],
+    ['xmlMethodCalls', checkXmlMethodCall],
     ['annotationInjections', checkAnnotationInjection],
   ];
   // An id is what the coverage and the evidence name a binder, a language or a
@@ -443,6 +549,17 @@ export function parseNameBindingCatalog(value) {
     const path = `${ROOT}.xmlInjections[${i}]`;
     checkSiteIds(path, family);
     checkConsumerBinder(path, family, value.xmlBinders);
+  });
+
+  // The method call sites and their defaults share the site id space: the coverage counts them by id too.
+  value.xmlMethodCalls.forEach((family, i) => {
+    const path = `${ROOT}.xmlMethodCalls[${i}]`;
+    checkSiteIds(path, family);
+    family.defaults.forEach((entry, j) => {
+      if (siteIds.has(entry.id)) fail(`${path}.defaults[${j}]`, `duplicate site id ${JSON.stringify(entry.id)}`);
+      siteIds.add(entry.id);
+    });
+    checkMethodCallFamily(path, family, value.xmlBinders);
   });
 
   // An annotation belongs to one site: what a use of it is read as must not depend on the order of the sites.
