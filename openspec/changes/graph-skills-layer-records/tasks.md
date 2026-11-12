@@ -13,7 +13,12 @@
    - `docs(openspec): read layers from the semantic graph first`：proposal、design、spec 改为 D1–D4。
    - `fix(skill): read a Full run's layers from semantic-graph.json first`：任务 1.3、1.4。测试与 skill 放在同一个提交：第一版的测试在新 skill 上是红的，分开会留下一个红的中间提交。
    - `docs(openspec): record the acceptance after review round 1`：任务 2.1。
-6. `docs(openspec): archive graph-skills-layer-records`：任务 2.2、3.1。
+6. 审查第 2 轮的修复：
+   - `docs(openspec): mark the layer lines an incremental update writes`：proposal、design（D1、D4、D6、O6、O7）、spec。
+   - `fix(skill): mark the layer lines an incremental update writes`：任务 1.5。
+   - `fix(skill): read the layers that were written last`：任务 1.6、1.7。测试与 skill 放在同一个提交，理由同上。
+   - `docs(openspec): record the acceptance after review round 2`：任务 2.3。
+7. `docs(openspec): archive graph-skills-layer-records`：任务 2.2、3.1。
 
 ## 1. 实现
 
@@ -21,11 +26,15 @@
 - [x] 1.2 第一版：`tests/skill/test_graph_skill_layer_step.test.mjs`。
 - [x] 1.3 四个 SKILL.md 按 D1–D3 加 Reading Layers 一节，改分层行的说明、取分层的一步与 onboard 的 Architecture Layers 一行。
 - [x] 1.4 测试按 D4。
+- [ ] 1.5 `finalize-incremental.mjs` 按 D6 写 `layersFrom: "incremental"`。
+- [ ] 1.6 四个 SKILL.md 的 Reading Layers 一节按 D1 加 `layersFrom` 一条与它的命令，建议的命令改为 `/excavator --full`。
+- [ ] 1.7 测试按 D4 加真实流水线的三步与挪动 `layersFrom` 一条的改法。
 
 ## 2. 验收
 
 - [ ] 2.1 O1：先在改 skill 之前的检出上跑新测试，记下红的条目；改完后跑绿。O2–O5。
 - [ ] 2.2 验收记录写进 design.md；开 PR，按 `REVIEW.md` 审查。
+- [ ] 2.3 审查第 2 轮：O6、O7，受影响的测试与 O4 的两个静态检查。
 
 ## 3. 归档
 
