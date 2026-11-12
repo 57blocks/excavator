@@ -38,11 +38,13 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 The architecture layers, each {id, name, description, nodeIds[]}, can be in two places:
 - `.excavator/semantic-graph.json` — a Full run writes its layers here, under `layers`, with the `factDigest` of the facts they were made from;
-- the knowledge graph's `{"record":"layer",…}` lines — an incremental update writes its layers there.
+- the knowledge graph's `{"record":"layer",…}` lines — an incremental update writes its layers there and sets the header's `fields.project.layersFrom` to `incremental`. A later Full or default run rebuilds the header without `layersFrom` but keeps the layer lines.
 
 A layer's `nodeIds` lists file-level node IDs only, so for a function or class use the ID of the file-level node with the same `filePath`. Run these from the project root, putting in the node ID where a command looks one up:
 
 ```bash
+# the header's layersFrom (no output when there is none)
+head -n 1 .excavator/knowledge-graph.jsonl | jq -r '.fields.project.layersFrom // empty'
 # the semantic graph's factDigest, then the knowledge graph's factsDigest
 jq -r '.factDigest' .excavator/semantic-graph.json
 head -n 1 .excavator/knowledge-graph.jsonl | jq -r '.fields.project.factsDigest'
@@ -55,11 +57,12 @@ grep '"record":"layer"' .excavator/knowledge-graph.jsonl | grep -F '"<node id>"'
 ```
 
 Use the first that applies:
-1. `semantic-graph.json` exists and its `factDigest` equals the `factsDigest`: use its layers.
-2. The knowledge graph has layer lines: use them.
-3. Otherwise there are no layers to use: say so, and never group files into layers yourself.
+1. The header's `layersFrom` is `incremental`: use the layer lines. An incremental update never writes `semantic-graph.json` and keeps the previous `factsDigest`, so its layer lines are newer even when the digests match.
+2. `semantic-graph.json` exists and its `factDigest` equals the `factsDigest`: use its layers.
+3. The knowledge graph has layer lines: use them.
+4. Otherwise there are no layers to use: say so, and never group files into layers yourself.
 
-When `semantic-graph.json` exists with another `factDigest`, its layers were made from other facts: do not use them, say so, and suggest running `/excavator --mode=full`.
+When rule 1 or 3 applies and `semantic-graph.json` exists, its layers are older than the layer lines or were made from other facts: do not use them, say so, and suggest running `/excavator --full`.
 
 ## Instructions
 
