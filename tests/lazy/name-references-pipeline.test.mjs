@@ -124,8 +124,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
   });
 
   it('stamps the product with the new pipeline version', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/16');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/16');
   });
 
   it('records the framework its faces-config descriptors declare in the header', () => {

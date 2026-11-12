@@ -93,18 +93,19 @@ describe('excavator-verify skill: the language of what it writes', () => {
     const line = `${PHASE_LANGUAGE}\n\n`;
     const followsDocument = "`--language <lang>` — the language of the report; the document's language when it is not given.";
     const noRule = [...Array(6)].reduce((text) => without(text, line), without(without(skill, paragraph), paragraph)).replace(OPTION_LANGUAGE, followsDocument);
+    /** Each known-bad copy, and the problem that the check it was made for reports. */
     const bad = {
-      noRule,
-      noPhaseZero: without(skill, paragraph, '## Phase 0 — '),
-      ownSection: without(without(skill, paragraph), paragraph).replace('---\n\n## Phase 0 — ', `## Language\n\n${paragraph}---\n\n## Phase 0 — `),
-      noPhaseTwo: without(skill, line, '## Phase 2 — '),
-      inFix: without(skill, paragraph, '## Phase 6 — ').replace('Edit `DOC` in place', `${paragraph}Edit \`DOC\` in place`),
-      afterReply: `${without(skill, paragraph, '## Phase 6 — ')}\n${LANGUAGE_RULE}\n`,
-      beforeSkip: without(skill, paragraph, '## Phase 6 — ').replace(`${SKIP}\n\n`, `${paragraph}${SKIP}\n\n`),
-      reworded: skill.slice(0, skill.indexOf('## Phase 6 — ')) + skill.slice(skill.indexOf('## Phase 6 — ')).replace('memory and ', ''),
-      followsDocument: skill.replace(OPTION_LANGUAGE, followsDocument),
+      noRule: [noRule, 'the language paragraph is there 0 times, not twice'],
+      noPhaseZero: [without(skill, paragraph, '## Phase 0 — '), 'Phase 0 does not open with the language paragraph'],
+      ownSection: [without(without(skill, paragraph), paragraph).replace('---\n\n## Phase 0 — ', `## Language\n\n${paragraph}---\n\n## Phase 0 — `), 'Phase 0 does not open with the language paragraph'],
+      noPhaseTwo: [without(skill, line, '## Phase 2 — '), 'Phase 2 does not open with the language line'],
+      inFix: [without(skill, paragraph, '## Phase 6 — ').replace('Edit `DOC` in place', `${paragraph}Edit \`DOC\` in place`), 'the language paragraph does not stand right before the command that prints the reply'],
+      afterReply: [`${without(skill, paragraph, '## Phase 6 — ')}\n${LANGUAGE_RULE}\n`, 'the language paragraph does not stand right before the command that prints the reply'],
+      beforeSkip: [without(skill, paragraph, '## Phase 6 — ').replace(`${SKIP}\n\n`, `${paragraph}${SKIP}\n\n`), 'Phase 6 does not say when to skip it before the language paragraph'],
+      reworded: [skill.slice(0, skill.indexOf('## Phase 6 — ')) + skill.slice(skill.indexOf('## Phase 6 — ')).replace('memory and ', ''), '1 of 2 language paragraphs differ from the others'],
+      followsDocument: [skill.replace(OPTION_LANGUAGE, followsDocument), 'the options do not say that only --language changes the language'],
     };
-    for (const [name, text] of Object.entries(bad)) expect(languageRuleProblems(text), name).not.toEqual([]);
+    for (const [name, [text, problem]] of Object.entries(bad)) expect(languageRuleProblems(text), name).toContain(problem);
   });
 
   it('is told the language of the skill that follows its procedure', () => {

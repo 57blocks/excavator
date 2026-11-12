@@ -77,8 +77,8 @@ describe('XML method call sites in the real Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/16');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/16');
   });
 
   it('draws exactly the expected invokes edges: extracted, forward, from the descriptor file node, with the evidence of every call', () => {

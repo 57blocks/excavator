@@ -12,7 +12,7 @@ const FUNCTION_SCOPES = [
   "arrow_function",
   "method_definition",
 ];
-const FUNCTION_SCOPE_SET = new Set(FUNCTION_SCOPES);
+export const FUNCTION_SCOPE_SET = new Set(FUNCTION_SCOPES);
 
 /** Opening and self-closing tags. Closing tags repeat the opening tag's name
  *  and are not counted. */
@@ -84,8 +84,9 @@ export function extractJsxFacts(root: TreeSitterNode): JsxFacts | undefined {
 }
 
 /** The names a function binds: its parameters and the declarations in its
- *  body, not descending into nested functions (whose own names do count). */
-function boundNames(scope: TreeSitterNode): Set<string> {
+ *  body, not descending into nested functions (whose own names do count).
+ *  Call sites use it too, to mark a callee an enclosing function binds. */
+export function boundNames(scope: TreeSitterNode): Set<string> {
   const names = new Set<string>();
   const params = scope.childForFieldName("parameters") ?? scope.childForFieldName("parameter");
   if (params) collectPattern(params, names);

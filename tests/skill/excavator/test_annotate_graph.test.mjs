@@ -48,7 +48,7 @@ function facts() {
         status: 'parsed',
         functions: [{ name: 'run', startLine: 3, endLine: 5 }],
         classes: [],
-        imports: [{ source: './helper', specifiers: ['helper'], line: 1 }],
+        imports: [{ source: './helper', specifiers: ['helper'], line: 1, bindings: [{ local: 'helper', imported: 'helper' }] }],
         exports: [{ name: 'run', line: 3 }],
         callGraph: [{ caller: 'run', callee: 'helper', lineNumber: 4 }],
       },
@@ -88,6 +88,7 @@ function importMapResult() {
   return {
     importMap: { 'src/app.ts': ['src/helper.ts'], 'src/helper.ts': [] },
     unresolved: {},
+    resolvedSources: { 'src/app.ts': { './helper': 'src/helper.ts' } },
   };
 }
 
@@ -498,8 +499,21 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     expect(report.counts.edgeMissing.calls).toBeUndefined();
   });
 
-  it('leaves an ambiguous site matched by name, as before', () => {
+  /**
+   * The same fixture with app.ts in a language whose callee is resolved by
+   * the import-map call scope. TS/JS callees resolve through the file's own
+   * bindings instead (tests/lazy/import-binding-call-scope.test.mjs), where an
+   * import-map entry alone does not widen the scope.
+   */
+  function scopeResolvedWrongTarget() {
     const inputs = wrongTarget();
+    inputs.structure.results.find((r) => r.path === 'src/app.ts').language = 'python';
+    inputs.scan.files.find((f) => f.path === 'src/app.ts').language = 'python';
+    return inputs;
+  }
+
+  it('leaves an ambiguous site matched by name, as before', () => {
+    const inputs = scopeResolvedWrongTarget();
     inputs.importMap.importMap['src/app.ts'] = ['src/helper.ts', 'src/other.ts'];
     const { annotated, audit: report } = audit(inputs);
 
@@ -511,7 +525,7 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
   });
 
   it('leaves an unresolved site matched by name, as before', () => {
-    const inputs = wrongTarget();
+    const inputs = scopeResolvedWrongTarget();
     inputs.importMap.importMap['src/app.ts'] = [];
     const { annotated, audit: report } = audit(inputs);
 
