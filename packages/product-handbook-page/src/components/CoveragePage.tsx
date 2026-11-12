@@ -4,6 +4,7 @@ import { findingCategoryKey } from '../lib/types';
 import type { PageData, RemovedItem } from '../lib/types';
 import { CheckIcon } from './Icons';
 import { ReachBadge } from './ReachBadge';
+import { OutlineCoverage } from './OutlineCoverage';
 import { Cell, TableScroll } from './Tables';
 import { Item, ItemCollapse, ItemList } from './ui/ItemList';
 
@@ -45,6 +46,7 @@ function PriorityCoverage({ data }: { data: PageData }) {
       <h2 className="section-title" id="cov-priority">{t('md.coverage.priorityHeading')}</h2>
       {data.findings.length === 0 && <p className="muted">{t('md.none')}</p>}
       {data.findings.length > 0 && !finished && <p className="muted" data-part="priority-not-finished">{t('md.coverage.priorityNotFinished', { count: data.findings.length })}</p>}
+      {data.findings.length > 0 && data.unverifiedParts?.priority === true && <p className="muted" data-part="priority-unverified">{t('md.coverage.priorityUnverified')}</p>}
       {data.findings.length > 0 && finished && unranked.length === 0 && <p className="muted" data-part="priority-all-ranked">{t('md.coverage.priorityAllRanked')}</p>}
       {data.findings.length > 0 && finished && unranked.length > 0 && (
         <>
@@ -70,6 +72,7 @@ function RemediesCoverage({ data }: { data: PageData }) {
     <section className="section" aria-labelledby="cov-remedies">
       <h2 className="section-title" id="cov-remedies">{t('md.coverage.remediesHeading')}</h2>
       {data.findings.length === 0 && <p className="muted">{t('md.none')}</p>}
+      {data.findings.length > 0 && data.unverifiedParts?.remedies === true && <p className="muted" data-part="remedies-unverified">{t('md.coverage.remediesUnverified')}</p>}
       {data.findings.length > 0 && !finished && <p className="muted" data-part="remedies-not-finished">{t(stale ? 'md.coverage.remediesStale' : 'md.coverage.remediesNotFinished')}</p>}
       {data.findings.length > 0 && finished && dropped.length === 0 && <p className="muted" data-part="remedies-all-kept">{t('md.coverage.remediesAllKept')}</p>}
       {data.findings.length > 0 && finished && dropped.length > 0 && (
@@ -92,7 +95,7 @@ function RemediesCoverage({ data }: { data: PageData }) {
 function TopicsCoverage({ data }: { data: PageData }) {
   const t = useText();
   const { lanes, finished, stale, dropped } = data.coverage.topics;
-  const status = (value: string) => t(value === 'verified' ? 'md.topics.laneStatus.verified' : value === 'stale' ? 'md.topics.laneStatus.stale' : `md.status.${value}`);
+  const status = (value: string) => t(value === 'verified' ? 'md.topics.laneStatus.verified' : value === 'checked' ? 'md.topics.laneStatus.checked' : value === 'stale' ? 'md.topics.laneStatus.stale' : `md.status.${value}`);
   return (
     <section className="section" aria-labelledby="cov-topics">
       <h2 className="section-title" id="cov-topics">{t('md.coverage.topicsHeading')}</h2>
@@ -109,6 +112,7 @@ function TopicsCoverage({ data }: { data: PageData }) {
           </tbody>
         </TableScroll>
       )}
+      {lanes.length > 0 && data.unverifiedParts?.topics === true && <p className="muted" data-part="topics-unverified">{t('md.coverage.topicsUnverified')}</p>}
       {lanes.length > 0 && !finished && <p className="muted" data-part="topics-not-finished">{t(stale ? 'md.coverage.topicsStale' : 'md.coverage.topicsNotFinished')}</p>}
       {lanes.length > 0 && finished && dropped.length === 0 && <p className="muted" data-part="topics-all-kept">{t('md.coverage.topicsAllKept')}</p>}
       {dropped.length > 0 && (
@@ -134,6 +138,8 @@ function FindingsCoverage({ data }: { data: PageData }) {
   const { coverage } = data;
   const areaName = new Map(data.areas.map((area) => [area.id, area.name]));
   const itemValues = (feature: PageData['features'][number]) => ({ id: feature.id, name: feature.name, area: areaName.get(feature.area) ?? '' });
+  const featuresUnverified = data.unverifiedParts?.findings ?? 0;
+  const systemUnverified = data.unverifiedParts?.systemFindings ?? 0;
   const unfinished = coverage.findingsUnfinished.flatMap((row) => {
     const feature = data.features.find((item) => item.id === row.feature);
     return feature === undefined ? [] : [{ feature, status: row.status }];
@@ -147,7 +153,8 @@ function FindingsCoverage({ data }: { data: PageData }) {
       <section className="section" aria-labelledby="cov-findings-unfinished">
         <h2 className="section-title" id="cov-findings-unfinished">{t('md.coverage.findingsUnfinishedHeading')}</h2>
         {coverage.findingsNotWritten > 0 && <p className="muted" data-part="findings-not-written">{t('md.coverage.findingsNotWritten', { count: coverage.findingsNotWritten })}</p>}
-        {unfinished.length === 0 && coverage.findingsNotWritten === 0 ? <p className="muted">{t('md.coverage.findingsAllVerified')}</p> : unfinished.length === 0 ? null : (
+        {featuresUnverified > 0 && <p className="muted" data-part="findings-unverified">{t('md.coverage.findingsUnverified', { count: featuresUnverified, total: data.features.length })}</p>}
+        {unfinished.length === 0 && coverage.findingsNotWritten === 0 && featuresUnverified === 0 ? <p className="muted">{t('md.coverage.findingsAllVerified')}</p> : unfinished.length === 0 ? null : (
           <TableScroll label={t('md.coverage.findingsUnfinishedHeading')}>
             <thead><tr><th scope="col">{t('md.table.feature')}</th><th scope="col">{t('md.table.status')}</th></tr></thead>
             <tbody>
@@ -161,7 +168,8 @@ function FindingsCoverage({ data }: { data: PageData }) {
           </TableScroll>
         )}
         {coverage.systemFindingsNotWritten > 0 && <p className="muted" data-part="system-findings-not-written">{t('md.coverage.systemFindingsNotWritten', { count: coverage.systemFindingsNotWritten })}</p>}
-        {coverage.systemFindingsNotWritten === 0 && coverage.systemFindingsUnfinished.length === 0 && coverage.systemFindingsTotal > 0 && <p className="muted" data-part="system-findings-all-verified">{t('md.coverage.systemFindingsAllVerified')}</p>}
+        {systemUnverified > 0 && <p className="muted" data-part="system-findings-unverified">{t('md.coverage.systemFindingsUnverified', { count: systemUnverified, total: coverage.systemFindingsTotal })}</p>}
+        {coverage.systemFindingsNotWritten === 0 && coverage.systemFindingsUnfinished.length === 0 && systemUnverified === 0 && coverage.systemFindingsTotal > 0 && <p className="muted" data-part="system-findings-all-verified">{t('md.coverage.systemFindingsAllVerified')}</p>}
         {coverage.systemFindingsUnfinished.length > 0 && (
           <TableScroll label={t('md.table.application')}>
             <thead><tr><th scope="col">{t('md.table.application')}</th><th scope="col">{t('md.table.status')}</th></tr></thead>
@@ -210,7 +218,8 @@ export function CoveragePage({ data }: { data: PageData }) {
   const areaName = new Map(data.areas.map((area) => [area.id, area.name]));
   const itemValues = (feature: PageData['features'][number]) => ({ id: feature.id, name: feature.name, area: areaName.get(feature.area) ?? '' });
   const links = data.features.filter((feature) => feature.reach === 'link');
-  const unwritten = data.features.filter((feature) => feature.status !== 'verified');
+  const unwritten = data.features.filter((feature) => feature.status !== 'verified' && feature.unverified !== true);
+  const unverified = data.features.filter((feature) => feature.unverified === true);
   const removed = coverage.removed.flatMap((group) => {
     const feature = data.features.find((item) => item.id === group.feature);
     return feature === undefined ? [] : [{ feature, items: group.items }];
@@ -276,7 +285,7 @@ export function CoveragePage({ data }: { data: PageData }) {
 
       <section className="section" aria-labelledby="cov-unwritten">
         <h2 className="section-title" id="cov-unwritten">{t('md.coverage.unwrittenHeading')}</h2>
-        {unwritten.length === 0 ? <p className="muted">{t('md.coverage.allWritten')}</p> : (
+        {unwritten.length === 0 ? <p className="muted">{t(unverified.length === 0 ? 'md.coverage.allWritten' : 'md.none')}</p> : (
           <TableScroll label={t('md.coverage.unwrittenHeading')}>
             <thead><tr><th scope="col">{t('md.table.feature')}</th><th scope="col">{t('md.table.status')}</th></tr></thead>
             <tbody>
@@ -291,8 +300,25 @@ export function CoveragePage({ data }: { data: PageData }) {
         )}
       </section>
 
+      {unverified.length > 0 && (
+        <section className="section" aria-labelledby="cov-unverified" data-part="unverified-coverage">
+          <h2 className="section-title" id="cov-unverified">{t('md.coverage.unverifiedHeading')}</h2>
+          <p className="muted">{t('md.coverage.unverifiedCount', { count: unverified.length, total: data.features.length })}</p>
+          <ul className="plain-list">
+            {unverified.map((feature) => (
+              <li key={feature.id}>
+                <a href={nav.feature(feature.id)}>{t('md.coverage.unverifiedItem', { ...itemValues(feature), id: feature.id, name: feature.name, ...(coverage.unverified?.find((row) => row.feature === feature.id)?.notes ?? { number: 0, quote: 0, code: 0, advice: 0, language: 0 }) })}</a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {data.unverifiedParts?.overview === true && <p className="muted" data-part="overview-unverified">{t('md.coverage.overviewUnverified')}</p>}
+
       <section className="section" aria-labelledby="cov-removed">
         <h2 className="section-title" id="cov-removed">{t('md.coverage.removedHeading')}</h2>
+        <p className="muted" data-part="untraced">{t('md.coverage.untraced')}</p>
         {removed.length === 0 && coverage.removedOverview.length === 0 ? <p className="muted">{t('md.none')}</p> : null}
         {coverage.removedOverview.length === 0 ? null : (
           <div className="removed-group">
@@ -309,6 +335,7 @@ export function CoveragePage({ data }: { data: PageData }) {
       </section>
 
       <FindingsCoverage data={data} />
+      <OutlineCoverage data={data} />
     </article>
   );
 }

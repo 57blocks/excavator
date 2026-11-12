@@ -1,5 +1,5 @@
 /**
- * The Appendix chapter of handbook.md (openspec change handbook-history-appendix,
+ * The Appendix blocks of handbook.md (openspec change handbook-history-appendix,
  * design D3 and D4), written from the model of appendix.mjs: the open questions,
  * the glossary, and the sources and scope. Every fixed text is a ui key; every
  * other word is a verified entry's or a count of the run. Nothing is written that
@@ -55,8 +55,17 @@ function sourcesBlock({ sources }, t) {
   return out;
 }
 
-/** The Appendix chapter. `entities.domains` give the groups of the open questions (the overview's first) and `map` the names of the features. */
-export function appendixChapter({ appendix, map, entities, t }) {
+/**
+ * The three blocks of the appendix, each a list of lines starting with its own heading: the open questions (after the
+ * note that a script writes the appendix), the glossary, and the sources and scope. `entities.domains` give the groups
+ * of the open questions (the overview's first) and `map` the names of the features.
+ */
+export function appendixBlocks({ appendix, map, entities, t }) {
   const names = new Map(map.features.map((feature) => [feature.id, feature.name]));
-  return [`## ${t('md.appendix.heading')}`, '', t('md.appendix.note'), '', ...openBlock(appendix, names, entities.domains, t), ...glossaryBlock(appendix, names, t), ...sourcesBlock(appendix, t)];
+  const [heading, ...open] = openBlock(appendix, names, entities.domains, t);
+  return {
+    'open-questions': [heading, '', t('md.appendix.note'), ...open],
+    glossary: glossaryBlock(appendix, names, t),
+    sources: sourcesBlock(appendix, t),
+  };
 }

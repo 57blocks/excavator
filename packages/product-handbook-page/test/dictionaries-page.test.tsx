@@ -20,6 +20,7 @@ import type { DictionariesSection, DictionaryEntry, PageData, View } from '../sr
 import { switchTarget } from '../src/lib/views';
 import { choose, cleanup, mount, openWithKeyboard, optionTexts, selectByLabel, status as statusOf, typeInto } from './dom';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -80,7 +81,8 @@ const section: DictionariesSection = {
 
 function dataFor(views: View[], dictionaries: DictionariesSection | null = section, dictionariesState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
   return {
-    format: 'excavator-product-handbook-page/14',
+    format: 'excavator-product-handbook-page/18',
+    chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -89,6 +91,7 @@ function dataFor(views: View[], dictionaries: DictionariesSection | null = secti
     areas: [{ id: 'A1', name: d('area') }],
     domains: [{ id: 'D1', name: d('domain') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [],
     findings: [],
     remedies: { categories: [], recommendations: [] },

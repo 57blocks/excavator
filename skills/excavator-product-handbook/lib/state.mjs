@@ -10,8 +10,12 @@
  * file, and the items removed
  * so far (a record of a removal by the tracers also has `step: "trace"`, the
  * `reasons` of every tracer that contradicted the item and the `at` positions
- * that showed the counter-evidence). Only the scripts change it:
- * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
+ * that showed the counter-evidence). A unit whose rewrite changed the claim of
+ * an item also carries `narrowed`, `[{ path, from, to, kept }]`, for the audit
+ * (openspec change handbook-recall); the handbook does not show it. A checked /3 entry
+ * (openspec change handbook-free-chapter) also carries `chapter: { items, notes }`, the items of its chapter with each
+ * citation as `{ file, lines, passage }` and the content findings `{ id, kind, detail }` the chapter check reported. Only the scripts change it:
+ * check-map creates it; mark and check-entry update it (an older run's verdict and trace commands set the statuses `confirmed` and `verified`, which stay valid).
  * Every write is atomic; the commands that change it hold the state lock
  * (lock.mjs). The system overview (openspec change handbook-system-overview)
  * has the same entry under the optional key `overview`, and the findings of
@@ -28,6 +32,10 @@
  * optional key `remedies`, again an entry of the same form, with the digest of
  * the facts it was written for (`factsDigest`) and the paragraphs the judges did
  * not both accept (`dropped`).
+ * The domain flow diagrams (openspec change handbook-free-chapter) are under the optional key `domainFlows`, `{ status, attempts, reasons }`
+ * (check-domain-flows); a state without it means no attempt was made.
+ * The architecture section (openspec change handbook-architecture-chapter) is under the optional key `architecture`, `{ status, attempts, notes }`
+ * (check-architecture); a state without it means no attempt was made.
  * The topics of the handbook (openspec change handbook-topics) are under the optional key
  * `topics`, by lane id (a domain's, or `repeated`), each an entry of the same form with the
  * digest of the facts of the lane (`factsDigest`) and the rows the judges did not both accept
@@ -48,6 +56,14 @@ export const FAILURE_STEPS = Object.freeze(['check-entry', 'lane', 'rewrite', 'v
 export const REMOVAL_STEPS = Object.freeze(['verify', 'trace']);
 /** What a removed item records: a verifier's verdict, or `withParent` for an item that went with the item it belongs to. */
 export const REMOVED_VERDICTS = Object.freeze(['unverified', 'contradicted', 'withParent']);
+/** The statuses of the domain flow diagrams (openspec change handbook-free-chapter): `checked`, or `failed` with the reasons of the last attempt. A state without the key means no attempt. */
+export const DOMAIN_FLOWS_STATUSES = Object.freeze(['checked', 'failed']);
+/** The domain flows file gets at most three attempts. */
+export const MAX_FLOW_ATTEMPTS = 3;
+/** The statuses of the architecture section (openspec change handbook-architecture-chapter): `checked`, or `failed` with the reasons of the last attempt. */
+export const ARCHITECTURE_STATUSES = Object.freeze(['checked', 'failed']);
+/** The architecture files get at most three attempts. */
+export const MAX_ARCHITECTURE_ATTEMPTS = 3;
 /** A lane gets at most two attempts. */
 export const MAX_ATTEMPTS = 2;
 
@@ -58,6 +74,19 @@ const removedValid = (list) => Array.isArray(list) && list.every((item) => isObj
   && (item.step === undefined || REMOVAL_STEPS.includes(item.step)) && (item.at === undefined || atValid(item.at))
   && (item.reasons === undefined || (Array.isArray(item.reasons) && item.reasons.every((reason) => typeof reason === 'string'))));
 
+/** The claims a round-2 rewrite changed (openspec change handbook-recall): each with its old and new claim and whether the item stayed. */
+const narrowedValid = (list) => Array.isArray(list) && list.every((item) => isObject(item)
+  && typeof item.path === 'string' && typeof item.from === 'string' && typeof item.to === 'string' && typeof item.kept === 'boolean');
+
+/** The chapter items a /3 entry's checked state keeps (openspec change handbook-free-chapter): each with its citations resolved to lines and their text. */
+const chapterValid = (chapter) => isObject(chapter) && Array.isArray(chapter.items)
+  && (chapter.notes === undefined || (Array.isArray(chapter.notes) && chapter.notes.every((note) => isObject(note) && ['id', 'kind', 'detail'].every((key) => typeof note[key] === 'string'))))
+  && chapter.items.every((item) => isObject(item)
+  && typeof item.id === 'string' && typeof item.kind === 'string' && typeof item.text === 'string' && typeof item.claim === 'string'
+  && (item.own === undefined || typeof item.own === 'string')
+  && Array.isArray(item.cites) && item.cites.every((cite) => isObject(cite) && typeof cite.file === 'string' && typeof cite.passage === 'string'
+    && Array.isArray(cite.lines) && cite.lines.length === 2 && cite.lines.every(Number.isInteger)));
+
 /** The problem of one state entry (of a feature, or the overview) named `label`, or null. */
 function entryProblem(label, entry) {
   if (!isObject(entry) || !STATUSES.includes(entry.status) || !Number.isInteger(entry.attempts) || entry.attempts < 0) {
@@ -67,8 +96,10 @@ function entryProblem(label, entry) {
     return `${label} has a failure that is not { step, reasons }`;
   }
   if (entry.removed !== undefined && !removedValid(entry.removed)) return `${label} has a removed list that is not [{ path, claim, verdict, reason, step?, reasons?, at? }]`;
+  if (entry.narrowed !== undefined && !narrowedValid(entry.narrowed)) return `${label} has a narrowed list that is not [{ path, from, to, kept }]`;
   if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `${label} has an entryDigest that is not a string`;
   if (entry.rewriting !== undefined && entry.rewriting !== true) return `${label} has a rewriting that is not true`;
+  if (entry.chapter !== undefined && !chapterValid(entry.chapter)) return `${label} has a chapter that is not { items: [{ id, kind, text, claim, cites: [{ file, lines, passage }] }] }`;
   return null;
 }
 
@@ -140,6 +171,20 @@ const stateProblems = (state) => {
     for (const [lane, entry] of Object.entries(state.topics)) {
       const problem = topicsEntryProblem(lane, entry);
       if (problem !== null) return problem;
+    }
+  }
+  if (state.domainFlows !== undefined) {
+    const flows = state.domainFlows;
+    if (!isObject(flows) || !DOMAIN_FLOWS_STATUSES.includes(flows.status) || !Number.isInteger(flows.attempts) || flows.attempts < 0 || !Array.isArray(flows.reasons) || !flows.reasons.every((reason) => typeof reason === 'string')) {
+      return `domainFlows must be { status (${DOMAIN_FLOWS_STATUSES.join(', ')}), attempts, reasons: [string] }`;
+    }
+  }
+  if (state.architecture !== undefined) {
+    const one = state.architecture;
+    const noteOk = (note) => isObject(note) && ['id', 'kind', 'detail'].every((key) => typeof note[key] === 'string');
+    if (!isObject(one) || !ARCHITECTURE_STATUSES.includes(one.status) || !Number.isInteger(one.attempts) || one.attempts < 0 || !Array.isArray(one.notes) || !one.notes.every(noteOk)
+      || (one.reasons !== undefined && !(Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+      return `architecture must be { status (${ARCHITECTURE_STATUSES.join(', ')}), attempts, notes: [{ id, kind, detail }], reasons?: [string] }`;
     }
   }
   return state.overview === undefined ? null : entryProblem('overview', state.overview);

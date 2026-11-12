@@ -21,6 +21,8 @@
  * `who` is checked against the map's roles instead of the item's passages.
  */
 
+import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
+
 const text = (path, value, { label = false, numbers = true, narrative = false } = {}) => ({ path, text: value, label, numbers, narrative });
 
 function evidenceOf(path, list) {
@@ -78,7 +80,7 @@ export function entryItems(entry) {
   entry.screens.forEach((screen, i) => {
     const sPath = `screens[${i}]`;
     items.push(item(sPath, [text(`${sPath}.name`, screen.name, { label: true })], screen.evidence));
-    screen.fields.forEach((field, j) => {
+    (screen.fields ?? []).forEach((field, j) => {
       const fPath = `${sPath}.fields[${j}]`;
       items.push(item(fPath, [text(`${fPath}.label`, field.label, { label: true })], field.evidence));
       field.rules.forEach((rule, k) => {
@@ -86,7 +88,7 @@ export function entryItems(entry) {
       });
     });
   });
-  entry.operations.forEach((operation, i) => {
+  (entry.operations ?? []).forEach((operation, i) => {
     const oPath = `operations[${i}]`;
     const sentences = operation.sentences.map((sentence, j) => item(`${oPath}.sentences[${j}]`, [text(`${oPath}.sentences[${j}].text`, sentence.text, { narrative: true })], sentence.evidence));
     // The name has no citation of its own: its numbers are read against the passages of its sentences.
@@ -98,9 +100,25 @@ export function entryItems(entry) {
       source: 'its sentences',
     });
     items.push(...sentences);
+    // Each new part is its own item with its own citations; a handoff's feature id is not reader text, so it is no string.
+    for (const part of OPERATION_PARTS) {
+      partList(operation, part).forEach((element, k) => {
+        const path = `${oPath}.${part.key}[${k}]`;
+        items.push(item(path, part.strings.map((key) => text(`${path}.${key}`, element[key], { narrative: true })), element.evidence));
+      });
+    }
+  });
+  // The fact sheet (/3) lists its hand-overs at the top level; a /2 entry keeps them in its operations.
+  (entry.handoffs ?? []).forEach((handoff, i) => {
+    items.push(item(`handoffs[${i}]`, [text(`handoffs[${i}].text`, handoff.text, { narrative: true })], handoff.evidence));
   });
   entry.states.forEach((state, i) => {
     items.push(item(`states[${i}]`, [text(`states[${i}].label`, state.label, { label: true }), text(`states[${i}].meaning`, state.meaning, { narrative: true })], state.evidence));
+  });
+  // A transition names two states quoted from the source, like a state label; how it happens is narrative.
+  transitionList(entry).forEach((transition, i) => {
+    const p = `transitions[${i}]`;
+    items.push(item(p, [text(`${p}.from`, transition.from, { label: true }), text(`${p}.to`, transition.to, { label: true }), text(`${p}.by`, transition.by, { narrative: true })], transition.evidence));
   });
   entry.notifications.forEach((n, i) => {
     const p = `notifications[${i}]`;

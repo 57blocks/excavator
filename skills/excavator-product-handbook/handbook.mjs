@@ -14,7 +14,32 @@
  *       Check <out>/domains.json, the business domains the map's features are
  *       grouped into: shape, ids D1, D2, ..., no empty domain, every map feature
  *       in exactly one domain, reader text and narrative language of the names.
- *   select <out> --features <list> --project <root>
+ *   outline-facts <out> --project <root> [--features <ids>]
+ *       Print every block the outline can place, one line each: id, block or
+ *       list, the views that have it, and its default title in the run's fixed text.
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
+ *   check-outline <out> --project <root>
+ *       Check <out>/outline.json, the parts and chapters of the handbook: the
+ *       shape, the language (the map's), every block placed once or left out
+ *       with a reason, and the reader text of the titles and reasons.
+ *   outline-facts <out> --project <root> [--features <ids>]
+      Print every block the outline can place, one line each, tab separated:
+      the id, block or list, technical or both views, and the default title in
+      the run's fixed text. Needs the map to pass check-map. Changes no file.
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
+  check-outline <out> --project <root>
+      Check <out>/outline.json against the project and the map: the shape, the
+      language (the map's), every block placed in exactly one chapter or left
+      out in "unplaced" with a reason (each block missing, placed twice or
+      unknown is named; a list is written as "list", a block as "block"), no
+      part without chapters, and for each title and reason the banned-words
+      and narrative-language checks a domain name gets. Prints every problem;
+      exits 1 when there is one. Changes no file.
+  select <out> --features <list> --project <root>
  *       Resolve a --features list of ids or feature names to ids against the
  *       checked map; exit 1 and list every id and name when an item does not
  *       match exactly one feature. Changes no file.
@@ -48,6 +73,19 @@
  *       The same checks for the overview lane itself; records nothing.
  *   check-entry <out> <featureId> --project <root>
  *       Check <out>/entries/<featureId>.json and record the result in state.json.
+ *   check-domain-flows <out> --project <root>
+ *       Check <out>/domain-flows.json, the flow diagram of each domain, node by
+ *       node and edge by edge against the entries and chapters that go into the
+ *       handbook, and record the attempt in state.json (three at most).
+ *   check-architecture <out> --project <root>
+ *       Check <out>/architecture.json (components and links of the system, each
+ *       with passages copied from project files) and <out>/chapters/architecture.md,
+ *       and record the attempt in state.json (three at most).
+ *   try-architecture <out> --project <root>
+ *       The same checks for the writer to run on its own files; records nothing.
+ *   check-chapter <out> <featureId> --project <root>
+ *       Check <out>/chapters/<featureId>.md, the free chapter of a /3 entry, and
+ *       print its counts; records nothing.
  *   try-entry <out> <featureId> --project <root>
  *       The same checks for the lane itself; records nothing.
  *   check-findings <out> <featureId>.findings --project <root>
@@ -67,36 +105,30 @@
  *       recorded as verified with no finding.
  *   try-system-findings <out> app<n> --project <root>
  *       The same checks for the lane itself; records nothing.
- *   priority-items <out> --project <root> [--part <n>]
+ *   priority-items <out> --project <root> [--part <n>] [--features <ids>]
  *       Print the groups of the verified findings a ranking lane ranks, one line
  *       each (group key, category, representative statement, other statements),
  *       or one `Priority:` line when there is nothing to rank (design D3).
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
  *   check-priority <out> --project <root>
  *       Check the part files of the ranking lanes against those groups and write
  *       <out>/entries/priority.json; record the result under "priority".
- *   priority-judge <out> --project <root>
- *       Write the judge files of a checked ranking and print the paths of the
- *       two verdict files of each part.
- *   priority-verdicts <out> --project <root>
- *       Record the two judges' verdicts: a group has a priority only when both
- *       say follows; the others are recorded unranked with their reasons.
- *   remedy-facts <out> --project <root>
+ *   remedy-facts <out> --project <root> [--features <ids>]
  *       Print the facts a remedies lane may cite, one line each (the verified
  *       groups with level and category, the applications, the shared tables, the
  *       counts), or one `Remedies:` line when there is nothing to write (design D2).
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
  *   check-remedies <out> --project <root>
  *       Check <out>/entries/remedies.json against those facts; record the result
  *       under "remedies".
- *   remedy-judge <out> --project <root>
- *       Write the judge file of checked remedies and print the paths of the two
- *       verdict files.
- *   remedy-verdicts <out> --project <root>
- *       Record the two judges' verdicts: a paragraph or recommendation is kept
- *       only when both say follows; the others are recorded as dropped.
- *   topic-lanes <out> --project <root>
+ *   topic-lanes <out> --project <root> [--features <ids>]
  *       Print the lanes of the cross-cutting topics that have something to write
  *       (a business domain with a verified entry, and repeated when verified
  *       findings exist), one line each, or one `Topics:` line when there is none.
+ *       With --features (ids as $SELECTED prints them) it first exits 1 when the feature
+ *       phase has started and a feature of the run is not written (phase-gate.mjs).
  *   topic-facts <out> --lane <id> --project <root>
  *       Print the facts a topics lane may cite, one line each (the verified items
  *       of its domain's entries, or the groups of the verified findings), or one
@@ -105,41 +137,17 @@
  *       Check <out>/topics/part-<lane>.json against the facts of its lane; record the
  *       result under "topics". Without --lane, check every lane and merge the rows
  *       into <out>/entries/topics.json.
- *   topic-judge <out> [--lane <id>] --project <root>
- *       Write the judge file of each checked lane and print the paths of the two
- *       verdict files of each.
- *   topic-verdicts <out> [--lane <id>] --project <root>
- *       Record the two judges' verdicts: a row is kept only when both say follows;
- *       the others are recorded as dropped with their reasons.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
- *       The slices, verdicts, trace, trace-verdicts and mark commands also take
+ *       The mark command also takes
  *       the unit id `overview` for the system overview, `<featureId>.findings`
  *       for the findings of a feature and `app<n>.system` for the system
  *       findings of an application root.
- *   slices <out> <featureId> --project <root> [--round 2]
- *       Cut a checked entry into the items a verifier judges, each with its
- *       claim and the source around its cited passages (design D14); round 2
- *       covers only the items the one rewrite touched.
- *   verdicts <out> <featureId> --round <r> --project <root>
- *       Record the verifier's verdicts for the round: one per item, nothing
- *       recorded when that does not hold; round 1 removes what is contradicted
- *       and lists the unverified items to rewrite (citations only),
- *       round 2 removes what is still not verified and verifies the feature.
- *   trace <out> <featureId> --project <root>
- *       For a confirmed feature (both verifiers settled it), write the items it
- *       still holds as trace files for two tracers per part that read the whole
- *       project and look only for code that contradicts a claim (design D14).
- *   trace-verdicts <out> <featureId> --project <root>
- *       Record the tracers' verdicts, two files per part: one verdict per item in
- *       each, holds or contradicted, a contradicted one with a position inside
- *       the project; remove the items either tracer contradicted and verify the
- *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data, findings, system-findings, priority, remedies, topics; default all) and print
+ *       Validate a --sections list (overview, features, data, history, architecture, findings, system-findings, priority, remedies, topics, outline; default all) and print
  *       SECTIONS=<list>, one READ=<file> line per phase file the run reads,
  *       in reading order, the shared map file once, and an AFTER_TRACE=<file> line
- *       for a section whose phase runs after the trace (priority, remedies, topics); exit 1 for a
+ *       for a section whose phase runs after the trace (priority, remedies, topics, outline); exit 1 for a
  *       value that is not a section. Reads and changes no file.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
@@ -155,7 +163,7 @@
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
- * check-map, check-entry, check-overview, check-findings, check-priority, priority-verdicts, check-remedies, remedy-verdicts, check-topics, topic-verdicts, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
+ * check-map, check-entry, check-overview, check-findings, check-priority, check-remedies, check-topics and mark hold <out>/state.json.lock while they run.
  * In a run whose language is not English, check-map, check-entry, try-entry,
  * assemble and page also check that each narrative text holds a letter of the
  * language when it has its own script (design D12); they need a checked
@@ -171,9 +179,13 @@ import { assemble } from './lib/assemble.mjs';
 import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { runData } from './lib/data-run.mjs';
+import { checkArchitecture, tryArchitecture } from './lib/architecture-command.mjs';
+import { checkChapterCommand } from './lib/chapter-command.mjs';
+import { checkDomainFlows } from './lib/domain-flows-command.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { checkDomains } from './lib/domains-check.mjs';
+import { checkOutline, outlineFacts } from './lib/outline.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { mark } from './lib/mark.mjs';
@@ -181,32 +193,22 @@ import { nameCandidates, nameLines } from './lib/name-candidates.mjs';
 import { writePage } from './lib/page.mjs';
 import { checkPriority } from './lib/priority-check.mjs';
 import { priorityItems } from './lib/priority-items.mjs';
-import { priorityJudge } from './lib/priority-judge.mjs';
-import { priorityVerdicts } from './lib/priority-verdicts.mjs';
+import { phaseGate } from './lib/phase-gate.mjs';
 import { checkRemedies } from './lib/remedies-check.mjs';
 import { remedyFacts } from './lib/remedies-items.mjs';
-import { remedyJudge } from './lib/remedies-judge.mjs';
-import { remedyVerdicts } from './lib/remedies-verdicts.mjs';
 import { checkTopics } from './lib/topics-check.mjs';
 import { topicFacts, topicLanes } from './lib/topics-items.mjs';
-import { topicJudge } from './lib/topics-judge.mjs';
-import { topicVerdicts } from './lib/topics-verdicts.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
 import { selectApplications } from './lib/select-applications.mjs';
-import { slices } from './lib/slices.mjs';
-import { trace } from './lib/trace.mjs';
-import { traceVerdicts } from './lib/trace-verdicts.mjs';
 import { checkUi } from './lib/ui.mjs';
 import { isFindingsId } from './lib/findings-shape.mjs';
 import { systemContext } from './lib/system-unit.mjs';
 import { systemUnitIdOf } from './lib/system-shape.mjs';
 import { OVERVIEW_ID } from './lib/overview-shape.mjs';
-import { ROUNDS } from './lib/verify-plan.mjs';
 import { parseViews } from './lib/views.mjs';
-import { verdicts } from './lib/verdicts.mjs';
 
 const USAGE = `Usage: node handbook.mjs <command> [arguments]
 
@@ -231,6 +233,22 @@ Commands:
       and label when it carries evidence, banned words and, in a language with
       its own script, a letter of it. Exit 1 prints every problem, one per line.
       Changes no file. A missing domains.json exits 2.
+  outline-facts <out> --project <root> [--features <ids>]
+      Print every block the outline can place, one line each, tab separated:
+      the id, block or list, technical or both views, and the default title in
+      the run's fixed text. Needs the map to pass check-map. Changes no file.
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
+  check-outline <out> --project <root>
+      Check <out>/outline.json against the project and the map: the shape, the
+      language (the map's), every block placed in exactly one chapter or left
+      out in "unplaced" with a reason (each block missing, placed twice or
+      unknown is named; a list is written as "list", a block as "block"), no
+      part without chapters, and for each title and reason the banned-words
+      and narrative-language checks a domain name gets. Prints every problem;
+      exits 1 when there is one. Changes no file.
   select <out> --features <list> --project <root>
       Resolve the --features list (comma-separated feature ids or feature names;
       a name is equal ignoring case and surrounding spaces) to feature ids
@@ -245,13 +263,13 @@ Commands:
       not an application root exits 1: print each such item, then every root as
       "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, history, findings, system-findings, priority, remedies, topics; empty
+      Validate the --sections list (comma-separated: overview, features, data, history, architecture, findings, system-findings, priority, remedies, topics, outline; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
       then each section's file. The file of a section whose phase runs after the
-      trace (priority, remedies, topics) is printed as "AFTER_TRACE=<path>" instead: it is read at
-      the end of Phase 6. A value that is not a section exits 1 and the
+      written sections (priority, remedies, topics, outline) is printed as "AFTER_TRACE=<path>" instead: it is read when
+      the phases of the READ= files are done. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
@@ -329,6 +347,40 @@ Commands:
       citations, labels, numbers and banned words, and the narrative language
       (as check-map), and record the result in state.json. A failure ends with
       a Next: line.
+  check-architecture <out> --project <root>
+      Check <out>/architecture.json, the components of the system (users,
+      frontend, backend, database, external, cloud) and the links between them,
+      each with passages copied from project files, and <out>/chapters/architecture.md
+      with the chapter checks. Every application root must be exactly one
+      frontend or backend component; a link joins two declared components; its
+      text has at most 16 characters. Records the attempt in state.json (three at
+      most) and prints "architecture: checked" with the counts, or each problem
+      and a Next: line. Content problems of the reader text are notes.
+  try-architecture <out> --project <root>
+      The same checks, for the writer to run on its own files before it replies.
+      Reads and writes no state.json. Prints "architecture: ok" or each problem
+      and a Next: line.
+  check-chapter <out> <featureId> --project <root>
+      Check <out>/chapters/<featureId>.md, the free chapter written next to a
+      /3 entry (the fact sheet; check-entry and try-entry check both files):
+      every citation (<path>:<n> or <path>:<a>-<b> in backticks, at most 80 lines, inside
+      the project), the numbers and quoted texts of each sentence, table row,
+      arrow and heading against its own citations, code-shaped words, words of
+      advice, the narrative language, the sequence diagram subset, and at least
+      one sequence diagram or a no-diagram line. Prints each problem with the item
+      id, or "<featureId>: chapter ok" and the counts of sentences, table rows,
+      citations, diagrams and arrows. Reads and writes no state.json.
+  check-domain-flows <out> --project <root>
+      Check <out>/domain-flows.json, written after the entries and before the
+      outline: for each domain it lists, nodes (a feature, a state of its fact
+      sheet or entry, or a verbatim fragment of one chapter item, at most 24
+      characters) and edges (a hand-over between features, a transition between
+      states, the order of two items of one chapter, or a state label inside an
+      item; an optional text of at most 12 characters taken verbatim from it).
+      Only the entries that go into the handbook count. Prints "domain flows ok:"
+      with the counts, or each problem naming the domain and the node or edge,
+      and a Next: line. Records the attempt in state.json (three at most); a
+      missing file is no attempt.
   try-entry <out> <featureId> --project <root>
       The same checks as check-entry, for the lane to run on its own file
       before it replies. Reads and writes no state.json: it is not an attempt
@@ -369,7 +421,7 @@ Commands:
   try-system-findings <out> app<n> --project <root>
       The same checks as check-system-findings, for the lane to run on its own
       file before it replies. Reads and writes no state.json.
-  priority-items <out> --project <root> [--part <n>]
+  priority-items <out> --project <root> [--part <n>] [--features <ids>]
       Print the groups of the verified findings a ranking lane ranks, one line
       per group, tab-separated: the group key, the display name of the category,
       the representative statement and the other statements of the group joined
@@ -379,6 +431,10 @@ Commands:
       most 40 groups a part). When there is nothing to rank (no verified finding,
       a ranking that is current, one waiting for its judges, one that failed
       twice) it prints one line that starts with "Priority:" and no group.
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
   check-priority <out> --project <root>
       Check <out>/priority/part-<n>.json for each part: exactly one item for each
       group of the part, a consequence of the table (othersRecords, money,
@@ -387,17 +443,7 @@ Commands:
       advice. Writes <out>/entries/priority.json (the parts merged, in group
       order) and records "priority" as checked; a failure records it failed and
       ends with a Next: line naming the parts to rank again.
-  priority-judge <out> --project <root>
-      For a checked ranking, write <out>/priority/judge/part-<n>.json (the
-      statements, the consequence with its meaning and the reason of each group)
-      and print, for each part, the judge file and the two verdict files.
-  priority-verdicts <out> --project <root>
-      Record the verdicts of the two judges of each part: one per group, follows or
-      doesNotFollow, with a one-line reason. A group has a priority when both say
-      follows; any other group is recorded unranked with the reasons of the
-      judges that said doesNotFollow, and "priority" is verified. Nothing is
-      recorded when a file does not hold.
-  remedy-facts <out> --project <root>
+  remedy-facts <out> --project <root> [--features <ids>]
       Print the facts a remedies lane may cite, one line each, tab-separated, the
       first field the id a paragraph cites: a group of the verified findings (key,
       level or unranked, category, representative statement), an application
@@ -408,6 +454,10 @@ Commands:
       is nothing to write (no verified finding, remedies that are current, ones
       waiting for their judges, ones that failed twice) it prints one line that
       starts with "Remedies:" and no fact.
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
   check-remedies <out> --project <root>
       Check <out>/entries/remedies.json: a paragraph for each category at most
       once and only for a category with a verified group, a paragraph of a category
@@ -415,16 +465,7 @@ Commands:
       a fact of remedy-facts, the reader-text checks (the advice words are
       allowed) and every number of a text occurring in the facts it cites. Records
       "remedies" as checked; a failure records it failed and ends with a Next: line.
-  remedy-judge <out> --project <root>
-      For checked remedies, write <out>/remedies/judge.json (each paragraph with
-      what it cites) and print the judge file and the two verdict files.
-  remedy-verdicts <out> --project <root>
-      Record the verdicts of the two judges: one per paragraph or recommendation,
-      follows or doesNotFollow, with a one-line reason. A paragraph is kept when
-      both say follows; any other is recorded as dropped with the reasons of the
-      judges that said doesNotFollow, and "remedies" is verified. Nothing is
-      recorded when a file does not hold.
-  topic-lanes <out> --project <root>
+  topic-lanes <out> --project <root> [--features <ids>]
       Print the lanes of the cross-cutting topics that have something to write, one
       line each, tab-separated: the lane id (a business domain id, or an area id
       when the handbook groups by area, that has at least one verified entry;
@@ -432,6 +473,10 @@ Commands:
       for repeated), the number of facts and the status of the lane for the facts
       as they are now (planned, dispatched, checked, verified or failed). With no
       lane it prints one line that starts with "Topics:".
+      With --features "<ids>" (space separated, as $SELECTED; none means every
+      feature) it first stops with exit 1 when the feature phase has started and a
+      feature of the run is not written: it prints "Features not written: <ids>"
+      (a findings unit as <id>.findings) and a Next: line back to Phase 4.
   topic-facts <out> --lane <id> --project <root>
       Print the facts a topics lane may cite, one line each, tab-separated, the
       first field the id a row cites. A domain lane: <featureId>#<item path>, the
@@ -452,19 +497,9 @@ Commands:
       number of a text occurring in the items it cites. Records the lane in
       "topics" as checked or failed. Without --lane it checks every lane and merges
       the rows of the lanes that hold into <out>/entries/topics.json.
-  topic-judge <out> [--lane <id>] --project <root>
-      For each checked lane, write <out>/topics/judge/<lane>.json (each row with
-      everything it cites) and print the judge file and the two verdict files.
-  topic-verdicts <out> [--lane <id>] --project <root>
-      Record the verdicts of the two judges of each checked lane: one per row,
-      follows or doesNotFollow, with a one-line reason. A row is kept when both say
-      follows; any other is recorded as dropped with the reasons of the judges that
-      said doesNotFollow, and the lane is verified. Nothing is recorded when a file
-      does not hold.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in state.json. The id may be
-      overview: the system overview is a unit like a feature (so it is for
-      slices, verdicts, trace and trace-verdicts below), and its state is kept
+      overview: the system overview is a unit like a feature, and its state is kept
       under "overview" in state.json (absent means planned, attempts 0). The
       findings of a feature are a unit too, with the id <featureId>.findings,
       and so are the system findings of an application root, app<n>.system, kept
@@ -478,55 +513,6 @@ Commands:
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
-  slices <out> <featureId> --project <root> [--round 2]
-      Only for a feature whose entry passed check-entry (state checked). Write
-      <out>/verify/round-<r>/<featureId>/part-<n>.json: the items of the entry
-      that carry evidence, each with its id (its JSON path), its claim (all its
-      reader text with the context to read it) and the source around every cited
-      passage (20 lines before and after, numbered, ranges of one file merged),
-      cut into parts in item order (at most 25 items and 60000 bytes a part; an
-      item over the byte limit alone is a part of its own). Round 1 also saves a
-      snapshot of the entry. Round 2 covers only the items listed in
-      <out>/rewrite/<featureId>.json and refuses an entry in which an item that
-      was not listed differs from the snapshot, or a listed item has another
-      claim (only its citations may change), printing each path. Prints, for
-      each part, the verify file and the verdict file its verifier must write.
-  verdicts <out> <featureId> --round <1|2> --project <root>
-      Read <out>/verdicts/round-<r>/<featureId>/part-<n>.json for every part
-      ({ "verdicts": [{ "id", "verdict", "reason" }] }): exactly one verdict
-      per item of the round, in the file of the part that holds the item, each
-      verified, unverified or contradicted, with a one-line reason. Any failure
-      prints every problem by part, names the parts to dispatch again, and
-      records nothing. Round 1 removes every contradicted item from the entry
-      (what hangs on it goes with it) and records it in state.json, and writes
-      the unverified items to <out>/rewrite/<featureId>.json (none: the
-      feature is confirmed at once, with no rewrite file).
-      Round 2 removes the items that are still not verified from the entry
-      (what hangs on them goes with them), records them in state.json and
-      confirms the feature, the purpose included (it is removed like any
-      item); only when every item that carries evidence is removed does it
-      fail at step verify. A confirmed feature still has to be traced.
-  trace <out> <featureId> --project <root>
-      Only for a confirmed feature. Write <out>/trace/<featureId>/part-<n>.json:
-      the items of the entry that still carry evidence, each with its id, its
-      claim (as the verify files hold it) and the file and line range of each
-      cited passage, no code, in entry order, at most 25 items a part. Removes
-      the feature's older trace and trace-verdict files first. Prints, for each
-      part, the trace file and the two verdict files its two tracers must write.
-  trace-verdicts <out> <featureId> --project <root>
-      Read <out>/trace-verdicts/<featureId>/part-<n>.a.json and part-<n>.b.json
-      for every part ({ "verdicts": [{ "id", "verdict", "reason", "at"? }] }),
-      each file on its own: exactly one verdict per item of the part, each
-      holds or contradicted, with a one-line reason; a contradicted verdict
-      needs at least one at entry { file, line } that names an existing file inside the project (never read outside it)
-      and a line of that file, and its reason passes the reader-text gate. Any
-      failure prints every problem by part and tracer (part 1b), names the
-      part-letters to dispatch again, and records nothing. Otherwise each item
-      either tracer contradicted is removed from the entry (what hangs on it
-      goes with it) and recorded in state.json with step trace, the reasons of
-      the tracers that contradicted it and their at positions, and the feature
-      is verified; when no item that carries evidence is left, it fails at
-      step trace.
   check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,
@@ -614,9 +600,6 @@ function requireSystemId(id) {
   return unit;
 }
 
-/** The round an option names (1 or 2), or 0 when it names neither. */
-const roundOption = (text) => (ROUNDS.includes(Number(text)) && /^\d+$/.test(text) ? Number(text) : 0);
-
 /** The views of `--views`, or null when the value is not a view (the lines are printed and the command exits 1). */
 function viewsOf(options) {
   const parsed = parseViews(options.views);
@@ -650,6 +633,16 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('check-domains takes exactly one <out> directory');
     return report(checkDomains(positionals[0], projectRootOption(options.project)));
+  },
+  'outline-facts'(args) {
+    const { positionals, options } = parseArgs(args, ['project', 'features']);
+    if (positionals.length !== 1) throw new UsageError('outline-facts takes exactly one <out> directory');
+    return report(phaseGate(positionals[0], options.features) ?? outlineFacts(positionals[0], projectRootOption(options.project)));
+  },
+  'check-outline'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-outline takes exactly one <out> directory');
+    return report(checkOutline(positionals[0], projectRootOption(options.project)));
   },
   select(args) {
     const { positionals, options } = parseArgs(args, ['project', 'features', 'applications']);
@@ -732,14 +725,38 @@ const COMMANDS = {
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkEntry(positionals[0], positionals[1], root)));
   },
+  'check-domain-flows'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-domain-flows takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkDomainFlows(positionals[0], root)));
+  },
+  'check-architecture'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-architecture takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkArchitecture(positionals[0], root)));
+  },
+  'try-architecture'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('try-architecture takes exactly one <out> directory');
+    return report(tryArchitecture(positionals[0], projectRootOption(options.project)));
+  },
+  'check-chapter'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('check-chapter takes <out> and <featureId>');
+    return report(checkChapterCommand(positionals[0], positionals[1], projectRootOption(options.project)));
+  },
   'try-entry'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 2) throw new UsageError('try-entry takes <out> and <featureId>');
     return report(tryEntry(positionals[0], positionals[1], projectRootOption(options.project)));
   },
   'priority-items'(args) {
-    const { positionals, options } = parseArgs(args, ['project', 'part']);
+    const { positionals, options } = parseArgs(args, ['project', 'part', 'features']);
     if (positionals.length !== 1) throw new UsageError('priority-items takes exactly one <out> directory');
+    const blocked = phaseGate(positionals[0], options.features);
+    if (blocked !== null) return report(blocked);
     const part = options.part === undefined ? undefined : /^\d+$/.test(options.part) ? Number(options.part) : 0;
     return report(priorityItems(positionals[0], projectRootOption(options.project), part));
   },
@@ -749,21 +766,10 @@ const COMMANDS = {
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkPriority(positionals[0], root)));
   },
-  'priority-judge'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
-    if (positionals.length !== 1) throw new UsageError('priority-judge takes exactly one <out> directory');
-    return report(priorityJudge(positionals[0], projectRootOption(options.project)));
-  },
-  'priority-verdicts'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
-    if (positionals.length !== 1) throw new UsageError('priority-verdicts takes exactly one <out> directory');
-    const root = projectRootOption(options.project);
-    return withStateLock(positionals[0], () => report(priorityVerdicts(positionals[0], root)));
-  },
   'remedy-facts'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'features']);
     if (positionals.length !== 1) throw new UsageError('remedy-facts takes exactly one <out> directory');
-    return report(remedyFacts(positionals[0], projectRootOption(options.project)));
+    return report(phaseGate(positionals[0], options.features) ?? remedyFacts(positionals[0], projectRootOption(options.project)));
   },
   'check-remedies'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
@@ -771,21 +777,10 @@ const COMMANDS = {
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkRemedies(positionals[0], root)));
   },
-  'remedy-judge'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
-    if (positionals.length !== 1) throw new UsageError('remedy-judge takes exactly one <out> directory');
-    return report(remedyJudge(positionals[0], projectRootOption(options.project)));
-  },
-  'remedy-verdicts'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
-    if (positionals.length !== 1) throw new UsageError('remedy-verdicts takes exactly one <out> directory');
-    const root = projectRootOption(options.project);
-    return withStateLock(positionals[0], () => report(remedyVerdicts(positionals[0], root)));
-  },
   'topic-lanes'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'features']);
     if (positionals.length !== 1) throw new UsageError('topic-lanes takes exactly one <out> directory');
-    return report(topicLanes(positionals[0], projectRootOption(options.project)));
+    return report(phaseGate(positionals[0], options.features) ?? topicLanes(positionals[0], projectRootOption(options.project)));
   },
   'topic-facts'(args) {
     const { positionals, options } = parseArgs(args, ['project', 'lane']);
@@ -799,51 +794,12 @@ const COMMANDS = {
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkTopics(positionals[0], root, options.lane)));
   },
-  'topic-judge'(args) {
-    const { positionals, options } = parseArgs(args, ['project', 'lane']);
-    if (positionals.length !== 1) throw new UsageError('topic-judge takes exactly one <out> directory');
-    return report(topicJudge(positionals[0], projectRootOption(options.project), options.lane));
-  },
-  'topic-verdicts'(args) {
-    const { positionals, options } = parseArgs(args, ['project', 'lane']);
-    if (positionals.length !== 1) throw new UsageError('topic-verdicts takes exactly one <out> directory');
-    const root = projectRootOption(options.project);
-    return withStateLock(positionals[0], () => report(topicVerdicts(positionals[0], root, options.lane)));
-  },
   mark(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length < 3) throw new UsageError('mark takes <out>, <featureId> and dispatched, or failed lane <reason>...');
     const [out, id, event, ...rest] = positionals;
     const root = projectRootOption(options.project);
     return withStateLock(out, () => report(mark(out, id, event, rest, root)));
-  },
-  slices(args) {
-    const { positionals, options } = parseArgs(args, ['project', 'round']);
-    if (positionals.length !== 2) throw new UsageError('slices takes <out> and <featureId>');
-    const round = options.round === undefined ? 1 : roundOption(options.round);
-    if (round === 0) throw new UsageError('slices --round must be 2 (round 1 is the default)');
-    const root = projectRootOption(options.project);
-    return report(slices(positionals[0], positionals[1], root, round));
-  },
-  verdicts(args) {
-    const { positionals, options } = parseArgs(args, ['project', 'round']);
-    if (positionals.length !== 2) throw new UsageError('verdicts takes <out> and <featureId>');
-    if (options.round === undefined) throw new UsageError('verdicts needs --round 1 or --round 2');
-    const round = roundOption(options.round);
-    if (round === 0) throw new UsageError('verdicts --round must be 1 or 2');
-    const root = projectRootOption(options.project);
-    return withStateLock(positionals[0], () => report(verdicts(positionals[0], positionals[1], root, round)));
-  },
-  trace(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
-    if (positionals.length !== 2) throw new UsageError('trace takes <out> and <featureId>');
-    return report(trace(positionals[0], positionals[1], projectRootOption(options.project)));
-  },
-  'trace-verdicts'(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
-    if (positionals.length !== 2) throw new UsageError('trace-verdicts takes <out> and <featureId>');
-    const root = projectRootOption(options.project);
-    return withStateLock(positionals[0], () => report(traceVerdicts(positionals[0], positionals[1], root)));
   },
   sections(args) {
     const { positionals } = parseArgs(args, []);

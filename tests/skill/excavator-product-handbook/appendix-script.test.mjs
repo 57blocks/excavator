@@ -142,21 +142,6 @@ function entryOf({ where = [], screens = [], states = [], who = [] }) {
 }
 
 describe('the sources', () => {
-  it('counts the items kept, the items the verifiers removed and the items the tracers removed, as state.json records them', () => {
-    const run = appendixRun(cleanups);
-    const state = run.readJson('state.json');
-    const records = Object.values(state.features).flatMap((entry) => entry.removed ?? []);
-    const byTrace = records.filter((record) => record.step === 'trace').length;
-    const byVerify = records.filter((record) => record.step !== 'trace').length;
-    expect(byVerify).toBe(2);
-    expect(byTrace).toBe(1);
-    const row = appendixOf(run).sources.parts.find((part) => part.id === 'features');
-    expect(row).toMatchObject({ id: 'features', units: 5, verified: 2, removedVerify: byVerify, removedTrace: byTrace });
-    // The items that still carry a citation in the two verified entries after the removals.
-    const kept = [run.readJson('entries/F1.json'), run.readJson('entries/F3.json')].reduce((sum, doc) => sum + countEvidenceItems(doc), 0);
-    expect(row.items).toBe(kept);
-  });
-
   it('counts the units written again from the attempts of state.json', () => {
     const run = appendixRun(cleanups);
     const state = run.readJson('state.json');
@@ -183,18 +168,6 @@ describe('the sources', () => {
     const { sources } = appendixOf(run);
     const model = handbookModel(loadCheckedRun(run.out, run.root), run.root, ['product']);
     expect(sources.parts.find((part) => part.id === 'findings')).toMatchObject({ units: 5, verified: 2, items: model.findings.list.length });
-  });
-
-  it('counts the groups kept and left out by the ranking, the remedies and the topics', () => {
-    const run = checkedTopicsRun(cleanups);
-    expect(judgeTopics(run, (row, letter) => (row.id === 'D2#1' && letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The row names a rule that is not cited.' } : 'follows')).status).toBe(0);
-    const { sources } = appendixOf(run);
-    const model = handbookModel(loadCheckedRun(run.out, run.root), run.root, ['product']);
-    expect(model.topics.dropped).toHaveLength(1);
-    expect(sources.ranked.topics).toEqual({ kept: 4, left: 1 });
-    // No ranking and no remedies were written: the four groups of findings are not ranked and no paragraph was kept or left out.
-    expect(sources.ranked.priority).toEqual({ kept: 0, left: 4 });
-    expect(sources.ranked.remedies).toEqual({ kept: 0, left: 0 });
   });
 
   it('counts the ranking from the groups that have a level and the ones that have none', () => {

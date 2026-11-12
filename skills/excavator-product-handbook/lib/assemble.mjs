@@ -28,7 +28,7 @@ export function assemble(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
   const run = loadCheckedRun(outDirArg, root);
   if (!run.ok) return { status: 1, lines: run.lines };
   const model = handbookModel(run, root, views);
-  const rendered = views.map((view) => [view, renderHandbook({ map: run.map, entries: run.entries, state: run.state, candidates: run.candidates, ui: run.ui, ...model, view })]);
+  const rendered = views.map((view) => [view, renderHandbook({ map: run.map, entries: run.entries, chapters: run.chapters, unverified: run.unverified, architecture: run.architecture, state: run.state, candidates: run.candidates, ui: run.ui, ...model, view })]);
   for (const view of VIEWS) if (!views.includes(view)) rmSync(join(run.outDir, HANDBOOK_FILES[view]), { force: true });
   const lines = [];
   for (const [view, text] of rendered) {

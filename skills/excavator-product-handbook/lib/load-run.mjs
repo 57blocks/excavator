@@ -15,14 +15,21 @@
  * findings of each application root (openspec change handbook-system-findings):
  * the unit `app<n>.system`, with its file in `systemFindings` under that id. `assemble` and
  * `page` both start here, so they refuse the same runs.
+ *
+ * Light scheme (openspec change handbook-light-scheme): a `checked` overview, findings unit or system unit is final, so it is in `entries` /
+ * `findings` / `systemFindings` like a verified one, checked again against the project, and its unit id (`overview`, `<featureId>.findings`,
+ * `app<n>.system`) is in the returned `unverified` set; a verified one is never in it.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
 import { loadCandidates } from './candidates.mjs';
 import { loadDomains } from './domains-check.mjs';
+import { chapterPath } from './chapter-file.mjs';
+import { loadArchitecture } from './architecture-state.mjs';
+import { loadDomainFlows } from './domain-flows-check.mjs';
 import { checkEntryFile, entryPath } from './entry-check.mjs';
 import { adviceWordsOf } from './findings-check.mjs';
 import { findingsId } from './findings-shape.mjs';
@@ -40,11 +47,11 @@ import { loadUi } from './ui.mjs';
 import { OVERVIEW_ID, featureOfFindings, isFindingsId, isSystemId, unitFor, unitState } from './unit.mjs';
 
 /**
- * Returns `{ ok: true, outDir, map, domains, entries, findings, systemFindings, state, candidates, ui }` (findings:
+ * Returns `{ ok: true, outDir, map, domains, entries, chapters, unverified, findings, systemFindings, state, candidates, ui }` (unverified: the unit ids of the checked, not verified overview, findings units and system units that are in the output; findings:
  * feature id -> the findings file of each verified findings unit; systemFindings: unit id `app<n>.system` -> the file of each verified system unit; domains: the
  * business domains of domains.json when it passes check-domains, null otherwise, which
  * groups the outputs by the map's areas instead; entries:
- * id -> entry of each verified feature, and of the overview under `overview`; candidates: candidates.json's items;
+ * id -> entry of each verified feature, and of the overview under `overview`, and of each checked /3 feature (not verified; `chapters`: id -> `{ text, items, notes }` of exactly those); domainFlows: `{ status: 'none' | 'failed' }` or `{ status: 'checked', models }` (domain-flows-check.mjs); architecture: `{ status: 'none' | 'failed' | 'missing' }` or `{ status: 'checked', model, chapter }` (architecture-state.mjs); candidates: candidates.json's items;
  * ui: the strings table; priority: `{ status, doc, unranked }` of the ranking of the findings (priority-state.mjs); remedies: `{ status, doc, dropped, factsDigest }` of the remedies (remedies-state.mjs); topics: `{ lanes }` of the topics lanes (topics-state.mjs); check: the facts a check of reader text needs,
  * `{ files, memberDirs, languageCheck, mapLabels }`) or `{ ok: false, lines }` with every reason. Throws a
  * UsageError for an out directory or state that does not exist.
@@ -91,9 +98,14 @@ export function loadCheckedRun(outDirArg, root) {
   const problems = [];
   const adviceWords = adviceWordsOf(ui.strings);
   const systemIds = Object.keys(state.systemFindings ?? {}).map((key) => `${key}.system`);
-  const settled = [...ids, OVERVIEW_ID, ...ids.map(findingsId), ...systemIds].filter((unitId) => ['confirmed', 'verified'].includes(unitState(state, unitId).status));
+  const unitIds = [OVERVIEW_ID, ...ids.map(findingsId), ...systemIds];
+  // A checked overview, findings unit or system unit (openspec change handbook-light-scheme) is final: it is checked again like a /3
+  // entry (no digest, nothing settled it) and goes into the output marked as not verified; its id is in `unverified`.
+  const settled = [...ids, ...unitIds].filter((unitId) => ['confirmed', 'verified'].includes(unitState(state, unitId).status) || (unitIds.includes(unitId) && unitState(state, unitId).status === 'checked'));
+  const unverified = new Set();
   for (const id of settled) {
     const current = unitState(state, id);
+    const light = current.status === 'checked';
     // A system unit is checked with its application (and refused when the state records another root for it).
     let system = null;
     if (isSystemId(id)) {
@@ -104,20 +116,40 @@ export function loadCheckedRun(outDirArg, root) {
       }
       system = loaded.system;
     }
-    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck, adviceWords, system }, { settled: true });
+    const settledRules = light ? current.rewriting === true && unitFor(id).settledAfter(current) : true;
+    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck, adviceWords, system }, { settled: settledRules });
     if (result.problems.length > 0) {
       problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} no longer passes ${unitFor(id).command}; ${unitFor(id).recheck(id)}`);
-    } else if (entryDigest(join(outDir, entryPath(id))) !== current.entryDigest) {
+    } else if (!light && entryDigest(join(outDir, entryPath(id))) !== current.entryDigest) {
       const was = current.status === 'confirmed' ? 'confirmed' : 'verified';
       problems.push(`${id}: ${entryPath(id)} changed after it was ${was}; ${unitFor(id).recheck(id)} and verify it again`);
-    } else if (current.status === 'verified') {
+    } else if (light || current.status === 'verified') {
       const doc = readJson(join(outDir, entryPath(id))).value;
       if (isSystemId(id)) systemFindings.set(id, doc);
       else if (isFindingsId(id)) findings.set(featureOfFindings(id), doc);
       else entries.set(id, doc);
+      if (light) unverified.add(id);
     }
   }
+  // A checked /3 entry (openspec change handbook-free-chapter D0) is not verified, and goes into the output marked as such: its fact
+  // sheet and its chapter are checked again against the project, and what the check reports now (not what state.json kept) is what is written.
+  const chapters = new Map();
+  for (const id of ids) {
+    const current = state.features[id];
+    if (current.status !== 'checked' || current.chapter === undefined || current.rewriting) continue;
+    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck, adviceWords });
+    if (result.problems.length > 0 || result.chapter === undefined) {
+      problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} or ${chapterPath(id)} no longer passes check-entry; run check-entry for ${id}`);
+      continue;
+    }
+    entries.set(id, readJson(join(outDir, entryPath(id))).value);
+    chapters.set(id, { text: readFileSync(join(outDir, chapterPath(id)), 'utf-8'), items: result.chapter.items, notes: result.chapter.notes });
+  }
   if (problems.length > 0) return { ok: false, lines: problems };
+  // The domain flow diagrams (openspec change handbook-free-chapter) are checked again against the entries as they are now, and never a reason to refuse a run: one that no longer passes reads as failed.
+  const domainFlows = loadDomainFlows(outDir, state, { map, domains: domains.doc, entries, chapters });
+  // The architecture chapter (openspec change handbook-architecture-chapter) is checked again as it is now, and is never a reason to refuse a run: one that no longer passes, or lost a file, reads as such.
+  const architecture = loadArchitecture(outDir, state, { files, memberDirs, languageCheck });
   // The ranking of the findings (openspec change handbook-findings-priority) is never a reason to refuse a run: a ranking that is not verified, or whose file is not the one the judges saw, is no ranking.
   const priority = loadPriority(outDir, state);
   // The remedies (openspec change handbook-remedies) are the same: never a reason to refuse a run; whether they are for the current facts is decided where the facts are built (remedies-model.mjs).
@@ -125,5 +157,5 @@ export function loadCheckedRun(outDirArg, root) {
   // The topics (openspec change handbook-topics) are the same: never a reason to refuse a run; each lane is current only for the facts it was written for (topics-model.mjs).
   const topics = loadTopics(outDir, state);
   const check = { files, memberDirs, languageCheck, mapLabels: mapChecked.verified };
-  return { ok: true, outDir, map, domains: domains.doc, entries, findings, systemFindings, priority, remedies, topics, check, state, candidates: candidates.items, ui: ui.strings };
+  return { ok: true, outDir, map, domains: domains.doc, entries, chapters, unverified, domainFlows, architecture, findings, systemFindings, priority, remedies, topics, check, state, candidates: candidates.items, ui: ui.strings };
 }

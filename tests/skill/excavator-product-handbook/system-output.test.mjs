@@ -12,7 +12,7 @@ import { join } from 'node:path';
 
 import { categoryKey } from '../../../skills/excavator-product-handbook/lib/findings-shape.mjs';
 import { featureFindingsLines, findingsChapter } from '../../../skills/excavator-product-handbook/lib/render-findings.mjs';
-import { judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { runHandbook, verifyChecked } from './helpers.mjs';
 import { JOB_LINE, MAILER, MAIL_LINE, NIGHTLY, ROUTE, SERVER, START, goodSystemFindings, goodSystemOverview, makeSystemRun, systemId } from './system-fixture.mjs';
 
 const cleanups = [];
@@ -56,8 +56,9 @@ function section(body, heading) {
 /**
  * F1 and F3 have verified findings that sit at the same place as findings of the
  * system unit of alpha (app1), which has one more (alone) and one that a verifier
- * removed; app2 (beta) has findings that passed their check and wait for the
- * verifiers; app3 (gamma) has no seed file and is verified with none.
+ * removed; app2 (beta) has findings that are marked dispatched and not yet checked
+ * (a checked unit is in the output under the not-verified text: see
+ * light-output.test.mjs); app3 (gamma) has no seed file and is verified with none.
  */
 function outputRun(owner = cleanups, { overview = false } = {}) {
   const run = makeSystemRun();
@@ -79,11 +80,9 @@ function outputRun(owner = cleanups, { overview = false } = {}) {
     ],
   });
   expect(run.run('check-system-findings', systemId(1)).status).toBe(0);
-  const judged = judge(run, systemId(1), 1, (item) => (item.id === 'findings[3]' ? { verdict: 'contradicted', reason: REMOVED_REASON } : 'verified'));
-  expect(judged.status, judged.stdout).toBe(0);
-  expect(traceFeature(run, systemId(1)).status).toBe(0);
+  verifyChecked(run, systemId(1), [{ path: 'findings[3]', verdict: 'contradicted', reason: REMOVED_REASON, claim: `System finding > ${ui[categoryKey('security')]} > ${SYSTEM_REMOVED_TEXT}` }]);
   run.writeSystem(2);
-  expect(run.run('check-system-findings', systemId(2)).status).toBe(0);
+  expect(run.run('mark', systemId(2), 'dispatched').status).toBe(0);
   expect(run.run('check-system-findings', systemId(3)).lines).toEqual(['app3.system: verified (0 findings)']);
   if (overview) {
     run.writeOverview(goodSystemOverview());
@@ -131,7 +130,7 @@ describe('the Findings chapter writes groups', () => {
     const line = chapter.split('\n').find((candidate) => candidate.startsWith('Findings: '));
     const counted = ['notification', 'time', 'other'];
     const names = Object.keys(ui).filter((key) => key.startsWith('md.findings.category.')).map((key) => ui[key]);
-    expect(line).toBe(`Findings: 3. Statements: 5. Groups merged: 2. Findings units verified: 2 of 6. System findings units verified: 2 of 3. By category: ${names.map((name) => `${name}: ${counted.some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}. By priority: P0: 0; P1: 0; P2: 0; Unranked: 3.`);
+    expect(line).toBe(`Findings: 3. Statements: 5. Groups merged: 2. Findings units written: 2 of 6, 0 of them not verified. System findings units written: 2 of 3, 0 of them not verified. By category: ${names.map((name) => `${name}: ${counted.some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}. By priority: P0: 0; P1: 0; P2: 0; Unranked: 3.`);
     const bullets = chapter.split('\n').filter((row) => row.startsWith('- ')).length;
     expect(bullets).toBe(3);
     expect(chapter.split('\n').filter((row) => row.startsWith('  - ')).length).toBe(2);
@@ -205,7 +204,7 @@ describe('the coverage section lists the system units', () => {
     assemble(run, 'product');
     const coverage = section(text(run, 'handbook.md'), `## ${ui['md.coverage.heading']}`);
     const unfinished = section(coverage, `### ${ui['md.coverage.findingsUnfinishedHeading']}`);
-    expect(unfinished).toContain(`| beta (application) | ${ui['md.status.checked']} |`);
+    expect(unfinished).toContain(`| beta (application) | ${ui['md.status.dispatched']} |`);
     expect(unfinished).not.toContain('alpha (application) |');
     expect(unfinished).not.toContain('gamma');
     const removed = section(coverage, `### ${ui['md.coverage.findingsRemovedHeading']}`);
@@ -279,7 +278,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(data.findings.map((group) => [group.category, group.owners.map((one) => [one.kind, one.id, one.name]), group.items.map((one) => one.id)])).toEqual([
       ['other', [['feature', 'F1', 'Orders'], ['application', 'app1', 'alpha']], ['F1.findings[0]', 'app1.system[0]']],
       ['time', [['feature', 'F3', 'Nightly run'], ['application', 'app1', 'alpha']], ['F3.findings[0]', 'app1.system[2]']],
@@ -306,7 +305,7 @@ describe('the page data', () => {
     page(run, 'product');
     const { coverage } = dataOf(run);
     expect(coverage.systemFindingsTotal).toBe(3);
-    expect(coverage.systemFindingsUnfinished).toEqual([{ id: 'app2', name: 'beta', status: 'checked' }]);
+    expect(coverage.systemFindingsUnfinished).toEqual([{ id: 'app2', name: 'beta', status: 'dispatched' }]);
     expect(coverage.systemFindingsNotWritten).toBe(0);
     expect(coverage.systemFindingsRemoved).toEqual([{ id: 'app1', name: 'alpha', items: [{ claim: `System finding > ${ui[categoryKey('security')]} > ${SYSTEM_REMOVED_TEXT}`, verdict: 'contradicted', reason: REMOVED_REASON }] }]);
   });

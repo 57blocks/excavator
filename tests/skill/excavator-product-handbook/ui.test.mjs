@@ -31,7 +31,9 @@ function translated(word) {
   const table = shipped();
   table.language = 'Chinese';
   for (const [key, value] of Object.entries(table.strings)) {
-    table.strings[key] = value.replace(/[A-Za-z][A-Za-z ]*[A-Za-z]|[A-Za-z]/g, (piece, offset, whole) => (whole[offset - 1] === '{' ? piece : word));
+    // The word lists are matched inside text: every word of them here is two characters, as check-ui requires.
+    const wide = key === 'md.findings.adviceWords' || key === 'md.findings.scopeWords' ? word + word : word;
+    table.strings[key] = value.replace(/[A-Za-z][A-Za-z ]*[A-Za-z]|[A-Za-z]/g, (piece, offset, whole) => (whole[offset - 1] === '{' ? piece : wide));
   }
   return table;
 }
@@ -200,5 +202,36 @@ describe('check-ui --language: the fixed text is written before the map', () => 
     expect(uiFor(run, 'Chinese').stdout).toMatch(/the run's language is Chinese/);
     rmSync(run.out, { recursive: true });
     expect(uiFor(run, 'Chinese').status).toBe(2);
+  });
+});
+
+// O2 of openspec change handbook-phase-gate: a one-character word of a script without spaces is refused in the two word lists.
+describe('check-ui: single-character words of the word lists', () => {
+  const single = cjk(0x5e94);
+  const pair = cjk(0x5e94, 0x8be5);
+  const withWords = (key, words) => {
+    const table = translated(cjk(0x6587));
+    table.strings[key] = words;
+    return table;
+  };
+
+  for (const key of ['md.findings.adviceWords', 'md.findings.scopeWords']) {
+    it(`${key}: a single character is refused and a two-character word passes`, () => {
+      const run = newRun('Chinese');
+      run.writeJson(join(run.out, 'ui.json'), withWords(key, `${pair}, ${single},${pair}${pair}`));
+      const bad = ui(run);
+      expect(bad.status, bad.stdout).toBe(1);
+      expect(bad.stdout).toContain(`ui.json: ${key}: "${single}" is a single character; in a script without spaces it matches inside longer words, write words of two or more characters`);
+      expect(bad.lines.filter((line) => line.includes('single character'))).toHaveLength(1);
+      run.writeJson(join(run.out, 'ui.json'), withWords(key, `${pair},${pair}${pair}`));
+      const good = ui(run);
+      expect(good.status, good.stdout).toBe(0);
+    });
+  }
+
+  it('the English lists, with one-letter-free ASCII words, still pass', () => {
+    const run = newRun('English');
+    run.writeJson(join(run.out, 'ui.json'), shipped());
+    expect(ui(run).status).toBe(0);
   });
 });

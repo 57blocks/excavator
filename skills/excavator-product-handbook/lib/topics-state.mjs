@@ -4,10 +4,12 @@
  * of the usual form (status `planned`, `dispatched`, `checked`, `verified` or
  * `failed`, attempts), with the digest of the facts the lane was written for
  * (`factsDigest`), the digest of its part file (`entryDigest`) and, once
- * verified, the rows the judges did not both accept (`dropped`). An absent key
+ * verified (an older run), the rows the judges did not both accept (`dropped`);
+ * `checked` is final in the light scheme (openspec change handbook-light-scheme). An absent key
  * or lane means planned with no attempt, so an output directory from before
  * needs no migration. `load-run.mjs` reads the lanes through `loadTopics`: only a
- * verified lane whose part file is still the one the judges saw has rows;
+ * checked or verified lane whose part file is still the one that was checked has
+ * rows (a checked lane is marked `unverified`);
  * whether its facts are the current ones is for the model that builds the
  * outputs to decide (topics-model.mjs), since only it has the facts.
  */
@@ -40,7 +42,7 @@ export function readLaneFile(outDir, lane, entry) {
 
 /**
  * The lanes of a loaded state: `{ lanes: Map<lane, { status, doc, dropped, factsDigest }> }` for each lane the state records.
- * `doc` is the parsed part file for a verified lane whose file is the one the judges saw, else null; `dropped` is what the
+ * `doc` is the parsed part file for a checked or verified lane whose file is the one that was checked, else null; `unverified` is true for a checked lane; `dropped` is what the
  * judges did not both accept, `[{ id, reasons }]`, empty without a `doc`.
  */
 export function loadTopics(outDir, state) {
@@ -48,12 +50,12 @@ export function loadTopics(outDir, state) {
   for (const lane of Object.keys(state.topics ?? {})) {
     const entry = laneEntry(state, lane);
     const none = { status: entry.status, doc: null, dropped: [], factsDigest: entry.factsDigest ?? null };
-    if (entry.status !== 'verified') {
+    if (!['checked', 'verified'].includes(entry.status)) {
       lanes.set(lane, none);
       continue;
     }
     const { doc } = readLaneFile(outDir, lane, entry);
-    lanes.set(lane, doc === null ? none : { ...none, doc, dropped: entry.dropped ?? [] });
+    lanes.set(lane, doc === null ? none : { ...none, doc, dropped: entry.dropped ?? [], ...(entry.status === 'checked' ? { unverified: true } : {}) });
   }
   return { lanes };
 }

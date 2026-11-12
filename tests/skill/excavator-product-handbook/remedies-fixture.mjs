@@ -12,6 +12,7 @@ import { spawnSync } from 'node:child_process';
 import { expect } from 'vitest';
 
 import { computeCounts, DATA_FORMAT } from '../../../skills/excavator-product-handbook/lib/data-shape.mjs';
+import { settleDerived } from './helpers.mjs';
 import { checkedPriorityRun, judgeAll } from './priority-fixture.mjs';
 
 export const REMEDIES_FORMAT = 'excavator-product-handbook-remedies/1';
@@ -67,35 +68,9 @@ export function checkedRemediesRun(cleanups, edit = () => undefined) {
   return run;
 }
 
-/** The judge file and the two verdict paths `remedy-judge` printed. */
-export function remedyJudgePlan(run) {
-  const result = run.run('remedy-judge');
-  expect(result.status, result.stdout + result.stderr).toBe(0);
-  const line = result.lines.find((one) => one.startsWith('Judge file: '));
-  const [judge, verdicts] = line.split(' | ');
-  const [a, b] = verdicts.replace('Verdict files: ', '').split(' ');
-  return { judge: judge.replace('Judge file: ', ''), a, b };
-}
-
-/** Write the two verdict files: `decide(item, letter)` gives a verdict word or `{ verdict, reason }`, default `follows`. */
-export function writeRemedyVerdicts(plan, decide = () => 'follows') {
-  const items = JSON.parse(readFileSync(plan.judge, 'utf-8')).items;
-  for (const [letter, path] of [['a', plan.a], ['b', plan.b]]) {
-    const verdicts = items.map((item) => {
-      const given = decide(item, letter);
-      const verdict = typeof given === 'string' ? { verdict: given } : given;
-      return { id: item.id, verdict: verdict.verdict, reason: verdict.reason ?? 'Everything the text says about how things are now is in what it cites.' };
-    });
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify({ verdicts }, null, 2)}\n`);
-  }
-}
-
-/** Judge a checked run: everything `follows` unless `decide` says otherwise; returns the remedy-verdicts result. */
-export function judgeRemedies(run, decide) {
-  const plan = remedyJudgePlan(run);
-  writeRemedyVerdicts(plan, decide);
-  return run.run('remedy-verdicts');
+/** Settle checked remedies as an older run's two judges left them: nothing dropped. */
+export function judgeRemedies(run) {
+  return settleDerived(run, 'remedies');
 }
 
 /** A data.json that passes the shape check, with the given tables: `{ name, mentions: { <application directory>: [lines] } }`. */

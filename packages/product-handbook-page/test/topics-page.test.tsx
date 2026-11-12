@@ -13,6 +13,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { PageData, Topics } from '../src/lib/types';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -46,6 +47,7 @@ const LANES = [
 function dataFor(topics: Topics = TOPICS, coverage: Partial<PageData['coverage']['topics']> = {}, views: ('product' | 'technical')[] = ['product', 'technical']): PageData {
   return {
     format: PAGE_FORMAT,
+    chunks: { parts: [], units: {} },
     project: d('Acme'),
     language: d('language'),
     languageTag: 'xx',
@@ -54,6 +56,7 @@ function dataFor(topics: Topics = TOPICS, coverage: Partial<PageData['coverage']
     areas: [],
     domains: [],
     domainBasis: 'areas',
+    outline: defaultOutline(marked, 'areas'),
     features: [],
     findings: [],
     remedies: { categories: [], recommendations: [] },
@@ -99,12 +102,13 @@ describe('the topics route and link', () => {
     expect(routeHash({ name: 'topics' }, 'technical')).toBe('#/technical/topics');
   });
 
-  it('both views have the sidebar link right after the recommendations link', () => {
+  // Since handbook-deep-entry D11 the topics close the cross-cutting group, after the two tables.
+  it('both views have the sidebar link right after the jobs link', () => {
     for (const view of ['product', 'technical']) {
       const html = render(dataFor(), `#/${view}`);
       const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
       const links = Array.from(rail.matchAll(/href="([^"]*)"/g), (match) => match[1]);
-      const at = links.indexOf(`#/${view}/recommendations`);
+      const at = links.indexOf(`#/${view}/jobs`);
       expect(at, view).toBeGreaterThan(-1);
       expect(links[at + 1]).toBe(`#/${view}/topics`);
       expect(rail).toContain(marked['page.nav.topics']);
@@ -138,8 +142,8 @@ describe('the topics page', () => {
 
   it('says how many verified entries a topic without a row read, and never that the system has none', () => {
     const html = main(render(dataFor(), '#/product/topics'));
-    expect(part(html, 'time')).toContain(`${MARK}The 3 verified entries it read state none of this.`);
-    expect(part(html, 'access')).toContain(`${MARK}The 3 verified entries it read state none of this.`);
+    expect(part(html, 'time')).toContain(`${MARK}The 3 entries it read state none of this.`);
+    expect(part(html, 'access')).toContain(`${MARK}The 3 entries it read state none of this.`);
     expect(part(render(dataFor({ ...TOPICS, repeated: [] }), '#/product/topics'), 'repeated')).toContain(`${MARK}The 2 verified groups of findings it read hold none of this.`);
   });
 
@@ -152,7 +156,7 @@ describe('the topics page', () => {
   });
 
   it('says the topics did not finish when no lane is verified, and shows no table', () => {
-    const data = dataFor(EMPTY, { lanes: [{ id: 'D1', name: d('Leave'), status: 'checked', kept: 0, dropped: 0 }], finished: false });
+    const data = dataFor(EMPTY, { lanes: [{ id: 'D1', name: d('Leave'), status: 'planned', kept: 0, dropped: 0 }], finished: false });
     const html = main(render(data, '#/product/topics'));
     expect(html).toContain(marked['md.topics.notFinished']);
     expect(html).not.toContain('<table');

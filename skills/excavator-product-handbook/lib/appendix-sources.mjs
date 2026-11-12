@@ -48,14 +48,16 @@ export function buildSources(run, { applications, findings, remedies, topics }) 
   const featureUnits = featureIds.map((id) => ({ id, entry: state.features[id] }));
   const findingsUnits = featureIds.map((id) => ({ id: findingsId(id), entry: state.findings?.[id] ?? PLANNED }));
   const systemUnits = Array.from({ length: applications }, (_, index) => ({ id: systemUnitId(index + 1), entry: state.systemFindings?.[`app${index + 1}`] ?? PLANNED }));
-  const findingDocs = new Map([...run.findings].map(([id, doc]) => [findingsId(id), doc]));
+  // A checked unit (openspec change handbook-light-scheme) is in the output but not verified: it is not counted as a verified unit and keeps no item.
+  const light = run.unverified ?? new Set();
+  const findingDocs = new Map([...run.findings].map(([id, doc]) => [findingsId(id), doc]).filter(([id]) => !light.has(id)));
   const { counts } = findings.priority;
   return {
     parts: [
-      sectionRow('overview', [{ id: OVERVIEW_ID, entry: state.overview ?? PLANNED }], new Map(run.entries.has(OVERVIEW_ID) ? [[OVERVIEW_ID, run.entries.get(OVERVIEW_ID)]] : [])),
-      sectionRow('features', featureUnits, new Map([...run.entries].filter(([id]) => id !== OVERVIEW_ID))),
+      sectionRow('overview', [{ id: OVERVIEW_ID, entry: state.overview ?? PLANNED }], new Map(run.entries.has(OVERVIEW_ID) && !light.has(OVERVIEW_ID) ? [[OVERVIEW_ID, run.entries.get(OVERVIEW_ID)]] : [])),
+      sectionRow('features', featureUnits, new Map([...run.entries].filter(([id]) => id !== OVERVIEW_ID && !run.chapters?.has(id)))),
       sectionRow('findings', findingsUnits, findingDocs),
-      sectionRow('system-findings', systemUnits, run.systemFindings ?? new Map()),
+      sectionRow('system-findings', systemUnits, new Map([...(run.systemFindings ?? new Map())].filter(([id]) => !light.has(id)))),
     ],
     ranked: {
       priority: { kept: counts.P0 + counts.P1 + counts.P2, left: counts.unranked },

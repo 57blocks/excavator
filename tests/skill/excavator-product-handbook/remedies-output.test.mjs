@@ -159,41 +159,28 @@ describe('the Recommendations chapter', () => {
 });
 
 describe('what the judges left out and what did not finish', () => {
-  it('writes a recommendation that one judge refused nowhere, numbers the others again from 1 and lists the refused one in the coverage section with the reason', () => {
-    const run = checkedRemediesRun(cleanups);
-    expect(judgeRemedies(run, (item, letter) => (item.id === 'recommendation:1' && letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The text says one finding, which no cited fact says.' } : 'follows')).status).toBe(0);
-    assemble(run);
-    const body = text(run, 'handbook.md');
-    const chapter = recommendationsOf(body);
-    expect(chapter).not.toContain('Check the caller first');
-    expect(chapter).toContain('### 1. Replace the fixed list');
-    expect(chapter).toContain('Recommendations: 1. Groups of findings they rest on: 1 of 4.');
-    const part = coverageRemedies(body);
-    expect(part).toContain('Left out because a judge found a statement of how things are now that the cited findings and facts do not hold: 1.');
-    expect(part).toContain('| Left out | Reason |');
-    expect(part).toContain('| Check the caller first: Start with the 1 finding of the highest level, which lets any caller delete an order, and give it a check of the caller. | The text says one finding, which no cited fact says. |');
-  });
-
-  it('leaves out a paragraph of a category the same way: no cause or measure under the heading, a row in the coverage section', () => {
-    const run = checkedRemediesRun(cleanups);
-    judgeRemedies(run, (item, letter) => (item.id === 'category:authorization' && letter === 'b' ? { verdict: 'doesNotFollow', reason: 'The cause is wider than the statement.' } : 'follows'));
-    assemble(run);
-    const body = text(run, 'handbook.md');
-    expect(findingsOf(body)).not.toContain('Deleting an order asks nothing about who calls.\n\nMeasure');
-    expect(findingsOf(body)).toContain('Common cause: The list of orders is a fixed empty answer.');
-    expect(coverageRemedies(body)).toContain(`| ${ui[categoryKey('authorization')]}: Deleting an order asks nothing about who calls. | The cause is wider than the statement. |`);
-  });
-
   it('says that every written paragraph is in the handbook when the judges left none out', () => {
     const run = shared();
     assemble(run);
     expect(coverageRemedies(text(run, 'handbook.md')).trim()).toBe(ui['md.coverage.remediesAllKept']);
   });
 
-  it('says the remedies did not finish, writes none and keeps the findings, when the unit is only checked, failed or never written', () => {
+  it('writes a checked unit as written, not verified; says the remedies did not finish, writes none and keeps the findings, when the unit failed or was never written', () => {
     const run = checkedRemediesRun(cleanups);
     assemble(run);
     let body = text(run, 'handbook.md');
+    expect(coverageRemedies(body)).toContain(ui['md.coverage.remediesUnverified']);
+    expect(coverageRemedies(body)).not.toContain(ui['md.coverage.remediesNotFinished']);
+    expect(body).toContain('Common cause:');
+    expect(recommendationsOf(body)).toContain(ui['md.remedies.unverified']);
+    expect(recommendationsOf(body)).toContain('### 1. Check the caller first');
+    const failed = checkedRemediesRun(cleanups);
+    const bad = failed.goodRemedies();
+    bad.recommendations = [];
+    failed.writeRemedies(bad);
+    expect(failed.run('check-remedies').status).toBe(1);
+    assemble(failed);
+    body = text(failed, 'handbook.md');
     expect(coverageRemedies(body)).toContain(ui['md.coverage.remediesNotFinished']);
     expect(body).not.toContain('Common cause:');
     expect(recommendationsOf(body)).toContain(ui['md.remedies.none']);
@@ -246,7 +233,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(Object.keys(data).slice(data.findings === undefined ? 0 : Object.keys(data).indexOf('findings'), Object.keys(data).indexOf('findings') + 3)).toEqual(['findings', 'remedies', 'topics']);
     expect(Object.keys(data.remedies)).toEqual(['categories', 'recommendations']);
     expect(data.remedies.categories).toEqual([
@@ -266,25 +253,14 @@ describe('the page data', () => {
     expect(JSON.stringify(data.remedies)).not.toContain('src/');
   });
 
-  it('lists what the judges left out in the coverage', () => {
-    const run = checkedRemediesRun(cleanups);
-    judgeRemedies(run, (item, letter) => (item.id === 'recommendation:2' ? { verdict: 'doesNotFollow', reason: `Judge ${letter} did not find it in the facts.` } : 'follows'));
-    expect(page(run).status).toBe(0);
-    const data = dataOf(run);
-    expect(data.remedies.recommendations).toHaveLength(1);
-    expect(data.coverage.remedies).toEqual({
-      finished: true,
-      stale: false,
-      dropped: [{ id: 'recommendation:2', kind: 'recommendation', text: 'The list of orders should answer from the store.', title: 'Replace the fixed list', reasons: ['Judge a did not find it in the facts.', 'Judge b did not find it in the facts.'] }],
-    });
-  });
-
-  it('has no remedies and an unfinished coverage when the unit is not verified, and is the same bytes from the same input', () => {
+  it('has the remedies of a checked unit, marked not verified, and is the same bytes from the same input', () => {
     const run = checkedRemediesRun(cleanups);
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.remedies).toEqual({ categories: [], recommendations: [] });
-    expect(data.coverage.remedies).toEqual({ finished: false, stale: false, dropped: [] });
+    expect(data.remedies.categories).toHaveLength(2);
+    expect(data.remedies.recommendations).toHaveLength(2);
+    expect(data.unverifiedParts).toMatchObject({ remedies: true });
+    expect(data.coverage.remedies).toEqual({ finished: true, stale: false, dropped: [] });
     const first = text(run, 'handbook.html');
     page(run);
     expect(text(run, 'handbook.html')).toBe(first);

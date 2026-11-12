@@ -12,20 +12,34 @@
 
 import { basename } from 'node:path';
 
+import { chapterPageBlocks, noteCounts } from './chapter-output.mjs';
 import { pageSection } from './data-section.mjs';
 import { dictionariesPageSection } from './dict-section.mjs';
+import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
+import { operationSequence } from './flows.mjs';
 import { findingsStatus } from './findings-model.mjs';
+import { findingsId } from './findings-shape.mjs';
 import { handbookModel } from './handbook-model.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { reachCounts } from './render.mjs';
 import { remediesPageSection } from './remedies-page.mjs';
 import { topicsCoveragePage, topicsPageSection } from './topics-page.mjs';
 import { languageTag } from './language-tag.mjs';
+import { unverifiedParts } from './unverified.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * The format is /14 since openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
+ * The format is /18 since openspec change handbook-outline: `outline` is the parts and chapters the navigation, the chapter titles and the order of
+ * the chapters follow (outline.mjs `resolveOutline`: the written outline, or the default one with the problem lines of why), each chapter holding one block or one
+ * list of entity pages and `technical` when only the technical view has it, and the blocks it left out with their reasons.
+ * (/17, openspec change handbook-domain-page: each domain of `entities.domains` carries its `relations` with other
+ * domains, its `states` and `transitions`, `entities.domainFlows` sums those relations per direction between two domains, and the technical part holds `domainFiles`, the files the verified entries of each domain quote.)
+ * (/16, openspec change handbook-deep-entry: each operation of an entry carries the parts of entry format /2
+ * (triggers, calculations, changes, edges, handoffs) and `sequence`, the participants and arrows of its sequence diagram
+ * (flows.mjs), and an entry carries its state `transitions`.) (/15, openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
+ * large (the part ids and, for each unit, the parts that hold it); here it is always empty, and `page` fills it when it splits the data
+ * (page-units.mjs, page-chunks.mjs).) (/14, openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
  * applications, the files that change most by name, the files changed together across applications, the source and test files) and
  * `appendix` the open questions, the glossary and the sources and scope; the technical part holds the path of each file of `history`.
  * (/13, openspec change handbook-topics: `topics` holds the rows of the five cross-cutting topics with their basis, the
@@ -34,24 +48,49 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. /11: each group of findings
  * carries its priority, and the coverage says which groups have none.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/14';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/18';
 
-/** An entry without its evidence, in the page's shape. */
-function pageEntry(entry) {
+const PARTS = Object.fromEntries(OPERATION_PARTS.map((part) => [part.key, part]));
+
+/**
+ * An entry without its evidence, in the page's shape; `sequenceOf` gives an operation's sequence diagram (flows.mjs). A checked /3 entry (openspec
+ * change handbook-free-chapter) has no operations and no fields: it carries the `chapter` blocks (chapter-output.mjs, no citation) and its top-level `handoffs`.
+ */
+function pageEntry(entry, sequenceOf, chapter) {
   return {
     ...(entry.purpose === undefined ? {} : { purpose: entry.purpose.text }),
     who: entry.who.map((who) => ({ role: who.role, can: who.can })),
     where: entry.where.map((place) => place.label),
     screens: entry.screens.map((screen) => ({
       name: screen.name,
-      fields: screen.fields.map((field) => ({ label: field.label, rules: field.rules.map((rule) => ({ side: rule.side, text: rule.text })) })),
+      fields: (screen.fields ?? []).map((field) => ({ label: field.label, rules: field.rules.map((rule) => ({ side: rule.side, text: rule.text })) })),
     })),
-    operations: entry.operations.map((operation) => ({ name: operation.name, sentences: operation.sentences.map((sentence) => sentence.text) })),
+    operations: (entry.operations ?? []).map((operation) => ({
+      name: operation.name,
+      sentences: operation.sentences.map((sentence) => sentence.text),
+      triggers: partList(operation, PARTS.triggers).map((x) => x.text),
+      calculations: partList(operation, PARTS.calculations).map((x) => x.text),
+      changes: partList(operation, PARTS.changes).map((x) => x.text),
+      edges: partList(operation, PARTS.edges).map((x) => ({ when: x.when, then: x.then })),
+      handoffs: partList(operation, PARTS.handoffs).map((x) => ({ feature: x.feature, text: x.text })),
+      sequence: sequenceOf(operation),
+    })),
     states: entry.states.map((state) => ({ label: state.label, meaning: state.meaning })),
+    transitions: transitionList(entry).map((x) => ({ from: x.from, to: x.to, by: x.by })),
     notifications: entry.notifications.map((n) => ({ trigger: n.trigger, recipient: n.recipient, channel: n.channel, content: n.content })),
     automatic: entry.automatic.map((item) => ({ when: item.when, effect: item.effect })),
     unknowns: entry.unknowns.map((item) => ({ item: item.item, searched: item.searched })),
+    ...(chapter === undefined ? {} : { handoffs: (entry.handoffs ?? []).map((x) => ({ feature: x.feature, text: x.text })), chapter: chapterPageBlocks(chapter.text) }),
   };
+}
+
+/**
+ * The architecture section for the technical part (openspec change handbook-architecture-chapter): its status, and when checked the chapter
+ * blocks without citations, the components with their layers and the links; the page draws the chapter and the layered diagram from them.
+ */
+function architecturePageSection(architecture) {
+  if (architecture.status !== 'checked') return { status: architecture.status };
+  return { status: 'checked', chapter: chapterPageBlocks(architecture.chapter.text), components: architecture.model.components, links: architecture.model.links };
 }
 
 /**
@@ -71,13 +110,17 @@ function pageEntry(entry) {
  */
 export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const { map, entries, state, candidates, ui } = run;
+  const chapters = run.chapters ?? new Map();
+  // A checked overview, findings unit or system unit (openspec change handbook-light-scheme) is in the data, marked as not verified; it is not an unfinished unit.
+  const light = run.unverified ?? new Set();
   // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
   const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
-  const { summary, system, entities, locations, findings, remedies, topics, history, appendix, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
+  const { summary, system, entities, locations, findings, remedies, topics, history, appendix, outline, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
+    chunks: { parts: [], units: {} },
     project: system.overview?.name ?? null,
     language: map.language,
     languageTag: languageTag(map.language),
@@ -86,6 +129,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     areas: map.areas.map((area) => ({ id: area.id, name: area.name })),
     domains: entities.domains.map((domain) => ({ id: domain.id, name: domain.name })),
     domainBasis: entities.domainBasis,
+    outline,
     features: map.features.map((feature) => ({
       id: feature.id,
       name: feature.name,
@@ -94,8 +138,11 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       reach: feature.reach,
       label: feature.label,
       status: state.features[feature.id].status,
-      entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id)) : null,
+      entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id), (operation) => operationSequence(operation, feature.reach, system.applications, (key) => ui[key]), chapters.get(feature.id)) : null,
       findingsStatus: findingsStatus(state, feature.id),
+      ...(light.has(findingsId(feature.id)) ? { findingsUnverified: true } : {}),
+      // Only a feature written but not verified has the key (a checked /3 entry), so the data of a run with none is as it was.
+      ...(chapters.has(feature.id) ? { unverified: true } : {}),
     })),
     findings: findings.groups.map((group) => ({
       category: group.category,
@@ -112,6 +159,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
       unassigned: map.unassigned.map((item) => ({ candidate: item.candidate, kind: kind.get(item.candidate), reason: item.reason })),
       reachCounts: reachCounts(map),
+      unverified: map.features.filter((feature) => chapters.has(feature.id)).map((feature) => ({ feature: feature.id, notes: noteCounts(chapters.get(feature.id).notes) })),
       removedOverview: (state.overview?.removed ?? []).map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
       removed: map.features
         .filter((feature) => (state.features[feature.id].removed ?? []).length > 0)
@@ -120,7 +168,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
           items: state.features[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
         })),
       findingsUnfinished: map.features
-        .filter((feature) => !['verified', 'planned'].includes(findingsStatus(state, feature.id)))
+        .filter((feature) => !['verified', 'planned'].includes(findingsStatus(state, feature.id)) && !light.has(findingsId(feature.id)))
         .map((feature) => ({ feature: feature.id, status: findingsStatus(state, feature.id) })),
       findingsNotWritten: map.features.filter((feature) => findingsStatus(state, feature.id) === 'planned').length,
       findingsRemoved: map.features
@@ -131,7 +179,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
         })),
       systemFindingsTotal: findings.applications.length,
       systemFindingsUnfinished: findings.applications
-        .filter((application) => !['verified', 'planned'].includes(application.status))
+        .filter((application) => !['verified', 'planned'].includes(application.status) && !light.has(`${application.id}.system`))
         .map((application) => ({ id: application.id, name: application.name, status: application.status })),
       systemFindingsNotWritten: findings.applications.filter((application) => application.status === 'planned').length,
       priority: {
@@ -152,10 +200,14 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     system,
     entities: {
       domains: entities.domains,
+      domainFlows: entities.domainFlows,
       roles: entities.roles,
       roleFeature: entities.matrices.roleFeature,
     },
   };
+  // Only a run with a part that is written but not verified has the key, so the data of a run with none is as it was.
+  const parts = unverifiedParts(light, { findings, remedies, topics });
+  if (Object.keys(parts).length > 0) data.unverifiedParts = parts;
   if (views.includes('technical')) {
     data.technical = {
       featureApplication: entities.relations.featureApplication,
@@ -167,6 +219,8 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       topicLocations: topics.places.map((entry) => ({ id: entry.id, citations: entry.citations })),
       findingLocations: findings.groups.flatMap((group) => group.items).map((item) => ({ id: item.id, citations: findings.locations.get(item.id) })),
       history: historyPlaces(history),
+      domainFiles: entities.domainFiles,
+      architecture: architecturePageSection(run.architecture ?? { status: 'none' }),
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,
       dictionaries: dictionariesSection.state === 'ok' ? dictionariesPageSection(dictionariesSection.data) : null,

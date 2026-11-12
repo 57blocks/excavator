@@ -1,6 +1,6 @@
 // O1 of openspec change handbook-findings-priority: the group keys, the table
 // that turns a consequence into a level, priority-items, check-priority,
-// priority-judge, priority-verdicts and the state of the unit `priority`.
+// and the state of the unit `priority`.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -149,7 +149,7 @@ describe('check-priority', () => {
     const run = withPart(() => undefined);
     const result = run.run('check-priority');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['priority: checked (4 groups, 1 part)', 'Next: run priority-judge']);
+    expect(result.lines).toEqual(['priority: checked (4 groups, 1 part)']);
     const state = run.readState();
     expect(state.priority).toMatchObject({ status: 'checked', attempts: 1 });
     expect(state.priority.entryDigest).toMatch(/^[0-9a-f]{64}$/);
@@ -285,133 +285,16 @@ describe('the state of the unit', () => {
   });
 });
 
-describe('priority-judge', () => {
-  it('refuses a ranking that was not checked', () => {
-    const run = verifiedFindingsRun(cleanups);
-    const result = run.run('priority-judge');
-    expect(result.status).toBe(1);
-    expect(result.lines[0]).toBe('priority: is planned; only a checked ranking is judged');
-  });
-
-  it('writes one judge file for each part with the statements, the consequence with its meaning and the reason, nothing else, and prints the paths', () => {
-    const run = checkedPriorityRun(cleanups);
-    const result = run.run('priority-judge');
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('priority: 4 groups in 1 part');
-    expect(result.lines[1]).toBe(`Part 1/1: 4 groups | Judge file: ${join(run.out, 'priority', 'judge', 'part-1.json')} | Verdict files: ${join(run.out, 'priority', 'verdicts', 'part-1.a.json')} ${join(run.out, 'priority', 'verdicts', 'part-1.b.json')}`);
-    const file = run.readJson('priority/judge/part-1.json');
-    expect(Object.keys(file)).toEqual(['unit', 'part', 'parts', 'groups']);
-    expect(file.groups).toHaveLength(4);
-    for (const group of file.groups) expect(Object.keys(group)).toEqual(['id', 'statements', 'consequence', 'meaning', 'reason']);
-    expect(file.groups[0]).toMatchObject({ consequence: 'othersRecords', meaning: meaningOf('othersRecords'), reason: REASONS.authorization });
-    expect(file.groups[0].statements).toEqual(['Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.']);
-    expect(JSON.stringify(file)).not.toMatch(/P0|P1|P2|src\//);
-  });
-
-  it('cuts the judge files into parts like the lanes and clears the older verdict files', () => {
-    const run = verifiedFindingsRun(cleanups);
-    run.runSized(3, 'mark', 'priority', 'dispatched');
-    run.writeGoodParts(3);
-    expect(run.runSized(3, 'check-priority').status).toBe(0);
-    const first = run.runSized(3, 'priority-judge');
-    expect(first.lines.filter((line) => line.startsWith('Part '))).toHaveLength(2);
-    expect(first.lines[0]).toBe('priority: 4 groups in 2 parts');
-    expect(run.readJson('priority/judge/part-2.json').groups).toHaveLength(1);
-  });
-});
-
-describe('priority-verdicts', () => {
-  it('records a group as ranked only when both judges say follows, and the unit as verified', () => {
-    const run = checkedPriorityRun(cleanups);
-    const result = judgeAll(run);
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['priority: verified (4 groups, 4 ranked, 0 unranked)']);
-    const entry = run.readState().priority;
-    expect(entry).toMatchObject({ status: 'verified', attempts: 1 });
-    expect(entry.unranked).toBeUndefined();
-  });
-
-  it('one judge that says follows is not enough: a group on which one judge says doesNotFollow is unranked with that reason', () => {
-    const run = checkedPriorityRun(cleanups);
-    const result = judgeAll(run, (group, letter) => (group.consequence === 'wrongResult' && letter === 'b' ? { verdict: 'doesNotFollow', reason: 'The reason says a stored order, which the statement does not say.' } : 'follows'));
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['priority: verified (4 groups, 3 ranked, 1 unranked)']);
-    const { unranked } = run.readState().priority;
-    expect(unranked).toEqual([{ key: run.allKeys[1], reasons: ['The reason says a stored order, which the statement does not say.'] }]);
-  });
-
-  it('records both reasons in letter order when both judges say doesNotFollow', () => {
-    const run = checkedPriorityRun(cleanups);
-    judgeAll(run, (group, letter) => (group.consequence === 'display' ? { verdict: 'doesNotFollow', reason: `Judge ${letter} found a fact that is not in the statement.` } : 'follows'));
-    expect(run.readState().priority.unranked).toEqual([{ key: run.allKeys[2], reasons: ['Judge a found a fact that is not in the statement.', 'Judge b found a fact that is not in the statement.'] }]);
-  });
-
-  const BAD_FILES = [
-    ['misses a group', (verdicts) => verdicts.slice(1), 'no verdict'],
-    ['has an extra id', (verdicts) => [...verdicts, { id: 'F9.findings#0@0123456789abcdef', verdict: 'follows', reason: 'Fine.' }], 'is not a group of the judge file'],
-    ['repeats an id', (verdicts) => [...verdicts, verdicts[0]], 'more than one verdict'],
-    ['has another verdict word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'verified' } : one)), 'is not one of follows, doesNotFollow'],
-    ['has a reason of two lines', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, reason: 'One.\nTwo.' } : one)), 'the reason must be one line'],
-    ['has a reason with a code word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'doesNotFollow', reason: 'The statement never mentions delete_order.' } : one)), 'is not allowed in reader text'],
-  ];
-  for (const [name, edit, text] of BAD_FILES) {
-    it(`exits 1 and records nothing for a verdict file that ${name}`, () => {
-      const run = checkedPriorityRun(cleanups);
-      const plan = judgePlan(run);
-      writeVerdicts(plan);
-      const file = JSON.parse(readFileSync(plan[0].b, 'utf-8'));
-      run.writeJson(plan[0].b, { verdicts: edit(file.verdicts) });
-      const before = readFileSync(join(run.out, 'state.json'), 'utf-8');
-      const result = run.run('priority-verdicts');
-      expect(result.status, name).toBe(1);
-      expect(result.lines.join('\n'), name).toContain(`part 1b: `);
-      expect(result.lines.join('\n'), name).toContain(text);
-      expect(result.lines.at(-1), name).toContain('nothing was recorded');
-      expect(readFileSync(join(run.out, 'state.json'), 'utf-8'), name).toBe(before);
-    });
-  }
-
-  it('exits 1 for a verdict file that is missing, and names the verdict file to dispatch again', () => {
-    const run = checkedPriorityRun(cleanups);
-    const plan = judgePlan(run);
-    writeVerdicts(plan);
-    run.writeJson(plan[0].a, { verdicts: [] });
-    const result = run.run('priority-verdicts');
-    expect(result.status).toBe(1);
-    expect(result.lines.at(-1)).toContain('1a');
-  });
-
-  it('refuses a judge file that is not the one priority-judge wrote for this ranking', () => {
-    const run = checkedPriorityRun(cleanups);
-    const plan = judgePlan(run);
-    writeVerdicts(plan);
-    const judge = JSON.parse(readFileSync(plan[0].judge, 'utf-8'));
-    judge.groups[0].reason = 'Another reason.';
-    run.writeJson(plan[0].judge, judge);
-    const result = run.run('priority-verdicts');
-    expect(result.status).toBe(1);
-    expect(result.lines[0]).toContain('is not the one priority-judge wrote for this ranking');
-  });
-
-  it('refuses a ranking whose file changed after it was checked', () => {
-    const run = checkedPriorityRun(cleanups);
-    const items = run.readJson('entries/priority.json');
-    items.items[0].reason = 'Any caller can delete any order.';
-    run.writeJson(join(run.out, 'entries', 'priority.json'), items);
-    const result = run.run('priority-judge');
-    expect(result.status).toBe(1);
-    expect(result.lines[0]).toBe('priority: entries/priority.json changed after it was checked');
-  });
-
-  it('after the verdicts, priority-items prints a note: the ranking is current, so nothing is ranked again', () => {
+describe('priority-items on a settled or checked ranking', () => {
+  it('a settled ranking prints a note: the ranking is current, so nothing is ranked again', () => {
     const run = checkedPriorityRun(cleanups);
     judgeAll(run);
     expect(run.run('priority-items').lines).toEqual(['Priority: verified (4 groups); nothing to rank']);
   });
 
-  it('before the judges, priority-items prints the note that the ranking waits for them', () => {
+  it('for a checked ranking, priority-items prints the note that there is nothing to rank', () => {
     const run = checkedPriorityRun(cleanups);
-    expect(run.run('priority-items').lines).toEqual(['Priority: checked; next: run priority-judge']);
+    expect(run.run('priority-items').lines).toEqual(['Priority: checked (4 groups); nothing to rank']);
   });
 });
 
@@ -445,14 +328,4 @@ describe('the language of a reason', () => {
     expect(run.run('check-priority').status).toBe(0);
   });
 
-  it('priority-verdicts refuses the reason of a doesNotFollow verdict written only in ASCII letters', () => {
-    const run = chineseRun();
-    run.run('mark', 'priority', 'dispatched');
-    run.writePart(1, [{ key: run.allKeys[0], consequence: 'notification', reason: `${MARK}one fixed time of day` }]);
-    expect(run.run('check-priority').status).toBe(0);
-    const result = judgeAll(run, (group, letter) => (letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The statement does not say that.' } : 'follows'));
-    expect(result.status, result.stdout).toBe(1);
-    expect(result.lines).toContain(`part 1a: ${run.allKeys[0]}.reason: ${LANGUAGE_LINE}`);
-    expect(run.readState().priority.status).toBe('checked');
-  });
 });

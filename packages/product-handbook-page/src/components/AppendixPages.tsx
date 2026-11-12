@@ -4,6 +4,7 @@ import type { Text } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
 import { Definition, DefinitionList, Item, ItemField, ItemList } from './ui/ItemList';
+import { PageTitle } from '../lib/outline';
 
 /** The ui key of the name of a section of the sources part (`system-findings` is `systemFindings`). */
 const sectionKey = (id: string): string => `md.appendix.section.${id.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
@@ -19,7 +20,7 @@ function Head({ data, title }: { data: PageData; title: string }) {
   return (
     <header className="page-head">
       <p className="eyebrow">{data.project}</p>
-      <h1 className="page-title">{title}</h1>
+      <PageTitle fallback={title} />
     </header>
   );
 }

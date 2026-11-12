@@ -7,14 +7,14 @@
 // PATH). Without a Chrome the suite is skipped with a visible reason, except
 // when CI is set: CI runners have Chrome, so there it fails.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Browser, findChrome } from './chrome-cdp.mjs';
 import { writeFileSync } from 'node:fs';
 
-import { clone, judge, makeCheckedMapRun, repoRoot, traceFeature } from './helpers.mjs';
+import { clone, makeCheckedMapRun, repoRoot, runHandbook, verifyChecked } from './helpers.mjs';
 import { writeHistory } from './appendix-fixture.mjs';
 import { NOTIFY_FILE, NOTIFY_LINE, goodOverview } from './overview-fixture.mjs';
 
@@ -39,7 +39,7 @@ const LONG = 'A customer name that is longer than the print width is shortened i
 
 /**
  * A run whose F1 entry has a table wide enough to need its own scroll box on a phone. `keepIntegration`
- * keeps the overview's external system (it is removed in round 1 otherwise) and `views` is the page's --views.
+ * keeps the overview's external system (it is recorded as removed otherwise) and `views` is the page's --views.
  */
 function pageRun({ keepIntegration = false, views = undefined, unnamed = false } = {}) {
   const run = makeCheckedMapRun();
@@ -52,22 +52,15 @@ function pageRun({ keepIntegration = false, views = undefined, unnamed = false }
   run.writeEntry('F1', entry);
   const checked = run.run('check-entry', 'F1');
   if (checked.status !== 0) throw new Error(`the entry failed check-entry:\n${checked.stdout}`);
-  // One backend rule is contradicted in round 1 and removed there, so the coverage page has a removed-items table to lay out.
-  const bad = (item) => (item.id === 'screens[0].fields[1].rules[0]' ? { verdict: 'contradicted', reason: 'The limit the code shows is 50, not the number the sentence gives.' } : 'verified');
-  const judged = judge(run, 'F1', 1, bad);
-  if (judged.status !== 0) throw new Error(`verdicts round 1 failed:\n${judged.stdout}`);
-  const traced = traceFeature(run);
-  if (traced.status !== 0) throw new Error(`trace-verdicts failed:\n${traced.stdout}`);
+  // One backend rule was removed from a verified entry, so the coverage page has a removed-items table to lay out.
+  verifyChecked(run, 'F1', [{ path: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason: 'The limit the code shows is 50, not the number the sentence gives.' }]);
   // A verified system overview that lost its external system in round 1, so the overview page holds the wide application table and the coverage page a second removed-items group.
   writeFileSync(join(run.root, NOTIFY_FILE), `${NOTIFY_LINE}\n`);
   const overview = goodOverview();
   if (unnamed) overview.name = null;
   run.writeEntry('overview', overview);
   if (run.run('check-overview').status !== 0) throw new Error('the overview failed check-overview');
-  const judgedOverview = judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' && !keepIntegration ? { verdict: 'contradicted', reason: 'The code shown sends it to another channel.' } : 'verified'));
-  if (judgedOverview.status !== 0) throw new Error(`overview verdicts failed:\n${judgedOverview.stdout}`);
-  const tracedOverview = traceFeature(run, 'overview');
-  if (tracedOverview.status !== 0) throw new Error(`overview trace-verdicts failed:\n${tracedOverview.stdout}`);
+  verifyChecked(run, 'overview', keepIntegration ? [] : [{ path: 'integrations[0]', verdict: 'contradicted', reason: 'The code shown sends it to another channel.' }]);
   // The code health page has a history file to show (the fixture project's one application root is `.`).
   writeHistory(run);
   const made = run.run('page', ...(views === undefined ? [] : ['--views', views]));
@@ -190,13 +183,17 @@ suite('page in a browser (O8)', () => {
         } else {
           expect(await page.evaluate("getComputedStyle(document.querySelector('.rail')).visibility")).toBe('visible');
         }
-        expect(await page.evaluate("document.querySelectorAll('.rail-feature').length")).toBe(5);
-        await page.evaluate("document.querySelector('.rail-feature').click()");
-        await page.waitFor('document.querySelector(\'[data-view="feature"][data-feature="F1"]\')', 'F1 from the sidebar');
+        // The rail lists the domains, not the features (design D11 of handbook-deep-entry); a feature is one click further, on its domain's page.
+        expect(await page.evaluate("document.querySelectorAll('.rail a[href*=\"/feature/\"]').length")).toBe(0);
+        const domain = await page.evaluate("document.querySelector('.rail-link[data-domain]').getAttribute('data-domain')");
+        await page.evaluate("document.querySelector('.rail-link[data-domain]').click()");
+        await page.waitFor('document.querySelector(\'[data-view="domain"]\')', 'the domain from the sidebar');
         if (width < 900) {
           await page.waitFor("document.querySelector('.rail[data-open=\"false\"]')", 'the drawer closed after a choice');
         }
-        expect(await page.evaluate("document.querySelector('.rail-feature[aria-current=\"page\"] .rail-feature-name').textContent")).toBe('Orders');
+        await page.evaluate("document.querySelector('main a[href*=\"/feature/\"]').click()");
+        await page.waitFor('document.querySelector(\'[data-view="feature"]\')', 'a feature from its domain page');
+        expect(await page.evaluate("document.querySelector('.rail-link[aria-current=\"true\"]').getAttribute('data-domain')")).toBe(domain);
         // The two tables are in the navigation too.
         for (const [view, hash] of [['notifications', '#/notifications'], ['jobs', '#/jobs']]) {
           if (width < 900) await page.evaluate("document.querySelector('.menu-btn').click()");
@@ -264,9 +261,8 @@ suite('page in a browser (O8)', () => {
         expect(await page.evaluate("document.querySelector('[data-view=\"feature\"]').getAttribute('data-feature')")).toBe('F1');
         expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]').textContent")).toMatch(/src\/forms\/order-form\.js:\s?\d+/);
         await fits(page, width, 'the technical feature page');
-        // The technical rail is by application: the application, then its domains, then their features.
+        // The technical rail adds the applications, one link each.
         expect(await page.evaluate("document.querySelectorAll('.rail [data-application]').length")).toBeGreaterThan(0);
-        expect(await page.evaluate("(() => { const app = document.querySelector('.rail [data-application]'); return app.querySelector('.rail-domain .rail-feature') !== null; })()")).toBe(true);
         // The other way: the entity stays too.
         await page.evaluate("document.querySelector('[data-view-link=\"product\"]').click()");
         await page.waitFor('document.querySelector(\'[data-view="feature"][data-feature="F1"]\')', 'F1 in the product view');
@@ -332,4 +328,54 @@ suite('page in a browser (O8)', () => {
       expect(page.consoleErrors).toEqual([]);
     }, 60000);
   }
+
+  // O3 (browser half) of openspec change handbook-page-chunked-data: the same run written with part files opens from file:// and shows
+  // the same page as the one-file form; the overview loads no part, a feature page loads its own parts by script, no request but the
+  // page and its part files, no console error; with a part deleted the page that needs it names it and the others still work.
+  describe('a page with part files', () => {
+    const route = '#/technical/feature/F1';
+    const mainOf = (page) => page.evaluate("document.querySelector('main').innerHTML");
+    const partsOf = (page) => page.requests.filter((request) => request.includes('/handbook-data/')).map((request) => request.replace(/^.*\//, ''));
+    const chunkedRun = () => {
+      const made = runHandbook(['page', both.out, '--project', both.root, '--views', 'product,technical'], {
+        env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_CHUNK_THRESHOLD: '1', EXCAVATOR_PRODUCT_HANDBOOK_PAGE_PART_LIMIT: '1500' },
+      });
+      expect(made.status, made.stdout + made.stderr).toBe(0);
+    };
+
+    it('shows the page of the one-file form, loading only the parts of the page it opens, and names a missing part', async () => {
+      const single = await browser.openPage({ width: 1280, height: 800 });
+      await single.goto(urlBoth);
+      await single.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      await goTo(single, route, '[data-view="feature"][data-feature="F1"]');
+      const expected = await mainOf(single);
+      expect(partsOf(single)).toEqual([]);
+
+      chunkedRun();
+      const names = readdirSync(join(both.out, 'handbook-data'));
+      expect(names.length).toBeGreaterThan(1);
+      const page = await browser.openPage({ width: 1280, height: 800 });
+      await page.goto(urlBoth);
+      await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      expect(partsOf(page)).toEqual([]);
+      await goTo(page, route, '[data-view="feature"][data-feature="F1"]');
+      await page.waitFor("!document.querySelector('[data-part=\"chunk-loading\"]') && document.querySelector('[data-part=\"locations\"]')", 'the feature detail');
+      expect(await mainOf(page)).toBe(expected);
+      const loaded = partsOf(page);
+      expect(loaded.length).toBeGreaterThan(0);
+      expect(loaded.every((name) => names.includes(name))).toBe(true);
+      expect(page.requests.filter((request) => request !== urlBoth && !request.startsWith('data:') && !request.includes('/handbook-data/part-'))).toEqual([]);
+      expect(page.consoleErrors).toEqual([]);
+
+      rmSync(join(both.out, 'handbook-data', loaded[0]));
+      const broken = await browser.openPage({ width: 1280, height: 800 });
+      await broken.goto(urlBoth);
+      await broken.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      await goTo(broken, route, '[data-part="chunk-missing"]');
+      expect(await broken.evaluate("document.querySelector('[data-part=\"chunk-missing\"]').textContent")).toContain(`handbook-data/${loaded[0]}`);
+      await goTo(broken, '#/technical/coverage', '[data-view="coverage"]');
+      expect(broken.consoleErrors.every((message) => message.includes('handbook-data'))).toBe(true);
+      expect(readFileSync(join(both.out, 'handbook.html'), 'utf-8')).toContain("script-src 'self' 'unsafe-inline'");
+    }, 90000);
+  });
 });

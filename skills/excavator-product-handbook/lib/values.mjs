@@ -10,10 +10,25 @@ import { normalize } from './normalize.mjs';
 
 const NUMBER = /\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
 
+const NAMED_ENTITIES = Object.freeze({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' });
+const ENTITY = /&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([A-Za-z]{2,8}));/g;
+
+/** `text` with HTML named (amp, lt, gt, quot, apos, nbsp) and numeric character references decoded; any other reference stays as written. */
+export function decodeEntities(text) {
+  return text.replace(ENTITY, (whole, dec, hex, name) => {
+    if (name !== undefined) return NAMED_ENTITIES[name] ?? whole;
+    const code = dec !== undefined ? Number(dec) : parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : whole;
+  });
+}
+
+/** `text` as a label is compared: entities decoded, then normalized (white space made one space); case is kept. */
+export const comparable = (text) => normalize(decodeEntities(text)).text;
+
 /** True when `label` occurs in one of `passages`. */
 export function labelOccurs(label, passages) {
-  const needle = normalize(label).text;
-  return needle !== '' && passages.some((passage) => normalize(passage).text.includes(needle));
+  const needle = comparable(label);
+  return needle !== '' && passages.some((passage) => comparable(passage).includes(needle));
 }
 
 /** The numbers in `text` (after normalization, so full-width digits count), thousands commas removed. */

@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { defaultOutline } from '../../../skills/excavator-product-handbook/lib/outline.mjs';
 import { renderHandbook } from '../../../skills/excavator-product-handbook/lib/render.mjs';
 import { SHIPPED_UI, makeCheckedMapRun, markedEntry, markedMap, runHandbook, translatedUi, MARK, verifyChecked } from './helpers.mjs';
 import { FORM, JOB_FILE, entries, verifiedRun as makeVerifiedRun } from './summary-fixture.mjs';
@@ -90,7 +91,7 @@ describe('handbook.md: the two tables', () => {
     const text = assemble(run);
     expect(text).toContain('Features with a verified entry: 0 of 5. Notifications listed: 0.');
     expect(text).not.toContain('A new order waits for approval.');
-    expect(text).toContain('No verified entry has a notification.');
+    expect(text).toContain('No entry in the handbook has a notification.');
   });
 
   it('writes the job table: one row per job candidate, the schedule as the line gives it, the description of the item that cites the line', () => {
@@ -162,6 +163,8 @@ describe('renderHandbook: the states the commands cannot easily reach', () => {
     state: { features: { F1: { status: 'planned' } } },
     candidates: [{ id: 'c1', kind: 'job' }, { id: 'c2', kind: 'job' }],
     ui,
+    // The outline both outputs follow (handbook-outline): here the default one, which resolveOutline gives a run without outline.json.
+    outline: { source: 'default', problems: [], unplaced: [], ...defaultOutline((key) => ui[key], 'areas') },
     system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, features: 1, featuresWithEntry: 0, roles: 0 }, areas: [{ id: 'A1', name: 'Operations', features: 1, verified: 0, roles: [] }], domains: [{ id: 'A1', name: 'Operations', features: 1, verified: 0, roles: [] }] },
     // The entity sections (handbook-entities-and-views) need the entities; this map has one domain and nothing verified.
     entities: {
@@ -195,7 +198,7 @@ describe('renderHandbook: the states the commands cannot easily reach', () => {
   it('writes the fixed text instead of a table when there is no job and no notification, and keeps the count sentences', () => {
     const empty = { notifications: [], jobs: [], counts: { ...summary.counts, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 } } };
     const text = renderHandbook({ ...base(), summary: empty });
-    expect(text).toContain('No verified entry has a notification.');
+    expect(text).toContain('No entry in the handbook has a notification.');
     expect(text).toContain('No scheduled job was found.');
     expect(text).toContain('Scheduled jobs listed: 0.');
     expect(text).not.toContain('| Candidate | Feature | Schedule in the code |');

@@ -16,6 +16,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import type { DataSection, PageData, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -59,7 +60,8 @@ const section: DataSection = {
 
 function dataFor(views: View[], dataSection: DataSection | null = section, dataState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
   return {
-    format: 'excavator-product-handbook-page/14',
+    format: 'excavator-product-handbook-page/18',
+    chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -68,6 +70,7 @@ function dataFor(views: View[], dataSection: DataSection | null = section, dataS
     areas: [{ id: 'A1', name: d('area') }],
     domains: [{ id: 'D1', name: d('domain') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [],
     findings: [],
     remedies: { categories: [], recommendations: [] },

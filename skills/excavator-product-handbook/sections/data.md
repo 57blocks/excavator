@@ -11,7 +11,7 @@ The data section lists the tables of the project, the migrations that build them
    It writes `$OUT/data.json` and then `$OUT/dictionaries.json` on every run, whatever an earlier run left there.
 2. On exit 0, tell the user the two lines it printed (the one that starts `Data:` and the one that starts `Dictionaries:`), as they are. On any other exit, tell the user the lines it printed as they are, and stop: do not edit `data.json`, `dictionaries.json` or any other file yourself.
 
-This section has no units: Phases 5 and 6 have nothing to verify or trace for it.
+This section has no units: it writes nothing a model checks.
 
 ---
 
