@@ -24,13 +24,21 @@
     "excavator:excavator-domain-analyzer",
     "excavator:excavator-file-analyzer",
     "excavator:excavator-graph-reviewer",
+    "excavator:excavator-handbook-priority-judge",
+    "excavator:excavator-handbook-remedy-judge",
+    "excavator:excavator-handbook-topic-judge",
+    "excavator:excavator-handbook-tracer",
+    "excavator:excavator-handbook-verifier",
+    "excavator:excavator-handbook-writer",
     "excavator:excavator-knowledge-graph-guide",
     "excavator:excavator-project-scanner",
     "excavator:excavator-summary-verifier",
+    "excavator:excavator-tour-verifier",
     "claude",
     "Explore",
     "general-purpose",
-    "Plan"
+    "Plan",
+    "excavator:skopo-researcher"
   ],
   "plugins": [
     {

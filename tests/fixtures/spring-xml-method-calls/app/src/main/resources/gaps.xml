@@ -1,0 +1,23 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:task="http://www.springframework.org/schema/task">
+  <bean id="lib" class="com.acme.LibBacked">
+    <property name="dataSource" ref="ds"/>
+  </bean>
+  <bean id="dup" class="com.acme.Dup" init-method="reset"/>
+  <bean id="ghost" class="com.acme.Ghost" init-method="nothing"/>
+  <bean id="built" class="com.acme.Factory" factory-method="create" init-method="start"/>
+  <bean id="vendor" class="org.apache.Vendor" init-method="go"/>
+  <bean id="tag" class="com.acme.Tag" init-method="check"/>
+  <bean id="blank" class="com.acme.A" init-method=""/>
+  <bean id="twin" class="com.acme.OrderDao"/>
+  <bean id="twin" class="com.acme.Maker"/>
+  <lookup-method name="dao" bean="twin"/>
+  <task:scheduled method="run" fixed-delay="1"/>
+  <task:scheduled ref="nope" method="run" fixed-delay="1"/>
+  <task:scheduled ref="libJob" method="run" fixed-delay="1"/>
+  <task:scheduled ref="twin" method="run" fixed-delay="1"/>
+  <bean id="ov" class="com.acme.Overloaded" factory-method="of"/>
+  <bean id="nested" class="com.acme.OrderService">
+    <property name="config.timeout" value="5"/>
+  </bean>
+</beans>

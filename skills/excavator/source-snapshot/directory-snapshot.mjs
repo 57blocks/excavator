@@ -15,7 +15,6 @@ import {
   closeSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readSync,
@@ -23,11 +22,11 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, dirname, sep } from 'node:path';
 
 import { contentHash, manifestDigest, diffEntries } from './manifest.mjs';
 import { ignoreRulesFromDisk, selectionLedger, selectionPrefixBytes } from './ignore-rules.mjs';
+import { makeSnapshotDir } from './snapshot-dir.mjs';
 
 /** Directory names never worth descending into — a pure walk-time
  *  optimization; the ignore filter would exclude their content anyway. */
@@ -243,7 +242,7 @@ export class DirectorySnapshot {
    * @returns {{ dir: string, drifted: boolean, driftedPaths: string[], cleanup: () => void }}
    */
   materialize() {
-    const dest = mkdtempSync(join(tmpdir(), 'excavator-snapshot-dir-'));
+    const dest = makeSnapshotDir('dir');
     const driftedPaths = [];
     for (const { path } of this._entries) {
       let buf;

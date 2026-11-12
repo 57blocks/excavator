@@ -1,6 +1,6 @@
 ---
 name: excavator-unused-code
-description: Find the methods and functions nothing in a project uses. A deterministic script lists every function no route reaches and the facts about each; you decide which of them are program entries (framework callbacks, jobs, listeners, main, tests, published API); the script then reports the rest as unused, grouped by what references what, each with a confidence computed from fixed rules. Never edits code.
+description: Find the methods and functions nothing in a project uses. A deterministic script lists every function no route or container-invoked method reaches and the facts about each; you decide which of them are program entries (framework callbacks, jobs, listeners, main, tests, published API); the script then reports the rest as unused, grouped by what references what, each with a confidence computed from fixed rules. Never edits code.
 argument-hint: "[project-path] [--language <lang>]"
 ---
 
@@ -8,13 +8,13 @@ argument-hint: "[project-path] [--language <lang>]"
 
 Report the code in a project that nothing uses, with a confidence the user can act on.
 
-**Unused** means: a method, function or constructor that no entry of the program reaches along references (`calls`, `routes`, and `implements` / `overrides` in both directions). A node nothing references is `unreferenced`; a node referenced only by unused code is `only-reachable-from-unused`. A node reached only from tests is `test-only`, not unused. Unreachable statements inside a method are out of scope.
+**Unused** means: a method, function or constructor that no entry of the program reaches along references (`calls`, `routes`, `invokes`, and `implements` / `overrides` in both directions). The roots are the route handlers (the targets of `routes`) and the methods a descriptor has the container call (the targets of `invokes`, such as a Spring `init-method` or the setter of a `<property>`); `counts.roots` of the candidates product gives how many of each. A node nothing references is `unreferenced`; a node referenced only by unused code is `only-reachable-from-unused`. A node reached only from tests is `test-only`, not unused. Unreachable statements inside a method are out of scope.
 
 The work is split three ways, and each part stays with its owner:
 
 | Who | What |
 |---|---|
-| `unused-code.mjs candidates` | Every function node no route reaches, with its facts. Claims about absence need the whole index, so a script does it. |
+| `unused-code.mjs candidates` | Every function node no route handler and no container-invoked method reaches, with its facts. Claims about absence need the whole index, so a script does it. |
 | You | Which candidates are entries: what calls them from outside the repository's own call graph. |
 | `unused-code.mjs report` | Applies your decisions, computes reasons, groups and confidence by fixed rules, writes `.excavator/unused-code.json`. |
 

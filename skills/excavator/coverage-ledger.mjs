@@ -224,6 +224,22 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
     }
   }
 
+  // 5. Ambiguous import specifiers: two tsconfig alias scopes name different
+  // files, so no edge was drawn. Kept apart from unresolved specifiers, which
+  // name nothing inside the project.
+  const ambiguousByLanguage = {};
+  for (const [path, bySpecifier] of Object.entries(importMap?.ambiguous ?? {})) {
+    const lang = languageOfPath.get(path) || 'unknown';
+    if (!ambiguousByLanguage[lang]) ambiguousByLanguage[lang] = { count: 0, samples: [] };
+    const row = ambiguousByLanguage[lang];
+    for (const [specifier, candidates] of Object.entries(bySpecifier)) {
+      row.count += 1;
+      if (row.samples.length < sampleLimit) {
+        row.samples.push(`${path} \u2192 ${specifier} (${candidates.join(' | ')})`);
+      }
+    }
+  }
+
   const coverage = {
     files: Object.values(byLanguage).reduce((sum, row) => sum + row.files, 0),
     byLanguage: sortObjectKeys(byLanguage),
@@ -283,6 +299,16 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
       kind: 'imports-unresolved',
       scope: language,
       reason: `${row.count} import specifier(s) in ${language} named nothing inside the project (external package or broken path)`,
+      count: row.count,
+      samples: row.samples,
+    });
+  }
+
+  for (const [language, row] of Object.entries(ambiguousByLanguage)) {
+    gaps.push({
+      kind: 'imports-ambiguous',
+      scope: language,
+      reason: `${row.count} import specifier(s) in ${language} name different files under different tsconfig path aliases; no edge was drawn`,
       count: row.count,
       samples: row.samples,
     });

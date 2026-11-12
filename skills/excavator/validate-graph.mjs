@@ -9,25 +9,45 @@
  *
  * Checks
  *   1. anchors — for every function/class node, the line at `lineRange[0]`
- *      (±1) must contain the node's `name` (an anonymous declaration: a
+ *      (±1), or the first line after its leading annotations and comments,
+ *      must contain the node's `name` (an anonymous declaration: a
  *      class/struct/def keyword). Otherwise: gap `anchor-mismatch`, node
- *      `verification: "contradicted"`.
+ *      `verification: "contradicted"`. Leading lines longer than the scan bound
+ *      leave the node `unverified` under `construct-too-long`, never confirmed and
+ *      never contradicted, and so does a declaration head or an expression that passes it. A
+ *      declaration whose modifiers wrap onto a line of their own is read to its name. An anchor is exact when the name is on `lineRange[0]`
+ *      itself or on the first line after the leading lines; one that only passes
+ *      within one line is still an anchor but is not exact.
  *   2. evidence — for every `extracted` edge, the cited line must contain the
  *      expected token: the callee name (`calls`), the target module segment
  *      (`imports`), the symbol name (`exports`), the declared name
  *      (`contains`, or what the entry's own `token` says its line holds, as
- *      for `mentions`, `references`, `injects` and `routes`); for a
+ *      for `mentions`, `references`, `injects`, `routes` and `invokes`); for a
  *      model-cited entry, either endpoint's name or file name. `imports` is
  *      checked across the whole statement (a multi-line ES import names its
  *      specifier several lines below its start); every other type is checked
- *      on the cited line alone. Otherwise: gap
+ *      on the cited line alone. One more way is read from the graph, not from
+ *      the text: an edge an extractor wrote that cites a declaration (not a
+ *      `calls` edge, and not an entry that names its own token) is confirmed
+ *      when the cited line is the first line of the range of an endpoint whose
+ *      name is the expected token and whose own anchor is exact. A `calls` edge an
+ *      extractor wrote is also confirmed when the callee name is anywhere in the
+ *      call expression that starts on the cited line, in the languages that write
+ *      expressions that way. Otherwise: gap
  *      `edge-contradicted`, edge `verification: "contradicted"`.
  *   3. `inferred` edges pass — being marked as judgement IS the honest state.
  *   4. referential integrity — the same checks UA's inline validator makes
  *      (required node fields, duplicate ids, dangling endpoints, layer and
  *      file nodes in a layer and orphan warnings).
  *   5. domain steps — a `step` node needs `nodeIds` that exist in the graph,
- *      or `provenance: "inferred"`. Otherwise: gap `step-unanchored`.
+ *      or `provenance: "inferred"`. Otherwise: gap `step-unanchored`. A domain
+ *      graph holds no code nodes, so its steps name nodes of the knowledge
+ *      graph: with `--reference <knowledge-graph>` a `nodeIds` entry resolves
+ *      against the graph's own nodes and the reference's node ids together
+ *      (nothing else of the reference is read). Every step lands in exactly one
+ *      bucket, counted as `stepsAnchored`, `stepsInferred` or `stepUnanchored`,
+ *      and the three add up to `stepsTotal`. A reference that is named but
+ *      cannot be read fails the run and writes nothing.
  *
  * A source file that cannot be read is counted (`source-missing`), never
  * treated as a contradiction: "we could not look" is not "the graph is wrong".
@@ -41,6 +61,7 @@
  *   node validate-graph.mjs <projectRoot>
  *     [--graph <annotated-graph.json>] [--out <validated-graph.json>]
  *     [--report <validation.json>] [--samples <n>]
+ *     [--reference <knowledge-graph.jsonl|.json>]
  *
  * Exit code is 0 whenever the run completed: findings are data, not a crash.
  * Determinism: no timestamps, all findings sorted, samples capped.
@@ -70,6 +91,13 @@ export const ANCHOR_TOLERANCE = 1;
 
 /** How far an `imports` evidence check may scan for the statement's end. */
 export const IMPORT_WINDOW_LINES = 12;
+
+/**
+ * How far the leading-line skip may read before it gives up. The longest legitimate construct measured on a real project
+ * was 22 lines; this leaves an order of magnitude and keeps the worst case of
+ * one anchor or edge constant. Passing it yields `unverified`, never a verdict.
+ */
+export const CONSTRUCT_SCAN_LINES = 400;
 
 const CODE_NODE_TYPES = Object.freeze(new Set(['function', 'class']));
 const FILE_LEVEL_TYPES = Object.freeze(new Set([
@@ -237,6 +265,7 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
     case 'references':
     case 'injects':
     case 'routes':
+    case 'invokes':
       // The line names what the mention WROTE: the evidence entry's own token.
       // The target's name is not on that line when a pattern (`spring/*.xml`)
       // or a classpath suffix hit the file (openspec: changes/name-mention-facts);
@@ -246,7 +275,9 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
       // writes in an injection (`ref="orders"` -> `OrderDaoImpl`, `injects`,
       // openspec: changes/xml-injection-references); nor is the endpoint's name
       // (`GET /orders/{id}`) on the line of the annotation a `routes` edge cites
-      // (openspec: changes/jaxrs-route-facts).
+      // (openspec: changes/jaxrs-route-facts); nor is the method's name on the
+      // line of an `invokes` edge when it is a setter a property name stands for
+      // (`name="orderDao"` -> `setOrderDao`, openspec: changes/spring-xml-method-calls).
       return [evidenceEntry?.token].filter(Boolean);
     default:
       return [source?.name, target?.name].filter(Boolean);
@@ -293,6 +324,445 @@ export function findTokenInImportStatement(reader, filePath, lineNumber, tokens,
   return null;
 }
 
+/**
+ * Which leading-line syntaxes a language has, by the extension of its files.
+ * An annotation, an attribute and a comment each exist in some languages only,
+ * and the same text is a statement in others: `@log.info(item)` is an instance
+ * variable in Ruby, `[a, b] = [b, a]` a swap in JavaScript and Python, `@name`
+ * an error-suppressing call in PHP. A file whose language is not listed has no
+ * annotation or attribute syntax here, which only reports a contradiction
+ * where an annotation is skipped in other languages. Comments are the same:
+ * `//` and block comments exist in the C family, `#` comments in the
+ * scripting languages, and a continuation line that starts with `*` or `//`
+ * is a splat or a floor division in Python and Ruby. Blank lines are the only
+ * leading line every language has.
+ */
+const LEADING_SYNTAX = Object.freeze({
+  at: new Set(['.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.pyi']),
+  bracketAttribute: new Set(['.cs']),
+  hashAttribute: new Set(['.rs', '.php']),
+  hashComment: new Set(['.py', '.pyi', '.rb', '.sh', '.bash', '.pl', '.pm', '.r', '.ex', '.exs', '.php']),
+  // `//` line comments and block comments: a `//` is a floor division in Python and a regular expression in Ruby
+  slashComment: new Set([
+    '.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+    '.cs', '.rs', '.php', '.go', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.m', '.mm',
+  ]),
+  // Declaration heads that wrap their modifiers onto a line before the name. Only the languages whose declarations
+  // always end in `;` or a body: there a line of modifiers and words is never a complete declaration. Where a line may
+  // end a declaration (Kotlin, Scala, Swift, Dart, TypeScript, Groovy), `private x` already is one, and the next line
+  // is another member.
+  wrappedHead: new Set(['.java', '.cs']),
+  // Call expressions written over several lines, ended by `;`, by a block body or by a line that is not continued:
+  // the languages with a brace-and-statement grammar. Python and Ruby end a statement by its indentation or `end`.
+  expressionScan: new Set([
+    '.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+    '.cs', '.rs', '.php', '.go', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh',
+  ]),
+});
+
+/**
+ * Where a line stops being readable, by language: a string whose end the reader cannot tell. The reader
+ * pairs `"`, `'` and a backtick and honours a backslash, which is all that most strings need. These do not
+ * fit it. An interpolation holds code that may hold strings of its own (`${` in JavaScript, TypeScript,
+ * Kotlin, Scala, Groovy, Dart and PHP, `{$` in PHP, `#{` in Ruby, `\(` in Swift, `$"` in C#). A
+ * raw string ends at a delimiter of its own and takes a backslash literally (Swift `#"`, which also has its own `\#(`, Rust `r#"`, C++
+ * `R"`, C# `@"`, Python `r"`, a Go backtick string that ends in a backslash), and so does a triple-quoted one. A Ruby heredoc starts
+ * without a quote. From the first such mark on, a line is not read: the part before it still is, and a
+ * name after it is not found.
+ */
+const UNREADABLE = Object.freeze({
+  '.js': /\$\{/, '.jsx': /\$\{/, '.mjs': /\$\{/, '.cjs': /\$\{/, '.ts': /\$\{/, '.tsx': /\$\{/,
+  '.kt': /\$\{/, '.kts': /\$\{/, '.scala': /\$\{/, '.groovy': /\$\{/, '.dart': /\$\{/,
+  '.php': /\$\{|\{\$/, '.swift': /\\\(|#+"/, '.cs': /\$@?"|@\$"|@"/,
+  '.rs': /(?<![\w])b?r#*"/, '.c': /R"/, '.h': /R"/, '.cc': /R"/, '.cpp': /R"/, '.cxx': /R"/, '.hpp': /R"/, '.hh': /R"/,
+  '.go': /`[^`]*\\`/, '.py': /(?<![\w])(?:[rR][bBfF]?|[bBfF][rR]?|[uU])["']/, '.rb': /#\{|<<[~-]?["']?\w/,
+});
+const TRIPLE_QUOTES = /"""|'{3}/;
+/** Languages whose backtick quotes a name, not a string. */
+const BACKTICK_NAMES = Object.freeze(new Set(['.kt', '.kts', '.scala', '.swift']));
+
+function leadingSyntax(filePath) {
+  const ext = extname(filePath).toLowerCase();
+  return {
+    at: LEADING_SYNTAX.at.has(ext),
+    bracketAttribute: LEADING_SYNTAX.bracketAttribute.has(ext),
+    hashAttribute: LEADING_SYNTAX.hashAttribute.has(ext),
+    hashComment: LEADING_SYNTAX.hashComment.has(ext),
+    slashComment: LEADING_SYNTAX.slashComment.has(ext),
+    wrappedHead: LEADING_SYNTAX.wrappedHead.has(ext),
+    expressionScan: LEADING_SYNTAX.expressionScan.has(ext),
+    // `'a` is a lifetime in Rust, and `'('` a character: neither is the start of a string
+    rustApostrophe: ext === '.rs',
+    // a heredoc is a string that starts without a quote
+    heredoc: ext === '.php',
+    // where a line stops being readable: a string the reader cannot pair
+    unreadable: UNREADABLE[ext] ?? null,
+    // a backtick opens a string, except where it quotes a name
+    backtick: !BACKTICK_NAMES.has(ext),
+  };
+}
+
+/** The index where `text` stops being readable, or -1 when all of it is. */
+function unreadableFrom(text, syntax) {
+  const marks = [TRIPLE_QUOTES.exec(text), syntax.unreadable && syntax.unreadable.exec(text)];
+  const found = marks.filter((mark) => mark).map((mark) => mark.index);
+  return found.length === 0 ? -1 : Math.min(...found);
+}
+
+/** The part of `text` that is read: all of it, or what stands before the first mark that cannot be read. */
+function readablePart(text, syntax) {
+  const at = unreadableFrom(text, syntax);
+  return at < 0 ? text : text.slice(0, at);
+}
+
+/** At a `'` in Rust: the index of the end of a character literal (`'('`, `'\n'`), or `i` for a lifetime (`'a`). */
+function rustApostropheEnd(text, i) {
+  const literal = /^'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)|[^'\\])'/.exec(text.slice(i));
+  return literal === null ? i : i + literal[0].length - 1;
+}
+
+/**
+ * Read `text` from an opening bracket at `depth` until the brackets close:
+ * `(`, `[` and `{` open, their closers close, string literals and a line comment
+ * of the file's language are not read. Returns the depth at the end of the text and the index
+ * just after the closing character, or -1 while they are still open.
+ */
+function readBrackets(text, depth, syntax) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" && syntax.rustApostrophe) i = rustApostropheEnd(text, i);
+    else if (ch === '"' || ch === "'" || (ch === '`' && syntax.backtick)) quote = ch;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
+    else if (syntax.hashComment && ch === '#') break;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) return { depth, index: -1, unsure: true };
+      i = end + 1;
+    } else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if ((ch === ')' || ch === ']' || ch === '}') && depth > 0) {
+      depth -= 1;
+      if (depth === 0) return { depth, index: i + 1 };
+    }
+  }
+  // A string or a comment that is still open at the end of the line (a text
+  // block, a template literal, a raw string) hides what comes next: the brackets
+  // after it cannot be told from the ones inside it.
+  return { depth, index: -1, unsure: quote !== null };
+}
+
+/**
+ * The first line of the construct that starts at `startLine`, past its
+ * leading lines. A leading line holds nothing but blank space, comments, and
+ * annotations, decorators or attributes (whose arguments may span many lines).
+ * A line that holds anything else once those are read off its start is the
+ * start of the construct: a statement of the language, an annotation followed
+ * by a declaration on the same line, a comment followed by code, an array row
+ * after a bracket. It only moves forward, so a line of code is never skipped.
+ * Returns `{ status: 'ok', line }`, `{ status: 'too-long' }` when the leading
+ * lines pass `CONSTRUCT_SCAN_LINES`, or `{ status: 'none' }` at the end of the
+ * file.
+ */
+export function skipLeadingLines(reader, filePath, startLine) {
+  const syntax = leadingSyntax(filePath);
+  let depth = 0; // brackets of an annotation that is still open from an earlier line
+  let inBlockComment = false;
+
+  // Reads leading constructs off the start of `text`; true when nothing else is on the line.
+  const onlyLeading = (text) => {
+    let rest = text;
+    for (;;) {
+      if (inBlockComment) {
+        const end = rest.indexOf('*/');
+        if (end < 0) return true;
+        inBlockComment = false;
+        rest = rest.slice(end + 2);
+        continue;
+      }
+      if (depth > 0) {
+        const read = readBrackets(rest, depth, syntax);
+        depth = read.depth;
+        if (read.unsure) return false;
+        if (read.index < 0) return true;
+        rest = rest.slice(read.index);
+        continue;
+      }
+      rest = rest.trimStart();
+      if (rest === '') return true;
+      if (syntax.slashComment && rest.startsWith('//')) return true;
+      if (syntax.hashComment && /^#(?:\s|$|!|#)/.test(rest)) return true;
+      if (syntax.slashComment && rest.startsWith('/*')) {
+        const end = rest.indexOf('*/', 2);
+        if (end < 0) {
+          inBlockComment = true;
+          return true;
+        }
+        rest = rest.slice(end + 2);
+        continue;
+      }
+      let brackets = null;
+      if (syntax.at && rest.startsWith('@')) {
+        // What follows the name has to be leading syntax too: `@interface Foo {}`
+        // declares a type and `@name = value` assigns a variable, and both leave
+        // something behind on the line.
+        const name = /^@+[\w.:]+/.exec(rest);
+        if (name === null) return false;
+        rest = rest.slice(name[0].length).trimStart();
+        if (!rest.startsWith('(')) continue;
+        brackets = rest;
+      } else if (syntax.hashAttribute && (rest.startsWith('#[') || rest.startsWith('#!['))) {
+        brackets = rest.slice(rest.indexOf('['));
+      } else if (syntax.bracketAttribute && /^\[\s*[A-Za-z_]/.test(rest)) {
+        brackets = rest;
+      } else {
+        return false;
+      }
+      const read = readBrackets(brackets, 0, syntax);
+      depth = read.depth;
+      if (read.unsure) return false;
+      if (read.index < 0) return true;
+      rest = brackets.slice(read.index);
+    }
+  };
+
+  const limit = startLine + CONSTRUCT_SCAN_LINES;
+  for (let line = startLine; ; line++) {
+    if (line >= limit) return { status: 'too-long' };
+    const text = reader.line(filePath, line);
+    if (text === null) return { status: 'none' };
+    if (!onlyLeading(text)) return { status: 'ok', line };
+  }
+}
+
+/**
+ * The words a declaration may start with before its type and name, and that
+ * no statement starts with. A wrapped declaration head begins with one of these
+ * (`public void` on one line, the name on the next). Words that also begin
+ * statements are left out on purpose (`export default router`, `const x`,
+ * `static x`, `async`): reading one of those as a head would confirm a wrong
+ * line, while leaving a rare wrapped head out only reports a contradiction.
+ */
+const DECLARATION_MODIFIERS = Object.freeze(new Set([
+  'public', 'private', 'protected', 'internal', 'final', 'abstract', 'sealed', 'open',
+  'override', 'virtual', 'synchronized', 'native', 'readonly', 'partial',
+]));
+
+/** A line of words, types and generics only: no parenthesis, brace, semicolon or `=`. */
+function onlyWords(text) {
+  return /^[\w\s<>,.?[\]@]+$/.test(text) && text.trim() !== '';
+}
+
+/**
+ * Keywords after which the name follows on the same line: a line that holds one
+ * (`private class Marker`) already has its name, so it is a complete declaration
+ * and not the start of a head.
+ */
+const DECLARATION_KEYWORDS = Object.freeze(new Set(['class', 'interface', 'enum', 'record', 'struct', 'delegate', 'event', 'namespace', 'operator']));
+
+/** Does this line start a declaration head that has not finished yet? */
+function startsUnfinishedHead(text) {
+  if (!onlyWords(text)) return false;
+  const words = text.trim().split(/\s+/);
+  return DECLARATION_MODIFIERS.has(words[0]) && !words.some((word) => DECLARATION_KEYWORDS.has(word));
+}
+
+/**
+ * May this line be the rest of a head? A line that starts with a modifier or an
+ * annotation is a declaration of its own (`public void helper() {}`), not what
+ * the line above was waiting for.
+ */
+function continuesHead(text) {
+  const trimmed = text.trimStart();
+  return !trimmed.startsWith('@') && !DECLARATION_MODIFIERS.has(trimmed.split(/\s+/)[0]);
+}
+
+/**
+ * Look for `tokens` on the declaration head that starts at `line`: that line
+ * and, when it starts a head that has not finished, the lines after it while
+ * each holds only words, types and generics. Returns `{ status: 'found', line }`,
+ * `{ status: 'none' }` or `{ status: 'too-long' }` past `CONSTRUCT_SCAN_LINES`.
+ */
+function findTokenInDeclarationHead(reader, filePath, line, tokens, syntax) {
+  const limit = line + CONSTRUCT_SCAN_LINES;
+  for (let n = line; n < limit; n++) {
+    const text = reader.line(filePath, n);
+    if (text === null) return { status: 'none' };
+    const named = (n === line || continuesHead(text)) && namedInCode(reader, filePath, n, tokens, syntax);
+    if (named) return { status: 'found', line: n };
+    if (n === line ? !startsUnfinishedHead(text) : !onlyWords(text)) return { status: 'none' };
+  }
+  return { status: 'too-long' };
+}
+
+/**
+ * Advance `depth` over one line of an expression: `(`, `[` and `{` open, their
+ * closers close, string literals and the comments of the language are not read.
+ * `terminated` is true when a `;` came at depth 0, or when a `{` opened at
+ * depth 0: that brace is a block body (a function, a branch), which is not part
+ * of the expression.
+ */
+function scanExpressionLine(text, depth, syntax) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" && syntax.rustApostrophe) i = rustApostropheEnd(text, i);
+    else if (ch === '"' || ch === "'" || (ch === '`' && syntax.backtick)) quote = ch;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
+    else if (syntax.hashComment && ch === '#') break;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) return { depth, terminated: false, unsure: true };
+      i = end + 1;
+    } else if (syntax.heredoc && ch === '<' && text.startsWith('<<<', i)) return { depth, terminated: false, unsure: true };
+    else if (ch === '{' && depth === 0) return { depth, terminated: true };
+    else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+    else if (ch === ';' && depth === 0) return { depth, terminated: true };
+  }
+  // Still inside a string at the end of the line: the next lines are part of it.
+  return { depth, terminated: false, unsure: quote !== null };
+}
+
+/**
+ * The code a line holds: the comments dropped and the contents of the strings
+ * and characters blanked, so that a word in a comment or a string, or a `//`
+ * inside a string, is not taken for code.
+ */
+function codeOf(text, syntax) {
+  let code = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') {
+        code += '  ';
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+        code += ch;
+      } else {
+        code += ' ';
+      }
+      continue;
+    }
+    if (ch === "'" && syntax.rustApostrophe) {
+      const end = rustApostropheEnd(text, i);
+      code += ' '.repeat(end - i + 1);
+      i = end;
+    } else if (ch === '"' || ch === "'" || (ch === '`' && syntax.backtick)) {
+      quote = ch;
+      code += ch;
+    } else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') {
+      break;
+    } else if (syntax.hashComment && ch === '#') {
+      break;
+    } else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) break;
+      code += ' ';
+      i = end + 1;
+    } else {
+      code += ch;
+    }
+  }
+  return code;
+}
+
+/** Does `code` hold `name` as a whole name, not as a part of a longer one? */
+function mentionsName(code, name) {
+  for (let at = code.indexOf(name); at >= 0; at = code.indexOf(name, at + 1)) {
+    if (!/[\w$]/.test(code[at - 1] ?? ' ') && !/[\w$]/.test(code[at + name.length] ?? ' ')) return true;
+  }
+  return false;
+}
+
+/**
+ * Does one of `tokens` stand in the code of this line as a whole name? This is
+ * how a name is looked for on any line but the cited one (the line after the
+ * leading lines, a line of a declaration head, a line of an expression): the
+ * cited line itself, and the lines within one line of a range's start, are read
+ * as they always were. A name in a comment, in a string, or inside a longer name
+ * is not the one the edge or the anchor is about.
+ */
+function namedInCode(reader, filePath, line, tokens, syntax) {
+  const text = reader.line(filePath, line);
+  if (text === null) return false;
+  const code = codeOf(readablePart(text, syntax), syntax);
+  return tokens.some((token) => token && mentionsName(code, token));
+}
+
+/** Does this line end in something that makes the expression go on? */
+function endsWithContinuation(text, syntax) {
+  // Only what cannot end a statement of its own: a trailing `.` (not `..`), `\`,
+  // `=`, `&&`, `||`, `->`, `=>`, and a single `+`. Left out on purpose: `,` (at
+  // depth 0 it means an outer list, and the next line is another element), `++`,
+  // `--`, `-`, `*` (a Python `import *`, a pointer type), `%`, `&` and `|` (a
+  // reference type), `<`, `>`, `/`, a nullable `?` and the end of a block
+  // comment. When in doubt this says no: a missed continuation reports a
+  // contradiction, a false one confirms a wrong line.
+  const code = codeOf(text, syntax).trimEnd();
+  return /(?:(?<!\.)\.|[\\=]|&&|\|\||(?<!\+)\+|->|=>)$/.test(code);
+}
+
+/** Does the next non-blank line after `line` carry on the expression? */
+function nextLineContinues(reader, filePath, line, limit, syntax) {
+  for (let next = line + 1; next < limit; next++) {
+    const text = reader.line(filePath, next);
+    if (text === null) return false;
+    const code = codeOf(text, syntax).trim();
+    // A line that holds only a comment is passed over. If it opens a block comment it does not close,
+    // the scan stops on it (a string or comment left open is not read on), so the lines it hides are
+    // never taken for code.
+    if (code === '') continue;
+    return /^(?:\?\.|\.(?!\.)|&&|\|\||\+(?!\+)|\?|->|=>|\|)/.test(code);
+  }
+  return false;
+}
+
+/**
+ * Scan the call expression that starts at `startLine` for one of `tokens`.
+ *
+ * A chain, a builder or a long argument list puts the callee's name several
+ * lines below the line an extractor cites. The expression is read until it
+ * ends: a `;` at depth 0, a block body opening at depth 0, or a line that
+ * leaves every bracket closed and neither ends in a continuation nor is
+ * followed by one (`.foo()`, `&&`). Each line is checked for the token before
+ * its end is judged, so the line that ends the expression counts. Returns
+ * `{ status: 'found', line }`, `{ status: 'none' }` or `{ status: 'too-long' }`
+ * past `CONSTRUCT_SCAN_LINES`.
+ */
+export function findTokenInExpression(reader, filePath, startLine, tokens, syntax) {
+  let depth = 0;
+  const limit = startLine + CONSTRUCT_SCAN_LINES;
+  for (let line = startLine; line < limit; line++) {
+    const text = reader.line(filePath, line);
+    if (text === null) return { status: 'none' };
+    // A line counts for the code it holds: a name in a comment or a string, or inside a longer name, is not
+    // the callee. The part of a line that cannot be read does not count.
+    if (namedInCode(reader, filePath, line, tokens, syntax)) return { status: 'found', line };
+    // What a string the reader cannot pair holds, and what comes after it, is not told apart: the scan stops.
+    if (unreadableFrom(text, syntax) >= 0) return { status: 'none' };
+    const scanned = scanExpressionLine(text, depth, syntax);
+    depth = scanned.depth;
+    // What the next lines hold is not code the scan can read, so the expression is not read on.
+    if (scanned.unsure || scanned.terminated) return { status: 'none' };
+    if (depth === 0 && !endsWithContinuation(text, syntax) && !nextLineContinues(reader, filePath, line, limit, syntax)) {
+      return { status: 'none' };
+    }
+  }
+  return { status: 'too-long' };
+}
+
 function sampler(limit) {
   const map = new Map();
   return {
@@ -311,7 +781,7 @@ function sampler(limit) {
  * The whole validation. Pure except for the source reader it is handed, so it
  * is testable against a fixture project without a subprocess.
  */
-export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
+export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: layersInput, referenceNodeIds }) {
   const validated = JSON.parse(JSON.stringify(graph));
   validated.nodes = Array.isArray(validated.nodes) ? validated.nodes : [];
   validated.edges = Array.isArray(validated.edges) ? validated.edges : [];
@@ -331,6 +801,10 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     edgesWithoutEvidence: 0,
     sourceMissing: 0,
     pathOutOfScope: 0,
+    constructTooLong: 0,
+    stepsTotal: 0,
+    stepsAnchored: 0,
+    stepsInferred: 0,
     stepUnanchored: 0,
   };
 
@@ -359,6 +833,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
   }
 
   // ── 1. anchors ──────────────────────────────────────────────────────────
+  const exactAnchors = new Set();
   for (const node of validated.nodes) {
     if (!node || typeof node !== 'object') continue;
     if (!CODE_NODE_TYPES.has(node.type)) continue;
@@ -380,7 +855,37 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       continue;
     }
     const tokens = isAnonymousName(node.name) ? ANONYMOUS_KEYWORDS : [node.name];
-    const hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
+    // A declaration's range starts at its first annotation, so its name is on
+    // the first line after the annotations and comments. The name on
+    // `lineRange[0]` itself or on that line makes the anchor exact; a name that
+    // is only within one line of the start still confirms the anchor, but an
+    // edge is not vouched for by it.
+    let hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
+    let exact = findToken(reader, node.filePath, startLine, tokens, 0) !== null;
+    if (!exact) {
+      const lead = skipLeadingLines(reader, node.filePath, startLine);
+      let headTooLong = false;
+      if (lead.status === 'ok') {
+        const nodeSyntax = leadingSyntax(node.filePath);
+        let leadHit = namedInCode(reader, node.filePath, lead.line, tokens, nodeSyntax) ? lead.line : null;
+        if (leadHit === null && nodeSyntax.wrappedHead) {
+          // The declaration may itself wrap: `public void` on one line, the name on the next.
+          const head = findTokenInDeclarationHead(reader, node.filePath, lead.line, tokens, nodeSyntax);
+          if (head.status === 'found') leadHit = head.line;
+          else if (head.status === 'too-long') headTooLong = true;
+        }
+        if (leadHit !== null) {
+          exact = true;
+          hit = hit ?? leadHit;
+        }
+      }
+      if ((lead.status === 'too-long' || headTooLong) && hit === null) {
+        counts.constructTooLong += 1;
+        node.verification = 'unverified';
+        samples.add('construct-too-long', `${node.filePath}:${startLine} ${node.id}`);
+        continue;
+      }
+    }
     if (hit === null) {
       counts.anchorMismatch += 1;
       node.verification = 'contradicted';
@@ -395,6 +900,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       samples.add('anchor-mismatch', `${node.filePath}:${startLine} ${node.id}`);
     } else {
       counts.anchorConfirmed += 1;
+      if (exact) exactAnchors.add(node.id);
     }
   }
 
@@ -417,6 +923,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     let confirmed = false;
     let sawSource = false;
     let refused = false;
+    let tooLong = false;
     for (const entry of evidence) {
       if (!entry || typeof entry !== 'object' || typeof entry.file !== 'string') continue;
       if (reader.isOutOfScope(entry.file)) {
@@ -430,9 +937,31 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       // `imports` is the one type whose evidence line is the START of a
       // statement that may span several lines; every other type cites the
       // exact line the token is on.
-      const found = edge.type === 'imports' && entry.source !== 'model'
+      let found = edge.type === 'imports' && entry.source !== 'model'
         ? findTokenInImportStatement(reader, entry.file, entry.line, tokens)
         : findToken(reader, entry.file, entry.line, tokens, 0);
+      // A call's evidence is the start of its expression, which may run over
+      // several lines, in the languages that write expressions that way. An
+      // entry that names its own token, and a model's citation, are not read on.
+      if (found === null && edge.type === 'calls' && entry.source !== 'model' && entry.token === undefined) {
+        const syntax = leadingSyntax(entry.file);
+        if (syntax.expressionScan) {
+          const expression = findTokenInExpression(reader, entry.file, entry.line, tokens, syntax);
+          if (expression.status === 'found') found = expression.line;
+          else if (expression.status === 'too-long') tooLong = true;
+        }
+      }
+      // An entry that names the token its line holds (a mention, an injection,
+      // a JSX tag) says exactly where that is, and a model's citation is
+      // untrusted input. Any other edge that cites a declaration cites where
+      // its range starts, which is its first annotation: a fact about the
+      // graph, not about how the line reads. The cited line is the first line
+      // of an endpoint's own range, and that endpoint's anchor is exact.
+      if (found === null && entry.source !== 'model' && entry.token === undefined && edge.type !== 'calls'
+        && [target, source].some((n) => n && n.filePath === entry.file && Array.isArray(n.lineRange)
+          && n.lineRange[0] === entry.line && tokens.includes(n.name) && exactAnchors.has(n.id))) {
+        found = entry.line;
+      }
       if (found !== null) {
         confirmed = true;
         break;
@@ -454,6 +983,12 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       counts.edgeConfirmed += 1;
       continue;
     }
+    if (tooLong) {
+      counts.constructTooLong += 1;
+      edge.verification = 'unverified';
+      samples.add('construct-too-long', `${edge.type}|${edge.source}|${edge.target}`);
+      continue;
+    }
     counts.edgeContradicted += 1;
     edge.verification = 'contradicted';
     const key = `${edge.type}|${edge.source}|${edge.target}`;
@@ -473,7 +1008,9 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     if (!nodeById.has(edge.target)) issues.push(`Edge[${i}] target '${edge.target}' not found`);
   });
 
-  const layers = Array.isArray(validated.layers) ? validated.layers : [];
+  // A graph's own layers win; Full keeps them in semantic-graph.json, which the caller hands in.
+  const ownLayers = Array.isArray(validated.layers) ? validated.layers : [];
+  const layers = ownLayers.length === 0 && Array.isArray(layersInput) ? layersInput : ownLayers;
   if (validated.layers && !Array.isArray(validated.layers)) warnings.push('graph.layers is not an array');
   validated.tour = [];
 
@@ -504,9 +1041,15 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
   for (const node of validated.nodes) {
     if (!node || node.type !== 'step') continue;
     const ids = Array.isArray(node.nodeIds) ? node.nodeIds : [];
-    const resolvable = ids.filter((id) => nodeById.has(id));
-    if (resolvable.length > 0) continue;
-    if (node.provenance === 'inferred') continue;
+    counts.stepsTotal += 1;
+    if (ids.some((id) => nodeById.has(id) || referenceNodeIds?.has(id))) {
+      counts.stepsAnchored += 1;
+      continue;
+    }
+    if (node.provenance === 'inferred') {
+      counts.stepsInferred += 1;
+      continue;
+    }
     counts.stepUnanchored += 1;
     findings.stepUnanchored.push({
       nodeId: node.id,
@@ -537,6 +1080,8 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     `${counts.stepUnanchored} step node(s) with no resolvable nodeIds and no inferred marking`);
   addGap('source-missing', counts.sourceMissing,
     `${counts.sourceMissing} check(s) skipped because the source file could not be read`);
+  addGap('construct-too-long', counts.constructTooLong,
+    `${counts.constructTooLong} check(s) left unverified because the leading lines, a declaration head or an expression passed ${CONSTRUCT_SCAN_LINES} lines`);
   addGap('path-out-of-scope', counts.pathOutOfScope,
     `${counts.pathOutOfScope} path(s) named outside the project root were refused, not read`);
   gaps.sort(compareGaps);
@@ -565,8 +1110,8 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { projectRoot: null, graph: null, out: null, report: null, sampleLimit: 5 };
-  const valueFlags = { '--graph': 'graph', '--out': 'out', '--report': 'report' };
+  const args = { projectRoot: null, graph: null, out: null, report: null, reference: null, sampleLimit: 5 };
+  const valueFlags = { '--graph': 'graph', '--out': 'out', '--report': 'report', '--reference': 'reference' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--samples') {
@@ -588,9 +1133,43 @@ function parseArgs(argv) {
     throw new Error(`validate-graph: unexpected argument: ${arg}`);
   }
   if (!args.projectRoot) {
-    throw new Error('Usage: node validate-graph.mjs <projectRoot> [--graph <path>] [--out <path>] [--report <path>]');
+    throw new Error('Usage: node validate-graph.mjs <projectRoot> [--graph <path>] [--out <path>] [--report <path>] [--reference <path>]');
   }
   return args;
+}
+
+/** The layers of `semantic-graph.json` in `dir`; unreadable, not JSON or without layers is no layers. */
+function readSemanticLayers(dir) {
+  try {
+    const layers = JSON.parse(readFileSync(join(dir, 'semantic-graph.json'), 'utf-8'))?.layers;
+    return Array.isArray(layers) ? layers : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The node ids of a reference graph (`.jsonl` store or whole-document `.json`).
+ * Only ids are kept: the reference resolves step anchors and is never merged
+ * into the graph under validation. A reference that is missing, unparseable or
+ * has no `nodes` array throws, so no report is written.
+ */
+function readReferenceNodeIds(path) {
+  if (!existsSync(path)) throw new Error(`validate-graph: reference graph not found: ${path}`);
+  let ref;
+  try {
+    ref = path.endsWith('.jsonl') ? readKnowledgeGraph(path) : JSON.parse(readFileSync(path, 'utf-8'));
+  } catch (err) {
+    throw new Error(`validate-graph: reference graph unreadable: ${path} (${err.message})`);
+  }
+  if (!ref || !Array.isArray(ref.nodes)) {
+    throw new Error(`validate-graph: reference graph has no nodes array: ${path}`);
+  }
+  const ids = new Set();
+  for (const node of ref.nodes) {
+    if (node && typeof node.id === 'string') ids.add(node.id);
+  }
+  return ids;
 }
 
 async function main() {
@@ -608,8 +1187,14 @@ async function main() {
     ? readKnowledgeGraph(graphPath)
     : JSON.parse(readFileSync(graphPath, 'utf-8'));
 
+  // Read before anything is written: an unreadable reference must not leave a
+  // report in which every anchored step has become unanchored.
+  const referenceNodeIds = args.reference ? readReferenceNodeIds(resolve(args.reference)) : undefined;
+
   const { validated, report } = validateAgainstSource({
     graph,
+    referenceNodeIds,
+    layers: Array.isArray(graph.layers) && graph.layers.length > 0 ? undefined : readSemanticLayers(dirname(graphPath)),
     reader: createSourceReader(projectRoot),
     sampleLimit: args.sampleLimit,
   });
@@ -627,9 +1212,10 @@ async function main() {
   process.stderr.write(
     `validate-graph: nodes-checked=${c.nodesChecked} anchor-mismatch=${c.anchorMismatch} ` +
     `edges-checked=${c.edgesChecked} edge-contradicted=${c.edgeContradicted} ` +
-    `edges-inferred=${c.edgesInferred} step-unanchored=${c.stepUnanchored} ` +
+    `edges-inferred=${c.edgesInferred} steps-total=${c.stepsTotal} ` +
+    `steps-anchored=${c.stepsAnchored} steps-inferred=${c.stepsInferred} step-unanchored=${c.stepUnanchored} ` +
     `source-missing=${c.sourceMissing} path-out-of-scope=${c.pathOutOfScope} ` +
-    `issues=${report.issues.length}\n`,
+    `construct-too-long=${c.constructTooLong} issues=${report.issues.length}\n`,
   );
 }
 

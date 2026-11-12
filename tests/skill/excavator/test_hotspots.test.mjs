@@ -376,6 +376,37 @@ describe('history source and lineage', () => {
     expect(hostile).toEqual(plain);
   });
 
+  /**
+   * Stands in for the runner image: the machine config trusts every directory, the repository is owned by
+   * another uid, and the script's own isolation (which switches that config off for its history reads) is
+   * the only thing that could make git refuse.
+   */
+  function foreignOwnerEnv() {
+    const tools = tempDir('hotspots-trust-');
+    const config = join(tools, 'config');
+    writeFileSync(config, '[safe]\n\tdirectory = *\n');
+    return { GIT_CONFIG_GLOBAL: config, GIT_TEST_ASSUME_DIFFERENT_OWNER: '1' };
+  }
+
+  it('reads a repository owned by another uid, though the machine config is switched off for the history reads', () => {
+    const dir = renameFixture();
+    const plain = readProduct(dir);
+
+    const foreign = readProduct(dir, [], foreignOwnerEnv());
+    expect(counted(foreign)).toEqual(counted(plain));
+  });
+
+  it('reads a foreign-owned repository given by a symlinked path, trusting only the real path', () => {
+    const dir = renameFixture();
+    const plain = readProduct(dir);
+
+    const links = tempDir('hotspots-link-');
+    const link = join(links, 'repo-link');
+    symlinkSync(dir, link);
+    const foreign = readProduct(link, [], foreignOwnerEnv());
+    expect(counted(foreign)).toEqual(counted(plain));
+  });
+
   it('does not read the user attributes file, which git takes from outside its config', () => {
     const dir = renameFixture();
     const plain = readProduct(dir);

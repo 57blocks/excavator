@@ -3,7 +3,7 @@
 # credentials and no target-repo artifacts. See openspec/changes/archive/2026-10-09-runner-image
 # (design.md D2) for the decisions this file implements verbatim.
 
-ARG CLAUDE_CODE_VERSION=2.1.281
+ARG CLAUDE_CODE_VERSION=2.1.312
 
 # ---------------------------------------------------------------------------
 # Build stage: build the Excavator checkout from the exact context sent to
@@ -68,6 +68,7 @@ ENV CLAUDE_CODE_USE_BEDROCK=1 \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
          git \
+         jq \
          python3 \
          python-is-python3 \
          ca-certificates \

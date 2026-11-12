@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PIPELINE_VERSION } from '../../skills/excavator/annotate-graph.mjs';
 import { writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -107,15 +106,15 @@ describe('run-excavator.mjs end to end, against a fake claude executable (task 2
   it('skip: a matching full product short-circuits before claude is ever invoked', () => {
     const { dir: repoDir, head } = makeSyntheticRepo();
     const outDir = mkTmp('excavator-e2e-out-');
-    // Pre-seed a full product for the current HEAD, importing the real
-    // PIPELINE_VERSION (same source the runner itself imports) rather than
-    // a literal, so this fixture cannot silently drift from it.
+    // Pre-seed a full product for the current HEAD: a Lazy-stamped fact graph plus a
+    // semantic graph whose factDigest equals the fact graph's factsDigest.
     const dataDir = join(repoDir, '.excavator');
     mkdirSync(dataDir, { recursive: true });
     writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), {
-      project: { pipelineVersion: PIPELINE_VERSION, gitCommitHash: head, model: 'fake-model-e2e', verification: 'verified' },
+      project: { pipelineVersion: 'lazy-fact-graph/14', gitCommitHash: head, factsDigest: 'seeded-digest', verification: 'verified' },
       nodes: [], edges: [], layers: [], coverage: {}, gaps: [],
     });
+    writeFileSync(join(dataDir, 'semantic-graph.json'), JSON.stringify({ model: 'fake-model-e2e', factDigest: 'seeded-digest', layers: [] }));
     writeFileSync(join(dataDir, 'meta.json'), JSON.stringify({ gitCommitHash: head }, null, 2));
 
     // Point at a nonexistent claude binary: if the runner tried to spawn it

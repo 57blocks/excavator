@@ -14,12 +14,15 @@
  * The layers are inlined only when the semantic graph was made from the same
  * facts as the knowledge graph (`factDigest` equals the graph's `factsDigest`).
  *
- * Returns { state: 'absent' }, { state: 'unreadable', reason } or
+ * Returns { state: 'absent' }, { state: 'unreadable', reason }, { state: 'no-graph' }
+ * (a cache and a semantic graph that pass their own checks, with no readable
+ * knowledge graph to match them to) or
  * { state: 'ok', bytes, counts }; it never throws for a bad file. No model call.
  */
 
 import { join } from 'node:path';
 
+import { bufferLines } from '../excavator/jsonl-lines.mjs';
 import { isCanonicalSemanticCache, isFresh, SEMANTIC_CACHE_FILE } from '../excavator/semantic-cache.mjs';
 import { SEMANTIC_GRAPH_CONTENT_LANGUAGE, SEMANTIC_GRAPH_FILE, SEMANTIC_GRAPH_VERSION } from '../excavator/semantic-graph.mjs';
 import { parseJsonObject, readRegularFile } from './product-files.mjs';
@@ -37,7 +40,7 @@ function readGraphFacts(graphBytes) {
   const nodeFiles = new Map();
   let digest = null;
   let first = true;
-  for (const line of graphBytes.toString('utf-8').split('\n')) {
+  for (const line of bufferLines(graphBytes)) {
     if (line.trim() === '') continue;
     let record;
     try {
@@ -56,10 +59,10 @@ function readGraphFacts(graphBytes) {
   return { digest, nodeFiles };
 }
 
-/** The semantic graph's layers, or the reason the file cannot be used with this knowledge graph. */
-function readLayers(dataDir, graphDigest) {
+/** The semantic graph as its own checks accept it (null when there is none), or the reason it cannot be read. */
+function readSemanticGraph(dataDir) {
   const file = readRegularFile(join(dataDir, SEMANTIC_GRAPH_FILE), SEMANTIC_GRAPH_FILE);
-  if (file.state === 'absent') return { layers: [] };
+  if (file.state === 'absent') return { graph: null };
   if (file.state === 'unreadable') return { reason: file.reason };
   const parsed = parseJsonObject(file.bytes, SEMANTIC_GRAPH_FILE);
   if (!parsed.value) return { reason: parsed.reason };
@@ -73,6 +76,12 @@ function readLayers(dataDir, graphDigest) {
     const missing = [!Array.isArray(graph.layers) && 'layers', typeof graph.factDigest !== 'string' && 'factDigest'].filter(Boolean);
     return { reason: `${SEMANTIC_GRAPH_FILE} is missing the top-level key(s): ${missing.join(', ')}` };
   }
+  return { graph };
+}
+
+/** The semantic graph's layers, or the reason it cannot be used with the knowledge graph whose facts digest is given. */
+function layersFor(graph, graphDigest) {
+  if (graph === null) return { layers: [] };
   if (graph.factDigest !== graphDigest) {
     return {
       reason: `${SEMANTIC_GRAPH_FILE} was made from other facts than knowledge-graph.jsonl: its factDigest is ${graph.factDigest} and the graph's factsDigest is ${graphDigest ?? 'not recorded'}`,
@@ -141,10 +150,12 @@ export function readSemantics(dataDir, graphBytes) {
     return unreadable(`${SEMANTIC_CACHE_FILE} has version ${JSON.stringify(cache.version ?? null)} and contentLanguage ${JSON.stringify(cache.contentLanguage ?? null)}; the viewer reads the current version and contentLanguage "en"`);
   }
   if (!isObject(cache.entries)) return unreadable(`${SEMANTIC_CACHE_FILE} is missing the top-level key(s): entries`);
-  if (graphBytes === null) return unreadable('knowledge-graph.jsonl is not readable, so the summaries cannot be matched to the files they describe');
+  const semanticGraph = readSemanticGraph(dataDir);
+  if (semanticGraph.reason) return unreadable(semanticGraph.reason);
+  if (graphBytes === null) return { state: 'no-graph' };
 
   const facts = readGraphFacts(graphBytes);
-  const layers = readLayers(dataDir, facts.digest);
+  const layers = layersFor(semanticGraph.graph, facts.digest);
   if (layers.reason) return unreadable(layers.reason);
   const current = readCurrentHashes(dataDir);
   if (current.reason) return unreadable(current.reason);

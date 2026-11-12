@@ -464,6 +464,7 @@ function refreshImportMap({ projectRoot, intermediateDir, previousScan, currentS
     throw new Error(`Import extraction reported failures: ${preview}${suffix}`);
   }
   const selective = extraction?.importMap ?? {};
+  const tsConfigFiles = Array.isArray(extraction?.tsConfigFiles) ? extraction.tsConfigFiles : [];
   const currentPaths = new Set(currentScan.files.map(file => file.path));
   const importMap = {};
   for (const file of currentScan.files) {
@@ -475,7 +476,7 @@ function refreshImportMap({ projectRoot, intermediateDir, previousScan, currentS
       ? sorted(candidate.filter(target => typeof target === 'string' && currentPaths.has(target)))
       : [];
   }
-  return importMap;
+  return { importMap, tsConfigFiles };
 }
 
 function pruneExistingGraph(graph, pathsToReplace, importPathsToRefresh = new Set()) {
@@ -738,16 +739,35 @@ async function main() {
     analysis.newFiles.length > 0
     || deletedFiles.length > 0
     || currentChangedPaths.some(isImportResolverConfig);
-  const importAnalysisPaths = importResolutionContextChanged
+  let importAnalysisPaths = importResolutionContextChanged
     ? currentInventory
     : sorted([...currentChangedPaths, ...missingImportEntries]);
-  const importMap = refreshImportMap({
+  let { importMap, tsConfigFiles } = refreshImportMap({
     projectRoot,
     intermediateDir,
     previousScan: baselineScan,
     currentScan,
     analysisPaths: importAnalysisPaths,
   });
+  // A tsconfig reached through `extends` or `references` can have any name
+  // (tsconfig.app.json, a shared base). The import script reports every
+  // tsconfig file it read for the current tree; if one of them changed, the
+  // aliases of unchanged importers may have changed too, so recompute the
+  // complete map. A file that left the chain did so through an edit to a
+  // config still in it, which this check sees.
+  if (!importResolutionContextChanged) {
+    const changed = new Set(currentChangedPaths);
+    if (tsConfigFiles.some(path => changed.has(path))) {
+      importAnalysisPaths = currentInventory;
+      ({ importMap } = refreshImportMap({
+        projectRoot,
+        intermediateDir,
+        previousScan: baselineScan,
+        currentScan,
+        analysisPaths: importAnalysisPaths,
+      }));
+    }
+  }
 
   const refreshedScan = {
     ...oldScan,
