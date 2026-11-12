@@ -14,7 +14,7 @@ import { entryItems } from '../../../skills/excavator-product-handbook/lib/items
 import { trimEntry } from '../../../skills/excavator-product-handbook/lib/trim-entry.mjs';
 import { entryFactRows } from '../../../skills/excavator-product-handbook/lib/topics-facts.mjs';
 import { entryDigest } from '../../../skills/excavator-product-handbook/lib/state.mjs';
-import { clone, goodEntry, judge, judgeBothRounds, makeCheckedMapRun, runHandbook, traceFeature } from './helpers.mjs';
+import { clone, goodEntry, makeCheckedMapRun, runHandbook, verifyChecked } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -136,21 +136,6 @@ describe('entry /2: shape and checks', () => {
 });
 
 describe('entry /2: items and claims', () => {
-  it('makes each new element a verify item whose claim names the section, the operation and the part', () => {
-    const run = checkedRun(deepEntry());
-    expect(run.run('slices', 'F1').status).toBe(0);
-    const verify = JSON.parse(readFileSync(join(run.out, 'verify', 'round-1', 'F1', 'part-1.json'), 'utf-8'));
-    const claim = (id) => verify.items.find((item) => item.id === id)?.claim;
-    expect(claim('operations[0].triggers[0]')).toBe('Operations > Place an order > Starts when > The clerk opens the new order form.');
-    expect(claim('operations[0].calculations[0]')).toBe('Operations > Place an order > Calculations > The item count is capped at 35000.');
-    expect(claim('operations[0].changes[0]')).toBe('Operations > Place an order > Data changes > The customer name is stored with the order.');
-    expect(claim('operations[0].edges[0]')).toBe('Operations > Place an order > Edge cases > When The item count is above 35000: The order is refused.');
-    // The handoff's claim names the feature it hands to (its map name), so the link is judged with the text.
-    expect(claim('operations[0].handoffs[0]')).toBe('Operations > Place an order > Hands over to > Archive: Finished orders move to the archive.');
-    expect(claim('transitions[0]')).toBe('State changes > From Draft to Submitted, caused by The clerk sends the order.');
-    expect(claim('operations[0].sentences[0]')).toBe('Operations > Place an order > The clerk fills in the customer name.');
-  });
-
   it('lists the new items after the sentences of their operation, and the transitions after the states', () => {
     const paths = entryItems(deepEntry()).map((item) => item.path);
     const at = (path) => paths.indexOf(path);
@@ -175,20 +160,6 @@ describe('entry /2: trimming and removal records', () => {
     expect(together).toEqual([]);
   });
 
-  it('takes the other parts of an operation with it when no sentence is left, as withParent', () => {
-    const run = checkedRun(deepEntry());
-    const decide = (item) => (item.id.startsWith('operations[0].sentences') ? { verdict: 'contradicted', reason: 'The code shown says otherwise.' } : 'verified');
-    expect(judgeBothRounds(run, 'F1', decide).status).toBe(0);
-    const records = run.readJson('state.json').features.F1.removed;
-    const byPath = new Map(records.map((record) => [record.path, record]));
-    for (const path of ['operations[0].triggers[0]', 'operations[0].calculations[0]', 'operations[0].changes[0]', 'operations[0].edges[0]', 'operations[0].handoffs[0]', 'operations[0]']) {
-      expect(byPath.get(path)?.verdict, path).toBe('withParent');
-    }
-    expect(byPath.get('operations[0].sentences[0]').verdict).toBe('contradicted');
-    const entry = run.readJson('entries/F1.json');
-    expect(entry.operations).toEqual([]);
-    expect(entry.transitions).toHaveLength(1);
-  });
 });
 
 describe('entry /2: handbook.md and a settled /1 entry', () => {
@@ -200,8 +171,7 @@ describe('entry /2: handbook.md and a settled /1 entry', () => {
 
   function verifiedRun(entry) {
     const run = checkedRun(entry);
-    expect(judge(run, 'F1').status).toBe(0);
-    expect(traceFeature(run).status).toBe(0);
+    verifyChecked(run, 'F1');
     return run;
   }
   const assemble = (run) => {
@@ -291,29 +261,3 @@ describe('entry /2: topic facts', () => {
 // Design D5 of handbook-deep-entry: the purpose, the navigation path, the screens and the field labels of a feature
 // are settled by the two verifiers only; the trace file leaves them out, the field rules and every other item stay,
 // and the coverage section says which kinds were not traced.
-describe('entry /2: the trace leaves out the label and purpose items', () => {
-  it('writes no purpose, navigation path, screen or field label to the trace file, and keeps the rules and the rest', () => {
-    const run = checkedRun(deepEntry());
-    expect(judge(run, 'F1').status).toBe(0);
-    const traced = run.run('trace', 'F1');
-    expect(traced.status, traced.stdout).toBe(0);
-    const ids = run.readJson('trace/F1/part-1.json').items.map((item) => item.id);
-    for (const id of ids) expect(id).not.toMatch(/^(purpose|where\[\d+\]|screens\[\d+\](\.fields\[\d+\])?)$/);
-    for (const id of ['who[0]', 'screens[0].fields[0].rules[0]', 'operations[0].sentences[0]', 'operations[0].triggers[0]', 'operations[0].handoffs[0]', 'states[0]', 'transitions[0]']) expect(ids).toContain(id);
-  });
-
-  it('keeps the untraced items in the verified entry and says in the coverage section that they were not traced', () => {
-    const run = checkedRun(deepEntry());
-    expect(judge(run, 'F1').status).toBe(0);
-    expect(traceFeature(run).status).toBe(0);
-    const entry = run.readJson('entries/F1.json');
-    expect(entry.purpose).toBeDefined();
-    expect(entry.where).toHaveLength(2);
-    expect(entry.screens[0].fields).toHaveLength(2);
-    const assembled = run.run('assemble');
-    expect(assembled.status, assembled.stdout).toBe(0);
-    const text = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
-    const coverage = text.slice(text.indexOf('## Coverage'));
-    expect(coverage).toContain('The purpose, the navigation path, the screens and the field labels of a feature are checked by the two verifiers only; they are not traced.');
-  });
-});

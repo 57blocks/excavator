@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { entryDigest } from '../../../skills/excavator-product-handbook/lib/state.mjs';
-import { SHIPPED_UI, judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { SHIPPED_UI, runHandbook, verifyChecked } from './helpers.mjs';
 import { checkedOverviewRun, overviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -42,13 +42,10 @@ function verifiedRun(adjust) {
   return run;
 }
 
-/** The run whose name verification removed in both rounds. */
+/** The run whose name an older verification removed. */
 function removedRun() {
   const run = checkedOverviewRun(cleanups);
-  const reason = { verdict: 'unverified', reason: 'No line shown writes that name.' };
-  expect(judge(run, 'overview', 1, (item) => (item.id === 'name' ? reason : 'verified')).status).toBe(0);
-  expect(judge(run, 'overview', 2, () => reason).status).toBe(0);
-  expect(traceFeature(run, 'overview').status).toBe(0);
+  verifyChecked(run, 'overview', [{ path: 'name', claim: 'System name > handbook-fixture', verdict: 'unverified', reason: 'No line shown writes that name.' }]);
   return run;
 }
 

@@ -146,38 +146,9 @@ describe('a topic without a kept row', () => {
     expect(chapterOf(body)).not.toContain('```mermaid');
   });
 
-  it('is also what a topic says when every row of it was left out by the judges', () => {
-    const run = checkedTopicsRun(cleanups);
-    expect(judgeTopics(run, (row) => (row.topic === 'approval' ? { verdict: 'doesNotFollow', reason: 'The row names a step that is not cited.' } : 'follows')).status).toBe(0);
-    assemble(run);
-    expect(topicOf(text(run, 'handbook.md'), 'approval').trim()).toBe('The 2 entries it read state none of this.');
-  });
 });
 
 describe('what the judges left out and what did not finish', () => {
-  it('writes a row that one judge refused nowhere and lists it in the coverage section with the reason', () => {
-    const run = checkedTopicsRun(cleanups);
-    expect(judgeTopics(run, (row, letter) => (row.id === 'D1#1' && letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The row names a condition that no cited sentence says.' } : 'follows')).status).toBe(0);
-    assemble(run);
-    const body = text(run, 'handbook.md');
-    expect(body.slice(body.indexOf(`## ${ui['md.topics.heading']}`), body.indexOf(`## ${ui['md.coverage.heading']}`))).not.toContain('| Place an order |');
-    const part = coverageTopics(body);
-    expect(part).toContain('Left out because a judge found a fact in the row that the entries or findings it cites do not hold: 1.');
-    expect(part).toContain('| Left out | Reason |');
-    expect(part).toContain('| Approval routes: Place an order / The clerk fills in the customer name. / The item count is limited to 35000. / Clerk | The row names a condition that no cited sentence says. |');
-  });
-
-  it('lists each lane with its status and the number of rows kept and left out', () => {
-    const run = checkedTopicsRun(cleanups);
-    judgeTopics(run, (row, letter) => (row.id === 'D2#2' && letter === 'b' ? { verdict: 'doesNotFollow', reason: 'The providing domain is not in what the row cites.' } : 'follows'));
-    assemble(run);
-    const part = coverageTopics(text(run, 'handbook.md'));
-    expect(part).toContain('| Lane | Status | Rows kept | Rows left out |');
-    expect(part).toContain('| Customer orders | Written and judged | 2 | 0 |');
-    expect(part).toContain('| System upkeep | Written and judged | 1 | 1 |');
-    expect(part).toContain(`| ${ui['md.topics.repeated.heading']} | Written and judged | 1 | 0 |`);
-  });
-
   it('says that every written row is in the handbook when the judges left none out', () => {
     const run = shared();
     assemble(run);
@@ -287,23 +258,4 @@ describe('the page data', () => {
     expect(JSON.stringify({ ...data, technical: undefined }).includes('order-form.js')).toBe(false);
   });
 
-  it('lists the rows the judges left out in the coverage, and has no row of a lane that did not finish', () => {
-    const run = checkedTopicsRun(cleanups);
-    judgeTopics(run, (row, letter) => (row.id === 'D2#1' ? { verdict: 'doesNotFollow', reason: `Judge ${letter} did not find it in the cited item.` } : 'follows'));
-    expect(page(run).status).toBe(0);
-    const data = dataOf(run);
-    expect(data.topics.time).toEqual([]);
-    expect(data.coverage.topics.dropped).toEqual([{ id: 'D2#1', topic: 'time', text: 'A reminder goes out every day at nine. / Reminders', reasons: ['Judge a did not find it in the cited item.', 'Judge b did not find it in the cited item.'] }]);
-    expect(data.coverage.topics.lanes[1]).toEqual({ id: 'D2', name: 'System upkeep', status: 'verified', kept: 1, dropped: 1 });
-    const unfinished = checkedLane(topicsRun(cleanups), 'D1');
-    expect(page(unfinished).status).toBe(0);
-    const other = dataOf(unfinished);
-    expect(other.topics.approval).toHaveLength(1);
-    expect(other.unverifiedParts).toMatchObject({ topics: true });
-    expect(other.coverage.topics.finished).toBe(false);
-    expect(other.coverage.topics.lanes.map((lane) => lane.status)).toEqual(['checked', 'planned', 'planned']);
-    const first = text(unfinished, 'handbook.html');
-    page(unfinished);
-    expect(text(unfinished, 'handbook.html')).toBe(first);
-  });
 });

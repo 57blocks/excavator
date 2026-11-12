@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clone, confirmChecked, judgeBothRounds, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, confirmChecked, runHandbook, verifyChecked } from './helpers.mjs';
 import { checkedOverviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -239,7 +239,7 @@ describe('system facts: one row per application root, whatever the overview says
   const manifest = (name) => `{ "name": "${name}" }\n`;
 
   /** A project of two application roots, repos/api and repos/web (each with one source file), and a package below repos/api. */
-  function twoRootsRun({ listTools = false, judgeBad = () => 'verified', verify = true } = {}) {
+  function twoRootsRun({ listTools = false, removed = [], verify = true } = {}) {
     const run = checkedOverviewRun(cleanups, (doc, r) => {
       rmSync(join(r.root, 'package.json'));
       for (const dir of ['api', 'web']) {
@@ -256,14 +256,13 @@ describe('system facts: one row per application root, whatever the overview says
       doc.name = { text: 'api', evidence: [{ file: 'repos/api/package.json', passage: manifest('api').trim() }] };
     });
     if (verify) {
-      expect(judgeBothRounds(run, 'overview', judgeBad).status).toBe(0);
-      expect(traceFeature(run, 'overview').status).toBe(0);
+      verifyChecked(run, 'overview', removed);
     }
     return run;
   }
 
   it('keeps the row of a root whose application was removed, with its facts and the not-verified text in the name and responsibility cells', () => {
-    const run = twoRootsRun({ judgeBad: (item) => (item.id === 'applications[1]' ? { verdict: 'contradicted', reason: 'The code shown does something else.' } : 'verified') });
+    const run = twoRootsRun({ removed: [{ path: 'applications[1]', verdict: 'contradicted', reason: 'The code shown does something else.' }] });
     expect(run.readJson('state.json').overview.removed.map((record) => record.path)).toEqual(['applications[1]']);
     const system = systemOf(run);
     expect(system.applications.map((row) => [row.dir, row.name, row.does])).toEqual([

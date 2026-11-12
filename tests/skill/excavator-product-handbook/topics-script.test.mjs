@@ -1,5 +1,5 @@
 // O1 of openspec change handbook-topics: topic-facts, topic-lanes, check-topics,
-// topic-judge, topic-verdicts and the state of the lane units `topics:<lane>`.
+// and the state of the lane units `topics:<lane>`.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -373,7 +373,6 @@ describe('the state of the lanes', () => {
     state.topics.D1.factsDigest = '2'.repeat(64);
     run.writeJson(join(run.out, 'state.json'), state);
     expect(run.run('topic-lanes').lines[0].split('\t')[3]).toBe('planned');
-    expect(run.laneRun('topic-judge', 'D1').status).toBe(1);
   });
 
   it('refuses a mark for a lane that is not listed', () => {
@@ -394,134 +393,8 @@ describe('the state of the lanes', () => {
   });
 });
 
-describe('topic-judge', () => {
-  it('refuses when no lane is checked', () => {
-    const run = topicsRun(cleanups);
-    const result = run.run('topic-judge');
-    expect(result.status).toBe(1);
-    expect(result.lines[0]).toBe('topics: no lane is checked; only checked lanes are judged');
-  });
-
-  it('writes one judge file for each checked lane with the fields of each row and everything it cites, nothing else, and prints the paths', () => {
-    const run = checkedTopicsRun(cleanups);
-    const result = run.run('topic-judge');
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('topics: 3 lanes, 5 rows');
-    expect(result.lines[1]).toBe(`Lane D1: 2 rows | Judge file: ${join(run.out, 'topics', 'judge', 'D1.json')} | Verdict files: ${join(run.out, 'topics', 'verdicts', 'D1.a.json')} ${join(run.out, 'topics', 'verdicts', 'D1.b.json')}`);
-    const file = run.readJson('topics/judge/D1.json');
-    expect(Object.keys(file)).toEqual(['unit', 'lane', 'rows']);
-    expect(file.rows.map((row) => row.id)).toEqual(['D1#1', 'D1#2']);
-    expect(Object.keys(file.rows[0])).toEqual(['id', 'topic', 'fields', 'cites']);
-    expect(file.rows[0].fields.route).toBe('The clerk fills in the customer name.');
-    expect(file.rows[0].cites[0]).toEqual({ id: 'F1#operations[0].sentences[0]', content: 'Orders | sentence | Place an order: The clerk fills in the customer name.' });
-    const handoff = run.readJson('topics/judge/D2.json').rows[1];
-    expect(handoff.fields).toEqual({ from: 'D1', fromName: 'Customer orders', to: 'D2', toName: 'System upkeep', content: 'The order was sent.' });
-    expect(JSON.stringify(file)).not.toMatch(/src\//);
-    expect(run.readJson('topics/judge/repeated.json').rows[0].cites[0].content).toContain('unranked | authorization | Deleting an order asks nothing');
-  });
-
-  it('writes no judge file for a lane without rows and says so', () => {
-    const run = topicsRun(cleanups);
-    run.run('mark', 'topics:D2', 'dispatched');
-    run.writePart('D2', []);
-    run.laneRun('check-topics', 'D2');
-    const result = run.run('topic-judge');
-    expect(result.lines).toContain('Lane D2: no rows; nothing to judge');
-    expect(() => run.readJson('topics/judge/D2.json')).toThrow();
-  });
-
-  it('refuses a lane whose file changed after it was checked, or whose facts changed', () => {
-    const run = checkedTopicsRun(cleanups);
-    const rows = run.readJson('topics/part-D1.json').rows;
-    rows[0].fields.route = 'Another route.';
-    run.writePart('D1', rows);
-    expect(run.run('topic-judge').lines[0]).toBe('topics:D1: topics/part-D1.json changed after it was checked');
-  });
-});
-
-describe('topic-verdicts', () => {
-  it('keeps a row only when both judges say follows, and records each lane as verified', () => {
-    const run = checkedTopicsRun(cleanups);
-    const result = judgeTopics(run);
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['topics:D1: verified (2 rows, 2 kept, 0 removed)', 'topics:D2: verified (2 rows, 2 kept, 0 removed)', 'topics:repeated: verified (1 rows, 1 kept, 0 removed)']);
-    const topics = run.readState().topics;
-    expect(topics.D1).toMatchObject({ status: 'verified', attempts: 1 });
-    expect(topics.D1.dropped).toBeUndefined();
-  });
-
-  it('one judge that says follows is not enough: a row on which one judge says doesNotFollow is dropped with that reason', () => {
-    const run = checkedTopicsRun(cleanups);
-    const result = judgeTopics(run, (row, letter) => (row.id === 'D1#1' && letter === 'b' ? { verdict: 'doesNotFollow', reason: 'The row names a skip that no cited sentence says.' } : 'follows'));
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('topics:D1: verified (2 rows, 1 kept, 1 removed)');
-    expect(run.readState().topics.D1.dropped).toEqual([{ id: 'D1#1', reasons: ['The row names a skip that no cited sentence says.'] }]);
-  });
-
-  it('records both reasons in letter order when both judges say doesNotFollow', () => {
-    const run = checkedTopicsRun(cleanups);
-    judgeTopics(run, (row, letter) => (row.id === 'D2#2' ? { verdict: 'doesNotFollow', reason: `Judge ${letter} found that the providing domain is not in what the row cites.` } : 'follows'));
-    expect(run.readState().topics.D2.dropped).toEqual([{ id: 'D2#2', reasons: ['Judge a found that the providing domain is not in what the row cites.', 'Judge b found that the providing domain is not in what the row cites.'] }]);
-  });
-
-  it('verifies a lane without rows with no verdict file', () => {
-    const run = topicsRun(cleanups);
-    run.run('mark', 'topics:D2', 'dispatched');
-    run.writePart('D2', []);
-    run.laneRun('check-topics', 'D2');
-    const result = run.run('topic-verdicts');
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['topics:D2: verified (0 rows, 0 kept, 0 removed)']);
-  });
-
-  const BAD_FILES = [
-    ['misses a row', (verdicts) => verdicts.slice(1), 'no verdict'],
-    ['has an extra id', (verdicts) => [...verdicts, { id: 'D1#9', verdict: 'follows', reason: 'Fine.' }], 'is not a group of the judge file'],
-    ['repeats an id', (verdicts) => [...verdicts, verdicts[0]], 'more than one verdict'],
-    ['has another verdict word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'verified' } : one)), 'is not one of follows, doesNotFollow'],
-    ['has a reason of two lines', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, reason: 'One.\nTwo.' } : one)), 'the reason must be one line'],
-    ['has a reason with a code word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'doesNotFollow', reason: 'The row never mentions place_order.' } : one)), 'is not allowed in reader text'],
-  ];
-  for (const [name, edit, text] of BAD_FILES) {
-    it(`exits 1 and records nothing for a verdict file that ${name}`, () => {
-      const run = checkedTopicsRun(cleanups);
-      const plan = judgePlan(run);
-      writeVerdicts(plan);
-      const file = JSON.parse(readFileSync(plan.D1.b, 'utf-8'));
-      run.writeJson(plan.D1.b, { verdicts: edit(file.verdicts) });
-      const before = readFileSync(join(run.out, 'state.json'), 'utf-8');
-      const result = run.run('topic-verdicts');
-      expect(result.status, name).toBe(1);
-      expect(result.lines.join('\n'), name).toContain('lane D1 judge b: ');
-      expect(result.lines.join('\n'), name).toContain(text);
-      expect(result.lines.at(-1), name).toContain('nothing was recorded');
-      expect(readFileSync(join(run.out, 'state.json'), 'utf-8'), name).toBe(before);
-    });
-  }
-
-  it('exits 1 for a verdict file that is missing, and names the verdict file to dispatch again', () => {
-    const run = checkedTopicsRun(cleanups);
-    const plan = judgePlan(run);
-    writeVerdicts(plan);
-    run.writeJson(plan.repeated.a, { verdicts: [] });
-    const result = run.run('topic-verdicts');
-    expect(result.status).toBe(1);
-    expect(result.lines.at(-1)).toContain('repeated.a');
-  });
-
-  it('refuses a judge file that is not the one topic-judge wrote', () => {
-    const run = checkedTopicsRun(cleanups);
-    const plan = judgePlan(run);
-    writeVerdicts(plan);
-    const judge = JSON.parse(readFileSync(plan.D1.judge, 'utf-8'));
-    judge.rows[0].fields.route = 'Another route.';
-    run.writeJson(plan.D1.judge, judge);
-    const result = run.run('topic-verdicts');
-    expect(result.status).toBe(1);
-    expect(result.lines[0]).toContain('is not the one topic-judge wrote for this lane');
-  });
-
-  it('after the verdicts, topic-facts prints a note: the lane is current, so nothing is written again', () => {
+describe('topic-facts on a settled lane', () => {
+  it('a settled lane prints a note: the lane is current, so nothing is written again', () => {
     const run = checkedTopicsRun(cleanups);
     judgeTopics(run);
     expect(run.run('topic-facts', '--lane', 'repeated').lines).toEqual(['Topics: repeated: verified; nothing to write']);

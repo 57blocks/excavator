@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
 
 import { expect } from 'vitest';
 
-import { verifyChecked } from './helpers.mjs';
+import { settleDerived, verifyChecked } from './helpers.mjs';
 import { unitId, withFindingsHelpers } from './findings-fixture.mjs';
 import { verifiedRun } from './summary-fixture.mjs';
 
@@ -90,39 +90,7 @@ export function checkedTopicsRun(cleanups, options) {
   return run;
 }
 
-/** The judge files and the verdict paths `topic-judge` printed: `{ lane -> { judge, a, b } }`. */
-export function judgePlan(run) {
-  const result = run.run('topic-judge');
-  expect(result.status, result.stdout + result.stderr).toBe(0);
-  const plan = {};
-  for (const line of result.lines.filter((one) => one.startsWith('Lane '))) {
-    const [head, judge, verdicts] = line.split(' | ');
-    if (judge === undefined) continue;
-    const [a, b] = verdicts.replace('Verdict files: ', '').split(' ');
-    plan[/^Lane (\S+):/.exec(head)[1]] = { judge: judge.replace('Judge file: ', ''), a, b };
-  }
-  return plan;
-}
-
-/** Write the two verdict files of every lane of the plan: `decide(row, letter, lane)` gives a verdict word or `{ verdict, reason }`, default `follows`. */
-export function writeVerdicts(plan, decide = () => 'follows') {
-  for (const [lane, { judge, a, b }] of Object.entries(plan)) {
-    const rows = JSON.parse(readFileSync(judge, 'utf-8')).rows;
-    for (const [letter, path] of [['a', a], ['b', b]]) {
-      const verdicts = rows.map((row) => {
-        const given = decide(row, letter, lane);
-        const verdict = typeof given === 'string' ? { verdict: given } : given;
-        return { id: row.id, verdict: verdict.verdict, reason: verdict.reason ?? 'Everything the row says is in what it cites.' };
-      });
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, `${JSON.stringify({ verdicts }, null, 2)}\n`);
-    }
-  }
-}
-
-/** Judge every checked lane: everything `follows` unless `decide` says otherwise; returns the topic-verdicts result. */
-export function judgeTopics(run, decide) {
-  const plan = judgePlan(run);
-  writeVerdicts(plan, decide);
-  return run.run('topic-verdicts');
+/** Settle every checked lane as an older run's two judges left it: no row dropped. */
+export function judgeTopics(run) {
+  return settleDerived(run, 'topics');
 }

@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { itemClaims } from '../../../skills/excavator-product-handbook/lib/claims.mjs';
-import { identityKeys } from '../../../skills/excavator-product-handbook/lib/name-keys.mjs';
 import { restorePageData, splitPageData } from '../../../skills/excavator-product-handbook/lib/page-units.mjs';
 import { setUnitState } from '../../../skills/excavator-product-handbook/lib/unit.mjs';
 import { trimEntry } from '../../../skills/excavator-product-handbook/lib/trim-entry.mjs';
@@ -299,25 +298,6 @@ describe('the cross-cutting topics read a checked /3 entry', () => {
     const facts = run.run('topic-facts', '--lane', 'D1');
     expect(facts.status).toBe(0);
     expect(facts.stdout).not.toContain(CHIP);
-  });
-});
-
-describe('a /3 entry is never sliced', () => {
-  it('slices exits 1 with one line that says /3 entries are not verified in this version, and writes nothing', () => {
-    const run = v3Run();
-    for (const command of [['slices', 'F1'], ['verdicts', 'F1', '--round', '1']]) {
-      const result = run.strict(...command);
-      expect(result.status, command.join(' ')).toBe(1);
-      expect(result.lines, command.join(' ')).toEqual(['F1: /3 entries are not verified in this version; the handbook writes a checked one marked as not verified']);
-    }
-    expect(run.readJson('state.json').features.F1.status).toBe('checked');
-  });
-
-  it('claims, trimming and the name keys do not throw on a fact sheet', () => {
-    const entry = goodEntryV3();
-    expect(() => itemClaims(entry, ui)).not.toThrow();
-    expect(() => trimEntry(entry, new Set())).not.toThrow();
-    expect(() => identityKeys('feature', entry)).not.toThrow();
   });
 });
 

@@ -7,7 +7,7 @@
 import { expect } from 'vitest';
 import { join } from 'node:path';
 
-import { clone, judgeBothRounds, makeCheckedMapRun, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, makeCheckedMapRun, verifyChecked } from './helpers.mjs';
 import { entries as summaryEntries } from './summary-fixture.mjs';
 
 export const ev = (file, passage) => ({ file, passage });
@@ -32,13 +32,11 @@ export function appendixRun(cleanups) {
   run.writeEntry('F3', F3);
   run.writeEntry('F2', f2);
   for (const id of ['F1', 'F2', 'F3']) expect(run.run('check-entry', id).status).toBe(0);
-  const bad = {
-    'screens[0].fields[1].rules[0]': { verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' },
-    'states[1]': { verdict: 'unverified', reason: 'No line shown names the state.' },
-  };
-  expect(judgeBothRounds(run, 'F1', (item) => bad[item.id] ?? 'verified').status).toBe(0);
-  const traced = traceFeature(run, 'F1', (item) => (item.id === 'who[1]' ? { verdict: 'contradicted', reason: 'Another step lets every clerk approve.', at: [{ file: 'src/roles.js', line: 1 }] } : 'holds'));
-  expect(traced.status, traced.stdout + traced.stderr).toBe(0);
+  verifyChecked(run, 'F1', [
+    { path: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' },
+    { path: 'states[1]', verdict: 'unverified', reason: 'No line shown names the state.' },
+    { path: 'who[1]', verdict: 'contradicted', reason: 'Another step lets every clerk approve.', step: 'trace', reasons: ['Another step lets every clerk approve.'], at: [{ file: 'src/roles.js', line: 1 }] },
+  ]);
   verifyChecked(run, 'F3');
   return run;
 }

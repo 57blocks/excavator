@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { entryDigest } from '../../../skills/excavator-product-handbook/lib/state.mjs';
-import { judge, MARK, makeCheckedMapRun, markedMap, traceFeature, translatedUi, verifyChecked } from './helpers.mjs';
+import { MARK, makeCheckedMapRun, markedMap, translatedUi, verifyChecked } from './helpers.mjs';
 import { NOTIFY_FILE, NOTIFY_LINE, checkedOverviewRun, goodOverview, overviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -154,46 +154,5 @@ describe('check-overview: the key itself', () => {
     }
   });
 
-  it('an overview that verification trimmed, and one verified before this change, have no name and are accepted', () => {
-    // Removed by verification: the key is gone from the file and the overview stays checked as a settled one.
-    const trimmed = checkedOverviewRun(cleanups);
-    expect(judge(trimmed, 'overview', 1, (item) => (item.id === 'name' ? { verdict: 'unverified', reason: 'No line shown writes that name.' } : 'verified')).status).toBe(0);
-    expect(Object.hasOwn(trimmed.readJson('entries/overview.json'), 'name')).toBe(true);
-    const second = judge(trimmed, 'overview', 2, () => ({ verdict: 'unverified', reason: 'No line shown writes that name.' }));
-    expect(second.status, second.stdout).toBe(0);
-    expect(Object.hasOwn(trimmed.readJson('entries/overview.json'), 'name')).toBe(false);
-    expect(traceFeature(trimmed, 'overview').status).toBe(0);
-    expect(trimmed.run('check-overview').lines).toEqual(['overview: verified, unchanged since it was verified']);
-    expect(trimmed.run('assemble').status).toBe(0);
-
-    // Verified before this change: the file has no name key and its digest is the one state.json kept.
-    const old = checkedOverviewRun(cleanups);
-    verifyChecked(old, 'overview');
-    const path = join(old.out, 'entries', 'overview.json');
-    const doc = JSON.parse(readFileSync(path, 'utf-8'));
-    delete doc.name;
-    old.writeJson(path, doc);
-    const state = old.readJson('state.json');
-    state.overview.entryDigest = entryDigest(path);
-    old.writeJson(join(old.out, 'state.json'), state);
-    expect(old.run('check-overview').lines).toEqual(['overview: verified, unchanged since it was verified']);
-    expect(old.run('assemble').status).toBe(0);
-    expect(old.run('reply').status).toBe(0);
-  });
 });
 
-describe('the name is an item the verifiers judge', () => {
-  it('is the first item of the overview, with a claim that names the name', () => {
-    const run = checkedOverviewRun(cleanups);
-    expect(run.run('slices', 'overview').lines[0]).toBe('overview: round 1, 5 items in 1 part');
-    const { items } = JSON.parse(readFileSync(join(run.out, 'verify', 'round-1', 'overview', 'part-1.json'), 'utf-8'));
-    expect(items.map((item) => item.id)[0]).toBe('name');
-    expect(items[0].claim).toBe('System name > handbook-fixture');
-    expect(items[0].evidence.length).toBe(1);
-  });
-
-  it('a null name is no item: there is nothing to verify', () => {
-    const run = checkedOverviewRun(cleanups, (doc) => { doc.name = null; });
-    expect(run.run('slices', 'overview').lines[0]).toBe('overview: round 1, 4 items in 1 part');
-  });
-});

@@ -12,7 +12,7 @@ import { join } from 'node:path';
 
 import { categoryKey } from '../../../skills/excavator-product-handbook/lib/findings-shape.mjs';
 import { featureFindingsLines, findingsChapter } from '../../../skills/excavator-product-handbook/lib/render-findings.mjs';
-import { judgeBothRounds, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { runHandbook, verifyChecked } from './helpers.mjs';
 import { JOB_LINE, MAILER, MAIL_LINE, NIGHTLY, ROUTE, SERVER, START, goodSystemFindings, goodSystemOverview, makeSystemRun, systemId } from './system-fixture.mjs';
 
 const cleanups = [];
@@ -80,9 +80,7 @@ function outputRun(owner = cleanups, { overview = false } = {}) {
     ],
   });
   expect(run.run('check-system-findings', systemId(1)).status).toBe(0);
-  const judged = judgeBothRounds(run, systemId(1), (item) => (item.id === 'findings[3]' ? { verdict: 'contradicted', reason: REMOVED_REASON } : 'verified'));
-  expect(judged.status, judged.stdout).toBe(0);
-  expect(traceFeature(run, systemId(1)).status).toBe(0);
+  verifyChecked(run, systemId(1), [{ path: 'findings[3]', verdict: 'contradicted', reason: REMOVED_REASON, claim: `System finding > ${ui[categoryKey('security')]} > ${SYSTEM_REMOVED_TEXT}` }]);
   run.writeSystem(2);
   expect(run.run('mark', systemId(2), 'dispatched').status).toBe(0);
   expect(run.run('check-system-findings', systemId(3)).lines).toEqual(['app3.system: verified (0 findings)']);

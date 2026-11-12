@@ -12,6 +12,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { entryPath } from '../../../skills/excavator-product-handbook/lib/entry-check.mjs';
+import { entryDigest, loadState, saveState } from '../../../skills/excavator-product-handbook/lib/state.mjs';
+import { setUnitState, unitState } from '../../../skills/excavator-product-handbook/lib/unit.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, '../../..');
 export const HANDBOOK_SCRIPT = join(repoRoot, 'skills/excavator-product-handbook/handbook.mjs');
@@ -211,91 +215,76 @@ export function makeCheckedMapRun() {
   return run;
 }
 
+/** Delete the item at `path` (`who[1]`, `screens[0].fields[1].rules[0]`, `purpose`) from an entry document. */
+function dropPath(doc, path) {
+  const keys = [...path.matchAll(/([A-Za-z_]+)|\[(\d+)\]/g)].map((found) => found[1] ?? Number(found[2]));
+  let target = doc;
+  for (const key of keys.slice(0, -1)) target = target[key];
+  if (Array.isArray(target)) target.splice(keys.at(-1), 1);
+  else delete target[keys.at(-1)];
+}
+
 /**
- * Slice a checked feature, write the two verdict files of every part of its
- * verify files (`part-<n>.a.json` judges each item with `decide(item)`, `.b`
- * with `decideB(item)`, by default the same; a verdict word or
- * `{ verdict, reason }`, default verified), and record them with `verdicts`.
- * Returns the `verdicts` result. Round 2 judges the items its verify files hold.
+ * Settle a checked unit as an older run left it: the status `confirmed` or `verified` with the digest of its entry
+ * file. The statuses stay valid and count as done (openspec change handbook-drop-verification); no command sets
+ * them any more, so a test writes the state itself. `removed` is the list of records `[{ path, verdict, reason, step?,
+ * reasons?, at?, claim? }]` an older run kept for items it took out: the items are deleted from the entry file here
+ * (give the paths of one array in descending index order) and the records go to state.json.
  */
-export function judge(run, id = 'F1', round = 1, decide = () => 'verified', decideB = decide) {
-  const sliced = run.run('slices', id, ...(round === 2 ? ['--round', '2'] : []));
-  if (sliced.status !== 0) throw new Error(`slices failed:\n${sliced.stdout}${sliced.stderr}`);
-  const verifyDir = join(run.out, 'verify', `round-${round}`, id);
-  const dir = join(run.out, 'verdicts', `round-${round}`, id);
-  mkdirSync(dir, { recursive: true });
-  const { parts } = JSON.parse(readFileSync(join(verifyDir, 'part-1.json'), 'utf-8'));
-  for (let part = 1; part <= parts; part += 1) {
-    const verify = JSON.parse(readFileSync(join(verifyDir, `part-${part}.json`), 'utf-8'));
-    for (const [letter, decider] of [['a', decide], ['b', decideB]]) {
-      const verdicts = verify.items.map((item) => {
-        const given = decider(item);
-        const verdict = typeof given === 'string' ? { verdict: given } : given;
-        return { id: item.id, verdict: verdict.verdict, reason: verdict.reason ?? `The code shown decides ${item.id}.` };
-      });
-      writeFileSync(join(dir, `part-${part}.${letter}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
-    }
+function settle(run, id, status, removed = []) {
+  const loaded = loadState(run.out);
+  if (!loaded.ok) throw new Error(loaded.problem);
+  const { state } = loaded;
+  const current = unitState(state, id);
+  if (current.status !== 'checked') throw new Error(`${id} is ${current.status}, not checked`);
+  const file = join(run.out, entryPath(id));
+  if (removed.length > 0) {
+    const doc = JSON.parse(readFileSync(file, 'utf-8'));
+    for (const record of removed) dropPath(doc, record.path);
+    writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`);
   }
-  return run.run('verdicts', id, '--round', String(round));
+  const next = { status, attempts: current.attempts, entryDigest: entryDigest(file) };
+  if (removed.length > 0) next.removed = removed.map((record) => ({ claim: record.path, reason: '', ...record }));
+  setUnitState(state, id, next);
+  saveState(run.out, state);
+}
+
+/** Settle a checked unit as `failed` at an older verification step, as an older run left it. */
+export function failChecked(run, id, step, reasons, removed = []) {
+  const loaded = loadState(run.out);
+  if (!loaded.ok) throw new Error(loaded.problem);
+  const { state } = loaded;
+  const current = unitState(state, id);
+  setUnitState(state, id, { status: 'failed', attempts: current.attempts, failure: { step, reasons }, ...(removed.length > 0 ? { removed: removed.map((record) => ({ claim: record.path, reason: '', ...record })) } : {}) });
+  saveState(run.out, state);
+}
+
+/** Settle a checked unit as `confirmed` (an older run's two verifiers agreed). */
+export function confirmChecked(run, id = 'F1', removed = []) {
+  settle(run, id, 'confirmed', removed);
+}
+
+/** Settle a checked unit as `verified` (an older run's tracers found nothing); `removed` as in `settle`. */
+export function verifyChecked(run, id = 'F1', removed = []) {
+  settle(run, id, 'verified', removed);
 }
 
 /**
- * Both rounds with the same judges: round 1 lists every item not both verified for the one rewrite (it removes
- * nothing), the rewrite is left out (the entry stays as it is), and round 2 judges the listed items again, so what
- * the judges do not confirm is removed there. Returns the result of the last `verdicts`.
+ * Settle a checked derived unit (the ranking, the remedies, every checked topics lane) as `verified`, as an older run's
+ * judges left it with nothing dropped. Returns a passing result so a test can keep its `.status` check.
  */
-export function judgeBothRounds(run, id = 'F1', decide = () => 'verified', decideB = decide) {
-  const first = judge(run, id, 1, decide, decideB);
-  if (first.status !== 0 || !first.lines.some((line) => line.endsWith('to rewrite'))) return first;
-  return judge(run, id, 2, decide, decideB);
-}
-
-/** Settle a checked feature with every item verified by both verifiers: it ends `confirmed`, not yet traced; throws otherwise. */
-export function confirmChecked(run, id = 'F1') {
-  const result = judge(run, id);
-  if (result.status !== 0) throw new Error(`verdicts failed:\n${result.stdout}${result.stderr}`);
-  return result;
-}
-
-/**
- * Trace a confirmed feature: write the trace files with `trace`, two verdict
- * files per part (`part-<n>.a.json` judges each item with `decide(item)`, `.b`
- * with `decideB(item)`, by default the same; a verdict word or
- * `{ verdict, reason, at }`, default `holds`), and record them with
- * `trace-verdicts`. Returns that result. `edit(part, verdicts)` may change the
- * verdict list of file `a` of a part before it is written, `editB` that of `b`.
- */
-export function traceFeature(run, id = 'F1', decide = () => 'holds', edit = () => {}, decideB = decide, editB = () => {}) {
-  const traced = run.run('trace', id);
-  if (traced.status !== 0) throw new Error(`trace failed:\n${traced.stdout}${traced.stderr}`);
-  const traceDir = join(run.out, 'trace', id);
-  const dir = join(run.out, 'trace-verdicts', id);
-  mkdirSync(dir, { recursive: true });
-  const { parts } = JSON.parse(readFileSync(join(traceDir, 'part-1.json'), 'utf-8'));
-  for (let part = 1; part <= parts; part += 1) {
-    const file = JSON.parse(readFileSync(join(traceDir, `part-${part}.json`), 'utf-8'));
-    for (const [letter, decider, editor] of [['a', decide, edit], ['b', decideB, editB]]) {
-      const verdicts = file.items.map((item) => {
-        const given = decider(item);
-        const verdict = typeof given === 'string' ? { verdict: given } : given;
-        const written = { id: item.id, ...verdict, reason: verdict.reason ?? `Nothing in the code disagrees with ${item.id}.` };
-        // A finding whose statement has scope words needs one case for each word in a holds verdict.
-        if (written.verdict === 'holds' && written.scope === undefined && item.scopeWords !== undefined) written.scope = item.scopeWords.map((word) => ({ word, case: `A case inside "${word}" for ${item.id}.`, result: `The code does what the claim says for the case of ${item.id}.` }));
-        return written;
-      });
-      editor(part, verdicts);
-      writeFileSync(join(dir, `part-${part}.${letter}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
-    }
+export function settleDerived(run, kind) {
+  const loaded = loadState(run.out);
+  if (!loaded.ok) throw new Error(loaded.problem);
+  const { state } = loaded;
+  if (kind === 'topics') {
+    for (const [lane, entry] of Object.entries(state.topics ?? {})) if (entry.status === 'checked') state.topics[lane] = { ...entry, status: 'verified' };
+  } else {
+    if (state[kind]?.status !== 'checked') throw new Error(`${kind} is not checked`);
+    state[kind] = { ...state[kind], status: 'verified' };
   }
-  return run.run('trace-verdicts', id);
-}
-
-/** Verify a checked feature end to end: both verifiers confirm every item and the tracer finds no counter-evidence. Throws when it does not end verified. */
-export function verifyChecked(run, id = 'F1') {
-  confirmChecked(run, id);
-  const result = traceFeature(run, id);
-  if (result.status !== 0) throw new Error(`trace-verdicts failed:\n${result.stdout}${result.stderr}`);
-  return result;
+  saveState(run.out, state);
+  return { status: 0, lines: [] };
 }
 
 /** Non-ASCII text from code points, so that test sources hold only ASCII. */

@@ -6,8 +6,8 @@
  * application root (openspec change handbook-system-findings), whose id is
  * `app<n>.system`. The id `priority` is the ranking of the findings, whose state is
  * kept by `mark` through here and whose checks are in priority-*.mjs; the id `remedies` is the
- * causes, measures and recommendations of the findings (checks in remedies-*.mjs); an id `topics:<lane>` is a lane of the cross-cutting topics, kept under `state.topics` (checks in topics-*.mjs). The slices, verdicts, trace,
- * trace-verdicts, mark and check commands go through the unit for everything
+ * causes, measures and recommendations of the findings (checks in remedies-*.mjs); an id `topics:<lane>` is a lane of the cross-cutting topics, kept under `state.topics` (checks in topics-*.mjs). The
+ * mark and check commands go through the unit for everything
  * that differs: the shape, the items and claims, the trim, the checks and where
  * the state is kept. The verification rules themselves are written once.
  *

@@ -159,31 +159,6 @@ describe('the Recommendations chapter', () => {
 });
 
 describe('what the judges left out and what did not finish', () => {
-  it('writes a recommendation that one judge refused nowhere, numbers the others again from 1 and lists the refused one in the coverage section with the reason', () => {
-    const run = checkedRemediesRun(cleanups);
-    expect(judgeRemedies(run, (item, letter) => (item.id === 'recommendation:1' && letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The text says one finding, which no cited fact says.' } : 'follows')).status).toBe(0);
-    assemble(run);
-    const body = text(run, 'handbook.md');
-    const chapter = recommendationsOf(body);
-    expect(chapter).not.toContain('Check the caller first');
-    expect(chapter).toContain('### 1. Replace the fixed list');
-    expect(chapter).toContain('Recommendations: 1. Groups of findings they rest on: 1 of 4.');
-    const part = coverageRemedies(body);
-    expect(part).toContain('Left out because a judge found a statement of how things are now that the cited findings and facts do not hold: 1.');
-    expect(part).toContain('| Left out | Reason |');
-    expect(part).toContain('| Check the caller first: Start with the 1 finding of the highest level, which lets any caller delete an order, and give it a check of the caller. | The text says one finding, which no cited fact says. |');
-  });
-
-  it('leaves out a paragraph of a category the same way: no cause or measure under the heading, a row in the coverage section', () => {
-    const run = checkedRemediesRun(cleanups);
-    judgeRemedies(run, (item, letter) => (item.id === 'category:authorization' && letter === 'b' ? { verdict: 'doesNotFollow', reason: 'The cause is wider than the statement.' } : 'follows'));
-    assemble(run);
-    const body = text(run, 'handbook.md');
-    expect(findingsOf(body)).not.toContain('Deleting an order asks nothing about who calls.\n\nMeasure');
-    expect(findingsOf(body)).toContain('Common cause: The list of orders is a fixed empty answer.');
-    expect(coverageRemedies(body)).toContain(`| ${ui[categoryKey('authorization')]}: Deleting an order asks nothing about who calls. | The cause is wider than the statement. |`);
-  });
-
   it('says that every written paragraph is in the handbook when the judges left none out', () => {
     const run = shared();
     assemble(run);
@@ -276,19 +251,6 @@ describe('the page data', () => {
     expect(second.facts[1]).toMatchObject({ kind: 'app', name: '.', commits: null, authors: null });
     expect(data.coverage.remedies).toEqual({ finished: true, stale: false, dropped: [] });
     expect(JSON.stringify(data.remedies)).not.toContain('src/');
-  });
-
-  it('lists what the judges left out in the coverage', () => {
-    const run = checkedRemediesRun(cleanups);
-    judgeRemedies(run, (item, letter) => (item.id === 'recommendation:2' ? { verdict: 'doesNotFollow', reason: `Judge ${letter} did not find it in the facts.` } : 'follows'));
-    expect(page(run).status).toBe(0);
-    const data = dataOf(run);
-    expect(data.remedies.recommendations).toHaveLength(1);
-    expect(data.coverage.remedies).toEqual({
-      finished: true,
-      stale: false,
-      dropped: [{ id: 'recommendation:2', kind: 'recommendation', text: 'The list of orders should answer from the store.', title: 'Replace the fixed list', reasons: ['Judge a did not find it in the facts.', 'Judge b did not find it in the facts.'] }],
-    });
   });
 
   it('has the remedies of a checked unit, marked not verified, and is the same bytes from the same input', () => {

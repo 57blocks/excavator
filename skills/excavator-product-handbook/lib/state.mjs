@@ -15,7 +15,7 @@
  * (openspec change handbook-recall); the handbook does not show it. A checked /3 entry
  * (openspec change handbook-free-chapter) also carries `chapter: { items, notes }`, the items of its chapter with each
  * citation as `{ file, lines, passage }` and the content findings `{ id, kind, detail }` the chapter check reported. Only the scripts change it:
- * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
+ * check-map creates it; mark and check-entry update it (an older run's verdict and trace commands set the statuses `confirmed` and `verified`, which stay valid).
  * Every write is atomic; the commands that change it hold the state lock
  * (lock.mjs). The system overview (openspec change handbook-system-overview)
  * has the same entry under the optional key `overview`, and the findings of

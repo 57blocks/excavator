@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { MARK, SHIPPED_UI, judge, judgeBothRounds, makeCheckedMapRun, markedMap, runHandbook, set, traceFeature, translatedUi, verifyChecked } from './helpers.mjs';
+import { MARK, SHIPPED_UI, confirmChecked, makeCheckedMapRun, markedMap, runHandbook, set, translatedUi, verifyChecked } from './helpers.mjs';
 import { NOTIFY_FILE, NOTIFY_LINE, checkedOverviewRun, goodOverview, overviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -105,21 +105,13 @@ describe('handbook.md opens with the system overview', () => {
     expect(first).not.toContain('evidence');
   });
 
-  it('shows none for a part that was removed from a verified overview, and keeps the rest', () => {
-    const run = checkedOverviewRun(cleanups);
-    expect(judgeBothRounds(run, 'overview', (item) => (item.id === 'integrations[0]' ? 'contradicted' : 'verified')).status).toBe(0);
-    expect(traceFeature(run, 'overview').status).toBe(0);
-    const section = sectionOf(assemble(run), '### External systems', '### Undetermined from the code');
-    expect(section).toContain('None.');
-    expect(section).not.toContain('Slack');
-  });
 });
 
 describe('an overview that is not verified', () => {
   const stopped = [
     ['not written at all', (run) => run, 'Not written'],
     ['written but not checked', (run) => { run.run('mark', 'overview', 'dispatched'); return run; }, 'Written but not checked'],
-    ['confirmed, the trace not finished', (run) => { run.run('check-overview'); expect(judge(run, 'overview').status).toBe(0); return run; }, 'Written, final check not finished'],
+    ['confirmed, the trace not finished', (run) => { run.run('check-overview'); confirmChecked(run, 'overview'); return run; }, 'Written, final check not finished'],
   ];
   for (const [name, prepare, step] of stopped) {
     it(`says so and where it stopped (${name}), writes the area table and nothing of the overview`, () => {
@@ -160,13 +152,11 @@ describe('an overview that is not verified', () => {
 describe('the coverage section lists the removed overview items', () => {
   function removedRun() {
     const run = checkedOverviewRun(cleanups);
-    const bad = { 'audiences[0]': { verdict: 'unverified', reason: 'No line shown names who uses it.' } };
-    const round2 = judgeBothRounds(run, 'overview', (item) => (item.id === 'applications[0]' ? { verdict: 'contradicted', reason: 'The code shown names another tool.' } : bad[item.id] ?? 'verified'));
-    expect(round2.status, round2.stdout).toBe(0);
-    const traced = traceFeature(run, 'overview', () => 'holds', () => {}, (item) => (item.id === 'integrations[0]'
-      ? { verdict: 'contradicted', reason: 'Another function sends it to a different channel.', at: [{ file: 'src/roles.js', line: 1 }] }
-      : 'holds'));
-    expect(traced.lines).toEqual(['overview: verified, 1 item removed']);
+    verifyChecked(run, 'overview', [
+      { path: 'audiences[0]', claim: 'Roles: Clerk; What it does: Creates orders.', verdict: 'unverified', reason: 'No line shown names who uses it.' },
+      { path: 'applications[0]', claim: 'Application . (Order tool) > Serves the order pages and sends reminders.', verdict: 'contradicted', reason: 'The code shown names another tool.' },
+      { path: 'integrations[0]', claim: 'External system: Slack; What it is used for: Reminders go to a team channel.; Called by, in the quoted code: .', verdict: 'contradicted', reason: 'Another function sends it to a different channel.', step: 'trace', reasons: ['Another function sends it to a different channel.'], at: [{ file: 'src/roles.js', line: 1 }] },
+    ]);
     return run;
   }
 

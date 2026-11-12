@@ -14,7 +14,7 @@ import { pathToFileURL } from 'node:url';
 import { Browser, findChrome } from './chrome-cdp.mjs';
 import { writeFileSync } from 'node:fs';
 
-import { clone, judgeBothRounds, makeCheckedMapRun, repoRoot, runHandbook, traceFeature } from './helpers.mjs';
+import { clone, makeCheckedMapRun, repoRoot, runHandbook, verifyChecked } from './helpers.mjs';
 import { writeHistory } from './appendix-fixture.mjs';
 import { NOTIFY_FILE, NOTIFY_LINE, goodOverview } from './overview-fixture.mjs';
 
@@ -39,7 +39,7 @@ const LONG = 'A customer name that is longer than the print width is shortened i
 
 /**
  * A run whose F1 entry has a table wide enough to need its own scroll box on a phone. `keepIntegration`
- * keeps the overview's external system (it is removed in round 1 otherwise) and `views` is the page's --views.
+ * keeps the overview's external system (it is recorded as removed otherwise) and `views` is the page's --views.
  */
 function pageRun({ keepIntegration = false, views = undefined, unnamed = false } = {}) {
   const run = makeCheckedMapRun();
@@ -52,22 +52,15 @@ function pageRun({ keepIntegration = false, views = undefined, unnamed = false }
   run.writeEntry('F1', entry);
   const checked = run.run('check-entry', 'F1');
   if (checked.status !== 0) throw new Error(`the entry failed check-entry:\n${checked.stdout}`);
-  // One backend rule is contradicted in both rounds and removed in round 2, so the coverage page has a removed-items table to lay out.
-  const bad = (item) => (item.id === 'screens[0].fields[1].rules[0]' ? { verdict: 'contradicted', reason: 'The limit the code shows is 50, not the number the sentence gives.' } : 'verified');
-  const judged = judgeBothRounds(run, 'F1', bad);
-  if (judged.status !== 0) throw new Error(`verdicts round 1 failed:\n${judged.stdout}`);
-  const traced = traceFeature(run);
-  if (traced.status !== 0) throw new Error(`trace-verdicts failed:\n${traced.stdout}`);
+  // One backend rule was removed from a verified entry, so the coverage page has a removed-items table to lay out.
+  verifyChecked(run, 'F1', [{ path: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason: 'The limit the code shows is 50, not the number the sentence gives.' }]);
   // A verified system overview that lost its external system in round 1, so the overview page holds the wide application table and the coverage page a second removed-items group.
   writeFileSync(join(run.root, NOTIFY_FILE), `${NOTIFY_LINE}\n`);
   const overview = goodOverview();
   if (unnamed) overview.name = null;
   run.writeEntry('overview', overview);
   if (run.run('check-overview').status !== 0) throw new Error('the overview failed check-overview');
-  const judgedOverview = judgeBothRounds(run, 'overview', (item) => (item.id === 'integrations[0]' && !keepIntegration ? { verdict: 'contradicted', reason: 'The code shown sends it to another channel.' } : 'verified'));
-  if (judgedOverview.status !== 0) throw new Error(`overview verdicts failed:\n${judgedOverview.stdout}`);
-  const tracedOverview = traceFeature(run, 'overview');
-  if (tracedOverview.status !== 0) throw new Error(`overview trace-verdicts failed:\n${tracedOverview.stdout}`);
+  verifyChecked(run, 'overview', keepIntegration ? [] : [{ path: 'integrations[0]', verdict: 'contradicted', reason: 'The code shown sends it to another channel.' }]);
   // The code health page has a history file to show (the fixture project's one application root is `.`).
   writeHistory(run);
   const made = run.run('page', ...(views === undefined ? [] : ['--views', views]));

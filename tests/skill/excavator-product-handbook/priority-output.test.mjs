@@ -127,14 +127,6 @@ describe('the Findings chapter with a priority', () => {
     ]);
   });
 
-  it('has a P2 group between P1 and the unranked ones', () => {
-    const run = sameCategoryRun();
-    rank(run, ['display', 'inert', 'blocked', 'money'], (group, letter) => (group.consequence === 'money' && letter === 'a' ? { verdict: 'doesNotFollow', reason: 'The statement does not say anything about an amount.' } : 'follows'));
-    assemble(run);
-    const levels = chapterOf(text(run, 'handbook.md')).split('\n').filter((line) => line.startsWith('- [')).map((line) => /^- \[([^\]]+)\]/.exec(line)[1]);
-    expect(levels).toEqual(['P1', 'P2', 'P2', 'Unranked']);
-  });
-
   it('writes the counts of each level and of the unranked ones on the counts line, and after each category heading the number of groups and of P0', () => {
     const run = shared();
     assemble(run);

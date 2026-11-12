@@ -103,10 +103,6 @@ describe('check-findings and try-findings', () => {
     const record = stateOf(run).findings.F2;
     expect(record).toMatchObject({ status: 'verified', attempts: 0 });
     expect(typeof record.entryDigest).toBe('string');
-    // Nothing to prove: the verification steps have nothing to do with it.
-    const slices = run.run('slices', unitId('F2'));
-    expect(slices.status).toBe(1);
-    expect(slices.lines[0]).toBe('F2.findings: is verified; only a checked feature is verified');
     // A second check of the same file stays as it is.
     expect(run.run('check-findings', unitId('F2')).lines).toEqual(['F2.findings: verified, unchanged since it was verified']);
   });
