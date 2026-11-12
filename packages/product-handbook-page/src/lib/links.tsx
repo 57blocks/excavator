@@ -6,6 +6,8 @@ import type { View } from './types';
 /** The address of each page, in the view the reader is in: with the view in front when the page has two views, without it when it has one. */
 export interface Links {
   overview: string;
+  business: string;
+  architecture: string;
   coverage: string;
   notifications: string;
   jobs: string;
@@ -30,6 +32,8 @@ export interface Links {
 export function makeLinks(prefix: View | null): Links {
   return {
     overview: routeHash({ name: 'overview' }, prefix),
+    business: routeHash({ name: 'business' }, prefix),
+    architecture: routeHash({ name: 'architecture' }, prefix),
     coverage: routeHash({ name: 'coverage' }, prefix),
     notifications: routeHash({ name: 'notifications' }, prefix),
     jobs: routeHash({ name: 'jobs' }, prefix),

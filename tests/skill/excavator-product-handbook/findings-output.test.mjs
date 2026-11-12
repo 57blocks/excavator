@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { categoryKey } from '../../../skills/excavator-product-handbook/lib/findings-shape.mjs';
-import { clone, judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, runHandbook, verifyChecked } from './helpers.mjs';
 import { DELETE_LINE, JOBS_FILE, ORDERS_FILE, findingsRun, goodFindings, unitId } from './findings-fixture.mjs';
 
 const cleanups = [];
@@ -26,7 +26,7 @@ writeFileSync(stubPath, STUB);
 afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
 
 const REMOVED_REASON = 'The code shown stores the order.';
-const FAILED_TEXT = 'The admin tool must never be run twice at once.';
+const FAILED_TEXT = 'The admin tool should never be run twice at once.';
 const UNFINISHED_TEXT = 'The interface for other systems deletes by number and always answers success.';
 const ui = JSON.parse(readFileSync(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url), 'utf-8')).strings;
 const CATEGORY_NAMES = Object.keys(ui).filter((key) => key.startsWith('md.findings.category.')).map((key) => ui[key]);
@@ -49,8 +49,9 @@ function section(body, heading) {
 /**
  * F1: verified entry and verified findings (one of three removed by a verifier);
  * F2: verified with no finding; F3: verified findings but no entry; F4: findings
- * that failed their check; F5: findings that passed the check and wait for the
- * verifiers. Nothing is written for the units that are not verified.
+ * that failed their check; F5: findings written and marked dispatched, not yet
+ * checked (a checked unit is in the output under the not-verified text: see
+ * light-output.test.mjs). Nothing is written for the units that are neither.
  */
 function outputRun(owner = cleanups) {
   const run = findingsRun(owner);
@@ -60,9 +61,7 @@ function outputRun(owner = cleanups) {
 
   run.writeFindings('F1');
   expect(run.run('check-findings', unitId('F1')).status).toBe(0);
-  const judged = judge(run, unitId('F1'), 1, (item) => (item.id === 'findings[1]' ? { verdict: 'contradicted', reason: REMOVED_REASON } : 'verified'));
-  expect(judged.status, judged.stdout).toBe(0);
-  expect(traceFeature(run, unitId('F1')).lines).toEqual(['F1.findings: verified (2 items)']);
+  verifyChecked(run, unitId('F1'), [{ path: 'findings[1]', verdict: 'contradicted', reason: REMOVED_REASON, claim: `Finding > ${ui[categoryKey('error-handling')]} > Creating an order answers that it was created without reading or storing anything.` }]);
 
   run.writeFindings('F2', { ...goodFindings('F2'), findings: [], unknowns: [] });
   expect(run.run('check-findings', unitId('F2')).lines).toEqual(['F2.findings: verified (0 findings)']);
@@ -79,7 +78,7 @@ function outputRun(owner = cleanups) {
   const unfinished = goodFindings('F5');
   unfinished.findings = [{ category: 'authorization', text: UNFINISHED_TEXT, evidence: [{ file: ORDERS_FILE, passage: DELETE_LINE }] }];
   run.writeFindings('F5', unfinished);
-  expect(run.run('check-findings', unitId('F5')).status).toBe(0);
+  expect(run.run('mark', unitId('F5'), 'dispatched').status).toBe(0);
   return run;
 }
 
@@ -113,7 +112,7 @@ describe('the Findings chapter', () => {
     expect(chapter).toContain('- [Unranked] F1 Orders: Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.');
     expect(chapter).toContain('- [Unranked] F1 Orders: The list of orders is always empty, whatever was created.');
     expect(chapter).toContain('- [Unranked] F3 Reminders: The reminder goes out at one fixed time of day for every recipient, whatever their time zone.');
-    // A finding a verifier removed, a unit that failed its check and one that was not verified are not in the chapter.
+    // A finding a verifier removed, a unit that failed its check and one that was not checked are not in the chapter.
     expect(chapter).not.toContain('Creating an order answers that it was created');
     expect(chapter).not.toContain(FAILED_TEXT);
     expect(chapter).not.toContain(UNFINISHED_TEXT);
@@ -126,7 +125,7 @@ describe('the Findings chapter', () => {
     assemble(run, 'product');
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
     const line = chapter.split('\n').find((candidate) => candidate.startsWith('Findings: '));
-    expect(line).toBe(`Findings: 3. Statements: 3. Groups merged: 0. Findings units verified: 3 of 5. System findings units verified: 0 of 1. By category: ${CATEGORY_NAMES.map((name) => `${name}: ${['authorization', 'hard-coded', 'time'].some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}. By priority: P0: 0; P1: 0; P2: 0; Unranked: 3.`);
+    expect(line).toBe(`Findings: 3. Statements: 3. Groups merged: 0. Findings units written: 3 of 5, 0 of them not verified. System findings units written: 0 of 1, 0 of them not verified. By category: ${CATEGORY_NAMES.map((name) => `${name}: ${['authorization', 'hard-coded', 'time'].some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}. By priority: P0: 0; P1: 0; P2: 0; Unranked: 3.`);
     const total = Number(/^Findings: (\d+)\./.exec(line)[1]);
     const groups = chapter.split(/^### /m).slice(1);
     expect(groups.map((group) => group.split('\n').filter((row) => row.startsWith('- ')).length).reduce((sum, n) => sum + n, 0)).toBe(total);
@@ -145,7 +144,7 @@ describe('the Findings chapter', () => {
     assemble(run, 'product');
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
     expect(chapter).toContain(ui['md.findings.none']);
-    expect(chapter).toContain('Findings: 0. Statements: 0. Groups merged: 0. Findings units verified: 0 of 5. System findings units verified: 0 of 1.');
+    expect(chapter).toContain('Findings: 0. Statements: 0. Groups merged: 0. Findings units written: 0 of 5, 0 of them not verified. System findings units written: 0 of 1, 0 of them not verified.');
     expect(chapter).not.toMatch(/^### /m);
   });
 
@@ -174,13 +173,13 @@ describe('the feature section lists the findings of its own feature', () => {
     const run = shared();
     assemble(run, 'product');
     const body = text(run, 'handbook.md');
-    const f1 = section(body, '### Orders');
-    expect(f1).toContain(`#### ${ui['md.findings.heading']}`);
-    const own = f1.slice(f1.indexOf(`#### ${ui['md.findings.heading']}`));
+    const f1 = section(body, '#### Orders');
+    expect(f1).toContain(`##### ${ui['md.findings.heading']}`);
+    const own = f1.slice(f1.indexOf(`##### ${ui['md.findings.heading']}`));
     expect(own).toContain(`- ${ui[categoryKey('authorization')]}: Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.`);
     expect(own).toContain(`- ${ui[categoryKey('hard-coded')]}: The list of orders is always empty, whatever was created.`);
     expect(own.match(/^- /gm)).toHaveLength(2);
-    expect(body).not.toContain('### Reminders');
+    expect(body).not.toContain('#### Reminders');
   });
 
   it('writes the fixed none text when the feature has a verified entry and a verified unit without a finding', () => {
@@ -189,8 +188,8 @@ describe('the feature section lists the findings of its own feature', () => {
     expect(run.run('check-entry', 'F2').status).toBe(0);
     verifyChecked(run, 'F2');
     assemble(run, 'product');
-    const f2 = section(text(run, 'handbook.md'), '### Archive');
-    expect(f2.slice(f2.indexOf(`#### ${ui['md.findings.heading']}`))).toContain(ui['md.none']);
+    const f2 = section(text(run, 'handbook.md'), '#### Archive');
+    expect(f2.slice(f2.indexOf(`##### ${ui['md.findings.heading']}`))).toContain(ui['md.none']);
   });
 });
 
@@ -201,7 +200,7 @@ describe('the coverage section', () => {
     const coverage = section(text(run, 'handbook.md'), `## ${ui['md.coverage.heading']}`);
     const unfinished = section(coverage, `### ${ui['md.coverage.findingsUnfinishedHeading']}`);
     expect(unfinished).toContain(`| Admin tool (F4, Automatic work) | ${ui['md.status.failed']} |`);
-    expect(unfinished).toContain(`| Orders (F5, Automatic work) | ${ui['md.status.checked']} |`);
+    expect(unfinished).toContain(`| Orders (F5, Automatic work) | ${ui['md.status.dispatched']} |`);
     expect(unfinished).not.toContain(ui['md.coverage.findingsNotWritten'].split(' {count}')[0]);
     expect(unfinished).not.toContain('F1,');
     expect(unfinished).not.toContain('F3,');
@@ -240,12 +239,12 @@ describe('findings units never written are one count line, not one row each', ()
     run.writeFindings('F4', failed);
     expect(run.run('check-findings', unitId('F4')).status).toBe(1);
     run.writeFindings('F5', goodFindings('F5'));
-    expect(run.run('check-findings', unitId('F5')).status).toBe(0);
+    expect(run.run('mark', unitId('F5'), 'dispatched').status).toBe(0);
     assemble(run, 'product');
     const part = section(section(text(run, 'handbook.md'), `## ${ui['md.coverage.heading']}`), `### ${ui['md.coverage.findingsUnfinishedHeading']}`);
     expect(part).toContain(NOT_WRITTEN(2));
     expect(part).toContain(`| Admin tool (F4, Automatic work) | ${ui['md.status.failed']} |`);
-    expect(part).toContain(`| Orders (F5, Automatic work) | ${ui['md.status.checked']} |`);
+    expect(part).toContain(`| Orders (F5, Automatic work) | ${ui['md.status.dispatched']} |`);
     expect(part.match(/^\| [^-].*\|$/gm)).toHaveLength(3);
     expect(page(run).status).toBe(0);
     const { coverage } = dataOf(run);
@@ -279,7 +278,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/18');
     expect(data.findings.map((group) => [group.items.map((item) => item.id), group.owners.map((owner) => [owner.kind, owner.id]), group.category])).toEqual([
       [['F1.findings[0]'], [['feature', 'F1']], 'authorization'],
       [['F1.findings[1]'], [['feature', 'F1']], 'hard-coded'],
@@ -300,7 +299,7 @@ describe('the page data', () => {
     expect(page(run, 'product').status).toBe(0);
     const data = dataOf(run);
     expect(data.technical).toBeUndefined();
-    expect(data.coverage.findingsUnfinished).toEqual([{ feature: 'F4', status: 'failed' }, { feature: 'F5', status: 'checked' }]);
+    expect(data.coverage.findingsUnfinished).toEqual([{ feature: 'F4', status: 'failed' }, { feature: 'F5', status: 'dispatched' }]);
     expect(data.coverage.findingsNotWritten).toBe(0);
     expect(data.coverage.findingsRemoved).toEqual([{ feature: 'F1', items: [{ claim: `Finding > ${ui[categoryKey('error-handling')]} > Creating an order answers that it was created without reading or storing anything.`, verdict: 'contradicted', reason: REMOVED_REASON }] }]);
     expect(data.findings).toHaveLength(3);

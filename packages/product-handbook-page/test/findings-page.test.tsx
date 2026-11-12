@@ -25,6 +25,7 @@ import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, Pr
 import { switchTarget } from '../src/lib/views';
 import { choose, cleanup, mount, moveAndConfirm, openWithKeyboard, optionTexts, pressActive, selectByLabel, status } from './dom';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -55,7 +56,8 @@ const FINDINGS: FindingGroup[] = [
 /** F1 and F3 have verified findings, F2 verified with none, F4 failed, F5 planned; one finding of F1 was removed. */
 function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: Remedies = { categories: [], recommendations: [] }, remediesCoverage: PageData['coverage']['remedies'] = { finished: true, stale: false, dropped: [] }): PageData {
   return {
-    format: 'excavator-product-handbook-page/14',
+    format: 'excavator-product-handbook-page/18',
+    chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -64,6 +66,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: R
     areas: [{ id: 'A1', name: d('area') }],
     domains: [{ id: 'D1', name: d('domain') }],
     domainBasis: 'domains',
+    outline: defaultOutline(marked, 'domains'),
     features: [feature('F1', 'planned', 'verified'), feature('F2', 'planned', 'verified'), feature('F3', 'planned', 'verified'), feature('F4', 'planned', 'failed'), feature('F5', 'planned', 'planned')],
     findings,
     remedies,

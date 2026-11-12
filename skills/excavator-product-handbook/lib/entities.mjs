@@ -13,6 +13,9 @@
  *   application whose directory is the longest match of the cited file;
  * - `unattributed`: citations that fall in no application, so none is dropped;
  * - the role by feature matrix: what the entry says the role can do;
+ * - `domains[].relations`: a handoff of a verified entry from a feature of the
+ *   domain to a feature of another domain (`out`), or the other way (`in`);
+ * - `domainFlows`: those handoffs summed per direction between two domains;
  * - `integrations[].shown`: the callers the verified overview lists;
  * - `integrations[].named`: the applications whose source files hold the system
  *   name, with the number of files; `namedOutside` counts such files in no
@@ -40,22 +43,49 @@ export function owningApplication(dirs, file) {
 /** The count of a Map key `a\0b` kept in the order it was first seen. */
 const bump = (counts, key, by = 1) => counts.set(key, (counts.get(key) ?? 0) + by);
 
+/** The `flow` key of a domain row (openspec change handbook-free-chapter, D8), or nothing. */
+function flowOf(flowState, id) {
+  if (flowState.status === 'failed') return { flow: { status: 'failed' } };
+  const model = flowState.status === 'checked' ? flowState.models.get(id) : undefined;
+  return model === undefined ? {} : { flow: { status: 'drawn', nodes: model.nodes, edges: model.edges } };
+}
+
 /**
  * @param {object} input
  * @param {{ areas: object[], roles: object[], features: object[] }} input.map
  * @param {object | null} [input.domains] a domains.json that passed check-domains; null groups by the map's areas
+ * @param {{ status: string, models?: Map<string, object> }} [input.domainFlowState] the state of the domain flow diagrams (domain-flows-check.mjs): `flow` of a domain row is `{ status: 'failed' }` for every domain when it failed, `{ status: 'drawn', nodes, edges }` for a listed domain when it is checked, and absent otherwise
  * @param {Map<string, object>} input.entries the verified entries by unit id
  * @param {object[]} input.candidates candidates.json's items
  * @param {{ notifications: object[], jobs: object[] }} input.summary
  * @param {{ applications: { dir: string, name: string|null, does: string|null }[], overview: { integrations: object[] } | null }} input.system
  * @param {{ sourceFiles: object[] }} input.scan the project scan (applications.mjs)
  */
-export function buildEntities({ map, domains = null, entries, candidates, summary, system, scan }) {
+export function buildEntities({ map, domains = null, domainFlowState = { status: 'none' }, entries, candidates, summary, system, scan }) {
   const applications = system.applications.map(({ dir, name, does }) => ({ dir, name, does }));
   const dirs = applications.map((application) => application.dir);
   const grouping = domainGrouping(map, domains);
   const domainOf = new Map(grouping.groups.flatMap((group) => group.features.map((id) => [id, group.id])));
 
+  // Handoffs of the verified entries that cross from one domain to another (openspec change
+  // handbook-deep-entry, D12), in the order of the map, the operations and the handoffs.
+  const crossings = [];
+  for (const feature of map.features) {
+    // A /2 entry keeps its hand-overs in its operations, a /3 fact sheet (openspec change handbook-free-chapter) at the top level.
+    const entry = entries.get(feature.id);
+    for (const handoff of [...(entry?.operations ?? []).flatMap((operation) => operation.handoffs ?? []), ...(entry?.handoffs ?? [])]) {
+      const from = domainOf.get(feature.id);
+      const to = domainOf.get(handoff.feature);
+      if (from !== undefined && to !== undefined && from !== to) crossings.push({ from: feature.id, to: handoff.feature, text: handoff.text, fromDomain: from, toDomain: to });
+    }
+  }
+  // handbook-domain-page D4: the crossings summed per direction between two domains, in the order they first appear.
+  const domainFlows = [];
+  for (const item of crossings) {
+    const flow = domainFlows.find((entry) => entry.from === item.fromDomain && entry.to === item.toDomain);
+    if (flow === undefined) domainFlows.push({ from: item.fromDomain, to: item.toDomain, count: 1 });
+    else flow.count += 1;
+  }
   const domainRows = grouping.groups.map((group) => ({
     id: group.id,
     name: group.name,
@@ -63,7 +93,27 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
     purposes: group.features
       .filter((id) => entries.get(id)?.purpose !== undefined)
       .map((id) => ({ feature: id, text: entries.get(id).purpose.text })),
+    relations: [
+      ...crossings.filter((item) => item.fromDomain === group.id).map((item) => ({ direction: 'out', domain: item.toDomain, from: item.from, to: item.to, text: item.text })),
+      ...crossings.filter((item) => item.toDomain === group.id).map((item) => ({ direction: 'in', domain: item.fromDomain, from: item.from, to: item.to, text: item.text })),
+    ],
+    ...flowOf(domainFlowState, group.id),
+    // The states and transitions of the domain's verified entries (handbook-domain-page D2).
+    states: group.features.flatMap((id) => (entries.get(id)?.states ?? []).map((state) => ({ feature: id, label: state.label, meaning: state.meaning }))),
+    transitions: group.features.flatMap((id) => (entries.get(id)?.transitions ?? []).map((item) => ({ feature: id, from: item.from, to: item.to, by: item.by }))),
   }));
+  // The files the verified entries of each domain cite, most cited first, then by path (handbook-domain-page D2).
+  const domainFiles = grouping.groups.map((group) => {
+    const counts = new Map();
+    for (const id of group.features) {
+      const entry = entries.get(id);
+      if (entry === undefined) continue;
+      for (const item of entryItems(entry)) for (const citation of item.evidence) bump(counts, citation.file);
+    }
+    const files = [...counts].map(([file, citations]) => ({ file, citations }))
+      .sort((a, b) => b.citations - a.citations || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+    return { domain: group.id, files };
+  });
   const roles = map.roles.map((role) => ({ label: role.label }));
 
   // Citations of each verified feature entry, by application.
@@ -137,6 +187,8 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
   return {
     domainBasis: grouping.basis,
     domains: domainRows,
+    domainFlows,
+    domainFiles,
     roles,
     applications,
     integrations,

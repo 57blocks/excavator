@@ -3,6 +3,7 @@ import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import type { History, PageData, Technical } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
+import { PageTitle } from '../lib/outline';
 
 /** The key of the fixed text of a reason (`not-a-repository` is `notARepository`). */
 const reasonText = (t: Text, reason: string): string => t(`md.history.reason.${reason.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`);
@@ -187,7 +188,7 @@ export function HistoryPage({ data, technical }: { data: PageData; technical: Te
     <article className="page" data-view="history">
       <header className="page-head">
         <p className="eyebrow">{data.project}</p>
-        <h1 className="page-title">{t('md.history.heading')}</h1>
+        <PageTitle fallback={t('md.history.heading')} />
       </header>
       {history.state === 'missing' && <p className="muted" data-part="history-missing">{t('md.history.notWritten')}</p>}
       {history.state === 'malformed' && <p className="muted" data-part="history-malformed">{t('md.history.malformed')}</p>}

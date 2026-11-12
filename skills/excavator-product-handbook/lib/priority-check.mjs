@@ -57,9 +57,9 @@ export function checkPriority(outDir, root) {
   if (context.stop) return context.stop;
   const { run, groups, digest, entry } = context;
   if (groups.length === 0) return { status: 0, lines: ['Priority: no verified findings; nothing to check'] };
-  // A ranking that two judges settled for these groups and whose file is unchanged is not checked again: that would drop what the judges recorded.
+  // A ranking for these groups whose file is unchanged is not checked again: that would drop what the judges of an older run recorded.
   const ranked = new Set((run.priority.doc?.items ?? []).map((item) => item.key));
-  if (run.priority.doc !== null && groups.every((group) => ranked.has(group.key))) return { status: 0, lines: [`${PRIORITY_ID}: verified, unchanged since it was verified`] };
+  if (run.priority.doc !== null && groups.every((group) => ranked.has(group.key))) return { status: 0, lines: [`${PRIORITY_ID}: ${run.priority.status}, unchanged since it was ${run.priority.status}`] };
   const stateRead = loadState(context.outDir);
   if (!stateRead.ok) {
     if (stateRead.missing) throw new UsageError(stateRead.problem);
@@ -109,5 +109,5 @@ export function checkPriority(outDir, root) {
   writeJson(file, { schema: PRIORITY_FORMAT, items: merged });
   setUnitState(state, PRIORITY_ID, { status: 'checked', attempts, groupsDigest: digest, entryDigest: entryDigest(file) });
   saveState(context.outDir, state);
-  return { status: 0, lines: [`${PRIORITY_ID}: checked (${groups.length} groups, ${parts.length} ${parts.length === 1 ? 'part' : 'parts'})`, 'Next: run priority-judge'] };
+  return { status: 0, lines: [`${PRIORITY_ID}: checked (${groups.length} groups, ${parts.length} ${parts.length === 1 ? 'part' : 'parts'})`] };
 }

@@ -6,8 +6,8 @@
  * against the facts. Both outputs build it here, so the handbook and the page
  * cannot differ.
  *
- * The remedies are used only when the unit is verified, its file is still the one
- * the judges saw (load-run) and the facts they were written for are the facts now
+ * The remedies are used only when the unit is checked (final, openspec change
+ * handbook-light-scheme) or verified, its file is still the one that was checked (load-run) and the facts they were written for are the facts now
  * (the digest in the state): otherwise `finished` is false and nothing is written,
  * and the coverage says which of the two it is (`stale`). The paragraphs the judges
  * dropped are listed with their reasons; the recommendations that are kept are
@@ -32,7 +32,7 @@ const groupOf = (row) => ({ key: row.key, level: row.level, category: row.catego
 export function withRemedies(remedies = NONE, facts) {
   const hasGroups = facts.groups.length > 0;
   const current = remedies.doc !== null && remedies.factsDigest === facts.digest;
-  const base = { hasGroups, finished: !hasGroups || current, stale: remedies.doc !== null && !current, categories: [], recommendations: [], dropped: [], groupsCited: 0 };
+  const base = { hasGroups, finished: !hasGroups || current, stale: remedies.doc !== null && !current, ...(remedies.unverified === true && current ? { unverified: true } : {}), categories: [], recommendations: [], dropped: [], groupsCited: 0 };
   if (!current) return base;
   const paragraphs = paragraphsOf(remedies.doc);
   const droppedIds = new Map(remedies.dropped.map((one) => [one.id, one.reasons]));

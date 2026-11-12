@@ -27,8 +27,7 @@ export function priorityItems(outDir, root, part) {
   const { run, groups, digest, entry } = context;
   if (groups.length === 0) return note('no verified findings; nothing to rank');
   const ranked = new Set((run.priority.doc?.items ?? []).map((item) => item.key));
-  if (run.priority.doc !== null && groups.every((group) => ranked.has(group.key))) return note(`verified (${groups.length} groups); nothing to rank`);
-  if (entry.status === 'checked' && entry.groupsDigest === digest) return note('checked; next: run priority-judge');
+  if (run.priority.doc !== null && groups.every((group) => ranked.has(group.key))) return note(`${run.priority.status} (${groups.length} groups); nothing to rank`);
   if (entry.status === 'failed' && entry.attempts >= MAX_ATTEMPTS && entry.groupsDigest === digest) return note(`failed (${MAX_ATTEMPTS} of ${MAX_ATTEMPTS} attempts); the groups stay unranked`);
   const parts = partsOf(groups);
   if (part !== undefined && !(Number.isInteger(part) && part >= 1 && part <= parts.length)) throw new UsageError(`--part must be a number from 1 to ${parts.length}`);

@@ -1,10 +1,9 @@
 /**
  * The entity sections and the matrices of handbook.md (openspec change
  * handbook-entities-and-views, design D2, D3, D4), written from the computed
- * entities (entities.mjs) and the verified entries. Both views have the
- * domains, the roles and the roles-by-feature matrix; the technical view adds
- * the applications, the external systems, the applications-by-domain matrix and
- * the source positions of each item. Every heading, header and note is a fixed
+ * entities (entities.mjs) and the verified entries, one function for each block
+ * the outline places (outline.mjs, render.mjs); the technical view adds the
+ * source positions of each item. Every heading, header and note is a fixed
  * text, and each says only what was checked: the same relation names as the
  * page. Pure and deterministic.
  */
@@ -18,19 +17,76 @@ const featureText = (feature, t) => fill(t('md.summary.feature'), { id: feature.
 
 const bullets = (items, t) => (items.length === 0 ? [t('md.none'), ''] : [...items.map((item) => `- ${inline(item)}`), '']);
 
-function domainsSection({ map, entities, t }) {
-  const verified = new Set(entities.matrices.roleFeature.features);
-  const feature = new Map(map.features.map((item) => [item.id, item]));
-  const out = [`## ${t('md.entities.domains.heading')}`, '', t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), ''];
-  for (const domain of entities.domains) {
-    out.push(`### ${inline(domain.name)}`, '', fill(t('md.entities.domain.counts'), { features: domain.features.length, verified: domain.features.filter((id) => verified.has(id)).length }), '');
-    out.push(`#### ${t('md.entities.domain.whatItDoes')}`, '');
-    out.push(...bullets(domain.purposes.map((item) => fill(t('md.entities.domain.purposeItem'), { feature: featureText(feature.get(item.feature), t), purpose: inline(item.text) })), t));
-  }
-  return out;
+/** A label inside a mermaid node or edge: one line, no double quote. */
+export const label = (text) => inline(text).replace(/"/g, "'").replace(/\s+/g, ' ');
+
+/** A mermaid flowchart, left to right, of nodes (labels) and edges (indexes, with an optional label), in a fenced block. */
+const flowchart = (prefixes, edges) => [
+  '```mermaid',
+  'flowchart LR',
+  ...prefixes.flatMap(([prefix, names]) => names.map((name, at) => `  ${prefix}${at}["${label(name)}"]`)),
+  ...edges.map((edge) => `  ${edge.from} -->${edge.label === undefined ? '' : `|"${label(edge.label)}"|`} ${edge.to}`),
+  '```',
+  '',
+];
+
+/** handbook-domain-page D4: the domains with a flow, and one edge for each flow labelled with its count; a fixed text when there is none. */
+export function flowDiagram(entities, t) {
+  const out = [`### ${t('md.entities.domains.flowHeading')}`, ''];
+  const flows = entities.domainFlows ?? [];
+  if (flows.length === 0) return [...out, t('md.entities.domains.flowNone'), ''];
+  const drawn = entities.domains.filter((domain) => flows.some((flow) => flow.from === domain.id || flow.to === domain.id));
+  const index = new Map(drawn.map((domain, at) => [domain.id, `D${at}`]));
+  return [...out, t('md.entities.domains.flowNote'), '', ...flowchart([['D', drawn.map((domain) => domain.name)]], flows.map((flow) => ({ from: index.get(flow.from), to: index.get(flow.to), label: String(flow.count) })))];
 }
 
-function rolesSection({ map, entities, t }) {
+/** handbook-domain-page D5: the applications and the external systems the verified overview shows them calling; a fixed text when there is none. */
+export function structureDiagram(entities, t) {
+  const out = [`### ${t('md.entities.systems.diagramHeading')}`, ''];
+  const systems = entities.integrations.filter((item) => item.shown.length > 0);
+  if (systems.length === 0) return [...out, t('md.entities.systems.diagramNone'), ''];
+  const applications = [...new Set(systems.flatMap((item) => item.shown))];
+  const edges = systems.flatMap((item) => item.shown.map((caller) => ({ from: `A${applications.indexOf(caller)}`, to: `S${systems.indexOf(item)}` })));
+  return [...out, t('md.entities.systems.diagramNote'), '', ...flowchart([['A', applications], ['S', systems.map((item) => item.system)]], edges)];
+}
+
+/**
+ * The flow diagram of a domain (openspec change handbook-free-chapter, D8) as a mermaid flowchart of the checked nodes and edges, with its note;
+ * the fixed text that it failed its checks when it did, and the fixed none text for a domain with no diagram.
+ */
+function domainFlowLines(domain, t) {
+  const out = [`#### ${t('md.entities.domain.flowHeading')}`, ''];
+  const { flow } = domain;
+  if (flow === undefined) return [...out, t('md.entities.domain.flowNone'), ''];
+  if (flow.status === 'failed') return [...out, t('md.entities.domain.flowFailed'), ''];
+  const index = new Map(flow.nodes.map((node, at) => [node.id, `N${at}`]));
+  return [...out, t('md.entities.domain.flowNote'), '', ...flowchart([['N', flow.nodes.map((node) => node.label)]], flow.edges.map((edge) => ({ from: index.get(edge.from), to: index.get(edge.to), label: edge.text })))];
+}
+
+/**
+ * The domains as the handbook shows them: the notes of the chapter and, for each domain, what it does and its handoffs
+ * to and from other domains (handbook-domain-page D1), from the verified entries only, and, right after what it does, its flow diagram (domain-flows-check.mjs). The business flow diagram is a block of its own.
+ */
+export function domainParts({ map, entities, t }) {
+  const feature = new Map(map.features.map((item) => [item.id, item]));
+  const nameOf = new Map(entities.domains.map((domain) => [domain.id, domain.name]));
+  const intro = [t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), '', t('md.entities.domain.relationsNote'), ''];
+  const each = entities.domains.map((domain) => {
+    const out = [`#### ${t('md.entities.domain.whatItDoes')}`, ''];
+    out.push(...bullets(domain.purposes.map((item) => fill(t('md.entities.domain.purposeItem'), { feature: featureText(feature.get(item.feature), t), purpose: inline(item.text) })), t));
+    out.push(...domainFlowLines(domain, t));
+    out.push(`#### ${t('md.entities.domain.relationsHeading')}`, '');
+    for (const [label, direction] of [['md.entities.domain.gives', 'out'], ['md.entities.domain.gets', 'in']]) {
+      const items = (domain.relations ?? []).filter((item) => item.direction === direction);
+      out.push(t(label), '');
+      out.push(...bullets(items.map((item) => fill(t('md.entities.domain.relationItem'), { from: featureText(feature.get(item.from), t), to: featureText(feature.get(item.to), t), domain: nameOf.get(item.domain), text: item.text })), t));
+    }
+    return { id: domain.id, lines: out };
+  });
+  return { intro, domains: each };
+}
+
+export function rolesSection({ map, entities, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const out = [`## ${t('md.entities.roles.heading')}`, '', t('md.entities.roles.note'), ''];
   for (const role of entities.roles) {
@@ -41,7 +97,7 @@ function rolesSection({ map, entities, t }) {
   return out;
 }
 
-function roleFeatureMatrix({ map, entities, t }) {
+export function roleFeatureMatrix({ map, entities, t }) {
   const { roles, features, cells } = entities.matrices.roleFeature;
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const out = [`## ${t('md.matrix.roleFeature.heading')}`, '', t('md.matrix.roleFeature.note'), ''];
@@ -51,7 +107,7 @@ function roleFeatureMatrix({ map, entities, t }) {
   return out;
 }
 
-function applicationsSection({ map, entities, summary, system, t }) {
+export function applicationsSection({ map, entities, summary, system, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
   const domain = new Map(entities.domains.map((item) => [item.id, item]));
   const reasonOf = new Map(summary.jobs.map((job) => [job.candidate, job.reason]));
@@ -87,7 +143,7 @@ function applicationsSection({ map, entities, summary, system, t }) {
   return out;
 }
 
-function systemsSection({ entities, t }) {
+export function systemsSection({ entities, t }) {
   const out = [`## ${t('md.entities.systems.heading')}`, '', t('md.entities.systems.note'), ''];
   if (entities.integrations.length === 0) out.push(t('md.none'), '');
   for (const item of entities.integrations) {
@@ -99,7 +155,7 @@ function systemsSection({ entities, t }) {
   return out;
 }
 
-function applicationDomainMatrix({ entities, t }) {
+export function applicationDomainMatrix({ entities, t }) {
   const { applications, domains, cells, unattributed } = entities.matrices.applicationDomain;
   const name = new Map(entities.domains.map((item) => [item.id, item.name]));
   const out = [`## ${t('md.matrix.applicationDomain.heading')}`, '', t('md.matrix.applicationDomain.note'), ''];
@@ -108,14 +164,6 @@ function applicationDomainMatrix({ entities, t }) {
   const rows = applications.map((application) => [application, ...domains.map((id) => cellOf(application, id))]);
   rows.push([t('md.matrix.applicationDomain.outside'), ...domains.map((id) => String(unattributed.find((row) => row.domain === id)?.citations ?? ''))]);
   out.push(table([t('md.table.application'), ...domains.map((id) => name.get(id))], rows), '');
-  return out;
-}
-
-/** The entity sections of a view, as lines: between the cross-cutting tables and the coverage section. */
-export function entitySections({ view, map, entities, summary, system, t }) {
-  const input = { map, entities, summary, system, t };
-  const out = [...domainsSection(input), ...rolesSection(input), ...roleFeatureMatrix(input)];
-  if (view === 'technical') out.push(...applicationsSection(input), ...systemsSection(input), ...applicationDomainMatrix(input));
   return out;
 }
 

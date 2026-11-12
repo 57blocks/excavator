@@ -21,7 +21,7 @@ export function buildLocations(run, root) {
   return ids.map((id) => {
     const entry = entries.get(id);
     const unit = unitFor(id);
-    const claims = unit.claims(entry, ui);
+    const claims = unit.claims(entry, ui, { map });
     const items = unit.items(entry)
       .filter((item) => item.evidence.length > 0)
       .map((item) => ({
@@ -31,6 +31,10 @@ export function buildLocations(run, root) {
           return { file: citation.file, startLine: found?.startLine ?? null, endLine: found?.endLine ?? null };
         }),
       }));
+    // The items of a checked /3 entry's chapter (openspec change handbook-free-chapter) carry the lines their citations name.
+    for (const item of run.chapters?.get(id)?.items ?? []) {
+      items.push({ claim: item.claim, citations: item.cites.map((cite) => ({ file: cite.file, startLine: cite.lines[0], endLine: cite.lines[1] })) });
+    }
     return { id, items };
   });
 }

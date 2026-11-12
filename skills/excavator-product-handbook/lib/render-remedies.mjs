@@ -56,6 +56,7 @@ export function recommendationsChapter({ findings, remedies, view, t }) {
   if (!remedies.hasGroups) return [];
   const { recommendations } = remedies;
   const out = [`## ${t('md.remedies.heading')}`, '', t('md.remedies.note'), ''];
+  if (remedies.unverified === true) out.push(inline(t('md.remedies.unverified')), '');
   if (recommendations.length === 0) return [...out, t('md.remedies.none'), ''];
   out.push(fill(t('md.remedies.counts'), { count: recommendations.length, groups: remedies.groupsCited, total: findings.groups.length }), '');
   for (const recommendation of recommendations) {
@@ -78,6 +79,7 @@ export function recommendationsChapter({ findings, remedies, view, t }) {
 export function remediesCoverage({ remedies, t }) {
   const out = [`### ${t('md.coverage.remediesHeading')}`, ''];
   if (!remedies.hasGroups) return [...out, t('md.none'), ''];
+  if (remedies.unverified === true) out.push(t('md.coverage.remediesUnverified'), '');
   if (!remedies.finished) return [...out, t(remedies.stale ? 'md.coverage.remediesStale' : 'md.coverage.remediesNotFinished'), ''];
   if (remedies.dropped.length === 0) return [...out, t('md.coverage.remediesAllKept'), ''];
   const rows = remedies.dropped.map((paragraph) => [

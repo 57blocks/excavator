@@ -45,6 +45,9 @@ export function fill(template, values = {}) {
   });
 }
 
+/** The word lists whose entries are matched inside text: a one-character word of a script without spaces matches inside longer words. */
+const SINGLE_CHAR_WORD_KEYS = ['md.findings.adviceWords', 'md.findings.scopeWords'];
+
 /** Every way `table` departs from the English table; each line starts with `ui.json:`. */
 export function uiProblems(table, english) {
   const top = shapeProblems(table, objectOf({ format: literal(UI_FORMAT), language: nonEmptyString, strings: { type: 'object', required: {}, optional: {} } }));
@@ -63,6 +66,11 @@ export function uiProblems(table, english) {
     if (typeof value !== 'string' || value.trim() === '') {
       problems.push(`${UI_FILE}: ${key}: the value must be a non-empty string`);
       continue;
+    }
+    if (SINGLE_CHAR_WORD_KEYS.includes(key)) {
+      for (const word of value.split(',').map((item) => item.trim())) {
+        if (/[^\x00-\x7F]/.test(word) && [...word].length === 1) problems.push(`${UI_FILE}: ${key}: "${word}" is a single character; in a script without spaces it matches inside longer words, write words of two or more characters`);
+      }
     }
     const want = placeholders(english.strings[key]);
     const have = placeholders(value);

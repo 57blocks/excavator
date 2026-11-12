@@ -14,6 +14,7 @@ import { parseHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { PageData, Summary, System, Technical } from '../src/lib/types';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
+import { defaultOutline } from './outline-fixture';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -51,6 +52,7 @@ const technical: Technical = {
 
 const dataFor = (project: string | null): PageData => ({
   format: PAGE_FORMAT,
+  chunks: { parts: [], units: {} },
   project,
   language: d('language'),
   languageTag: 'xx',
@@ -59,6 +61,7 @@ const dataFor = (project: string | null): PageData => ({
   areas: [],
   domains: [],
   domainBasis: 'areas',
+  outline: defaultOutline(marked, 'areas'),
   features: [],
   findings: [],
   remedies: { categories: [], recommendations: [] },
@@ -84,7 +87,7 @@ const HASHES = ['#/product', '#/product/coverage', '#/product/notifications', '#
 
 describe('the page data format', () => {
   it('is version 10: the project is the system name or null, the findings are groups', () => {
-    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/14');
+    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/18');
   });
 });
 

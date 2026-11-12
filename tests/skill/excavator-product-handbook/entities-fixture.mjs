@@ -42,13 +42,14 @@ export const ev = (file, passage) => ({ file, passage });
 /** A verified entry with the given `who` items and citations on a purpose and on one state. */
 export function entryOf({ purpose, who = [], cites = [] }) {
   return {
-    format: 'excavator-product-handbook-entry/1',
+    format: 'excavator-product-handbook-entry/2',
     id: 'X',
     ...(purpose === undefined ? {} : { purpose: { text: purpose, evidence: [cites[0] ?? ev('svc/routes.js', 'export const routes = 1;')] } }),
     who: who.map(({ role, can, at }) => ({ role, can, evidence: [at] })),
     where: [],
     screens: [],
     operations: [],
+    transitions: [],
     states: cites.slice(1).map((citation, index) => ({ label: `S${index}`, meaning: 'm', evidence: [citation] })),
     notifications: [],
     automatic: [],

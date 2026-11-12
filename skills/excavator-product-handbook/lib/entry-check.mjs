@@ -17,12 +17,20 @@
  * `app<n>.system`, openspec change handbook-system-findings) are checked the
  * same way with the application's context (system-unit.mjs); an application with
  * no seed file has its empty file written here and is verified at once.
+ * A /3 entry (the fact sheet, openspec change handbook-free-chapter) is checked
+ * together with its chapter, chapters/<id>.md: either failing fails the entry with
+ * every line of both, and the checked state keeps the chapter's items with the
+ * text of the lines each citation names (`chapter: { items, notes }`), so a later step can
+ * tell that the source changed since.
  */
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
+import { countsLine, notesLine } from './chapter-check.mjs';
+import { checkChapterFile } from './chapter-file.mjs';
+import { ENTRY_FORMAT_V3 } from './entry-shape.mjs';
 import { UsageError } from './errors.mjs';
 import { adviceWordsOf } from './findings-check.mjs';
 import { readJson } from './json-file.mjs';
@@ -43,8 +51,23 @@ export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files 
   const read = readJson(file);
   if (read.missing) return { step: 'lane', problems: [`${id}: lane-wrote-nothing: ${entryPath(id)} is missing`] };
   if (!read.ok) return { step: 'check-entry', problems: [`${entryPath(id)} ${read.reason}`] };
-  return { step: 'check-entry', problems: unitFor(id).problems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck, adviceWords, system }, { settled }) };
+  const unit = unitFor(id);
+  const problems = unit.problems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck, adviceWords, system }, { settled });
+  if (unit.kind !== 'feature' || read.value?.format !== ENTRY_FORMAT_V3) return { step: 'check-entry', problems };
+  const chapter = checkChapterFile(outDir, id, { files, memberDirs, languageCheck });
+  return {
+    step: 'check-entry',
+    problems: [...problems, ...chapter.problems],
+    chapter: chapter.problems.length === 0 ? { items: chapter.items, notes: chapter.notes } : undefined,
+    chapterLines: chapter.counts === null ? undefined : [countsLine(chapter.counts), ...chapter.noteLines, notesLine(chapter.notes)],
+  };
 }
+
+/** The success lines of an entry: its state word, and the chapter's counts and notes for a /3 entry. */
+const okLines = (head, result) => (result.chapterLines === undefined ? [head] : [head, ...result.chapterLines]);
+
+/** The chapter of a checked /3 entry, as the state keeps it. */
+const chapterState = (result) => (result.chapter === undefined ? {} : { chapter: result.chapter });
 
 /** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
 export function loadForEntry(outDir, id, root) {
@@ -112,9 +135,9 @@ export function checkEntry(outDir, id, root) {
   }
   if (result.problems.length === 0) {
     // A feature waiting for its one rewrite stays so; anything else starts over as checked (a verified one is no longer verified).
-    setUnitState(state, id, current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true, ...kept } : { status: 'checked', attempts: current.attempts });
+    setUnitState(state, id, current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true, ...kept, ...chapterState(result) } : { status: 'checked', attempts: current.attempts, ...chapterState(result) });
     saveState(outDir, state);
-    return { status: 0, lines: [`${id}: checked`] };
+    return { status: 0, lines: okLines(`${id}: checked`, result) };
   }
   if (current.rewriting) {
     // The one rewrite (design D14) did not pass: there is no second one.
@@ -136,6 +159,6 @@ export function tryEntry(outDir, id, root) {
   const loaded = loadForEntry(outDir, id, root);
   if (loaded.stop) return loaded.stop;
   const result = checkEntryFile(outDir, id, root, loaded);
-  if (result.problems.length === 0) return { status: 0, lines: [`${id}: ok`] };
+  if (result.problems.length === 0) return { status: 0, lines: okLines(`${id}: ok`, result) };
   return { status: 1, lines: [...result.problems, `Next: fix each line above in ${entryPath(id)} and run ${unitFor(id).tryCommand} again`] };
 }

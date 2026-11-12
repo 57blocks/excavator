@@ -123,7 +123,7 @@ function applicationRows(listed, context) {
   return rows;
 }
 
-/** One row per group of features: its features, its features with a verified entry, and the roles those entries name, in the order of the map's roles. */
+/** One row per group of features: its features, its features with an entry (`verified` keeps its name for the page data; a light-scheme entry counts, openspec change handbook-run-precision), and the roles those entries name, in the order of the map's roles. */
 function groupRows(groups, map, entries) {
   return groups.map((group) => {
     const written = group.features.filter((id) => entries.has(id));
