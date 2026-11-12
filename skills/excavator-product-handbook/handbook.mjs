@@ -144,10 +144,9 @@
  *       for the findings of a feature and `app<n>.system` for the system
  *       findings of an application root.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data, history, architecture, findings, system-findings, priority, remedies, topics, outline; default all) and print
- *       SECTIONS=<list>, one READ=<file> line per phase file the run reads,
- *       in reading order, the shared map file once, and an AFTER_TRACE=<file> line
- *       for a section whose phase runs after the trace (priority, remedies, topics, outline); exit 1 for a
+ *       Validate a --sections list (system, features, data, history, domains, roles, notifications, topics, findings, remedies, outline;
+ *       default all) and print SECTIONS=<list> and one READ=<file> line per phase file the run reads,
+ *       in reading order, the shared map file and the cross chapters' file once each; exit 1 for a
  *       value that is not a section. Reads and changes no file.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
@@ -263,13 +262,11 @@ Commands:
       not an application root exits 1: print each such item, then every root as
       "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, history, architecture, findings, system-findings, priority, remedies, topics, outline; empty
-      or absent is all) and print "SECTIONS=<the sections in fixed order>",
+      Validate the --sections list (comma-separated: system, features, data, history, domains, roles, notifications, topics,
+      findings, remedies, outline; empty or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
-      directory, in reading order: the stage files first (the map file once),
-      then each section's file. The file of a section whose phase runs after the
-      written sections (priority, remedies, topics, outline) is printed as "AFTER_TRACE=<path>" instead: it is read when
-      the phases of the READ= files are done. A value that is not a section exits 1 and the
+      directory, in reading order: the map stage file first, once, then each
+      section's file, once (the six cross chapters share one). A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"

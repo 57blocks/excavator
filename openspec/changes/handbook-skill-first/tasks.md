@@ -10,7 +10,7 @@
 
 ## 1. 收尾检查与状态 v2
 
-- [ ] 1.1 先写红测试，覆盖 design O1 与 O2：
+- [x] 1.1 先写红测试，覆盖 design O1 与 O2：
   - 越界行号；
   - 跨度 81 行；
   - 排除目录里的路径；
@@ -21,29 +21,29 @@
   - 版式：5 句的段落（引文里的点不计）、没有列表与表格的功能章节、第一行不是图类型的 mermaid；
   - 运行前后章节文件逐字节相同；
   - `--before cross` 缺章与齐全两种情形。
-- [ ] 1.2 实现 `check <out> [<chapter>...] [--before cross] --project <root>`，复用读者文字、禁词与路径判定；把每章的 `status`、`attempts`、`reasons` 写进 `state.json`，格式串 `excavator-product-handbook-state/2`。
+- [x] 1.2 实现 `check <out> [<chapter>...] [--before cross] --project <root>`，复用读者文字、禁词与路径判定；把每章的 `status`、`attempts`、`reasons` 写进 `state.json`，格式串 `excavator-product-handbook-state/2`。
   - **验证：** 1.1 全绿。
-- [ ] 1.3 `--fresh` 与续跑认得 `/1` 与 `/2` 两种格式串，遇到 `/1` 时提示用 `--fresh`。
+- [x] 1.3 `--fresh` 与续跑认得 `/1` 与 `/2` 两种格式串，遇到 `/1` 时提示用 `--fresh`。
   - **验证：** 两种格式串各一个测试。
 
 ## 2. 写作阶段的文字
 
-- [ ] 2.1 固定文字表新增 `chapter.openQuestions`、`chapter.problems`、`chapter.none`、`chapter.notVerified`、`chapter.notPassed`（`check` 要用，随第 1 组提交）。
+- [x] 2.1 固定文字表新增 `chapter.openQuestions`、`chapter.problems`、`chapter.none`、`chapter.notVerified`、`chapter.notPassed`（`check` 要用，随第 1 组提交）。
   - **验证：** `check-ui` 的测试认这五个键。
-- [ ] 2.2 重写 `sections/features.md`：
+- [x] 2.2 重写 `sections/features.md`：
   - 以试验提示词为骨架，并入 design D5 列出的内容要求；
   - 写明版式：节序、段落不超过 4 句、表格与列表、流程图与状态图（design D5a）；
   - 问题一节沿用类别表；
   - 派发、检查、重派一次、第二次不通过就保留的流程，只用 `check`。
   - **验证：** 文字里不出现 `entries/`、`try-entry`、`check-entry`、`findings.json`。
-- [ ] 2.3 重写 `sections/system.md`，由一个子代理写 `chapters/system.md`，内容按 spec「系统章节」。
+- [x] 2.3 重写 `sections/system.md`，由一个子代理写 `chapters/system.md`，内容按 spec「系统章节」。
   - **验证：** 同上的禁词扫描。
-- [ ] 2.4 新写 `sections/cross.md`，含领域、角色、通知与定时任务、横切主题、发现、对策 6 个阶段，各一份提示词，只读 `chapters/`、照抄引文组；先跑 `check --before cross`；级别标准按 design D6。
+- [x] 2.4 新写 `sections/cross.md`，含领域、角色、通知与定时任务、横切主题、发现、对策 6 个阶段，各一份提示词，只读 `chapters/`、照抄引文组；先跑 `check --before cross`；级别标准按 design D6。
   - **验证：** 提示词里没有项目根路径变量。
-- [ ] 2.5 重写 `stages/outline.md`：编排者写 `outline.json`，按章节文件守恒。
+- [x] 2.5 重写 `stages/outline.md`：编排者写 `outline.json`，按章节文件守恒。
   - **验证：** 目录守恒的红绿测试（并入 3.1）。
-- [ ] 2.6 精简 `stages/map.md`，只留地图与守恒，删去领域文件那一段；精简 `sections/data.md`、`sections/history.md` 里对旧状态的引用。
-- [ ] 2.7 重写 `SKILL.md`：规则、分工表、文件表、选项（`--sections` 的新名单，沿用 `--features`、`--language` 默认英文、`--fresh`）、Phase 0 到 2 与拼装阶段；只写了部分功能时跳过跨功能各章、直接拼装并说明缺几章（design D5b）。
+- [x] 2.6 精简 `stages/map.md`，只留地图与守恒，删去领域文件那一段；精简 `sections/data.md`、`sections/history.md` 里对旧状态的引用。
+- [x] 2.7 重写 `SKILL.md`：规则、分工表、文件表、选项（`--sections` 的新名单，沿用 `--features`、`--language` 默认英文、`--fresh`）、Phase 0 到 2 与拼装阶段；只写了部分功能时跳过跨功能各章、直接拼装并说明缺几章（design D5b）。
   - **验证：** 命令名与 `handbook.mjs` 的命令表一致（合约测试在 5.2）。
 
 ## 3. 拼装与回复

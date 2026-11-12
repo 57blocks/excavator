@@ -1,4 +1,4 @@
-## Phase 4e: History
+## Phase 7: History
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
