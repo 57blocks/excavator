@@ -59,7 +59,7 @@ describe('the phase files', () => {
   });
 
   it('name none of the structured files and commands of the earlier version', () => {
-    const removed = [/entries\/<id>\.json/, /entries\/overview\.json/, /\.findings\.json/, /findings\.json/, /domains\.json/, /architecture\.json/, /priority\//, /topics\//, /\btry-[a-z]/, /check-(entry|findings|overview|priority|remedies|topics|domains|domain-flows|outline|architecture|chapter|system-findings)\b/, /\bmark "\$OUT"/, /AFTER_TRACE/, /outline-facts/];
+    const removed = [/entries\/<id>\.json/, /entries\/overview\.json/, /\.findings\.json/, /findings\.json/, /architecture\.json/, /priority\//, /topics\//, /\btry-[a-z]/, /check-(entry|findings|overview|priority|remedies|topics|domains|domain-flows|outline|architecture|chapter|system-findings)\b/, /\bmark "\$OUT"/, /AFTER_TRACE/, /outline-facts/];
     for (const [file, text] of Object.entries(TEXT)) for (const pattern of removed) expect(text, `${file} ${pattern}`).not.toMatch(pattern);
   });
 });
@@ -128,6 +128,16 @@ describe('the dispatches', () => {
     const text = TEXT['sections/cross.md'];
     expect(text).toContain('check "$OUT" --before cross');
     for (const name of ['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies']) expect(text).toContain(`**${name}** (\`$OUT/chapters/${name}.md\`)`);
+  });
+
+  it('the domains writer also writes domains.json, and a passed domains record without json is written again', () => {
+    const text = TEXT['sections/cross.md'];
+    const block = text.slice(text.indexOf('**domains** ('), text.indexOf('**roles** ('));
+    expect(block).toContain('$OUT/domains.json');
+    for (const key of ['"domains"', '"handovers"', '"from"', '"to"', '"what"', '"cites"', '"features"']) expect(block).toContain(key);
+    expect(block).toMatch(/--no-record/);
+    expect(text).toMatch(/`passed` but has no `json` field/);
+    expect(text).toMatch(/Write only the file or files named below/);
   });
 
   it('the three citation prompts name the full-width parentheses of a language written with them', () => {

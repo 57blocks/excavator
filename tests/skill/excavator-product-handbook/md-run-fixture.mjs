@@ -41,7 +41,14 @@ export function newMdRun(chapters = {}, { check = true } = {}) {
   run.check = (...args) => run.run('check', ...args);
   run.assemble = (...args) => run.run('assemble', ...args);
   run.reply = (...args) => run.run('reply', ...args);
+  // A domains.json that passes `check domains` for the chapter as written: its first level-2 heading holds every feature.
+  run.writeDomainsList = () => {
+    const first = /^## (.+)$/m.exec(readFileSync(join(run.out, 'chapters', 'domains.md'), 'utf-8'));
+    const value = { domains: [{ name: first[1].trim(), features: run.map.features.map((feature) => feature.id) }], handovers: [] };
+    writeFileSync(join(run.out, 'domains.json'), `${JSON.stringify(value, null, 2)}\n`);
+  };
   for (const [name, text] of Object.entries(chapters)) run.write(name, text);
+  if (chapters.domains !== undefined) run.writeDomainsList();
   if (check && Object.keys(chapters).length > 0) run.check();
   return run;
 }

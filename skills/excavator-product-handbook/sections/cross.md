@@ -17,7 +17,7 @@ Six chapters look across the features: `domains`, `roles`, `notifications`, `top
    ```bash
    jq -r --arg n "<name>" '(.chapters[$n] // {status: "none", attempts: 0}) | [$n, .status, .attempts] | @tsv' "$OUT/state.json"
    ```
-   Treat each as Phase 5 step 1 treats a feature: `passed` or `failed` with attempts 2 is done; a file with no record is checked first; `failed` with attempts 1 is written once more with its recorded reasons; no file and no record is written. `remedies` needs `chapters/defects.md`: when it is not there after the defects chapter's turn, skip `remedies` and tell the user why.
+   Treat each as Phase 5 step 1 treats a feature: `passed` or `failed` with attempts 2 is done; a file with no record is checked first; `failed` with attempts 1 is written once more with its recorded reasons; no file and no record is written. A `domains` record that is `passed` but has no `json` field (the digest of `domains.json`, which an older run never recorded) counts as still to write: delete `$OUT/chapters/domains.md` and write it again, with `domains.json`. `remedies` needs `chapters/defects.md`: when it is not there after the defects chapter's turn, skip `remedies` and tell the user why.
 
 3. Dispatch in two rounds, each writer an `excavator-handbook-writer` subagent in the foreground: first `domains`, `roles`, `notifications` and `topics`, at most `$CONCURRENCY` in one message; then `defects`; then `remedies`. The prompt of each is the block **Every cross chapter** followed by the block of that chapter. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OPEN_QUESTIONS`, `$PROBLEMS` and `$NONE` as their values; never give a writer of this phase the project's path in any other way.
 
@@ -26,7 +26,7 @@ Six chapters look across the features: `domains`, `roles`, `notifications`, `top
 **Every cross chapter.**
 
 ````text
-You write one chapter of a product handbook for readers who do not read code. The handbook's other chapters are already written, in `$OUT/chapters/`: `system.md` for the system as a whole and one `F<n>.md` for each feature. You read only those chapters (and, for the remedies, the one file named below); you never open, search or read the project's code or any other file. Write only the file named below, in Markdown in $LANGUAGE, and nothing else anywhere.
+You write one chapter of a product handbook for readers who do not read code. The handbook's other chapters are already written, in `$OUT/chapters/`: `system.md` for the system as a whole and one `F<n>.md` for each feature. You read only those chapters (and, for the remedies, the one file named below); you never open, search or read the project's code or any other file. Write only the file or files named below, the chapter in Markdown in $LANGUAGE, and nothing else anywhere.
 
 **Read what you need, not everything.** List the chapters with `ls "$OUT/chapters"`. Find what concerns your chapter with `grep -n` over them, and read the line ranges you need with `sed -n '<a>,<b>p'`. Every chapter ends with the sections `## $OPEN_QUESTIONS` and `## $PROBLEMS`; this prints one section of every feature chapter, each line prefixed with its chapter:
 `for f in "$OUT"/chapters/F*.md; do awk -v h="## $PROBLEMS" -v id="$(basename "$f" .md)" 'index($0, "## ") == 1 { on = ($0 == h) } on { print id ": " $0 }' "$f"; done`
@@ -46,6 +46,22 @@ Reply with one line: `<your chapter's name>: written`.
 
 ````text
 Your chapter is `domains`: the business domains of the product. Group the features into the domains a reader of this product would name (from the menus, the screens and the words the chapters use), each feature in exactly one domain. For each domain: a level-2 heading with its name; one or two sentences on what it is for; a table of its features (name with id, what it is for, who uses it); the hand-overs between its features and to features of other domains, as a list; and, when it has a main line of work that crosses 3 or more features or states, a mermaid `flowchart LR` of that line followed by its numbered steps. Start the chapter with a short list of the domains and a mermaid `flowchart LR` of the hand-overs between domains. Give no advice and no judgment.
+
+You also write `$OUT/domains.json`, from what you wrote in the chapter only, in this exact shape:
+
+```json
+{ "domains": [{ "name": "<the text of a level-2 heading of the chapter>", "features": ["F1"] }],
+  "handovers": [{ "from": "<domain name>", "to": "<domain name>", "what": "<one reader sentence>", "cites": ["<path>:<a>-<b>"] }] }
+```
+
+Rules, all checked by the script:
+- `domains`: one entry per domain, in the chapter's order; `name` is exactly the text of that domain's level-2 heading; `features` are the feature ids of its table. Every feature id of the map is in exactly one domain, and no id outside the map appears.
+- `handovers`: only hand-overs between two different domains, one entry for each; a hand-over inside one domain stays in the chapter and is not listed. `from` and `to` are listed domain names; no two entries have the same `from`, `to` and `what`.
+- `what` is plain reader text in $LANGUAGE: no backtick and no citation group; a feature is written as its name with its id in parentheses, for example "Leave requests (F12)".
+- `cites` has at least one entry, each a citation `<path>:<a>-<b>` (1 <= a <= b) copied exactly from the chapter line of that hand-over; never a citation that is not in the chapter.
+- No other keys anywhere.
+
+Your check (the `--no-record` command above) also prints the reasons of `domains.json`; fix both files for every reason, within the same limit of 4 runs.
 ````
 
 **roles** (`$OUT/chapters/roles.md`):
