@@ -160,8 +160,8 @@ describe('G: advice words', () => {
   });
   it('another cross chapter may not', () => {
     const run = newRun();
-    run.write('findings', `# Findings\n\nWe recommend a change (${c('5')}).\n`);
-    expect(run.check('findings').stdout).toMatch(/"recommend" is a word of advice/);
+    run.write('defects', `# Defects\n\nWe recommend a change (${c('5')}).\n`);
+    expect(run.check('defects').stdout).toMatch(/"recommend" is a word of advice/);
   });
 });
 

@@ -23,7 +23,7 @@ const TABLE = Object.freeze([
   Object.freeze({ id: 'roles', stages: MAP, file: CROSS }),
   Object.freeze({ id: 'notifications', stages: MAP, file: CROSS }),
   Object.freeze({ id: 'topics', stages: MAP, file: CROSS }),
-  Object.freeze({ id: 'findings', stages: MAP, file: CROSS }),
+  Object.freeze({ id: 'defects', stages: MAP, file: CROSS }),
   Object.freeze({ id: 'remedies', stages: MAP, file: CROSS }),
   Object.freeze({ id: 'outline', stages: MAP, file: 'stages/outline.md' }),
 ]);

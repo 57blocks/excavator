@@ -2,7 +2,7 @@
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-One writer subagent per feature reads the feature's code once and writes one Markdown chapter, `$OUT/chapters/<id>.md`, with its open questions and its problems in it. Nothing else is written for a feature: no fact sheet, no findings file. The script checks each chapter once it is written, with `check`; a chapter that fails is written again once, with the reasons, and a chapter that fails twice stays as it is and is marked in the handbook as not passing.
+One writer subagent per feature reads the feature's code once and writes one Markdown chapter, `$OUT/chapters/<id>.md`, with its open questions and its problems in it. Nothing else is written for a feature: no fact sheet, no separate defects file. The script checks each chapter once it is written, with `check`; a chapter that fails is written again once, with the reasons, and a chapter that fails twice stays as it is and is marked in the handbook as not passing.
 
 1. List the features this run writes and what each needs. `<ids>` is `$SELECTED` space-separated, or empty without `--features`:
    ```bash

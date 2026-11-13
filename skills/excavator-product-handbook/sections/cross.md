@@ -2,7 +2,7 @@
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-Six chapters look across the features: `domains`, `roles`, `notifications`, `topics`, `findings` and `remedies`. Each is written by one writer subagent that reads only the chapters already in `$OUT/chapters/`, never the project's code, and copies into each statement the citation group of the chapter line it rests on. The script checks them with the same `check` as every chapter. Only the sections of `$SECTIONS` among these six are written.
+Six chapters look across the features: `domains`, `roles`, `notifications`, `topics`, `defects` and `remedies`. Each is written by one writer subagent that reads only the chapters already in `$OUT/chapters/`, never the project's code, and copies into each statement the citation group of the chapter line it rests on. The script checks them with the same `check` as every chapter. Only the sections of `$SECTIONS` among these six are written.
 
 1. Make sure every feature has its chapter:
    ```bash
@@ -17,9 +17,9 @@ Six chapters look across the features: `domains`, `roles`, `notifications`, `top
    ```bash
    jq -r --arg n "<name>" '(.chapters[$n] // {status: "none", attempts: 0}) | [$n, .status, .attempts] | @tsv' "$OUT/state.json"
    ```
-   Treat each as Phase 5 step 1 treats a feature: `passed` or `failed` with attempts 2 is done; a file with no record is checked first; `failed` with attempts 1 is written once more with its recorded reasons; no file and no record is written. `remedies` needs `chapters/findings.md`: when it is not there after the findings chapter's turn, skip `remedies` and tell the user why.
+   Treat each as Phase 5 step 1 treats a feature: `passed` or `failed` with attempts 2 is done; a file with no record is checked first; `failed` with attempts 1 is written once more with its recorded reasons; no file and no record is written. `remedies` needs `chapters/defects.md`: when it is not there after the defects chapter's turn, skip `remedies` and tell the user why.
 
-3. Dispatch in two rounds, each writer an `excavator-handbook-writer` subagent in the foreground: first `domains`, `roles`, `notifications` and `topics`, at most `$CONCURRENCY` in one message; then `findings`; then `remedies`. The prompt of each is the block **Every cross chapter** followed by the block of that chapter. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OPEN_QUESTIONS`, `$PROBLEMS` and `$NONE` as their values; never give a writer of this phase the project's path in any other way.
+3. Dispatch in two rounds, each writer an `excavator-handbook-writer` subagent in the foreground: first `domains`, `roles`, `notifications` and `topics`, at most `$CONCURRENCY` in one message; then `defects`; then `remedies`. The prompt of each is the block **Every cross chapter** followed by the block of that chapter. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OPEN_QUESTIONS`, `$PROBLEMS` and `$NONE` as their values; never give a writer of this phase the project's path in any other way.
 
 4. As each returns, check it with `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check "$OUT" <name> --project "$PROJECT_ROOT"` and follow the result exactly as Phase 5 step 3 says. Then tell the user `Chapter <name>: <status>`, in `$LANGUAGE`.
 
@@ -66,23 +66,23 @@ Your chapter is `notifications`: every notification and every scheduled or backg
 Your chapter is `topics`: questions that cross features, each under its own level-2 heading, in this order, written in $LANGUAGE: approval routes (who approves what, in which order, per feature); calendars, dates and time zones (how each feature counts days, terms and deadlines, and where two features count differently); data shared between domains (which feature writes what another reads); access (how each feature decides who may see and act, and where two decide differently); the same problem in several places (a defect the `$PROBLEMS` sections of two or more chapters describe in the same way). Leave out a heading the chapters give nothing for. Use tables where items share attributes. Give no advice and no judgment.
 ````
 
-**findings** (`$OUT/chapters/findings.md`):
+**defects** (`$OUT/chapters/defects.md`):
 
 ````text
-Your chapter is `findings`: every defect the `$PROBLEMS` sections of the chapters list, in one place, each with a level. Read the `$PROBLEMS` section of `system.md` and of every feature chapter (the command above prints them). Merge items that describe the same defect in the same code: one finding, every feature it appears in, the citations of each. Do not drop an item: every item of every `$PROBLEMS` section is in exactly one finding.
+Your chapter is `defects`: every defect the `$PROBLEMS` sections of the chapters list, in one place, each with a level. Read the `$PROBLEMS` section of `system.md` and of every feature chapter (the command above prints them). Merge items that describe the same defect in the same code: one defect, every feature it appears in, the citations of each. Do not drop an item: every item of every `$PROBLEMS` section is in exactly one defect.
 
-Give each finding one level, by these fixed rules and nothing else:
+Give each defect one level, by these fixed rules and nothing else:
 - `P0`: a reader can make it leak data to someone who may not see it, compute or move money wrongly, or act beyond their permission;
 - `P1`: a reader meets wrong behavior in normal use;
 - `P2`: everything else.
 
-Write a level-2 heading per level, `P0`, `P1` and `P2`, in that order; under each, one list item per finding: its category in bold, the defect and the situation in which it happens, the features it appears in (names with ids), one sentence on why it has this level, and the copied citations. Start the chapter with a table of the counts per level and category, and one sentence saying that the levels follow the fixed rules above. A level with no finding has the one line `$NONE`. Say what the code does; give no advice: no "should", "fix", "recommend" or their equivalents in $LANGUAGE.
+Write a level-2 heading per level, `P0`, `P1` and `P2`, in that order; under each, one list item per defect: its category in bold, the defect and the situation in which it happens, the features it appears in (names with ids), one sentence on why it has this level, and the copied citations. Start the chapter with a table of the counts per level and category, and one sentence saying that the levels follow the fixed rules above. A level with no defect has the one line `$NONE`. Say what the code does; give no advice: no "should", "fix", "recommend" or their equivalents in $LANGUAGE.
 ````
 
 **remedies** (`$OUT/chapters/remedies.md`):
 
 ````text
-Your chapter is `remedies`, the only chapter of the handbook that gives advice. Read `$OUT/chapters/findings.md`, and the code health facts in `$OUT/entries/history.json` when that file exists (the files that change most and the files changed together); read no other chapter unless a finding sends you to it.
+Your chapter is `remedies`, the only chapter of the handbook that gives advice. Read `$OUT/chapters/defects.md`, and the code health facts in `$OUT/entries/history.json` when that file exists (the files that change most and the files changed together); read no other chapter unless a defect sends you to it.
 
-For each category that has findings, a level-2 heading with: the common cause the findings of that category share, in one or two sentences, each with the citations copied from the findings it rests on; and the measure that would remove that cause, as a list. Then a level-2 heading for the recommendations: 1 to 10 numbered items, most urgent first, each saying what to do, which findings it addresses (by level and feature) and the copied citations of those findings. A statement about the product as it is today must rest on copied citations; a recommendation rests on the findings it names. Use the code health facts only to order the recommendations and to say where a measure applies; never quote a figure from them, since they cannot be cited.
+For each category that has defects, a level-2 heading with: the common cause the defects of that category share, in one or two sentences, each with the citations copied from the defects it rests on; and the measure that would remove that cause, as a list. Then a level-2 heading for the recommendations: 1 to 10 numbered items, most urgent first, each saying what to do, which defects it addresses (by level and feature) and the copied citations of those defects. A statement about the product as it is today must rest on copied citations; a recommendation rests on the defects it names. Use the code health facts only to order the recommendations and to say where a measure applies; never quote a figure from them, since they cannot be cited.
 ````

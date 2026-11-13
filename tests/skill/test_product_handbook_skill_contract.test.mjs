@@ -127,7 +127,7 @@ describe('the dispatches', () => {
   it('the cross phase gates on every feature having its chapter, and writes the six chapters', () => {
     const text = TEXT['sections/cross.md'];
     expect(text).toContain('check "$OUT" --before cross');
-    for (const name of ['domains', 'roles', 'notifications', 'topics', 'findings', 'remedies']) expect(text).toContain(`**${name}** (\`$OUT/chapters/${name}.md\`)`);
+    for (const name of ['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies']) expect(text).toContain(`**${name}** (\`$OUT/chapters/${name}.md\`)`);
   });
 
   it('only the remedies prompt allows advice', () => {

@@ -12,7 +12,7 @@ The outline decides how the handbook is laid out: which parts there are, which c
    test -f "$OUT/dictionaries.json" && echo dictionaries
    test -f "$OUT/entries/history.json" && echo history
    ```
-   The chapters are `system`, one `F<n>` per feature and the cross chapters `domains`, `roles`, `notifications`, `topics`, `findings` and `remedies`; `data`, `dictionaries` and `history` are written by the scripts. Each is a block of the outline.
+   The chapters are `system`, one `F<n>` per feature and the cross chapters `domains`, `roles`, `notifications`, `topics`, `defects` and `remedies`; `data`, `dictionaries` and `history` are written by the scripts. Each is a block of the outline.
 2. Write `$OUT/outline.json`:
    ```json
    {
@@ -25,7 +25,7 @@ The outline decides how the handbook is laid out: which parts there are, which c
    }
    ```
    - Group the chapters into parts the way the readers of this project think of it, using the words of the project's own menus and screens that the map and the chapters use; never a name taken from these instructions.
-   - Put what a reader asks first at the front: the system, the domains and the people, then the features part by part (a feature's place follows its domain in `chapters/domains.md` when there is one, else its area in `map.json`), then notifications and topics, then data, dictionaries and history, then findings and remedies last.
+   - Put what a reader asks first at the front: the system, the domains and the people, then the features part by part (a feature's place follows its domain in `chapters/domains.md` when there is one, else its area in `map.json`), then notifications and topics, then data, dictionaries and history, then defects and remedies last.
    - Write every part title and reason in `$LANGUAGE`, under the reader-text rules of Phase 3.
    - Every block from step 1 is in the outline exactly once: in one part's `chapters` or in `unplaced` with a reason a reader could check. Do not use `unplaced` to make the handbook shorter.
 3. Phase 10 checks the outline when it assembles: `assemble` prints a line starting `Outline:` for each block that is missing, placed twice or unknown, and for each empty part. Fix `outline.json` for those lines and run `assemble` again, at most twice; then leave it, and the handbook uses the default order and says why.

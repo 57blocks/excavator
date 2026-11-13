@@ -137,7 +137,7 @@
     "md.part.features": "Features",
     "md.part.notifications": "Notifications and topics",
     "md.part.data": "Data and code health",
-    "md.part.findings": "Findings and remedies",
+    "md.part.defects": "Defects and remedies",
     "md.findings.adviceWords": "should,ought,recommend,recommended,recommendation,suggest,suggested,suggestion,consider,fix,improve,improvement,refactor,avoid,better,ideally,preferably",
     "md.findings.scopeWords": "all,every,each,any,always,never,none,nobody,no one,only,whenever,whatever,every time,will not,won't,cannot,can't,does not,doesn't,instead of,rather than",
     "md.history.heading": "Code health",

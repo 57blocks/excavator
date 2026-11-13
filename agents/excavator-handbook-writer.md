@@ -2,7 +2,7 @@
 name: excavator-handbook-writer
 description: |
   Carries out one writing task of a product-handbook run: one Markdown chapter (the system,
-  a feature, or a chapter across the features: domains, roles, notifications, topics, findings
+  a feature, or a chapter across the features: domains, roles, notifications, topics, defects
   or remedies), or the translation of the fixed text. The prompt it receives is the whole task
   and says what to read and which file to write; it does exactly that and nothing else.
 tools: Read, Grep, Glob, Bash, Write, Edit

@@ -11,7 +11,7 @@ import { makeRun } from './helpers.mjs';
 
 export const FORM = 'src/forms/order-form.js';
 export const cite = (range, file = FORM) => `\`${file}:${range}\``;
-export const CROSS = ['domains', 'roles', 'notifications', 'topics', 'findings', 'remedies'];
+export const CROSS = ['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies'];
 
 /** A chapter that passes `check` as a feature or system chapter. */
 export const chapterText = (title = 'Orders', extra = '') => `# ${title}

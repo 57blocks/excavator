@@ -192,14 +192,14 @@ describe('refusals write nothing', () => {
 
 describe('order', () => {
   const indexOfTitle = (text, title) => text.indexOf(`# ${title}\n`);
-  const chapters = () => ({ system: chapterText('System'), F1: chapterText('Orders'), F2: chapterText('Archive'), domains: chapterText('Domains'), findings: chapterText('Findings'), remedies: chapterText('Remedies') });
+  const chapters = () => ({ system: chapterText('System'), F1: chapterText('Orders'), F2: chapterText('Archive'), domains: chapterText('Domains'), defects: chapterText('Defects'), remedies: chapterText('Remedies') });
 
-  it('default order: system, domains, features in map order, findings, remedies', () => {
+  it('default order: system, domains, features in map order, defects, remedies', () => {
     const run = make({ ...chapters(), roles: chapterText('Roles'), notifications: chapterText('Notifications'), topics: chapterText('Topics') });
     const result = run.assemble();
     expect(result.lines).toEqual([join(run.out, 'handbook.md')]);
     const text = run.read('handbook.md');
-    const order = ['System', 'Domains', 'Roles', 'Orders', 'Archive', 'Notifications', 'Topics', 'Findings', 'Remedies'].map((title) => indexOfTitle(text, title));
+    const order = ['System', 'Domains', 'Roles', 'Orders', 'Archive', 'Notifications', 'Topics', 'Defects', 'Remedies'].map((title) => indexOfTitle(text, title));
     expect(order.every((at) => at > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text.slice(text.indexOf('## Coverage'))).toContain('No outline was written for this project');
@@ -210,7 +210,7 @@ describe('order', () => {
     run.writeJson(join(run.out, 'outline.json'), {
       format: 'excavator-product-handbook-outline/2',
       language: 'English',
-      parts: [{ title: 'Orders first', chapters: ['F2', 'F1'] }, { title: 'Rest', chapters: ['system', 'domains', 'findings'] }],
+      parts: [{ title: 'Orders first', chapters: ['F2', 'F1'] }, { title: 'Rest', chapters: ['system', 'domains', 'defects'] }],
       unplaced: [{ block: 'remedies', reason: 'Not wanted by this reader.' }],
     });
     const result = run.assemble();
@@ -240,11 +240,11 @@ describe('order', () => {
     expect(coverage).toContain('did not pass its check');
     for (const line of problems) expect(coverage).toContain(line);
   });
-  broken('a block missing', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'findings'] }] }, /block "remedies" is neither/);
-  broken('a block twice', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'findings', 'remedies', 'F1'] }] }, /"F1" is placed 2 times/);
-  broken('an unknown block', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'findings', 'remedies', 'nope'] }] }, /"nope" is not a block/);
-  broken('an empty part', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'findings', 'remedies'] }, { title: 'Empty', chapters: [] }] }, /part "Empty" is empty/);
-  broken('an empty reason', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'findings'] }], unplaced: [{ block: 'remedies', reason: ' ' }] }, /unplaced\[0\] needs a block and a reason/);
+  broken('a block missing', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'defects'] }] }, /block "remedies" is neither/);
+  broken('a block twice', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'defects', 'remedies', 'F1'] }] }, /"F1" is placed 2 times/);
+  broken('an unknown block', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'defects', 'remedies', 'nope'] }] }, /"nope" is not a block/);
+  broken('an empty part', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'defects', 'remedies'] }, { title: 'Empty', chapters: [] }] }, /part "Empty" is empty/);
+  broken('an empty reason', { parts: [{ title: 'P', chapters: ['system', 'F1', 'F2', 'domains', 'defects'] }], unplaced: [{ block: 'remedies', reason: ' ' }] }, /unplaced\[0\] needs a block and a reason/);
   broken('a wrong format', { format: 'excavator-product-handbook-outline/1', parts: [] }, /format must be excavator-product-handbook-outline\/2/);
 });
 

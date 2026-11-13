@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SECTIONS, SECTIONS, parseSections, readPlan } from '../../../skills/excavator-product-handbook/lib/sections.mjs';
 import { runHandbook } from './helpers.mjs';
 
-const NAMES = ['system', 'features', 'data', 'history', 'domains', 'roles', 'notifications', 'topics', 'findings', 'remedies', 'outline'];
+const NAMES = ['system', 'features', 'data', 'history', 'domains', 'roles', 'notifications', 'topics', 'defects', 'remedies', 'outline'];
 
 describe('parseSections', () => {
   it('defaults to every section when the list is not given or empty', () => {
@@ -36,8 +36,8 @@ describe('readPlan', () => {
   });
 
   it('the six cross chapters share one file, read once', () => {
-    expect(readPlan(['findings'])).toEqual(['stages/map.md', 'sections/cross.md']);
-    expect(readPlan(['domains', 'roles', 'notifications', 'topics', 'findings', 'remedies'])).toEqual(['stages/map.md', 'sections/cross.md']);
+    expect(readPlan(['defects'])).toEqual(['stages/map.md', 'sections/cross.md']);
+    expect(readPlan(['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies'])).toEqual(['stages/map.md', 'sections/cross.md']);
   });
 
   it('data and history need no map stage', () => {

@@ -15,7 +15,7 @@ import { sentencesOf } from './chapter-sentences.mjs';
 import { adviceWordsOf, wordsIn } from './word-lists.mjs';
 
 export const MAX_SENTENCES = 4;
-export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'findings', 'remedies']);
+export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies']);
 const DIAGRAM_TYPES = ['flowchart', 'graph', 'sequenceDiagram', 'stateDiagram-v2', 'stateDiagram', 'erDiagram', 'classDiagram', 'journey', 'gantt', 'pie', 'mindmap', 'timeline'];
 const COLONS = [':', String.fromCharCode(0xff1a)];
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

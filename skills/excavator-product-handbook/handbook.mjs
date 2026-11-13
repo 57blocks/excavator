@@ -57,7 +57,7 @@ Commands:
       exit 1. No fuzzy matching. Changes no file.
   sections [<list>]
       Validate the --sections list (comma-separated: system, features, data, history, domains, roles, notifications, topics,
-      findings, remedies, outline; empty or absent is all) and print "SECTIONS=<the sections in fixed order>",
+      defects, remedies, outline; empty or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the map stage file first, once, then each
       section's file, once (the six cross chapters share one). A value that is not a section exits 1 and the
