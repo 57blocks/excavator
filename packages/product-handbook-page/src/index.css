@@ -368,6 +368,8 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .prose .note[data-note="not-passed"] { color: var(--brick); }
 /* The architecture section of the technical home page: the prose runs at the full width of the page. */
 .arch .prose { max-width: none; }
+/* The drawing on the home page fits the window height; the full-screen button shows it larger. */
+.arch .diagram-svg svg { max-height: 75vh; }
 .arch-more { margin: 16px 0 0; font-size: 14px; color: var(--text-2); }
 .arch-more span { margin-right: 12px; }
 .arch-more a { margin-right: 14px; white-space: nowrap; }
