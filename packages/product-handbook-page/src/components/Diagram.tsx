@@ -8,33 +8,36 @@ type Rendered = { state: 'pending' } | { state: 'done'; svg: string } | { state:
 /** Mermaid renders one diagram at a time: it builds each in a shared scratch element. */
 let queue: Promise<unknown> = Promise.resolve();
 
-/** The violet palette for mermaid's `base` theme, one set per page theme; the diagram box behind it is the page's elevated surface. */
-function themeVariables(dark: boolean): Record<string, string | boolean> {
+/** The page's own font family (the same list as --font-sans in index.css), so a CJK label is drawn in a CJK face. */
+const FONT_FAMILY = "'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans CJK KR', 'Microsoft YaHei', 'Malgun Gothic', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif";
+
+/** The teal palette for mermaid's `base` theme, one set per page theme; the diagram box behind it is the page's surface. */
+export function themeVariables(dark: boolean): Record<string, string | boolean> {
   return dark
     ? {
-        darkMode: true, background: '#1c1c21', fontFamily: 'Inter, system-ui, sans-serif',
-        primaryColor: '#2b2557', primaryTextColor: '#f3f3f5', primaryBorderColor: '#7c5cff',
-        secondaryColor: '#17171b', secondaryTextColor: '#f3f3f5', secondaryBorderColor: '#6c6c73',
-        tertiaryColor: '#131316', tertiaryTextColor: '#f3f3f5', tertiaryBorderColor: '#6c6c73',
-        lineColor: '#a3a3ad', textColor: '#f3f3f5', mainBkg: '#2b2557', nodeBorder: '#7c5cff',
-        clusterBkg: '#131316', clusterBorder: '#6c6c73', titleColor: '#f3f3f5',
-        edgeLabelBackground: '#1c1c21', noteBkgColor: '#2b2557', noteTextColor: '#f3f3f5', noteBorderColor: '#7c5cff',
-        actorBkg: '#2b2557', actorBorder: '#7c5cff', actorTextColor: '#f3f3f5', actorLineColor: '#a3a3ad',
-        signalColor: '#a3a3ad', signalTextColor: '#f3f3f5', labelBoxBkgColor: '#17171b', labelBoxBorderColor: '#7c5cff',
-        labelTextColor: '#f3f3f5', loopTextColor: '#f3f3f5', activationBkgColor: '#2b2557', activationBorderColor: '#7c5cff',
-        sequenceNumberColor: '#0c0c0e',
+        darkMode: true, background: '#141d20', fontFamily: FONT_FAMILY,
+        primaryColor: '#1f3a3e', primaryTextColor: '#e8eff1', primaryBorderColor: '#5fb4bc',
+        secondaryColor: '#1b2629', secondaryTextColor: '#e8eff1', secondaryBorderColor: '#364850',
+        tertiaryColor: '#0d1517', tertiaryTextColor: '#e8eff1', tertiaryBorderColor: '#364850',
+        lineColor: '#93a3a9', textColor: '#e8eff1', mainBkg: '#1f3a3e', nodeBorder: '#5fb4bc',
+        clusterBkg: '#0d1517', clusterBorder: '#364850', titleColor: '#e8eff1',
+        edgeLabelBackground: '#141d20', noteBkgColor: '#1f3a3e', noteTextColor: '#e8eff1', noteBorderColor: '#5fb4bc',
+        actorBkg: '#1f3a3e', actorBorder: '#5fb4bc', actorTextColor: '#e8eff1', actorLineColor: '#93a3a9',
+        signalColor: '#93a3a9', signalTextColor: '#e8eff1', labelBoxBkgColor: '#1b2629', labelBoxBorderColor: '#5fb4bc',
+        labelTextColor: '#e8eff1', loopTextColor: '#e8eff1', activationBkgColor: '#1f3a3e', activationBorderColor: '#5fb4bc',
+        sequenceNumberColor: '#0d1517',
       }
     : {
-        darkMode: false, background: '#ffffff', fontFamily: 'Inter, system-ui, sans-serif',
-        primaryColor: '#e6e1ff', primaryTextColor: '#0c0c0e', primaryBorderColor: '#6a4dff',
-        secondaryColor: '#f4f4f6', secondaryTextColor: '#0c0c0e', secondaryBorderColor: '#6c6c73',
-        tertiaryColor: '#e2e2e6', tertiaryTextColor: '#0c0c0e', tertiaryBorderColor: '#6c6c73',
-        lineColor: '#4a4a52', textColor: '#0c0c0e', mainBkg: '#e6e1ff', nodeBorder: '#6a4dff',
-        clusterBkg: '#f4f4f6', clusterBorder: '#6c6c73', titleColor: '#0c0c0e',
-        edgeLabelBackground: '#ffffff', noteBkgColor: '#e6e1ff', noteTextColor: '#0c0c0e', noteBorderColor: '#6a4dff',
-        actorBkg: '#e6e1ff', actorBorder: '#6a4dff', actorTextColor: '#0c0c0e', actorLineColor: '#4a4a52',
-        signalColor: '#4a4a52', signalTextColor: '#0c0c0e', labelBoxBkgColor: '#f4f4f6', labelBoxBorderColor: '#6a4dff',
-        labelTextColor: '#0c0c0e', loopTextColor: '#0c0c0e', activationBkgColor: '#e6e1ff', activationBorderColor: '#6a4dff',
+        darkMode: false, background: '#ffffff', fontFamily: FONT_FAMILY,
+        primaryColor: '#dcebec', primaryTextColor: '#142126', primaryBorderColor: '#1d5c63',
+        secondaryColor: '#eaf0f1', secondaryTextColor: '#142126', secondaryBorderColor: '#bccacf',
+        tertiaryColor: '#f3f5f6', tertiaryTextColor: '#142126', tertiaryBorderColor: '#bccacf',
+        lineColor: '#44555b', textColor: '#142126', mainBkg: '#dcebec', nodeBorder: '#1d5c63',
+        clusterBkg: '#f3f5f6', clusterBorder: '#bccacf', titleColor: '#142126',
+        edgeLabelBackground: '#ffffff', noteBkgColor: '#dcebec', noteTextColor: '#142126', noteBorderColor: '#1d5c63',
+        actorBkg: '#dcebec', actorBorder: '#1d5c63', actorTextColor: '#142126', actorLineColor: '#44555b',
+        signalColor: '#44555b', signalTextColor: '#142126', labelBoxBkgColor: '#eaf0f1', labelBoxBorderColor: '#1d5c63',
+        labelTextColor: '#142126', loopTextColor: '#142126', activationBkgColor: '#dcebec', activationBorderColor: '#1d5c63',
         sequenceNumberColor: '#ffffff',
       };
 }
@@ -47,7 +50,7 @@ async function renderMermaid(id: string, source: string, dark: boolean): Promise
     theme: 'base',
     themeVariables: themeVariables(dark),
     suppressErrorRendering: true,
-    fontFamily: 'Inter, system-ui, sans-serif',
+    fontFamily: FONT_FAMILY,
   });
   try {
     return (await mermaid.render(id, source)).svg;

@@ -20,14 +20,20 @@
   --accent: #1d5c63;
   --accent-text: #1d5c63;
   --accent-bg: #dcebec;
+  --accent-hover: #174a50;
+  --rail-bg: #f3f5f6;
   --shadow: 0 1px 2px rgba(20, 33, 38, 0.05), 0 3px 10px rgba(20, 33, 38, 0.04);
   --scrim: rgba(15, 24, 28, 0.4);
   --warn-bg: #fbecd9;
   --warn-text: #7d3d05;
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans CJK KR', 'Microsoft YaHei', 'Malgun Gothic', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
   --topbar-h: 56px;
-  --rail-w: 292px;
+  --rail-w: 280px;
+  --content-w: 760px;
+  --toc-w: 220px;
   --radius: 10px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
   --control-h: 38px;
 }
 
@@ -44,6 +50,8 @@
     --accent: #5fb4bc;
     --accent-text: #8ccfd6;
     --accent-bg: rgba(95, 180, 188, 0.16);
+    --accent-hover: #79c3ca;
+    --rail-bg: #0d1517;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.25);
     --scrim: rgba(0, 0, 0, 0.6);
     --warn-bg: rgba(240, 180, 76, 0.13);
@@ -63,13 +71,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow-wrap: anywhere;
 }
-a { color: var(--accent-text); text-underline-offset: 3px; text-decoration-thickness: 1px; }
-a:hover { text-decoration-thickness: 2px; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+a { color: var(--accent-text); text-underline-offset: 3px; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }
+a:hover { text-decoration-color: currentColor; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
 main:focus { outline: none; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 p { margin: 0; }
 h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+.prose h1, .prose h2, .prose h3, .section-title, .page-title { scroll-margin-top: calc(var(--topbar-h) + 16px); }
 
 .muted { color: var(--text-3); }
 
@@ -83,7 +92,7 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 }
 .menu-btn {
   display: none; align-items: center; justify-content: center; width: 38px; height: 38px; flex: none; padding: 0;
-  color: var(--text-2); background: transparent; border: 1px solid var(--line); border-radius: 8px; cursor: pointer;
+  color: var(--text-2); background: transparent; border: 1px solid var(--line); border-radius: var(--radius-md); cursor: pointer;
 }
 .menu-btn:hover { color: var(--text); background: var(--surface-2); }
 .brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; color: var(--text); text-decoration: none; }
@@ -93,38 +102,45 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .shell { display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); align-items: start; }
 .rail {
   position: sticky; top: var(--topbar-h); box-sizing: border-box; height: calc(100vh - var(--topbar-h));
-  background: var(--surface); border-right: 1px solid var(--line);
+  background: var(--rail-bg); border-right: 1px solid var(--line);
 }
 @supports (height: 100dvh) { .rail { height: calc(100dvh - var(--topbar-h)); } }
 .rail-scroll { box-sizing: border-box; height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px 24px; }
 /* Two levels (design D11): a group name, then its links; nothing folds, nothing is numbered. */
 .rail-group { display: grid; gap: 1px; padding: 12px 0 10px; }
 .rail-group + .rail-group { border-top: 1px solid var(--line); }
-.rail-group-name { margin: 0; padding: 0 10px 6px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.rail-group-name { margin: 0; padding: 0 10px 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-3); }
 
 .rail-link {
-  display: block; margin-left: 12px; padding: 6px 10px; border-radius: 6px;
+  display: block; margin-left: 12px; padding: 6px 10px; border-radius: var(--radius-sm);
   color: var(--text-2); font-size: 14px; line-height: 1.4; text-decoration: none; overflow-wrap: anywhere;
 }
-.rail-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
-.rail-link[aria-current] { background: var(--accent-bg); color: var(--accent-text); font-weight: 600; }
+.rail-link:hover { background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); text-decoration: none; }
+.rail-link[aria-current] { color: var(--accent-text); font-weight: 600; background: transparent; box-shadow: inset 2px 0 0 var(--accent); }
 
 /* Main column */
 .main { min-width: 0; padding: 36px clamp(16px, 4vw, 48px) 80px; background: var(--surface); min-height: calc(100vh - var(--topbar-h)); }
-.page { max-width: 820px; margin: 0 auto; }
+.page { max-width: var(--content-w); margin: 0 auto; }
 .page-head { margin-bottom: 28px; }
 
-.page-title { font-size: clamp(26px, 4.2vw, 34px); letter-spacing: -0.02em; }
+.page-title { font-size: clamp(26px, 4vw, 32px); letter-spacing: -0.02em; }
 .lede { margin-top: 10px; color: var(--text-2); font-size: 17px; }
-.button-link { display: inline-block; padding: 8px 16px; border-radius: 8px; color: #fff; background: var(--accent); text-decoration: none; font-weight: 600; }
-.button-link:hover { filter: brightness(1.08); text-decoration: none; }
+.button-link { display: inline-block; padding: 8px 16px; border-radius: var(--radius-md); color: #fff; background: var(--accent); text-decoration: none; font-weight: 600; }
+.button-link:hover { background: var(--accent-hover); text-decoration: none; }
+.page[data-view="not-found"] .lede { margin-bottom: 24px; }
+.page[data-view="not-found"] .button-link { box-sizing: border-box; display: inline-flex; align-items: center; min-height: 40px; }
 
 /* A section is not a card: a heading and a rule above it set it apart, so nothing on a page is a box inside a box. */
 .section { margin-bottom: 8px; padding: 22px 0 18px; border-top: 1px solid var(--line); }
 .section-title { font-size: 17px; letter-spacing: 0.01em; color: var(--text); margin-bottom: 12px; }
+/* One h2 look on every page: the same as a chapter's. Directly under the page head it has no extra space above; inside a section the section draws the rule. */
+h2.section-title { margin: 36px 0 12px; padding-top: 22px; border-top: 1px solid var(--line); font-size: 22px; line-height: 1.3; letter-spacing: -0.01em; }
+.page-head + h2.section-title { margin-top: 0; }
+.section > h2.section-title { margin: 0 0 12px; padding-top: 0; border-top: 0; }
+h3.section-title { margin: 26px 0 8px; font-size: 17px; line-height: 1.35; letter-spacing: -0.01em; }
 
 .chapter-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line); }
-.chapter-link { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); text-decoration: none; color: var(--text); min-width: 0; }
+.chapter-link { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); text-decoration: none; color: var(--text); min-width: 0; }
 .chapter-link[data-side="next"] { grid-column: 2; text-align: right; }
 .chapter-link:hover { border-color: var(--accent); }
 .chapter-side { color: var(--text-3); font-size: 12px; }
@@ -151,11 +167,11 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .rule-list li { position: relative; padding-left: 14px; }
 .rule-list li::before { content: ""; position: absolute; left: 2px; top: 0.7em; width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
 .data-sorts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.data-sort { padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
+.data-sort { padding: 5px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
 .data-sort[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-bg); color: var(--accent-text); }
 /* Paging: more than 200 rows are shown 200 at a time, the controls under the list. */
 .pager { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 12px 0 4px; font-size: 13px; color: var(--text-2); }
-.pager button { padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
+.pager button { padding: 5px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
 .pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); }
 .pager button:disabled { opacity: 0.5; cursor: default; }
 .data-mentions { margin-top: 8px; font-size: 13px; }
@@ -195,17 +211,17 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 }
 
 /* The filter toolbar: one row of labelled controls of equal height, the status at the right; it wraps on a narrow screen. */
-.filter-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin: 0 0 18px; padding: 12px 14px; background: var(--surface-2); border-radius: 8px; }
+.filter-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; margin: 0 0 18px; padding: 12px 14px; background: var(--surface-2); border-radius: var(--radius-md); }
 .filter-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; flex: 1 1 160px; max-width: 280px; }
 .field-label { font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-2); line-height: 1.3; }
 .field-control {
   box-sizing: border-box; width: 100%; height: var(--control-h); margin: 0; padding: 0 12px;
-  border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--text);
   font: inherit; font-size: 14px; line-height: 1.2; -webkit-appearance: none; appearance: none;
 }
 .field-control::placeholder { color: var(--text-3); }
 .field-control:hover { border-color: var(--text-3); }
-.field-control:focus-visible, .field-control[data-state="open"] { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); border-radius: 8px; }
+.field-control:focus-visible, .field-control[data-state="open"] { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); border-radius: var(--radius-md); }
 .select-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; cursor: pointer; }
 .select-value { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-icon { flex: none; display: inline-flex; color: var(--text-3); }
@@ -216,11 +232,11 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 }
 .select-content {
   z-index: 60; box-sizing: border-box; min-width: var(--radix-select-trigger-width); max-width: min(92vw, 520px); max-height: min(var(--radix-select-content-available-height, 360px), 360px);
-  overflow: hidden; background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 12px 32px rgba(20, 33, 38, 0.18);
+  overflow: hidden; background: var(--surface); color: var(--text); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 12px 32px rgba(20, 33, 38, 0.18);
   font-family: var(--font-sans); font-size: 14px; line-height: 1.4; overflow-wrap: break-word;
 }
 .select-viewport { padding: 4px; }
-.select-item { position: relative; display: flex; align-items: center; padding: 8px 10px 8px 30px; border-radius: 6px; cursor: pointer; user-select: none; outline: none; }
+.select-item { position: relative; display: flex; align-items: center; padding: 8px 10px 8px 30px; border-radius: var(--radius-sm); cursor: pointer; user-select: none; outline: none; }
 .select-item[data-highlighted] { background: var(--accent-bg); color: var(--accent-text); }
 .select-item[data-state="checked"] { font-weight: 600; }
 .select-item-indicator { position: absolute; left: 9px; top: 0; bottom: 0; display: inline-flex; align-items: center; color: var(--accent); }
@@ -285,10 +301,10 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .stat-chips + .filter-toolbar { margin-top: 12px; }
 
 /* A chapter written as Markdown. Its level-1 heading is the heading of the page; a table scrolls inside its own box. */
-.prose { max-width: 820px; margin: 0 auto; font-size: 16px; line-height: 1.7; }
+.prose { max-width: var(--content-w); margin: 0 auto; font-size: 16px; line-height: 1.75; }
 .prose > :first-child { margin-top: 0; }
-.prose h1 { margin: 0 0 18px; font-size: clamp(26px, 4.2vw, 34px); line-height: 1.2; letter-spacing: -0.02em; }
-.prose h2 { margin: 36px 0 12px; padding-top: 22px; border-top: 1px solid var(--line); font-size: 21px; line-height: 1.3; }
+.prose h1 { margin: 0 0 18px; font-size: clamp(26px, 4vw, 32px); line-height: 1.2; letter-spacing: -0.02em; }
+.prose h2 { margin: 36px 0 12px; padding-top: 22px; border-top: 1px solid var(--line); font-size: 22px; line-height: 1.3; }
 .prose h3 { margin: 26px 0 8px; font-size: 17px; line-height: 1.35; }
 .prose h4, .prose h5, .prose h6 { margin: 20px 0 6px; font-size: 15px; color: var(--text-2); }
 .prose p { margin: 10px 0; }
@@ -299,7 +315,7 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .prose li > ul, .prose li > ol { margin: 4px 0; }
 .prose blockquote { margin: 12px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line-strong); color: var(--text-2); }
 .prose hr { margin: 24px 0; border: 0; border-top: 1px solid var(--line); }
-.prose code { padding: 1px 5px; border-radius: 5px; background: var(--surface-2); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 0.9em; }
+.prose code { padding: 1px 5px; border-radius: var(--radius-sm); background: var(--surface-2); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 0.9em; }
 .prose pre { margin: 12px 0; padding: 12px 14px; overflow-x: auto; border-radius: var(--radius); background: var(--surface-2); line-height: 1.5; }
 .prose pre code { padding: 0; background: none; font-size: 13.5px; }
 .prose .table-scroll { margin: 14px 0; }
@@ -307,9 +323,14 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .prose th, .prose td { padding: 10px 14px; min-width: 5em; text-align: left; vertical-align: top; border-top: 1px solid var(--line); overflow-wrap: break-word; word-break: normal; }
 .prose thead th { border-top: 0; background: var(--surface-2); font-size: 12.5px; font-weight: 600; letter-spacing: 0.03em; color: var(--text-2); }
 .prose .img-alt { color: var(--text-3); }
-/* A citation chip: the file, then the lines. */
-.prose code.cite { display: inline-flex; flex-wrap: wrap; align-items: baseline; padding: 0 7px; border: 1px solid var(--line); background: var(--accent-bg); color: var(--accent-text); font-size: 12.5px; line-height: 1.6; }
+/* A citation: the file, then the lines, as quiet monospace text; the full path stays in the text and the title. */
+.prose code.cite { display: inline-flex; flex-wrap: wrap; align-items: baseline; padding: 0 2px; border: 0; background: transparent; color: var(--text-3); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12px; line-height: 1.6; }
 .cite-lines { color: var(--text-3); }
+/* The not-verified line under a chapter's title: no box, an icon and small quiet text; the not-passed line is a warning. */
+.prose .chapter-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 24px; font-size: 14px; line-height: 1.55; color: var(--text-3); }
+.prose .chapter-note[data-part="not-passed"] { color: var(--warn-text); }
+.chapter-note-icon { flex: none; display: inline-flex; margin-top: 2px; color: var(--text-3); }
+.prose .chapter-note[data-part="not-passed"] .chapter-note-icon { color: var(--warn-text); }
 /* A diagram: drawn by mermaid, or its source when it could not be drawn. */
 .diagram { margin: 16px 0; overflow-x: auto; text-align: center; }
 .diagram svg { max-width: 100%; height: auto; }
