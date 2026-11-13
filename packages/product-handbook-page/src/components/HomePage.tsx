@@ -1,18 +1,18 @@
-import type { Group } from '../lib/groups';
+import type { Group, ReferenceGroup } from '../lib/groups';
 import { countsOf, handedOver, otherEnds, received } from '../lib/handovers';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
-import { hrefOf } from '../lib/pages';
-import type { PageItem } from '../lib/pages';
 import { emphasised } from '../lib/rich';
 import { colourProps } from '../lib/strata';
 import { useText } from '../lib/text';
+import { Architecture } from './Architecture';
 import { Atlas } from './Atlas';
 import { Flows } from './Flows';
 import { InlineMarkdown } from './InlineMarkdown';
 import { Mark } from './Mark';
+import { ReferenceGroups } from './ReferenceGroups';
 
-interface Props { title: string; lead: string; groups: Group[]; references: PageItem[] }
+interface Props { title: string; lead: string; groups: Group[]; references: ReferenceGroup[]; /** The architecture text of the view (technical home page only; '' shows no section) and the sections of the system chapter. */ architecture?: string; sections?: { title: string; index: number }[] }
 
 /** The phone's replacement for the map: one details per domain with its counts, its two lists and the link to its page. */
 function PhoneList() {
@@ -86,10 +86,10 @@ function DomainTable({ groups }: { groups: Group[] }) {
 }
 
 /**
- * The home page: the title and one sentence, the atlas (the map and its side panel; a list of domains on a phone), the table
- * of the domains and the references. Without a usable list of hand-overs the page has no map and says why in one quiet line.
+ * The home page: the title and one sentence, the atlas (the map and its side panel; a list of domains on a phone), the system
+ * architecture (technical view only), the table of the domains and the references. Without a usable list of hand-overs the page has no map and says why in one quiet line.
  */
-export function HomePage({ title, lead, groups, references }: Props) {
+export function HomePage({ title, lead, groups, references, architecture = '', sections = [] }: Props) {
   const t = useText();
   const nav = useLinks();
   const model = useModel();
@@ -109,15 +109,14 @@ export function HomePage({ title, lead, groups, references }: Props) {
           <PhoneList />
         </section>
       )}
+      {architecture !== '' && <Architecture source={architecture} sections={sections} />}
       <section aria-labelledby="h-domains" className="sec">
         <h2 id="h-domains">{t('page.nav.domains')}</h2>
         <DomainTable groups={groups} />
       </section>
       <section aria-labelledby="h-refs" className="sec">
         <h2 id="h-refs">{t('page.nav.references')}</h2>
-        <ul className="ref-list">
-          {references.map((item) => <li key={item.key}><a href={hrefOf(item, nav)} data-page={item.key}>{item.title}</a></li>)}
-        </ul>
+        <ReferenceGroups groups={references} as="list" listClass="ref-list" />
       </section>
     </div>
   );

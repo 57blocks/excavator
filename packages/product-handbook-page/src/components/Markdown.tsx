@@ -3,7 +3,9 @@ import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 
-import { remarkPlugins } from '../lib/markdown-config';
+import { useLinks } from '../lib/links';
+import { pluginsWithFeatureLinks } from '../lib/markdown-config';
+import { useModel } from '../lib/model';
 import { useText } from '../lib/text';
 import { Citation, parseCitation } from './Citation';
 import { Diagram } from './Diagram';
@@ -37,10 +39,13 @@ function codeOf(node: HastNode | undefined): HastNode | undefined {
 /**
  * Markdown as the page shows it: GitHub tables in a horizontal scroller, mermaid blocks as diagrams (a source that
  * does not render stays visible with a note), and an inline code span that is a whole citation (`path:12` or
- * `path:12-20`) as a citation chip. Raw HTML is not rendered. `idPrefix` makes the ids of the diagrams unique.
+ * `path:12-20`) as a citation chip. Raw HTML is not rendered. `idPrefix` makes the ids of the diagrams unique. A feature written as `Title (F12)` links to its page, except `chapter`'s own.
  */
-export function Markdown({ source, idPrefix }: { source: string; idPrefix: string }) {
+export function Markdown({ source, idPrefix, chapter }: { source: string; idPrefix: string; chapter?: string }) {
   const t = useText();
+  const nav = useLinks();
+  const { titles } = useModel();
+  const plugins = useMemo(() => pluginsWithFeatureLinks({ titles, hrefOf: nav.chapter, own: chapter }), [titles, nav, chapter]);
   // The fixed notices of a chapter: the not-verified text, and the not-passed text up to its first placeholder.
   const verified = t('chapter.notVerified');
   const notPassed = t('chapter.notPassed', { count: '{count}' }).split('{')[0];
@@ -81,7 +86,7 @@ export function Markdown({ source, idPrefix }: { source: string; idPrefix: strin
 
   return (
     <div className="prose">
-      <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>{source}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={plugins} components={components}>{source}</ReactMarkdown>
     </div>
   );
 }

@@ -35,7 +35,7 @@ export function SearchDialog({ groups, colours, items, references, onClose, onDo
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const results = useMemo(
-    () => searchResults({ query, groups, items, references, referencesLabel: t('page.nav.references'), domainsLabel: t('page.nav.domains') }),
+    () => searchResults({ query, groups, items, references, referencesLabel: t('page.nav.references'), domainsLabel: t('page.nav.domains'), systemTitle: t('page.nav.system') }),
     [query, groups, items, references, t],
   );
   const at = Math.min(selected, Math.max(0, results.length - 1));

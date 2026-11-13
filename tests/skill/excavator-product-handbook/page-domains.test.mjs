@@ -1,4 +1,4 @@
-// Oracle of openspec change handbook-page-domain-map (task 2.1): the page data /20 carries the
+// Oracle of openspec change handbook-page-domain-map (task 2.1): the page data /21 carries the
 // domains (four states, the intro and body of each section, the hand-overs), the lead and the
 // search index, the same bytes for the same input.
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
@@ -73,7 +73,7 @@ const page = (run, options = {}) => {
   return dataOf(html(run));
 };
 
-describe('page data /20: domains.state', () => {
+describe('page data /21: domains.state', () => {
   it('ok when the record passed and the file is the checked one', () => {
     const run = make();
     expect(run.readJson('state.json').chapters.domains.status).toBe('passed');
@@ -111,7 +111,7 @@ describe('page data /20: domains.state', () => {
   });
 });
 
-describe('page data /20: domains.list', () => {
+describe('page data /21: domains.list', () => {
   it('has ids d1.. in the file order, the features and the keys in a fixed order', () => {
     const { domains } = page(make());
     expect(domains.list.map((domain) => [domain.id, domain.name, domain.features])).toEqual([
@@ -159,7 +159,7 @@ describe('page data /20: domains.list', () => {
   });
 });
 
-describe('page data /20: domains.handovers', () => {
+describe('page data /21: domains.handovers', () => {
   it('uses domain ids, the features named as (F<n>) that are in the map, once each in order', () => {
     const { handovers } = page(make()).domains;
     expect(handovers.map((item) => [item.from, item.to, item.features])).toEqual([
@@ -176,7 +176,7 @@ describe('page data /20: domains.handovers', () => {
   });
 });
 
-describe('page data /20: lead and search', () => {
+describe('page data /21: lead and search', () => {
   it('lead is the first paragraph of the system chapter, citations out', () => {
     expect(page(make()).lead).toBe('The clerk fills in the "Customer Name" field.');
   });
@@ -192,20 +192,20 @@ describe('page data /20: lead and search', () => {
     run.write('F1', `${readFileSync(join(run.out, 'chapters', 'F1.md'), 'utf-8').replace('## Open questions', `### A sub part\n\nText (${cite('5')}).\n\n\`\`\`text\n## Not a heading\n\`\`\`\n\n## Open questions`)}`);
     run.check('F1');
     const { search } = page(run);
-    expect(Object.keys(search[0])).toEqual(['kind', 'title', 'chapter', 'domain', 'heading']);
+    expect(Object.keys(search[0])).toEqual(['kind', 'title', 'chapter', 'domain', 'heading', 'level']);
     expect(search.slice(0, 3)).toEqual([
-      { kind: 'domain', title: 'Order handling', chapter: null, domain: 'd1', heading: null },
-      { kind: 'domain', title: 'Automatic work', chapter: null, domain: 'd2', heading: null },
-      { kind: 'domain', title: 'Last words', chapter: null, domain: 'd3', heading: null },
+      { kind: 'domain', title: 'Order handling', chapter: null, domain: 'd1', heading: null, level: null },
+      { kind: 'domain', title: 'Automatic work', chapter: null, domain: 'd2', heading: null, level: null },
+      { kind: 'domain', title: 'Last words', chapter: null, domain: 'd3', heading: null, level: null },
     ]);
-    const rest = search.slice(3).map((item) => [item.kind, item.title, item.chapter, item.heading]);
+    const rest = search.slice(3).map((item) => [item.kind, item.title, item.chapter, item.heading, item.level]);
     const f1 = rest.filter((item) => item[2] === 'F1');
     expect(f1).toEqual([
-      ['chapter', 'Orders', 'F1', null],
-      ['heading', 'Placing an order', 'F1', 0],
-      ['heading', 'A sub part', 'F1', 1],
-      ['heading', 'Open questions', 'F1', 2],
-      ['heading', 'Problems', 'F1', 3],
+      ['chapter', 'Orders', 'F1', null, null],
+      ['heading', 'Placing an order', 'F1', 0, 2],
+      ['heading', 'A sub part', 'F1', 1, 3],
+      ['heading', 'Open questions', 'F1', 2, 2],
+      ['heading', 'Problems', 'F1', 3, 2],
     ]);
     const order = rest.filter((item) => item[0] === 'chapter').map((item) => item[2]);
     expect(order).toEqual(['system', 'domains', 'F1']);
@@ -223,5 +223,73 @@ describe('page data /20: lead and search', () => {
     const first = html(run);
     page(run);
     expect(html(run)).toBe(first);
+  });
+});
+
+describe('page data /21: architecture', () => {
+  const FENCE_TEXT = (label) => `\`\`\`mermaid\nflowchart LR\n  A[${label}] --> B[Store]\n\`\`\`\n`;
+  const system = (body) => `# System\n\nThe system in one line (${cite('5')}).\n\n${body}`;
+  const withSystem = (text) => {
+    const run = make();
+    run.write('system', text);
+    run.check('system');
+    return run;
+  };
+  const SECTION = `## Overview\n\nFirst words (${cite('5')}).\n\n## Architecture\n\nThe apps and the store (\`${C1}\`).\n\n${FENCE_TEXT('Web')}\n| App | Use |\n| --- | --- |\n| Web | Orders (${cite('10')}) |\n\n## Operations\n\nSecond words (${cite('10')}).\n\n${FENCE_TEXT('Later')}`;
+
+  it('is the level-2 section that holds the first diagram, without its heading line, up to the next level-2 heading', () => {
+    const { architecture } = page(withSystem(system(SECTION)));
+    expect(Object.keys(architecture)).toEqual(['product', 'technical']);
+    expect(architecture.technical.startsWith('The apps and the store')).toBe(true);
+    expect(architecture.technical).toContain('flowchart LR\n  A[Web] --> B[Store]');
+    expect(architecture.technical).toContain('| Web | Orders (');
+    expect(architecture.technical).not.toContain('## ');
+    expect(architecture.technical).not.toContain('First words');
+    expect(architecture.technical).not.toContain('Second words');
+    expect(architecture.technical).not.toContain('Later');
+  });
+
+  it('shows the citations in the technical text and none in the product text', () => {
+    const { architecture } = page(withSystem(system(SECTION)));
+    expect(architecture.technical).toContain(`\`${C1}\``);
+    expect(architecture.product).not.toMatch(/order-form\.js/);
+    expect(architecture.product).toContain('The apps and the store');
+    expect(architecture.product).toContain('flowchart LR');
+  });
+
+  it('a heading line inside a fence does not end the section', () => {
+    const text = system(`## Architecture\n\n\`\`\`mermaid\nflowchart LR\n  A --> B\n\`\`\`\n\n\`\`\`text\n## Not a heading\n\`\`\`\n\nAfter (${cite('5')}).\n\n## Next\n\nElse (${cite('5')}).\n`);
+    const { architecture } = page(withSystem(text));
+    expect(architecture.technical).toContain('## Not a heading');
+    expect(architecture.technical).toContain('After');
+    expect(architecture.technical).not.toContain('Else');
+  });
+
+  it('is empty in every view when the first diagram comes before the first level-2 heading', () => {
+    const text = `# System\n\n${FENCE_TEXT('Early')}\n## Later heading\n\nWords (${cite('5')}).\n\n${FENCE_TEXT('Second')}`;
+    expect(page(withSystem(text)).architecture).toEqual({ product: '', technical: '' });
+  });
+
+  it('is empty when the system chapter has no diagram', () => {
+    expect(page(make()).architecture).toEqual({ product: '', technical: '' });
+  });
+
+  it('is empty without a system chapter', () => {
+    const run = make();
+    rmSync(join(run.out, 'chapters', 'system.md'));
+    expect(page(run).architecture).toEqual({ product: '', technical: '' });
+  });
+
+  it('has only the selected view, and sits right after lead', () => {
+    const data = page(withSystem(system(SECTION)), { views: 'product' });
+    expect(Object.keys(data.architecture)).toEqual(['product']);
+    const keys = Object.keys(data);
+    expect(keys[keys.indexOf('lead') + 1]).toBe('architecture');
+  });
+
+  it('the same input gives the same text twice', () => {
+    const run = withSystem(system(SECTION));
+    const first = page(run).architecture;
+    expect(page(run).architecture).toEqual(first);
   });
 });

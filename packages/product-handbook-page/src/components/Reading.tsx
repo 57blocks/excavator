@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import type { Context } from '../lib/navigation';
-import { neighbours } from '../lib/navigation';
+import { stepsOf } from '../lib/navigation';
 import type { PageItem } from '../lib/pages';
 import type { Crumb } from './Breadcrumbs';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -26,7 +26,7 @@ export function Reading({ item, context, colour, trail, wide, children }: Props)
   const main = useRef<HTMLDivElement>(null);
   const [toc, setToc] = useState(true);
   const onPresent = useCallback((present: boolean) => setToc(present), []);
-  const { previous, next } = neighbours(context.items, item.key);
+  const { previous, next } = stepsOf(context, item.key);
   return (
     <div className="read" data-wide={wide ? 'true' : undefined} data-toc={wide || !toc ? 'none' : 'yes'}>
       <SideList context={context} current={item.key} colour={colour} />

@@ -21,3 +21,7 @@ export const SearchIcon = () => (
 export const InfoIcon = () => (
   <svg {...base} width={14} height={14}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
 );
+
+export const ExpandIcon = () => (
+  <svg {...base} width={16} height={16}><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
+);

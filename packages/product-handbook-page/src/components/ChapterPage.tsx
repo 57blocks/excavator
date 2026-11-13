@@ -19,14 +19,14 @@ function TextPage({ detail, view: name, id, strip = false }: { detail: Detail<Vi
   if (detail.status !== 'ready') return <article className="page" data-view={name} data-chapter={id}><ChunkNotice state={detail} /></article>;
   const text = detail.value[view];
   if (text === undefined) return <NotFound />;
-  if (!strip || !model.map || mentioning(model.handovers, id).length === 0) return <article className="page" data-view={name} data-chapter={id}><Markdown source={text} idPrefix={id} /></article>;
+  if (!strip || !model.map || mentioning(model.handovers, id).length === 0) return <article className="page" data-view={name} data-chapter={id}><Markdown source={text} idPrefix={id} chapter={id} /></article>;
   // The strip goes after the head (the level-1 heading and its notices); the two blocks of Markdown keep every diagram and heading where it was.
   const { head, rest } = splitHead(text, [t('chapter.notVerified'), t('chapter.notPassed', { count: '{count}' }).split('{')[0]]);
   return (
     <article className="page" data-view={name} data-chapter={id}>
-      {head !== '' && <Markdown source={head} idPrefix={id} />}
+      {head !== '' && <Markdown source={head} idPrefix={id} chapter={id} />}
       <HandoverStrip chapter={id} />
-      {rest.trim() !== '' && <Markdown source={rest} idPrefix={id} />}
+      {rest.trim() !== '' && <Markdown source={rest} idPrefix={id} chapter={id} />}
     </article>
   );
 }

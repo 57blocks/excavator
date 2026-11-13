@@ -5,6 +5,7 @@ import { DataPage } from './components/DataPage';
 import { DictionariesPage } from './components/DictionariesPage';
 import { DomainPage } from './components/DomainPage';
 import { HistoryPage } from './components/HistoryPage';
+import { systemSections } from './components/Architecture';
 import { HomePage } from './components/HomePage';
 import { Menu } from './components/Menu';
 import { NotFound } from './components/NotFound';
@@ -12,7 +13,7 @@ import { Reading } from './components/Reading';
 import { SearchDialog } from './components/SearchDialog';
 import { TopBar } from './components/TopBar';
 import { LoaderContext, createLoader } from './lib/chunks';
-import { groupOfFeature, groupsOf, referencesOf } from './lib/groups';
+import { flatReferences, groupOfFeature, groupsOf, named, referencesOf } from './lib/groups';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
 import { ModelContext, buildModel } from './lib/model';
 import { contextOf, switchTarget, viewOf } from './lib/navigation';
@@ -61,13 +62,14 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   const t = useMemo(() => makeText(data.ui.strings), [data.ui.strings]);
   const [menuOpen, setMenuOpen] = useState(false);
   const coverageTitle = t('page.nav.coverage');
+  const systemTitle = t('page.nav.system');
   const view = viewOf(data, route, coverageTitle);
   const current: View = view ?? data.views[0];
   const links = useMemo(() => makeLinks(data.views.length > 1 ? current : null), [data.views.length, current]);
   const groups = useMemo(() => groupsOf(data), [data]);
   const model = useMemo(() => buildModel(data, groups), [data, groups]);
   const colours = model.colours;
-  const references = useMemo(() => referencesOf(data, current, coverageTitle), [data, current, coverageTitle]);
+  const references = useMemo(() => referencesOf(data, current, coverageTitle, systemTitle), [data, current, coverageTitle, systemTitle]);
   const switchTo = Object.fromEntries(data.views.map((item) => [item, switchTarget(data, route, item, coverageTitle)])) as Record<View, string>;
   const body = bodyOf(route);
   const routeText = JSON.stringify(route);
@@ -107,7 +109,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   let main = <NotFound />;
   if (view !== null) {
     if (body.name === 'home') {
-      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} references={references} />;
+      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} references={references} architecture={view === 'technical' ? data.architecture.technical ?? '' : ''} sections={systemSections(data.search)} />;
     } else if (body.name === 'domain') {
       const group = groups.find((candidate) => candidate.id === body.id);
       if (group !== undefined) {
@@ -117,12 +119,12 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
     } else {
       const item = pageOf(pagesOf(data, view, coverageTitle), route);
       if (item !== undefined) {
-        const context = contextOf(data, view, coverageTitle, item.key);
+        const context = contextOf(data, view, coverageTitle, systemTitle, item.key);
         const group = context.kind === 'group' ? context.group : undefined;
         const trail = [
           { label: t('page.nav.map'), href: links.home },
           group === undefined ? { label: t('page.nav.references') } : { label: group.name, href: links.domain(group.id) },
-          { label: item.title },
+          { label: named(item, systemTitle).title },
         ];
         main = (
           <Reading item={item} context={context} colour={group === undefined ? null : colours[group.id]} trail={trail} wide={WIDE.has(item.kind)}>
@@ -156,7 +158,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
             />
             {menuOpen && <Menu groups={groups} colours={colours} references={references} home={view !== null && body.name === 'home'} onNavigate={() => setMenuOpen(false)} />}
             <main id="main" tabIndex={-1}>{main}</main>
-            {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} references={references} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
+            {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} references={flatReferences(references)} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
           </div>
           </ModelContext.Provider>
         </LinksContext.Provider>

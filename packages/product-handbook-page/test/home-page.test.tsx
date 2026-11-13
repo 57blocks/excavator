@@ -228,7 +228,7 @@ describe('the domain table and the references', () => {
   it('lists the references as links, in the order of the page', () => {
     const host = home();
     const refs = Array.from(host.querySelectorAll('.ref-list a')).map((one) => [one.getAttribute('href'), one.textContent]);
-    expect(refs).toEqual([['#/product/chapter/system', d('System chapter')], ['#/product/history', marked['md.history.heading']], ['#/product/coverage', marked['page.nav.coverage']]]);
+    expect(refs).toEqual([['#/product/chapter/system', marked['page.nav.system']], ['#/product/history', marked['md.history.heading']], ['#/product/coverage', marked['page.nav.coverage']]]);
   });
 });
 

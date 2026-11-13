@@ -64,6 +64,11 @@ function loadList(outDir, record) {
   }
 }
 
+/** The text `raw` of a chapter's part in each of the page's views: the product view's text has every citation taken out. */
+export function viewTexts(raw, views) {
+  return Object.fromEntries(views.map((view) => [view, view === 'product' ? productText(raw) : raw]));
+}
+
 /** The `domains` key of the page data. `views` are the page's views. */
 export function domainsData(run, views) {
   const record = run.state.chapters.domains;
@@ -75,7 +80,7 @@ export function domainsData(run, views) {
   const technical = views.includes('technical');
   const ids = new Set(run.map.features.map((feature) => feature.id));
   const idOf = new Map(loaded.value.domains.map((domain, index) => [domain.name, `d${index + 1}`]));
-  const texts = (raw) => Object.fromEntries(views.map((view) => [view, view === 'product' ? productText(raw) : raw]));
+  const texts = (raw) => viewTexts(raw, views);
   const list = loaded.value.domains.map((domain) => {
     const { intro, body } = splitSection(domainSection(chapter.text, domain.name) ?? '');
     return { id: idOf.get(domain.name), name: domain.name, features: [...domain.features], intro: texts(intro), body: texts(body) };
@@ -93,7 +98,7 @@ export function domainsData(run, views) {
   return { state: 'ok', list, handovers };
 }
 
-/** The `## ` and `### ` headings of `text` outside fences, in document order: their text. */
+/** The `## ` and `### ` headings of `text` outside fences, in document order: `{ title, level }`. */
 export function pageHeadings(text) {
   const out = [];
   let fenced = false;
@@ -101,7 +106,7 @@ export function pageHeadings(text) {
     if (FENCE.test(line)) fenced = !fenced;
     else if (!fenced) {
       const found = /^#{2,3}\s+(.*?)\s*#*\s*$/.exec(line);
-      if (found !== null && !line.startsWith('####')) out.push(found[1]);
+      if (found !== null && !line.startsWith('####')) out.push({ title: found[1], level: line.startsWith('###') ? 3 : 2 });
     }
   }
   return out;
@@ -115,12 +120,47 @@ export function leadOf(run) {
 
 /** The search index: the domains, then each chapter the outline places with its `##` and `###` headings. */
 export function searchIndex(domains, chapterBlocks, run) {
-  const items = domains.list.map((domain) => ({ kind: 'domain', title: domain.name, chapter: null, domain: domain.id, heading: null }));
+  const items = domains.list.map((domain) => ({ kind: 'domain', title: domain.name, chapter: null, domain: domain.id, heading: null, level: null }));
   for (const block of chapterBlocks) {
-    items.push({ kind: 'chapter', title: block.title, chapter: block.block, domain: null, heading: null });
-    pageHeadings(productText(run.chapters.get(block.block).text)).forEach((title, index) => {
-      items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index });
+    items.push({ kind: 'chapter', title: block.title, chapter: block.block, domain: null, heading: null, level: null });
+    pageHeadings(productText(run.chapters.get(block.block).text)).forEach(({ title, level }, index) => {
+      items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index, level });
     });
   }
   return items;
+}
+
+const MERMAID_FENCE = /^\s*```mermaid/;
+const LEVEL_TWO = /^##\s/;
+
+/**
+ * The `architecture` key of the page data: the level-2 section of the system chapter that holds the chapter's first mermaid
+ * fence, from its `## ` line (dropped) to the next `## ` line, outside fences, in each view with the citation rules of the
+ * domains' texts. '' in every view when there is no system chapter, no fence, or the first fence comes before any `## ` line.
+ */
+export function architectureOf(run, views) {
+  const none = viewTexts('', views);
+  const system = run.chapters.get('system');
+  if (system === undefined) return none;
+  const lines = system.text.split('\n');
+  let fenced = false;
+  let heading = -1;
+  let start = -1;
+  let end = lines.length;
+  for (let at = 0; at < lines.length; at += 1) {
+    const line = lines[at];
+    if (FENCE.test(line)) {
+      if (!fenced && start === -1 && MERMAID_FENCE.test(line)) {
+        if (heading === -1) return none;
+        start = heading;
+      }
+      fenced = !fenced;
+    } else if (!fenced && LEVEL_TWO.test(line)) {
+      if (start !== -1) { end = at; break; }
+      heading = at;
+    }
+  }
+  if (start === -1) return none;
+  const body = lines.slice(start + 1, end).join('\n').trim();
+  return body === '' ? none : viewTexts(body, views);
 }

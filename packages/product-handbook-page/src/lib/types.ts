@@ -1,6 +1,6 @@
-/** The page data `handbook.mjs page` writes into the template: format /20 (openspec changes handbook-skill-first, design D7, and handbook-page-domain-map, design D3); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
+/** The page data `handbook.mjs page` writes into the template: format /21 (openspec changes handbook-skill-first, design D7, and handbook-page-domain-map, design D3); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/20';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/21';
 
 /** The views a page can hold: the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -214,7 +214,7 @@ export interface DomainData { id: string; name: string; features: string[]; intr
 export interface HandoverData { from: string; to: string; what: string; features: string[]; cites?: string[] }
 
 /** One entry of the search index: a domain, a chapter, or a `##` or `###` heading of a chapter (`heading` counts them from 0 in the chapter). */
-export interface SearchItem { kind: 'domain' | 'chapter' | 'heading'; title: string; chapter: string | null; domain: string | null; heading: number | null }
+export interface SearchItem { kind: 'domain' | 'chapter' | 'heading'; title: string; chapter: string | null; domain: string | null; heading: number | null; /** 2 or 3 for a heading, null for a domain or a chapter. */ level: 2 | 3 | null }
 
 export interface PageData {
   format: typeof PAGE_FORMAT;
@@ -237,6 +237,8 @@ export interface PageData {
   domains: { state: DomainsState; list: DomainData[]; handovers: HandoverData[] };
   /** The first paragraph of the system chapter (product view text); empty without a system chapter. */
   lead: string;
+  /** The section of the system chapter that holds its first diagram, by view; '' without one. */
+  architecture: ViewTexts;
   /** The search index: domains, then each chapter followed by its headings. */
   search: SearchItem[];
   technical?: Technical;

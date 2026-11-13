@@ -1,13 +1,12 @@
 import { useLinks } from '../lib/links';
-import type { Group } from '../lib/groups';
-import { hrefOf } from '../lib/pages';
-import type { PageItem } from '../lib/pages';
+import type { Group, ReferenceGroup } from '../lib/groups';
 import type { Pair } from '../lib/strata';
 import { useText } from '../lib/text';
 import type { View } from '../lib/types';
 import { CloseIcon, MenuIcon, SearchIcon } from './Icons';
 import { Mark } from './Mark';
 import { Popover } from './Popover';
+import { ReferenceGroups } from './ReferenceGroups';
 
 interface Props {
   /** The first line of the brand and the title of the view the reader is in (the second line). */
@@ -15,7 +14,7 @@ interface Props {
   viewTitle: string;
   groups: Group[];
   colours: Record<string, Pair>;
-  references: PageItem[];
+  references: ReferenceGroup[];
   /** The route the page shows, to mark the map link. */
   home: boolean;
   menuOpen: boolean;
@@ -52,7 +51,7 @@ export function TopBar({ brand, viewTitle, groups, colours, references, home, me
           ))}
         </Popover>
         <Popover id="pop-refs" label={t('page.nav.references')}>
-          {references.map((item) => <a key={item.key} href={hrefOf(item, nav)} data-page={item.key}>{item.title}</a>)}
+          <ReferenceGroups groups={references} as="links" />
         </Popover>
       </nav>
       <div className="bar-end">
