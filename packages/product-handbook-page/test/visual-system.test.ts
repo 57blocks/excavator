@@ -95,7 +95,7 @@ describe('the not-verified line, citations, links and buttons', () => {
   it('styles the chapter note without a box, and the not-passed note as a warning', () => {
     expect(declared('.prose .chapter-note', 'font-size')).toBe('14px');
     expect(declared('.prose .chapter-note', 'color')).toBe('var(--text-3)');
-    expect(declared('.prose .chapter-note', 'margin')).toBe('0 0 24px');
+    expect(declared('.prose .chapter-note', 'margin')).toBe('0 0 8px');
     expect(declared('.prose .chapter-note', 'border')).toBeUndefined();
     expect(declared('.prose .chapter-note[data-part="not-passed"]', 'color')).toBe('var(--warn-text)');
   });

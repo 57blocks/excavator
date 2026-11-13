@@ -5,7 +5,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppView } from '../src/App';
-import { activeIndex } from '../src/components/Toc';
+import { activeIndex, spyLimit } from '../src/components/Toc';
 import { parseHash } from '../src/lib/route';
 import type { PageData } from '../src/lib/types';
 import { cleanup, mount, settle } from './dom';
@@ -110,6 +110,13 @@ describe('the scrollspy rule', () => {
     expect(activeIndex(tops, 1000)).toBe(3);
     expect(activeIndex([300, 600, 900], 80)).toBe(0);
     expect(activeIndex([], 80)).toBe(0);
+  });
+
+  it('counts a heading in the top quarter under the bar as the one being read, never less than 24px of air', () => {
+    expect(spyLimit(56, 900)).toBe(56 + 225);
+    expect(spyLimit(56, 40)).toBe(56 + 24);
+    // A heading 150px down a 900px viewport is the one being read, not the one before it.
+    expect(activeIndex([-300, 150, 700], spyLimit(56, 900))).toBe(1);
   });
 });
 

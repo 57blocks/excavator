@@ -5,8 +5,13 @@ import { useText } from '../lib/text';
 
 interface Entry { id: string; text: string; level: 2 | 3 }
 
-/** The room kept above a heading for the bar and a little air (the bar is 56px high). */
+/** The least room kept above a heading for the bar and a little air (the bar is 56px high). */
 const AIR = 24;
+
+/** How far down the viewport a heading may be and still be the one being read: a quarter of the viewport under the bar, never less than the air. */
+export function spyLimit(bar: number, viewport: number): number {
+  return bar + Math.max(AIR, Math.round(viewport * 0.25));
+}
 
 /** The index of the heading the reader is at: the last one whose top is at or above `limit`, the first when none is. Pure, so a test can drive it. */
 export function activeIndex(tops: number[], limit: number): number {
@@ -45,7 +50,7 @@ export function Toc({ root }: { root: RefObject<HTMLElement | null> }) {
       frame = 0;
       const { elements } = collect(column);
       const bar = document.querySelector('.topbar')?.getBoundingClientRect().height || 56;
-      setActive(activeIndex(elements.map((element) => element.getBoundingClientRect().top), bar + AIR));
+      setActive(activeIndex(elements.map((element) => element.getBoundingClientRect().top), spyLimit(bar, window.innerHeight)));
     };
     const schedule = () => { if (frame === 0) frame = window.requestAnimationFrame(spy); };
     const rebuild = () => {
