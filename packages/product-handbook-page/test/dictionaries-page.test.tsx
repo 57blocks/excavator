@@ -211,7 +211,7 @@ describe('the styled application select, the search box and the count strip (han
 
   it('the search box is a styled input that narrows the list together with the select', async () => {
     const host = page();
-    const input = host.querySelector<HTMLInputElement>('input[type="search"]');
+    const input = host.querySelector<HTMLInputElement>('.main input[type="search"]');
     expect(input?.className).toContain('field-control');
     typeInto(input as HTMLInputElement, 'status');
     expect(statusOf(host)).toBe(`${MARK}Showing 2 of 5 value sets`);

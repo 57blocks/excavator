@@ -16,6 +16,12 @@ import { TextContext, makeText } from './lib/text';
 import type { PageData, View } from './lib/types';
 import { useRoute } from './lib/use-route';
 
+/** Whether a key press happened where the reader is typing text. */
+function isEditing(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]') !== null;
+}
+
 /** The page a route shows in `view`: the not-found page when the view or the page is not in the data. */
 function PageView({ data, route, view, coverageTitle }: { data: PageData; route: Route; view: View | null; coverageTitle: string }) {
   if (view === null) return <NotFound />;
@@ -39,6 +45,8 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
   const t = useMemo(() => makeText(data.ui.strings), [data.ui.strings]);
   const [menuOpen, setMenuOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  const focusFilter = useRef(false);
   const coverageTitle = t('page.nav.coverage');
   const view = viewOf(data, route, coverageTitle);
   const current: View = view ?? data.views[0];
@@ -48,10 +56,27 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMenuOpen(false);
+      else if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isEditing(event.target)) {
+        event.preventDefault();
+        const narrow = typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 899px)').matches;
+        // The drawer's links cannot take the focus while it is closed: open it first, focus once it has rendered.
+        if (narrow && !menuOpenRef.current) {
+          focusFilter.current = true;
+          setMenuOpen(true);
+        } else filterRef.current?.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  const menuOpenRef = useRef(menuOpen);
+  menuOpenRef.current = menuOpen;
+  useEffect(() => {
+    if (menuOpen && focusFilter.current) {
+      focusFilter.current = false;
+      filterRef.current?.focus();
+    }
+  }, [menuOpen]);
 
   return (
     <TextContext.Provider value={t}>
@@ -62,7 +87,7 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
             <TopBar title={data.titles[current] ?? ''} menuOpen={menuOpen} onMenu={() => setMenuOpen(!menuOpen)} views={data.views} current={current} switchTo={switchTo} />
             <div className="shell">
               {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
-              <Sidebar data={data} route={route} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
+              <Sidebar data={data} route={route} open={menuOpen} onNavigate={() => setMenuOpen(false)} filterRef={filterRef} />
               <main className="main" id="main" tabIndex={-1} ref={mainRef}><PageView data={data} route={route} view={view} coverageTitle={coverageTitle} />{view !== null && <ChapterNav data={data} route={route} />}</main>
             </div>
           </div>
