@@ -234,6 +234,28 @@ describe('order', () => {
     expect(text.slice(text.indexOf('## Coverage'))).toContain('No outline was written for this project');
   });
 
+  it('a review chapter sits after defects and before remedies, with no Outline: line, and is not listed as missing when absent', () => {
+    const run = make({ ...chapters(), review: chapterText('Design problems') });
+    const result = run.assemble();
+    expect(result.lines).toEqual([join(run.out, 'handbook.md')]);
+    const text = run.read('handbook.md');
+    const order = ['Defects', 'Design problems', 'Remedies'].map((title) => indexOfTitle(text, title));
+    expect(order.every((at) => at > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    const bare = make(chapters());
+    bare.assemble();
+    expect(bare.read('handbook.md').slice(bare.read('handbook.md').indexOf('## Coverage'))).not.toContain('- review');
+  });
+
+  it('an outline that lists review places it; one that leaves it out gets an Outline: line', () => {
+    const run = make({ ...chapters(), review: chapterText('Design problems') });
+    const outline = (list) => ({ format: 'excavator-product-handbook-outline/2', language: 'English', parts: [{ title: 'All', chapters: list }], unplaced: [] });
+    run.writeJson(join(run.out, 'outline.json'), outline(['system', 'F1', 'F2', 'domains', 'defects', 'review', 'remedies']));
+    expect(run.assemble().lines.filter((line) => line.startsWith('Outline:'))).toEqual([]);
+    run.writeJson(join(run.out, 'outline.json'), outline(['system', 'F1', 'F2', 'domains', 'defects', 'remedies']));
+    expect(run.assemble().lines.filter((line) => line.startsWith('Outline:'))).toEqual(['Outline: outline.json: block "review" is neither in a part nor unplaced']);
+  });
+
   it('a valid outline sets the order and is named in the coverage section', () => {
     const run = make(chapters());
     run.writeJson(join(run.out, 'outline.json'), {

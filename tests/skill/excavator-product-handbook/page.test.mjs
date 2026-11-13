@@ -182,6 +182,22 @@ describe('page: the views', () => {
   });
 });
 
+describe('page: the review chapter', () => {
+  it('appears as a chapter, in the defects part, with no Outline: problem', () => {
+    const run = make({ withScripts: false });
+    run.write('defects', chapterText('Defects'));
+    run.write('review', chapterText('Design problems'));
+    run.write('remedies', chapterText('Remedies'));
+    run.check('defects', 'review', 'remedies');
+    expect(page(run).status).toBe(0);
+    const data = dataOf(html(run));
+    expect(data.outline.problems).toEqual([]);
+    expect(data.chapters.map((chapter) => chapter.id)).toContain('review');
+    const part = data.outline.parts.find((entry) => entry.blocks.some((item) => item.block === 'review'));
+    expect(part.blocks.map((item) => item.block)).toEqual(['defects', 'review', 'remedies']);
+  });
+});
+
 describe('page: the outline, the chapters that were not written, a chapter that did not pass', () => {
   it('follows a written outline and leaves out the blocks it puts aside, with their chapters', () => {
     const run = make();

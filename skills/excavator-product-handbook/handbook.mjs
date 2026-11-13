@@ -55,12 +55,13 @@ Commands:
       Every item must match exactly one feature; otherwise print each failing
       item and then every feature as "id  name", end with a Next: line and
       exit 1. No fuzzy matching. Changes no file.
-  sections [<list>]
+  sections [<list>] [--review]
       Validate the --sections list (comma-separated: system, features, data, history, domains, roles, notifications, topics,
-      defects, remedies, outline; empty or absent is all) and print "SECTIONS=<the sections in fixed order>",
+      defects, review, remedies, outline; empty or absent is all but review) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the map stage file first, once, then each
-      section's file, once (the six cross chapters share one). A value that is not a section exits 1 and the
+      section's file, once (the five cross chapters before review share one). --review adds review; whenever review
+      is selected, remedies and outline are selected too. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
@@ -101,7 +102,7 @@ Commands:
       commands and the project files statically; writes nothing under the
       project. Prints one line. A project in no repository writes noHistory
       with the reason and counts the test files all the same.
-  check <out> [<chapter>...] [--before cross] [--no-record] --project <root>
+  check <out> [<chapter>...] [--before cross|review] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
       fact line cites, paragraphs have at most 4 sentences, a feature chapter has a list or a
@@ -110,7 +111,8 @@ Commands:
       line per chapter with its reasons and a Next: line, and records status, attempts and
       reasons in state.json (format /2); a state.json of another format exits 1 and asks for
       --fresh. --no-record prints the same without writing state.json. --before cross checks no
-      chapter: it exits 0 when every feature has a passed chapter or one that failed twice.
+      chapter: it exits 0 when every feature has a passed chapter or one that failed twice;
+      --before review checks no chapter either and holds the same rule, and also needs a map.
       Never changes a chapter.
   check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
@@ -239,9 +241,10 @@ const COMMANDS = {
     return report(checkCommand(positionals[0], positionals.slice(1), projectRootOption(options.project), { before: options.before, record }));
   },
   sections(args) {
-    const { positionals } = parseArgs(args, []);
+    const review = args.includes('--review');
+    const { positionals } = parseArgs(args.filter((arg) => arg !== '--review'), []);
     if (positionals.length > 1) throw new UsageError('sections takes one comma-separated list at most');
-    const parsed = parseSections(positionals[0]);
+    const parsed = parseSections(positionals[0], { review });
     if (!parsed.ok) return report({ status: 1, lines: parsed.lines });
     return report({ status: 0, lines: sectionLines(parsed.sections) });
   },

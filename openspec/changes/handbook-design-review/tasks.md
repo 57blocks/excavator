@@ -1,14 +1,14 @@
 ## 1. 部分、选项与前置条件（design D1）
 
-- [ ] 1.1 `lib/sections.mjs`：
+- [x] 1.1 `lib/sections.mjs`：
   - 新的部分 `review`；
   - 默认不含它，`--review` 加上它，选中时带上 `remedies` 与 `outline`；
   - 对策改读 `sections/remedies.md`。
 
   验证：`sections` 的单元测试覆盖默认、`--review`、`--sections review`、非法值。
-- [ ] 1.2 `check --before review`：地图存在、每个功能有已记录的章节，否则逐行打印缺什么，退出 1。验证：测试覆盖没有地图、缺 3 个功能章节、全部通过三种情况。
-- [ ] 1.3 把对策从 `sections/cross.md` 移到 `sections/remedies.md`，`cross.md` 改为两轮派发；`SKILL.md` 的选项与部分清单加上 `review` 与 `--review`。验证：`test_product_handbook_skill_contract` 与读 SKILL.md 的技能测试通过。
-- [ ] 1.4 让新的一章被认出来：
+- [x] 1.2 `check --before review`：地图存在、每个功能有已记录的章节，否则逐行打印缺什么，退出 1。验证：测试覆盖没有地图、缺 3 个功能章节、全部通过三种情况。
+- [x] 1.3 把对策从 `sections/cross.md` 移到 `sections/remedies.md`，`cross.md` 改为两轮派发；`SKILL.md` 的选项与部分清单加上 `review` 与 `--review`。验证：`test_product_handbook_skill_contract` 与读 SKILL.md 的技能测试通过。
+- [x] 1.4 让新的一章被认出来：
   - `review` 加进跨功能章节的清单（检查的种类、建议词规则）；
   - 加进拼装的默认顺序（缺陷之后、对策之前）；
   - 加进目录阶段列出的章节。

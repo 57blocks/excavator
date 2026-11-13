@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { HANDBOOK_FILES } from './assemble.mjs';
-import { CROSS_CHAPTERS, SYSTEM_CHAPTER, candidatesLine, loadMdRun } from './md-run.mjs';
+import { EXPECTED_CROSS_CHAPTERS, SYSTEM_CHAPTER, candidatesLine, loadMdRun } from './md-run.mjs';
 import { PAGE_FILE } from './page-chunks.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
@@ -25,7 +25,7 @@ export function replyLines(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
   const missing = views.filter((view) => !existsSync(join(run.outDir, HANDBOOK_FILES[view])));
   if (missing.length > 0) return { status: 1, lines: [...missing.map((view) => `${HANDBOOK_FILES[view]}: missing`), 'Next: run assemble, then this command again'] };
   const featureIds = run.map.features.map((feature) => feature.id);
-  const names = [SYSTEM_CHAPTER, ...featureIds, ...CROSS_CHAPTERS];
+  const names = [SYSTEM_CHAPTER, ...featureIds, ...EXPECTED_CROSS_CHAPTERS, ...(run.chapters.has('review') ? ['review'] : [])];
   const written = names.filter((name) => run.chapters.has(name));
   const failed = written.filter((name) => run.chapters.get(name).record.status === 'failed');
   const unwritten = featureIds.filter((id) => !run.chapters.has(id));

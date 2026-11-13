@@ -1,7 +1,7 @@
 ---
 name: excavator-product-handbook
 description: Write a product handbook for non-technical readers from a project's source - a system chapter (what the system is, who uses it, its applications, stores and external systems), a map of the product's areas and features, one chapter per feature with its screens, fields, rules, states, notifications and problems, and chapters across the features (domains, roles, notifications and jobs, cross-cutting topics, defects with levels, remedies), each written once by a subagent as Markdown in which every fact cites the file and lines it rests on, checked by one script, assembled into handbook.md and a one-file HTML page in the language you choose (English by default), as a product view, a technical view or both. A script lists the entrypoint candidates and checks the map, you write the map and the outline, one subagent per feature writes its chapter. Runs resume where they stopped, and can write only some sections or features. It describes the product as it is and gives no advice, except in its remedies chapter.
-argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--views <list>] [--sections <list>] [--concurrency <n>] [--fresh]"
+argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--views <list>] [--sections <list>] [--review] [--concurrency <n>] [--fresh]"
 ---
 
 # /excavator-product-handbook
@@ -24,7 +24,7 @@ Five rules govern everything below:
 | You (the orchestrator) | Write the map (Phase 3) and the outline (Phase 9), dispatch every writer and the translation of the fixed text, run the checks, and reply. |
 | One `excavator-handbook-writer` subagent for the system (Phase 4) | Reads the manifests, configuration, start-up, registration and deployment files of every application root, and writes `chapters/system.md`. |
 | One `excavator-handbook-writer` subagent per feature (Phase 5) | Reads the feature's seed files and follows the code out of them, and writes `chapters/<id>.md`, with its open questions and its problems. |
-| One `excavator-handbook-writer` subagent per cross chapter (Phase 8) | Reads only the chapters already written, and writes `chapters/<name>.md` for `domains`, `roles`, `notifications`, `topics`, `defects` or `remedies`. |
+| One `excavator-handbook-writer` subagent per cross chapter (Phases 8 and 8c) | Reads only the chapters already written, and writes `chapters/<name>.md` for `domains`, `roles`, `notifications`, `topics`, `defects` or `remedies`. |
 | One `excavator-handbook-writer` subagent for the fixed text (only when the language is not English) | Translates the fixed-text table and writes `ui.json`. |
 
 The text of the phases is split by section. This file holds Phases 0 to 2, the Sections part and Phase 10; the other phases are in `stages/` and `sections/`, each read only when the run needs it (see Sections).
@@ -42,7 +42,7 @@ All under `$OUT`:
 | `chapters/<id>.md` | the subagent of feature `<id>` (Phase 5) |
 | `data.json`, `dictionaries.json` | `handbook.mjs data` (Phase 6) |
 | `entries/history.json` | `handbook.mjs history` (Phase 7) |
-| `chapters/domains.md`, `roles.md`, `notifications.md`, `topics.md`, `defects.md`, `remedies.md` | one subagent each (Phase 8) |
+| `chapters/domains.md`, `roles.md`, `notifications.md`, `topics.md`, `defects.md`, `remedies.md` | one subagent each (Phases 8 and 8c) |
 | `outline.json` | you (Phase 9) |
 | `state.json` | `handbook.mjs check` only: the result, attempts and reasons of each chapter |
 | `handbook.md`, `handbook-technical.md` | `handbook.mjs assemble` (Phase 10) |
@@ -56,7 +56,8 @@ All under `$OUT`:
 - `--out <dir>` - where the run's files, the handbook and the page go (default: `<project>/.excavator/product-handbook`).
 - `--features <list>` - write chapters only for these features, as a comma-separated list of feature ids or feature names (a name is matched ignoring case, as a whole name). The map still covers every candidate; a feature without a chapter is listed in the handbook as not written, and the cross chapters wait until every feature has one. Feature ids exist only after the map is written, which is why names are accepted: Phase 3 resolves the list with `select`.
 - `--views <list>` - which views are written: `product`, `technical` or both separated by a comma (default: `product`). The product view shows no file paths; the technical view shows each citation as a file and its lines. With both, the page has a switch between them that stays on the same chapter. The option only decides what `assemble`, `page` and `reply` write, and is not recorded.
-- `--sections <list>` - which sections this run writes: `system`, `features`, `domains`, `roles`, `notifications`, `topics`, `defects`, `remedies` (each a chapter or, for `features`, one per feature), `data` and `history` (written by scripts) and `outline` (written by you), separated by a comma (default: all). The option only decides which phases run and is not recorded: running again with other sections never writes again a chapter that passed, and Phase 10 assembles whatever `$OUT` holds.
+- `--sections <list>` - which sections this run writes: `system`, `features`, `domains`, `roles`, `notifications`, `topics`, `defects`, `review`, `remedies` (each a chapter or, for `features`, one per feature), `data` and `history` (written by scripts) and `outline` (written by you), separated by a comma (default: all but `review`, the design problems, which cost more and are optional). The option only decides which phases run and is not recorded: running again with other sections never writes again a chapter that passed, and Phase 10 assembles whatever `$OUT` holds.
+- `--review` - add the `review` section (the design problems chapter) to this run's sections. Whenever `review` is selected, by this option or by `--sections review`, `remedies` and `outline` are selected too, so that the remedies cover it and the outline places it.
 - `--concurrency <n>` - how many writers run at once (default: 3).
 - `--fresh` - start over instead of resuming an earlier run in the same `--out`.
 
@@ -72,7 +73,7 @@ Read only the project's source code and configuration. Never read anything under
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-1. Resolve `PROJECT_ROOT` from the path argument (default: `pwd`). Parse `--language` (`$LANGUAGE`: English when it is not given), `--out` (`$OUT`, default `$PROJECT_ROOT/.excavator/product-handbook`), `--features` (`$FEATURES`: the value, or none), `--views` (`$VIEWS`: the value, or `product` when it is not given; when it holds anything but `product` and `technical`, separated by a comma, tell the user those two values and stop), `--sections` (the value, or empty when it is not given; the Sections part checks it), `--concurrency` (`$CONCURRENCY`, default `3`) and `--fresh`. The run's language name, `$RUN_LANGUAGE`, is `English` whenever `$LANGUAGE` is English however it was spelled (`en`, `english`), and `$LANGUAGE` as given otherwise; the script treats only the name `English` as English.
+1. Resolve `PROJECT_ROOT` from the path argument (default: `pwd`). Parse `--language` (`$LANGUAGE`: English when it is not given), `--out` (`$OUT`, default `$PROJECT_ROOT/.excavator/product-handbook`), `--features` (`$FEATURES`: the value, or none), `--views` (`$VIEWS`: the value, or `product` when it is not given; when it holds anything but `product` and `technical`, separated by a comma, tell the user those two values and stop), `--sections` (the value, or empty when it is not given; the Sections part checks it), `--review` (whether it is given), `--concurrency` (`$CONCURRENCY`, default `3`) and `--fresh`. The run's language name, `$RUN_LANGUAGE`, is `English` whenever `$LANGUAGE` is English however it was spelled (`en`, `english`), and `$LANGUAGE` as given otherwise; the script treats only the name `English` as English.
 2. Resolve `PLUGIN_ROOT` and check the script:
    ```bash
    PROJECT_ROOT="$(pwd)"   # or the path argument, as an absolute path
@@ -168,12 +169,13 @@ Reply with one line: `ui: written`, and nothing else.
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-Phases 3 to 9 are in files of their own under `$PLUGIN_ROOT/skills/excavator-product-handbook/`, each read only when a selected section needs it: `stages/map.md` (Phase 3, the map, which every written chapter needs), `sections/system.md` (Phase 4, section `system`), `sections/features.md` (Phase 5, section `features`), `sections/data.md` (Phase 6, section `data`, no map needed), `sections/history.md` (Phase 7, section `history`, no map needed), `sections/cross.md` (Phase 8, sections `domains`, `roles`, `notifications`, `topics`, `defects` and `remedies`) and `stages/outline.md` (Phase 9, section `outline`). `$SECTIONS` is the sections of this run: the `--sections` value, or all of them when it is not given.
+Phases 3 to 9 are in files of their own under `$PLUGIN_ROOT/skills/excavator-product-handbook/`, each read only when a selected section needs it: `stages/map.md` (Phase 3, the map, which every written chapter needs), `sections/system.md` (Phase 4, section `system`), `sections/features.md` (Phase 5, section `features`), `sections/data.md` (Phase 6, section `data`, no map needed), `sections/history.md` (Phase 7, section `history`, no map needed), `stages/cross-prompt.md` (the prompt every cross chapter starts with, read with any of the sections below that write one), `sections/cross.md` (Phase 8, sections `domains`, `roles`, `notifications`, `topics` and `defects`), `sections/review.md` (Phase 8b, section `review`, the design problems), `sections/remedies.md` (Phase 8c, section `remedies`) and `stages/outline.md` (Phase 9, section `outline`). `$SECTIONS` is the sections of this run: the `--sections` value, or all of them but `review` when it is not given (with `--review`, `review` is added).
 
 1. Ask the script which files this run reads. Write the `--sections` value between the quotes (empty quotes when it is not given):
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" sections "<the --sections value, or empty>"
    ```
+   When `--review` is given, add ` --review` after the quoted value.
    On exit 1, tell the user the lines it printed (the values that are not sections and the valid ones), and stop. Otherwise record `$SECTIONS` as the value of the `SECTIONS=` line, and the `READ=` lines, in the order printed, as the files to read.
 2. Read each `READ=` file in that order with the Read tool, at `$PLUGIN_ROOT/skills/excavator-product-handbook/` followed by the path printed. Read a file when you get to it, not before, and do its phases before you read the next file. Read no file `sections` did not print, and never run a phase from memory. Read every file it printed, also when `$OUT` already shows its phases done: whether a phase has work is decided by its own first step.
 3. A phase in a file you did not read does not run. Where the text of a phase says to go to Phase N and Phase N does not run in this run, go to the next phase this run runs.

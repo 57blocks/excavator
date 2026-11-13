@@ -1,5 +1,5 @@
 /**
- * check <out> [<chapter>...] [--before cross] --project <root>: the final check of the
+ * check <out> [<chapter>...] [--before cross|review] --project <root>: the final check of the
  * Markdown chapters under <out>/chapters/, recorded in state.json (format /2), or the
  * gate that says whether the cross chapters may be written. Never changes a chapter.
  */
@@ -35,17 +35,23 @@ function kindOf(name, ids) {
   return ids.includes(name) ? 'feature' : null;
 }
 
-function beforeCross(outDir) {
+/** The gate before cross chapters (`target` cross) or the design problems (`review`): the map exists and every feature has a passed chapter or one that failed twice. */
+function beforeGate(outDir, target) {
   const ids = featureIds(outDir);
-  if (ids === null) return { status: 1, lines: ['map.json is missing or has no features; write and check the map first'] };
+  if (ids === null) {
+    return { status: 1, lines: ['map.json is missing or has no features; write and check the map first'] };
+  }
   const loaded = loadStateV2(outDir);
   if (!loaded.ok) return { status: 1, lines: [loaded.line] };
   const missing = ids.filter((id) => {
     const record = loaded.state.chapters[id];
     return !(record !== undefined && (record.status === 'passed' || (record.status === 'failed' && record.attempts >= 2)));
   });
-  if (missing.length === 0) return { status: 0, lines: [`Cross chapters: ready (${ids.length} features)`] };
-  return { status: 1, lines: [...missing.map((id) => `missing: ${id}`), 'Next: write and check these features before the cross chapters'] };
+  const [ready, next] = target === 'review'
+    ? ['Design problems', 'Next: write and check these features before the design problems']
+    : ['Cross chapters', 'Next: write and check these features before the cross chapters'];
+  if (missing.length === 0) return { status: 0, lines: [`${ready}: ready (${ids.length} features)`] };
+  return { status: 1, lines: [...missing.map((id) => `missing: ${id}`), next] };
 }
 
 function checkChapters(outDir, names, root, record) {
@@ -104,9 +110,9 @@ function checkChapters(outDir, names, root, record) {
 export function checkCommand(outDir, names, root, { before, record = true } = {}) {
   if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
   if (before !== undefined) {
-    if (before !== 'cross') throw new UsageError('--before takes cross');
-    if (!record) throw new UsageError('--no-record cannot be used with --before cross');
-    return beforeCross(outDir);
+    if (before !== 'cross' && before !== 'review') throw new UsageError('--before takes cross or review');
+    if (!record) throw new UsageError(`--no-record cannot be used with --before ${before}`);
+    return beforeGate(outDir, before);
   }
   return record ? withStateLock(outDir, () => checkChapters(outDir, names, root, true)) : checkChapters(outDir, names, root, false);
 }

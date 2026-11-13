@@ -18,6 +18,20 @@ const make = (chapters, options) => {
 
 const CANDIDATES = 'Candidates: 7 listed, 6 in features, 1 unassigned; none missing, none counted twice';
 
+describe('reply: the optional review chapter', () => {
+  const all = ['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS];
+  it('counts review only when its chapter exists', () => {
+    const without = make(Object.fromEntries(all.map((name) => [name, chapterText(name)])));
+    without.assemble();
+    expect(without.reply().lines).toContain('Chapters: 12 (passed 12, failed 0, not written 0)');
+    const withReview = make(Object.fromEntries([...all, 'review'].map((name) => [name, chapterText(name)])));
+    withReview.assemble();
+    const result = withReview.reply();
+    expect(result.lines).toContain('Chapters: 13 (passed 13, failed 0, not written 0)');
+    expect(result.lines.at(-1)).toBe('Run: complete');
+  });
+});
+
 describe('reply', () => {
   it('prints the lines in order with counts, failed chapters and unwritten features', () => {
     const run = make({ system: chapterText('System'), F1: chapterText('Orders'), F2: chapterText('Archive').replace(cite('10'), cite('99')) });

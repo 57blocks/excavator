@@ -40,7 +40,7 @@ function commandNames() {
 
 describe('the phase files', () => {
   it('are exactly the files the sections table and SKILL.md use', () => {
-    expect(FILES).toEqual(['SKILL.md', 'sections/cross.md', 'sections/data.md', 'sections/features.md', 'sections/history.md', 'sections/system.md', 'stages/map.md', 'stages/outline.md']);
+    expect(FILES).toEqual(['SKILL.md', 'sections/cross.md', 'sections/data.md', 'sections/features.md', 'sections/history.md', 'sections/remedies.md', 'sections/review.md', 'sections/system.md', 'stages/cross-prompt.md', 'stages/map.md', 'stages/outline.md']);
   });
 
   it('are ASCII only', () => {
@@ -79,6 +79,13 @@ describe('the commands', () => {
     expect(new Set(named)).toEqual(new Set(SECTIONS));
   });
 
+  it('SKILL.md documents --review in the hint and as an option, and the sections command with it', () => {
+    const skill = TEXT['SKILL.md'];
+    expect(skill).toMatch(/^argument-hint: .*\[--review\]/m);
+    expect(skill).toMatch(/- `--review` - /);
+    expect(skill).toMatch(/handbook\.mjs" sections "[^"]*"\n\s*```\n\s*When `--review` is given/);
+  });
+
   it('keeps --features, --language with English as the default, --fresh and resuming', () => {
     const skill = TEXT['SKILL.md'];
     expect(skill).toMatch(/- `--features <list>`/);
@@ -115,19 +122,24 @@ describe('the dispatches', () => {
   });
 
   it('the cross chapters never give the writer the project: PROJECT_ROOT occurs only as the argument of the check', () => {
-    const text = TEXT['sections/cross.md'];
-    for (const prompt of prompts(text)) {
-      const uses = Array.from(prompt.matchAll(/\$PROJECT_ROOT/g)).length;
-      const asCheck = Array.from(prompt.matchAll(/--project "\$PROJECT_ROOT"/g)).length;
-      expect(uses).toBe(asCheck);
+    const files = ['stages/cross-prompt.md', 'sections/cross.md', 'sections/remedies.md'];
+    for (const file of files) {
+      for (const prompt of prompts(TEXT[file])) {
+        const uses = Array.from(prompt.matchAll(/\$PROJECT_ROOT/g)).length;
+        const asCheck = Array.from(prompt.matchAll(/--project "\$PROJECT_ROOT"/g)).length;
+        expect(uses, file).toBe(asCheck);
+      }
     }
-    expect(prompts(text)[0]).toMatch(/never open, search or read the project's code/);
+    expect(prompts(TEXT['stages/cross-prompt.md'])[0]).toMatch(/never open, search or read the project's code/);
   });
 
-  it('the cross phase gates on every feature having its chapter, and writes the six chapters', () => {
+  it('the cross phase gates on every feature having its chapter, and writes the five chapters; remedies has its own file', () => {
     const text = TEXT['sections/cross.md'];
     expect(text).toContain('check "$OUT" --before cross');
-    for (const name of ['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies']) expect(text).toContain(`**${name}** (\`$OUT/chapters/${name}.md\`)`);
+    for (const name of ['domains', 'roles', 'notifications', 'topics', 'defects']) expect(text).toContain(`**${name}** (\`$OUT/chapters/${name}.md\`)`);
+    expect(text).not.toContain('**remedies**');
+    expect(TEXT['sections/remedies.md']).toContain('**remedies** (`$OUT/chapters/remedies.md`)');
+    expect(TEXT['sections/review.md']).toContain('check "$OUT" --before review');
   });
 
   it('the domains writer also writes domains.json, and a passed domains record without json is written again', () => {
@@ -137,11 +149,11 @@ describe('the dispatches', () => {
     for (const key of ['"domains"', '"handovers"', '"from"', '"to"', '"what"', '"cites"', '"features"']) expect(block).toContain(key);
     expect(block).toMatch(/--no-record/);
     expect(text).toMatch(/`passed` but has no `json` field/);
-    expect(text).toMatch(/Write only the file or files named below/);
+    expect(TEXT['stages/cross-prompt.md']).toMatch(/Write only the file or files named below/);
   });
 
   it('the three citation prompts name the full-width parentheses of a language written with them', () => {
-    for (const file of ['sections/system.md', 'sections/features.md', 'sections/cross.md']) expect(TEXT[file]).toContain('U+FF08');
+    for (const file of ['sections/system.md', 'sections/features.md', 'stages/cross-prompt.md']) expect(TEXT[file]).toContain('U+FF08');
   });
 
   it('the feature phase prints each feature\'s seed files and entrypoints', () => {
@@ -149,7 +161,7 @@ describe('the dispatches', () => {
   });
 
   it('only the remedies prompt allows advice', () => {
-    const text = TEXT['sections/cross.md'];
+    const text = TEXT['sections/remedies.md'];
     expect(text).toMatch(/\*\*remedies\*\*[\s\S]*the only chapter of the handbook that gives advice/);
     expect(TEXT['sections/features.md']).toMatch(/give no advice/);
     expect(TEXT['sections/system.md']).toMatch(/give no advice/);
