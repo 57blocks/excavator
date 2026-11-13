@@ -20,6 +20,11 @@ One writer subagent per feature reads the feature's code once and writes one Mar
    Dispatch a writer for every feature that needs one, whatever the run has spent: never leave a feature unwritten to keep budget or time for later phases. When the run cannot go on, stop; the next run resumes from the files and `state.json` and writes only what is missing.
 
 2. Dispatch at most `$CONCURRENCY` writers in one message so they run concurrently, each an `excavator-handbook-writer` subagent in the foreground with the prompt below. Write `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OUT`, `$LANGUAGE`, `$OPEN_QUESTIONS`, `$PROBLEMS` and `$NONE` as their values everywhere, and fill in the block **Your feature** from `map.json` and `candidates.json`; leave the rest of the prompt exactly as written, `<id>` included, so that every writer of the run starts with the same text. Wait for every writer of the message to return before you send the next message; never dispatch in the background: a run without a terminal stops waiting for background subagents.
+   For each feature `<id>` of the message, print what the block **Your feature** needs, with these two commands (the first prints the seed files, one per line; the second prints the entrypoint lines of the block, one per line, each as id, kind, `file:line` and text separated by tabs):
+   ```bash
+   jq -r --arg f "<id>" '.features[] | select(.id == $f) | .seedFiles[]' "$OUT/map.json"
+   jq -r --slurpfile m "$OUT/map.json" --arg f "<id>" '($m[0].features[] | select(.id == $f) | .candidates) as $c | .items[] | select(.id as $i | $c | index($i)) | [.id, .kind, "\(.file):\(.line)", .text] | @tsv' "$OUT/candidates.json"
+   ```
 
 3. As each writer returns, check its chapter, one at a time:
    ```bash

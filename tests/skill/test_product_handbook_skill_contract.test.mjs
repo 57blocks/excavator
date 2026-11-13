@@ -134,6 +134,9 @@ describe('the dispatches', () => {
     for (const file of ['sections/system.md', 'sections/features.md', 'sections/cross.md']) expect(TEXT[file]).toContain('U+FF08');
   });
 
+  it('the feature phase prints each feature\'s seed files and entrypoints', () => {
+    expect(TEXT['sections/features.md']).toContain('--slurpfile m "$OUT/map.json"');
+  });
 
   it('only the remedies prompt allows advice', () => {
     const text = TEXT['sections/cross.md'];
