@@ -7,6 +7,7 @@ import { DictionariesPage } from './components/DictionariesPage';
 import { HistoryPage } from './components/HistoryPage';
 import { NotFound } from './components/NotFound';
 import { Sidebar } from './components/Sidebar';
+import { Toc } from './components/Toc';
 import { TopBar } from './components/TopBar';
 import { LoaderContext, createLoader } from './lib/chunks';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
@@ -46,11 +47,14 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const focusFilter = useRef(false);
   const coverageTitle = t('page.nav.coverage');
   const view = viewOf(data, route, coverageTitle);
   const current: View = view ?? data.views[0];
   const links = useMemo(() => makeLinks(data.views.length > 1 ? current : null), [data.views.length, current]);
+  const page = view === null ? undefined : pageOf(pagesOf(data, view, coverageTitle), route);
+  const hasToc = page?.kind === 'chapter' || page?.kind === 'coverage';
   const switchTo = Object.fromEntries(data.views.map((item) => [item, switchTarget(data, route, item, coverageTitle)])) as Record<View, string>;
 
   useEffect(() => {
@@ -88,7 +92,12 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
             <div className="shell">
               {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
               <Sidebar data={data} route={route} open={menuOpen} onNavigate={() => setMenuOpen(false)} filterRef={filterRef} />
-              <main className="main" id="main" tabIndex={-1} ref={mainRef}><PageView data={data} route={route} view={view} coverageTitle={coverageTitle} />{view !== null && <ChapterNav data={data} route={route} />}</main>
+              <main className="main" id="main" tabIndex={-1} ref={mainRef}>
+                <div className="main-grid">
+                  <div className="content-col" ref={contentRef}><PageView data={data} route={route} view={view} coverageTitle={coverageTitle} />{view !== null && <ChapterNav data={data} route={route} />}</div>
+                  {hasToc && <Toc root={contentRef} />}
+                </div>
+              </main>
             </div>
           </div>
         </LinksContext.Provider>

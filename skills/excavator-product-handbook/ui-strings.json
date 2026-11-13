@@ -198,6 +198,7 @@
     "page.nav.close": "Close the navigation",
     "page.nav.filter": "Filter chapters",
     "page.nav.filterEmpty": "No chapter matches the filter.",
+    "page.toc.label": "On this page",
     "page.skip": "Skip to the content",
     "page.view.label": "View",
     "page.view.product": "Product",
