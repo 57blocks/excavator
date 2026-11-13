@@ -12,12 +12,14 @@ import { cleanup, mount, settle } from './dom';
 import { domainData } from './domains-fixture';
 import { d, marked } from './page-fixture';
 
-const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
+const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(), parse: vi.fn() }));
 vi.mock('mermaid', () => ({ default: mermaid }));
 
 beforeEach(() => {
   mermaid.initialize.mockReset();
   mermaid.render.mockReset();
+  mermaid.parse.mockReset();
+  mermaid.parse.mockImplementation(async (source: string) => { if (source.includes('BROKEN')) throw new Error('Parse error on line 2'); return { diagramType: 'flowchart' }; });
   mermaid.render.mockImplementation(async (id: string) => ({ svg: `<svg data-id="${id}"></svg>` }));
 });
 afterEach(cleanup);
@@ -155,7 +157,7 @@ describe('the strip on a feature page', () => {
   });
 
   it('keeps a diagram of the chapter under the same id as without the strip', async () => {
-    const text = `# ${d('Order entry')}\n\n${marked['chapter.notVerified']}\n\n## ${d('Flow')}\n\n\`\`\`mermaid\nflowchart TD\n  A --> B\n\`\`\`\n`;
+    const text = `# ${d('Order entry')}\n\n${marked['chapter.notVerified']}\n\n## ${d('Flow')}\n\n\`\`\`mermaid\nstateDiagram-v2\n  Draft\n  [*] --> Draft\n\`\`\`\n`;
     const data = domainData();
     data.chapters = data.chapters.map((chapter) => (chapter.id === 'F2' ? { id: 'F2', texts: { product: text, technical: text } } : chapter));
     const withStrip = page('#/product/chapter/F2', data);

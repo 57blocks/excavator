@@ -12,13 +12,15 @@ import { cleanup, mount, settle } from './dom';
 import { domainData } from './domains-fixture';
 import { d, marked } from './page-fixture';
 
-const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
+const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(), parse: vi.fn() }));
 vi.mock('mermaid', () => ({ default: mermaid }));
 
 beforeEach(() => {
   window.location.hash = '';
   mermaid.initialize.mockReset();
   mermaid.render.mockReset();
+  mermaid.parse.mockReset();
+  mermaid.parse.mockImplementation(async (source: string) => { if (source.includes('BROKEN')) throw new Error('Parse error on line 2'); return { diagramType: 'flowchart' }; });
   mermaid.render.mockImplementation(async (id: string) => ({ svg: `<svg data-id="${id}" viewBox="0 0 10 10"><text>drawn</text></svg>` }));
 });
 afterEach(() => { cleanup(); window.location.hash = ''; });
@@ -102,7 +104,7 @@ describe('the architecture section of the home page', () => {
 describe('a diagram full screen', () => {
   const chapterWithDiagram = (): PageData => {
     const data = domainData();
-    const text = `# ${d('Orders')}\n\nIntro.\n\n\`\`\`mermaid\nflowchart TD\n  A --> B\n\`\`\`\n`;
+    const text = `# ${d('Orders')}\n\nIntro.\n\n\`\`\`mermaid\nstateDiagram-v2\n  Draft\n  [*] --> Draft\n\`\`\`\n`;
     return { ...data, chapters: data.chapters.map((one) => (one.id === 'F1' ? { id: 'F1', texts: { product: text, technical: text } } : one)) };
   };
   const key = (name: string): void => { act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true })); }); };

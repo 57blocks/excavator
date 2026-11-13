@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 import { collectBundledPackages } from '../explorer/scripts/licenses.mjs';
+import { dropDiagramFontImport } from './scripts/no-font-import.mjs';
 import { pageTemplate } from './scripts/template.mjs';
 
 // Build of the handbook page (openspec change product-handbook-map, design
@@ -12,7 +13,7 @@ import { pageTemplate } from './scripts/template.mjs';
 export default defineConfig({
   base: './',
   publicDir: false,
-  plugins: [collectBundledPackages(), react(), tailwindcss(), ...pageTemplate()],
+  plugins: [collectBundledPackages(), dropDiagramFontImport(), react(), tailwindcss(), ...pageTemplate()],
   // Non-ASCII characters in the libraries are written as escapes (the same text), and the template stays ASCII.
   esbuild: { charset: 'ascii' },
   build: {
