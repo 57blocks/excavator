@@ -190,7 +190,7 @@ describe('the pages', () => {
     const { core, parts } = chunkedData();
     const { loader } = fakeLoader(core, parts);
     const host = mount(page(core, '#/technical/chapter/F1', loader));
-    expect(host.querySelector('.rail')?.textContent).toContain(d('Orders'));
+    expect(host.querySelector('.side')?.textContent).toContain(d('Orders'));
     expect(host.textContent).toContain(LOADING);
     expect(host.textContent).not.toContain(d('technical words'));
     await wait();

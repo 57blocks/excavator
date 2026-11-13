@@ -11,6 +11,7 @@ export interface Links {
   dictionaries: string;
   history: string;
   chapter: (id: string) => string;
+  domain: (id: string) => string;
 }
 
 export function makeLinks(prefix: View | null): Links {
@@ -21,6 +22,7 @@ export function makeLinks(prefix: View | null): Links {
     dictionaries: routeHash({ name: 'dictionaries' }, prefix),
     history: routeHash({ name: 'history' }, prefix),
     chapter: (id) => routeHash({ name: 'chapter', id }, prefix),
+    domain: (id) => routeHash({ name: 'domain', id }, prefix),
   };
 }
 

@@ -86,7 +86,7 @@ describe('diagrams', () => {
     expect(failed.textContent).toContain(`${MARK}${shipped.strings['page.diagram.failed']}`);
     expect(host.textContent).toContain(d('Intro words.'));
     expect(host.textContent).toContain(d('After the diagram.'));
-    expect(host.querySelector('.rail')).not.toBeNull();
+    expect(host.querySelector('.side')).not.toBeNull();
   });
 
   it('a good diagram next to a broken one still draws', async () => {

@@ -11,7 +11,7 @@ import { AppView } from '../src/App';
 import { sortedTables } from '../src/components/DataPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import type { DataSection, PageData, View } from '../src/lib/types';
-import { switchTarget } from '../src/lib/pages';
+import { switchTarget } from '../src/lib/navigation';
 import { BOTH, DATA, MARK, d, marked, pageData } from './page-fixture';
 
 const mention = (file: string, line: number, rule: 'a' | 'b' | 'c') => ({ file: d(file), line, rule });
@@ -61,7 +61,7 @@ function visibleTexts(html: string): string[] {
 }
 const unmarked = (html: string): string[] => visibleTexts(html).filter((text) => !text.includes(MARK) && !(text.startsWith(DATA) && !text.includes('@')) && !/^\d+$/.test(text));
 const main = (html: string): string => html.slice(html.indexOf('<main'));
-const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
+const railOf = (html: string) => html.slice(html.indexOf('<nav class="side"'), html.indexOf('</nav>', html.indexOf('<nav class="side"')));
 
 /** The block of one table in the tables list: from its item to the next item (or the end of the list). */
 const item = (html: string, name: string): string => {
@@ -83,9 +83,9 @@ describe('the data route and link', () => {
 
   it('the technical view has the sidebar link and the page; the product view has neither', () => {
     const data = dataFor(BOTH);
-    const technical = render(data, '#/technical');
+    const technical = render(data, '#/technical/chapter/system');
     expect(railOf(technical)).toContain('href="#/technical/data"');
-    const product = render(data, '#/product');
+    const product = render(data, '#/product/chapter/system');
     expect(railOf(product)).not.toContain('/data"');
     expect(product).not.toContain('data-view="data"');
   });
@@ -101,7 +101,7 @@ describe('the data route and link', () => {
   it('switching from the data page goes to the first chapter of the product view, and from a chapter into the technical view stays on it', () => {
     const data = dataFor(BOTH);
     const coverage = marked['page.nav.coverage'];
-    expect(switchTarget(data, parseHash('#/technical/data'), 'product', coverage)).toBe('#/product/chapter/system');
+    expect(switchTarget(data, parseHash('#/technical/data'), 'product', coverage)).toBe('#/product');
     expect(switchTarget(data, parseHash('#/product/chapter/F1'), 'technical', coverage)).toBe('#/technical/chapter/F1');
   });
 });

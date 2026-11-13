@@ -194,8 +194,8 @@ describe('H: sections', () => {
   rejects('a missing Open questions section', (t) => t.replace(/## Open questions\n\nNobody can tell how long drafts live\.\n\n/, ''), /missing the section "Open questions"/);
   it('a cross chapter does not need them', () => {
     const run = newRun();
-    run.write('domains', `# Domains\n\n- Orders (${c('5')})\n`);
-    expect(run.check('domains').status).toBe(0);
+    run.write('roles', `# Roles\n\n- Orders (${c('5')})\n`);
+    expect(run.check('roles').status).toBe(0);
   });
 });
 

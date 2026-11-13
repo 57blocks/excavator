@@ -1,4 +1,4 @@
-// O1 of openspec change handbook-page-chunked-data, carried over to the page data /19 of openspec change
+// O1 of openspec change handbook-page-chunked-data, carried over to the page data /20 of openspec change
 // handbook-skill-first: `page` writes one self-contained handbook.html below the size threshold and
 // handbook.html plus handbook-data/part-NNNN.js above it; every part is within the limit and a single call;
 // the same input gives the same bytes; the data restored from the parts equals the single-file data; no
@@ -58,7 +58,7 @@ describe('page: below the threshold it is one file', () => {
     expect(existsSync(join(made.out, PARTS_DIR))).toBe(false);
     const before = readFileSync(join(made.out, 'handbook.html'));
     const data = dataOf(html(made));
-    expect(data.format).toBe('excavator-product-handbook-page/19');
+    expect(data.format).toBe('excavator-product-handbook-page/20');
     expect(data.chunks).toEqual({ parts: [], units: {} });
     expect(data.chapters[1].texts.technical).toContain('# Orders');
     expect(data.technical.dictionaries.dictionaries).toHaveLength(31);
@@ -95,7 +95,9 @@ describe('page: above the threshold it is the page plus handbook-data/', () => {
     expect(core.outline.parts.length).toBeGreaterThan(0);
     expect(core.history.conventions.length).toBeGreaterThan(0);
     expect(html(made)).not.toContain('TicketStatus');
-    expect(html(made)).not.toContain('Placing an order');
+    // The headings are in the core on purpose (the search index, design D3 of handbook-page-domain-map); the chapter text is not.
+    expect(html(made)).not.toContain('An order is Draft until it is sent');
+    expect(core.search.some((item) => item.title === 'Placing an order')).toBe(true);
     // A unit that does not fit one part spans consecutive parts.
     const spans = Object.values(core.chunks.units).filter((ids) => ids.length > 1);
     expect(spans.length).toBeGreaterThan(0);

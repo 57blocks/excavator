@@ -11,6 +11,7 @@ import { basename } from 'node:path';
 
 import { loadDataSection, pageSection } from './data-section.mjs';
 import { dictionariesPageSection, loadDictionariesSection } from './dict-section.mjs';
+import { domainsData, leadOf, searchIndex } from './page-domains.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { languageTag } from './language-tag.mjs';
 import { coverageLines } from './md-coverage.mjs';
@@ -30,9 +31,14 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * - `history`: the code health as the page draws it (history-page.mjs), or null when the run has none or the outline leaves it out.
  * - `technical`, only with the technical view: `data` and `dictionaries` with their state (`ok`, `missing`, `malformed`) and `history`, the paths
  *   of the hotspot files and of the files changed together (null without a history).
- * (/18 and older: the structured handbook of openspec change product-handbook-map and its successors.)
+ * - `domains`: the business domains and their hand-overs from the checked domains.json (page-domains.mjs): `state` is `ok`, `missing`,
+ *   `failed` or `changed`, `list` is `{ id, name, features, intro, body }` (ids `d1`..., `intro` the first paragraph of the domain's section of the
+ *   domains chapter, `body` the rest, each by selected view) and `handovers` is `{ from, to, what, features, cites? }` (domain ids; `cites` only with the technical view).
+ * - `lead`: the first paragraph of the system chapter in the product view's text; `search`: the search index, `{ kind, title, chapter, domain, heading }` for each domain,
+ *   chapter and `##` or `###` heading of a chapter (`heading` counts them from 0 in each chapter).
+ * (/19: the same without these three keys; /18 and older: the structured handbook of openspec change product-handbook-map and its successors.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/19';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/20';
 
 const SCRIPT_TITLES = { data: 'md.data.heading', dictionaries: 'md.dict.heading', history: 'md.history.heading' };
 const trimmed = (lines) => lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
@@ -60,6 +66,8 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   // The page shows one chapter at a time, so the section's own title is its level-1 heading, like a chapter's.
   const coverage = trimmed(coverageLines({ map: run.map, candidates: run.candidates, chapters: run.chapters, outline, t }).map((line) => (/^#{2,6} /.test(line) ? line.slice(1) : line)));
   const history = scripts.includes('history') && placed.has('history') ? historyOf(run, roots[0]) : null;
+  const domains = domainsData(run, views);
+  const chapterBlocks = parts.flatMap((part) => part.blocks).filter((item) => item.kind === 'chapter');
   const data = {
     format: PAGE_FORMAT,
     chunks: { parts: [], units: {} },
@@ -72,6 +80,9 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     chapters,
     coverage: Object.fromEntries(views.map((view) => [view, coverage])),
     history: history === null ? null : historyPageSection(history),
+    domains,
+    lead: leadOf(run),
+    search: searchIndex(domains, chapterBlocks, run),
   };
   if (technical) {
     const wanted = (name) => TECHNICAL_ONLY_BLOCKS.includes(name) && scripts.includes(name) && placed.has(name);

@@ -295,6 +295,12 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
     devDependencies:
+      '@fontsource/ibm-plex-mono':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/ibm-plex-sans':
+        specifier: 5.3.0
+        version: 5.3.0
       '@tailwindcss/vite':
         specifier: 4.3.3
         version: 4.3.3(vite@6.4.3(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3))
@@ -678,6 +684,12 @@ packages:
 
   '@fontsource/dm-serif-display@5.3.0':
     resolution: {integrity: sha512-ecRclUcYeto9fB7ghkB36H4MtUoaUYFjjornWYYeLCMHzaWEDPk2kIWgZOq0mKBNRxclRSieKcFeLonlMYDTKg==}
+
+  '@fontsource/ibm-plex-mono@5.3.0':
+    resolution: {integrity: sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==}
+
+  '@fontsource/ibm-plex-sans@5.3.0':
+    resolution: {integrity: sha512-CbE4CbbEEZJX860XyUiRpsksXIQR8Rp2XDva2VO53NJox9tVNtusrysd2x5YkUEY3ErQ66W1IiiQL8/wihhw5w==}
 
   '@fontsource/inter@5.3.0':
     resolution: {integrity: sha512-RofMylZmjlJEfELXeNHFWBRcSs75rGU/6bV2S2jfnvv/3rPXPGe0LgUJTklcHZ9lM4OZmAVFhcJPnACfb91A3g==}
@@ -3578,6 +3590,10 @@ snapshots:
   '@floating-ui/utils@0.2.12': {}
 
   '@fontsource/dm-serif-display@5.3.0': {}
+
+  '@fontsource/ibm-plex-mono@5.3.0': {}
+
+  '@fontsource/ibm-plex-sans@5.3.0': {}
 
   '@fontsource/inter@5.3.0': {}
 

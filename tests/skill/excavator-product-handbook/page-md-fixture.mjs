@@ -10,7 +10,7 @@ import { join, relative } from 'node:path';
 
 import { writeHistory } from './history-doc-fixture.mjs';
 import { repoRoot, runHandbook } from './helpers.mjs';
-import { chapterText, cite, newMdRun } from './md-run-fixture.mjs';
+import { FORM, chapterText, cite, newMdRun } from './md-run-fixture.mjs';
 
 import { extractData } from '../../../skills/excavator-product-handbook/lib/data-extract.mjs';
 import { extractDictionaries } from '../../../skills/excavator-product-handbook/lib/dict-extract.mjs';
@@ -55,6 +55,49 @@ export function pageRun(cleanups, { withScripts = true } = {}) {
     writeHistory(run);
   }
   return run;
+}
+
+const C1 = `${FORM}:5-6`;
+const C2 = `${FORM}:10-11`;
+
+/** A domains chapter of three domains and a hand-over each way between the first two (a two-way pair); it passes `check domains` with `domainsList`. */
+export const DOMAINS_CHAPTER = `# Domains
+
+The domains of the product (${cite('5')}).
+
+## Order handling
+
+Orders and the archive live here (${cite('5')}).
+
+- Orders (F1) hands work to Reminders (F3) (\`${C1}\`).
+
+## Automatic work
+
+Reminders (F3) sends mail (\`${C2}\`).
+
+## Last words
+
+Closing line (${cite('10')}).
+`;
+
+export const domainsList = () => ({
+  domains: [
+    { name: 'Order handling', features: ['F1', 'F2', 'F5'] },
+    { name: 'Automatic work', features: ['F3', 'F4'] },
+    { name: 'Last words', features: [] },
+  ],
+  handovers: [
+    { from: 'Order handling', to: 'Automatic work', what: 'Orders (F1) hands work to Reminders (F3)', cites: [C1] },
+    { from: 'Automatic work', to: 'Order handling', what: 'Admin tool (F4) reads Archive (F2)', cites: [C2] },
+  ],
+});
+
+/** Give a run a domains chapter and its checked list of hand-overs, so the page has a map. */
+export function addDomains(run) {
+  run.write('domains', DOMAINS_CHAPTER);
+  writeFileSync(join(run.out, 'domains.json'), `${JSON.stringify(domainsList(), null, 2)}\n`);
+  const checked = run.check('domains');
+  if (checked.status !== 0) throw new Error(`check domains failed:\n${checked.stdout}${checked.stderr}`);
 }
 
 /** Run `page`; `env` is merged over the environment; `views` is the --views value. */

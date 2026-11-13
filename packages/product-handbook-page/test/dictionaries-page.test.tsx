@@ -13,7 +13,7 @@ import { AppView } from '../src/App';
 import { filterDictionaries } from '../src/components/DictionariesPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import type { DictionariesSection, DictionaryEntry, PageData, View } from '../src/lib/types';
-import { switchTarget } from '../src/lib/pages';
+import { switchTarget } from '../src/lib/navigation';
 import { choose, cleanup, mount, openWithKeyboard, optionTexts, selectByLabel, status as statusOf, typeInto } from './dom';
 import { BOTH, DATA, MARK, d, marked, pageData } from './page-fixture';
 
@@ -81,7 +81,7 @@ function visibleTexts(html: string): string[] {
 }
 const unmarked = (html: string): string[] => visibleTexts(html).filter((text) => !text.includes(MARK) && !(text.startsWith(DATA) && !text.includes('@')) && !/^\d+$/.test(text));
 const main = (html: string): string => html.slice(html.indexOf('<main'));
-const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
+const railOf = (html: string) => html.slice(html.indexOf('<nav class="side"'), html.indexOf('</nav>', html.indexOf('<nav class="side"')));
 const setBlock = (body: string, id: string): string => {
   const start = body.indexOf(`data-set="${d(id)}"`);
   expect(start, id).toBeGreaterThan(0);
@@ -99,10 +99,10 @@ describe('the dictionaries route and link', () => {
 
   it('the technical view has the sidebar link and the page; the product view has neither', () => {
     const data = dataFor(BOTH);
-    const technical = render(data, '#/technical');
+    const technical = render(data, '#/technical/chapter/system');
     expect(railOf(technical)).toContain('href="#/technical/dictionaries"');
     expect(railOf(technical)).toContain(marked['md.dict.heading']);
-    const product = render(data, '#/product');
+    const product = render(data, '#/product/chapter/system');
     expect(railOf(product)).not.toContain('/dictionaries"');
     expect(product).not.toContain('data-view="dictionaries"');
   });
@@ -117,7 +117,7 @@ describe('the dictionaries route and link', () => {
 
   it('switching from the page goes to the first chapter of the product view, and into the technical view stays on the page', () => {
     const data = dataFor(BOTH);
-    expect(switchTarget(data, parseHash('#/technical/dictionaries'), 'product', marked['page.nav.coverage'])).toBe('#/product/chapter/system');
+    expect(switchTarget(data, parseHash('#/technical/dictionaries'), 'product', marked['page.nav.coverage'])).toBe('#/product');
     expect(switchTarget(data, parseHash('#/technical/chapter/F1'), 'technical', marked['page.nav.coverage'])).toBe('#/technical/chapter/F1');
   });
 });

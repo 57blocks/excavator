@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
 import { CROSS_CHAPTERS, lintChapter } from './chapter-lint.mjs';
+import { domainsListReasons } from './domains-list.mjs';
 import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
 import { withStateLock } from './lock.mjs';
@@ -68,20 +69,28 @@ function checkChapters(outDir, names, root, record) {
     const kind = kindOf(name, ids);
     let reasons;
     let bytes = null;
+    let listHash = null;
     if (!existsSync(path)) reasons = ['the file does not exist'];
     else if (kind === null) reasons = [`unknown chapter: not system, a cross chapter or a feature id of map.json`];
     else {
       bytes = readFileSync(path);
-      reasons = lintChapter(bytes.toString('utf-8'), { kind, name, files, strings: ui.strings, memberDirs, cache });
+      const chapterText = bytes.toString('utf-8');
+      reasons = lintChapter(chapterText, { kind, name, files, strings: ui.strings, memberDirs, cache });
+      if (name === 'domains') {
+        const list = domainsListReasons(outDir, chapterText, ids);
+        reasons = [...reasons, ...list.reasons];
+        listHash = list.hash;
+      }
     }
     const status = reasons.length === 0 ? 'passed' : 'failed';
     if (status === 'failed') failed = true;
     let attempts = null;
     if (record && bytes !== null) {
-      const hash = sha256(bytes);
+      // For domains the attempt counts a change of either file, so a rewrite that only fixes domains.json is a new attempt.
+      const hash = name === 'domains' && listHash !== null ? sha256(Buffer.concat([bytes, Buffer.from(`\n${listHash}`)])) : sha256(bytes);
       const before = state.chapters[name];
       attempts = before === undefined ? 1 : before.sha256 === hash ? before.attempts : before.attempts + 1;
-      state.chapters[name] = { status, attempts, reasons, sha256: hash };
+      state.chapters[name] = { status, attempts, reasons, sha256: hash, ...(name === 'domains' && status === 'passed' ? { json: listHash } : {}) };
     }
     lines.push(status === 'passed' ? `${label}: passed` : `${label}: failed${attempts === null ? '' : ` (attempt ${attempts})`}`);
     for (const reason of reasons) lines.push(`  - ${reason}`);

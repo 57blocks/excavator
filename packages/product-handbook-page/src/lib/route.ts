@@ -1,6 +1,6 @@
 /**
- * The page's routes live in the URL fragment so the back button and shared links work: `#/` (the first page of the
- * outline), `#/chapter/<block>` (a chapter written as Markdown), `#/data` and `#/dictionaries` (technical view only),
+ * The page's routes live in the URL fragment so the back button and shared links work: `#/` (the home page, the
+ * map), `#/domain/<id>` (a domain page), `#/chapter/<block>` (a chapter written as Markdown), `#/data` and `#/dictionaries` (technical view only),
  * `#/history` and `#/coverage`. A page that has both views puts the view in front of each (`#/technical/chapter/F1`);
  * a page with one view has no prefix, and a fragment without one is the first view. Parsing never throws: a fragment
  * that names no route is `not-found`.
@@ -11,6 +11,7 @@ import type { View } from './types';
 
 export type RouteBody =
   | { name: 'home' }
+  | { name: 'domain'; id: string }
   | { name: 'chapter'; id: string }
   | { name: 'data' }
   | { name: 'dictionaries' }
@@ -39,9 +40,9 @@ const SINGLE: Record<string, RouteBody> = {
 function parseBody(rest: string[], hash: string): RouteBody {
   if (rest.length === 0) return { name: 'home' };
   if (rest.length === 1 && Object.prototype.hasOwnProperty.call(SINGLE, rest[0])) return SINGLE[rest[0]];
-  if (rest.length === 2 && rest[0] === 'chapter') {
+  if (rest.length === 2 && (rest[0] === 'chapter' || rest[0] === 'domain')) {
     const id = decode(rest[1]);
-    if (id !== null && id !== '') return { name: 'chapter', id };
+    if (id !== null && id !== '') return { name: rest[0], id };
   }
   return { name: 'not-found', hash };
 }
@@ -64,6 +65,7 @@ export function parseHash(hash: string): Route {
 function segments(route: RouteBody): string[] {
   switch (route.name) {
     case 'chapter': return ['chapter', encodeURIComponent(route.id)];
+    case 'domain': return ['domain', encodeURIComponent(route.id)];
     case 'data': return ['data'];
     case 'dictionaries': return ['dictionaries'];
     case 'history': return ['history'];
