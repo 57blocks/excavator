@@ -154,9 +154,11 @@ describe('the design-problems phase', () => {
     expect(writer).toMatch(/names, in the situation, the chapters in which you looked/);
   });
 
-  it('the verifier gets only the claims output and writes only the verdicts file; the writers are dispatched in the foreground', () => {
+  it('the verifier gets the claims output, searches the listed chapters only for an absence claim, and writes only the verdicts file; the writers are dispatched in the foreground', () => {
     const verifier = prompts(review()).find((prompt) => prompt.startsWith('You judge the items'));
-    expect(verifier).toContain('Read no file');
+    expect(verifier).toContain('Read no other file');
+    expect(verifier).toContain("$OUT/chapters/<id>.md` for each listed feature id");
+    expect(verifier).toContain('a line found by the search never supports a claim that something exists');
     expect(verifier).toContain('`$OUT/entries/review/<batch>.verdicts.json`');
     expect(verifier).toMatch(/Do not rewrite/);
     expect(review()).toContain('never dispatch in the background');

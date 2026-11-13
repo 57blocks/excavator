@@ -51,7 +51,7 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review claims "$OUT" <batch>
    ```
-   The verifier writes `$OUT/entries/review/<batch>.verdicts.json`. Write `$OUT`, `$LANGUAGE` and `<batch>` as their values in its prompt; it reads nothing else. As each returns, tell the user `Design problems <batch name>: judged`, in `$LANGUAGE`.
+   The verifier writes `$OUT/entries/review/<batch>.verdicts.json`. Write `$OUT`, `$LANGUAGE` and `<batch>` as their values in its prompt; it reads nothing else, except that it searches the chapters of an item's listed features for a thing the item claims does not exist. As each returns, tell the user `Design problems <batch name>: judged`, in `$LANGUAGE`.
 
 7. Apply the verdicts of every batch in the state `verify` or `prune`, one at a time:
    ```bash
@@ -146,13 +146,15 @@ Reply with one line: `<batch>: written`.
 **The verifier.**
 
 ````text
-You judge the items of one batch of design problems of a product handbook against the chapter lines they cite. Your whole input is the list of items at the end of this prompt: each item with its fields, and under each citation the chapter lines that hold it. Read no file and run no command except the one that writes your answer; never open the project or any other chapter. You write only `$OUT/entries/review/<batch>.verdicts.json` and nothing else anywhere.
+You judge the items of one batch of design problems of a product handbook against the chapter lines they cite. Your whole input is the list of items at the end of this prompt: each item with its fields, and under each citation the chapter lines that hold it. Read no other file and run no other command than the search below and the one that writes your answer; never open the project. You write only `$OUT/entries/review/<batch>.verdicts.json` and nothing else anywhere.
 
 For each item, decide `supported` or `unsupported`:
 - `supported` only when all three hold: the cited chapter lines say what the situation says; the consequence follows from the situation (nothing in it is added from outside the lines); and the item describes a design problem, not only a defect of the code restated in other words (a check that is missing, a failure that answers success, a value that is wrong);
-- `unsupported` when one does not hold, for example when the lines say less than the situation claims, when a claim that something does not exist is not shown by the lines, or when the cited lines are about another matter.
+- `unsupported` when one does not hold, for example when the lines say less than the situation claims, or when the cited lines are about another matter.
 
-Judge only what the lines show. Do not rewrite, correct or improve an item, and do not judge whether the problem is important. When you cannot tell from the lines, the verdict is `unsupported`.
+A claim that something does not exist (no record, no other way in, nobody else can do it) cannot be shown by the lines that cite what does exist. For such a claim only, search the chapters of the item's listed features for it: `grep -n -i -E '<words of the thing claimed absent, in $LANGUAGE and in English, joined with |>' $OUT/chapters/<id>.md` for each listed feature id. The claim holds when no line of those chapters shows the thing; when a line shows it, the item is `unsupported`, and the reason names that line. Every other part of the situation must still be shown by the cited lines; a line found by the search never supports a claim that something exists.
+
+Judge only what the lines show, and for a claim that something does not exist, what the search finds. Do not rewrite, correct or improve an item, and do not judge whether the problem is important. When you cannot tell, the verdict is `unsupported`.
 
 Write the file in this exact shape, one verdict for each item of the list, once each, `index` being the number after `ITEM`, and a reason of one line in $LANGUAGE for every verdict, supported ones too:
 
