@@ -1,6 +1,6 @@
-/** The page data `handbook.mjs page` writes into the template: format /19 (openspec change handbook-skill-first, design D7); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
+/** The page data `handbook.mjs page` writes into the template: format /20 (openspec changes handbook-skill-first, design D7, and handbook-page-domain-map, design D3); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/19';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/20';
 
 /** The views a page can hold: the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -204,6 +204,18 @@ export interface Technical {
   history: { hotspots: string[]; coChange: { a: string; b: string }[] } | null;
 }
 
+/** Whether `domains.json` can be used: `ok`, `missing` (no file, no record or no digest), `failed` (the domains chapter did not pass) or `changed` (the file differs from the checked one). */
+export type DomainsState = 'ok' | 'missing' | 'failed' | 'changed';
+
+/** One business domain: its id (`d1`, `d2`, ...), its name, its feature ids, the first paragraph of its section of the domains chapter and the rest of that section, by view. */
+export interface DomainData { id: string; name: string; features: string[]; intro: ViewTexts; body: ViewTexts }
+
+/** A hand-over between two domains (by id); `features` are the feature ids its `what` names; `cites` only with the technical view. */
+export interface HandoverData { from: string; to: string; what: string; features: string[]; cites?: string[] }
+
+/** One entry of the search index: a domain, a chapter, or a `##` or `###` heading of a chapter (`heading` counts them from 0 in the chapter). */
+export interface SearchItem { kind: 'domain' | 'chapter' | 'heading'; title: string; chapter: string | null; domain: string | null; heading: number | null }
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
   chunks: Chunks;
@@ -221,5 +233,11 @@ export interface PageData {
   coverage: ViewTexts;
   /** The code health (both views); null when the run has none or the outline leaves it out. */
   history: History | null;
+  /** The business domains and the hand-overs between them; `list` and `handovers` are empty unless `state` is `ok`. */
+  domains: { state: DomainsState; list: DomainData[]; handovers: HandoverData[] };
+  /** The first paragraph of the system chapter (product view text); empty without a system chapter. */
+  lead: string;
+  /** The search index: domains, then each chapter followed by its headings. */
+  search: SearchItem[];
   technical?: Technical;
 }

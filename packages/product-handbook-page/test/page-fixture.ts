@@ -1,4 +1,4 @@
-// Page data of the Markdown handbook (format /19) for the tests: the fixed text is the shipped table with a mark in
+// Page data of the Markdown handbook (format /20) for the tests: the fixed text is the shipped table with a mark in
 // front of every value, so a test can tell a fixed text from the content of the data (which starts with `d~`).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -63,6 +63,9 @@ export function pageData(options: Options = {}): PageData {
     chapters: options.chapters ?? [chapter('system', 'System chapter', views), chapter('F1', 'Orders', views), chapter('F2', 'Reminders', views)],
     coverage,
     history: options.history === undefined ? NO_HISTORY : options.history,
+    domains: { state: 'missing', list: [], handovers: [] },
+    lead: '',
+    search: [],
     ...(views.includes('technical') ? {
       technical: { data: null, dataState: 'missing' as const, dictionaries: null, dictionariesState: 'missing' as const, history: null, ...options.technical },
     } : {}),
