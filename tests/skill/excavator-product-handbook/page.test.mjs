@@ -84,6 +84,18 @@ describe('page: the file and its data', () => {
     expect(chapters.map((chapter) => chapter.id)).toEqual(['system', 'F1']);
   });
 
+  it('the product text drops a table column the citation removal emptied; the technical text keeps it', () => {
+    const run = make();
+    const rows = `\n| Role | Can do | Cite |\n| --- | --- | --- |\n| Clerk | Creates an order | ${cite('1', 'src/roles.js')} |\n`;
+    run.write('F1', chapterText('Orders', rows));
+    expect(run.check('F1').status).toBe(0);
+    page(run);
+    const f1 = dataOf(html(run)).chapters.find((chapter) => chapter.id === 'F1');
+    expect(f1.texts.product).toContain('| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order |');
+    expect(f1.texts.product).not.toContain('Cite');
+    expect(f1.texts.technical).toContain('| Role | Can do | Cite |');
+  });
+
   it('puts in each chapter the Markdown of each view, made by the functions assemble uses', () => {
     const run = make();
     page(run);

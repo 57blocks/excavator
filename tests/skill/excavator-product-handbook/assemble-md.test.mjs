@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
+import { productText } from '../../../skills/excavator-product-handbook/lib/md-views.mjs';
 import { HANDBOOK_SCRIPT } from './helpers.mjs';
 import { CROSS, FORM, chapterText, cite, newMdRun } from './md-run-fixture.mjs';
 
@@ -53,6 +54,34 @@ describe('views', () => {
     expect(product).toContain(fence);
     const outside = product.replace(fence, '');
     expect(outside).not.toMatch(ANY_CITATION);
+  });
+
+  it('product view drops a table column the citation removal emptied; the technical view keeps it', () => {
+    const rows = `\n| Role | Can do | Cite |\n| --- | --- | --- |\n| Clerk | Creates an order | ${cite('1', 'src/roles.js')} |\n| Approver | Sends an order | ${cite('2', 'src/roles.js')} |\n`;
+    const run = make({ F1: chapterText('Orders', rows) });
+    expect(run.check('F1').status, run.check('F1').stdout).toBe(0);
+    expect(run.assemble('--views', 'product,technical').status).toBe(0);
+    const { product, technical } = outputs(run);
+    expect(product).toContain('| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order |\n| Approver | Sends an order |');
+    expect(product).not.toContain('Cite');
+    expect(technical).toContain(`| Role | Can do | Cite |\n| --- | --- | --- |\n| Clerk | Creates an order | ${cite('1', 'src/roles.js')} |`);
+  });
+
+  it('keeps a column that was empty as written, and a cell with an escaped pipe', () => {
+    const rows = `\n| Role | Note | Can do \\| edit | Cite |\n| --- | --- | --- | --- |\n| Clerk |  | a \\| b | ${cite('1', 'src/roles.js')} |\n| Approver |  | c | ${cite('2', 'src/roles.js')} |\n`;
+    const run = make({ F1: chapterText('Orders', rows) });
+    run.assemble();
+    const product = run.read('handbook.md');
+    expect(product).toContain('| Role | Note | Can do \\| edit |');
+    expect(product).toContain('| Clerk | | a \\| b |');
+    expect(product).toContain('| Approver | | c |');
+    expect(product).not.toContain('Cite');
+  });
+
+  it('never drops the last remaining column', () => {
+    const rows = `\n| Cite |\n| --- |\n| ${cite('1', 'src/roles.js')} |\n`;
+    const run = make({ F1: chapterText('Orders', rows) }, { check: false });
+    expect(productText(run.read('chapters/F1.md'))).toContain('| Cite |\n| --- |\n| |');
   });
 
   it('keeps the full-width full stop a citation group carried', () => {
