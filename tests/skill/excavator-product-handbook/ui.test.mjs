@@ -49,7 +49,7 @@ describe('the shipped English table', () => {
     const keys = Object.keys(table.strings);
     expect(keys.length).toBeGreaterThan(30);
     for (const key of keys) {
-      expect(key).toMatch(/^(md|page|chapter)\.[A-Za-z.]+$/);
+      expect(key).toMatch(/^(md|page|chapter)\.[A-Za-z.-]+$/);
       expect(typeof table.strings[key]).toBe('string');
       expect(table.strings[key].trim()).not.toBe('');
     }

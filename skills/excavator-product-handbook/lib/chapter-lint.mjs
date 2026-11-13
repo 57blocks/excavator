@@ -45,6 +45,19 @@ function fixedMatchers(strings) {
     .map((key) => new RegExp(`^${escapeRegex(strings[key].trim()).replace(/\\\{count\\\}/g, '\\d+').replace(/\{count\}/g, '\\d+')}$`));
 }
 
+/**
+ * The reader-text reasons of `source` (citation groups left out): code-shaped fragments outside quoted labels, and the
+ * words of `advice`. Shared by the chapter check and by the design-problems render, which hold their text to the same rules.
+ */
+export function readerTextReasons(source, { advice = [], memberDirs = [] } = {}) {
+  const reader = withoutGroups(source);
+  const labels = new Set(quotedTexts(reader));
+  const reasons = outsideLabels(bannedFragments(reader, { memberDirs }), reader, labels)
+    .map((hit) => `${JSON.stringify(hit.fragment)} is not allowed in reader text (${hit.category})`);
+  for (const word of wordsIn(reader, advice)) reasons.push(`${JSON.stringify(word)} is a word of advice; only the remedies chapter gives advice`);
+  return reasons;
+}
+
 /** Reasons for the level-2 headings of a feature chapter: each must be one of the fixed nine, and they must come in the fixed order. Skipped when the run's text lacks the keys. */
 function headingReasons(headings, strings) {
   const fixed = FEATURE_HEADING_KEYS.map((key) => strings[key]);
@@ -76,6 +89,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
   const advice = name === 'remedies' ? [] : adviceWordsOf(strings);
 
   let openLevel = null;
+  let lastLevelTwo = null;
   const seenHeadings = [];
   let listOrTable = false;
 
@@ -93,12 +107,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
     }
   };
   const checkReader = (line, source) => {
-    const reader = withoutGroups(source);
-    const labels = new Set(quotedTexts(reader));
-    for (const hit of outsideLabels(bannedFragments(reader, { memberDirs }), reader, labels)) {
-      add(line, `${JSON.stringify(hit.fragment)} is not allowed in reader text (${hit.category})`);
-    }
-    for (const word of wordsIn(reader, advice)) add(line, `${JSON.stringify(word)} is a word of advice; only the remedies chapter gives advice`);
+    for (const reason of readerTextReasons(source, { advice, memberDirs })) add(line, reason);
   };
   const checkFact = (line, source) => {
     reasons.push(`line ${line}: a fact without a citation: ${source.trim().slice(0, 60)}`);
@@ -116,6 +125,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
     if (block.type === 'separator') continue;
     if (block.type === 'heading') {
       seenHeadings.push({ level: block.level, text: block.text });
+      if (block.level === 2) lastLevelTwo = block.text;
       if (openLevel !== null && block.level <= openLevel) openLevel = null;
       if (block.text === strings['chapter.openQuestions']) openLevel = block.level;
       checkCitations(block.line, block.text);
@@ -128,7 +138,9 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       checkReader(block.line, splitRow(block.text).join(' | '));
       if (!block.header) {
         listOrTable = true;
-        if (!inOpen && !isFixed(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
+        // The counts table of the design-problems chapter is computed by the script from its items: its rows carry no citation.
+        const computed = name === 'review' && typeof strings['chapter.review.counts'] === 'string' && lastLevelTwo === strings['chapter.review.counts'];
+        if (!computed && !inOpen && !isFixed(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
       }
       continue;
     }

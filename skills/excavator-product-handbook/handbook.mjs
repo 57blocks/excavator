@@ -5,7 +5,7 @@
  * project's source statically and never builds or runs it.
  *
  * Subcommands: candidates, applications, check-map, select, check-ui, data,
- * history, check, assemble, page, reply, sections. Run `handbook.mjs --help`
+ * history, check, assemble, page, reply, sections, review. Run `handbook.mjs --help`
  * for the arguments of each.
  *
  * check-map and check hold <out>/state.json.lock while they run.
@@ -30,6 +30,8 @@ import { withStateLock } from './lib/lock.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
+import { reviewFacts } from './lib/review-facts.mjs';
+import { renderReview } from './lib/review-render.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
 import { checkUi } from './lib/ui.mjs';
@@ -102,6 +104,20 @@ Commands:
       commands and the project files statically; writes nothing under the
       project. Prints one line. A project in no repository writes noHistory
       with the reason and counts the test files all the same.
+  review facts <out> [<batch>]
+      The whole-table facts the design-problems writers read: the batches (one per business domain when the domains
+      chapter passed, else one per area of the map, b1..bn, then cross), for every feature its operations, the steps of
+      each operation, its states and transitions, its server-side steps and its hand-overs counted from its chapter
+      with the headings of <out>/ui.json (a section that is not recognized is not counted and is named), and the pairs
+      of features whose chapters cite overlapping lines of one file, within a batch and across batches. Writes
+      <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it.
+  review render <out> [<batch>...] --project <root>
+      Check the items of <out>/entries/review/<batch>.json against the chapters: fields and values, the features of
+      the batch (a cross item: features of 2 or more batches), each citation copied from a chapter of a listed feature,
+      two different chapter lines for duplication, contradiction, inconsistency and access, every number in a cited line
+      or a fact of a listed feature, and the reader-text rules of the chapters. One line per refusal, exit 1. With
+      batches named, only those are checked and nothing is written; with none named, every batch is checked and, when
+      all pass, <out>/chapters/review.md is written.
   check <out> [<chapter>...] [--before cross|review] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
@@ -239,6 +255,17 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args.filter((arg) => arg !== '--no-record'), ['project', 'before']);
     if (positionals.length < 1) throw new UsageError('check takes <out> and optionally chapter names');
     return report(checkCommand(positionals[0], positionals.slice(1), projectRootOption(options.project), { before: options.before, record }));
+  },
+  review(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    const [sub, out, ...rest] = positionals;
+    if (sub !== 'facts' && sub !== 'render') throw new UsageError('review takes facts or render, then <out>');
+    if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
+    if (sub === 'facts') {
+      if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
+      return report(reviewFacts(resolve(out), rest[0]));
+    }
+    return report(renderReview(resolve(out), projectRootOption(options.project), rest));
   },
   sections(args) {
     const review = args.includes('--review');
