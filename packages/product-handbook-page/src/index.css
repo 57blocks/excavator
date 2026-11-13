@@ -360,9 +360,23 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .prose .note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 18px; font-size: 14px; line-height: 1.6; color: var(--text-2); }
 .prose .note svg { flex: none; margin-top: 4px; }
 .prose .note[data-note="not-passed"] { color: var(--brick); }
+/* The architecture section of the technical home page: the prose runs at the full width of the page. */
+.arch .prose { max-width: none; }
+.arch-more { margin: 16px 0 0; font-size: 14px; color: var(--text-2); }
+.arch-more span { margin-right: 12px; }
+.arch-more a { margin-right: 14px; white-space: nowrap; }
+
 /* A diagram: drawn by mermaid, or its source when it could not be drawn. */
-.diagram { margin: 18px 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow-x: auto; text-align: center; }
+.diagram { position: relative; margin: 18px 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); text-align: center; }
+.diagram-svg { overflow-x: auto; }
 .diagram svg { max-width: 100%; height: auto; }
+.diagram-expand, .diagram-close { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text-2); cursor: pointer; }
+.diagram-expand:hover, .diagram-close:hover { border-color: var(--line-strong); color: var(--text); }
+.diagram-expand { position: absolute; top: 8px; right: 8px; }
+.diagram-modal { position: fixed; inset: 0; z-index: 200; display: flex; padding: 56px 16px 16px; background: var(--surface); }
+.diagram-close { position: absolute; top: 12px; right: 12px; }
+.diagram-full { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.diagram-full svg { width: 100%; height: 100%; max-width: none !important; max-height: 100%; }
 .diagram-pending { min-height: 48px; }
 .diagram-failed { margin: 16px 0; }
 .diagram-failed p { margin: 0 0 6px; }

@@ -5,6 +5,7 @@ import { DataPage } from './components/DataPage';
 import { DictionariesPage } from './components/DictionariesPage';
 import { DomainPage } from './components/DomainPage';
 import { HistoryPage } from './components/HistoryPage';
+import { systemSections } from './components/Architecture';
 import { HomePage } from './components/HomePage';
 import { Menu } from './components/Menu';
 import { NotFound } from './components/NotFound';
@@ -107,7 +108,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   let main = <NotFound />;
   if (view !== null) {
     if (body.name === 'home') {
-      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} references={references} />;
+      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} references={references} architecture={view === 'technical' ? data.architecture.technical ?? '' : ''} sections={systemSections(data.search)} />;
     } else if (body.name === 'domain') {
       const group = groups.find((candidate) => candidate.id === body.id);
       if (group !== undefined) {

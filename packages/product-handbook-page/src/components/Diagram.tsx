@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useDarkMode } from '../lib/dark-mode';
 import { useText } from '../lib/text';
+import { CloseIcon, ExpandIcon } from './Icons';
 
 type Rendered = { state: 'pending' } | { state: 'done'; svg: string } | { state: 'failed'; reason: string };
 
@@ -92,5 +94,56 @@ export function Diagram({ id, source }: { id: string; source: string }) {
     );
   }
   if (rendered.state === 'pending') return <div className="diagram diagram-pending" data-diagram="pending" aria-busy="true" />;
-  return <div className="diagram" data-diagram="done" dangerouslySetInnerHTML={{ __html: rendered.svg }} />;
+  return <DrawnDiagram svg={rendered.svg} />;
+}
+
+/** A drawn diagram with a button at its top right that opens the same drawing full screen. */
+function DrawnDiagram({ svg }: { svg: string }) {
+  const t = useText();
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const close = useCallback((): void => {
+    setOpen(false);
+    button.current?.focus();
+  }, []);
+  return (
+    <div className="diagram">
+      <div className="diagram-svg" data-diagram="done" dangerouslySetInnerHTML={{ __html: svg }} />
+      <button ref={button} type="button" className="diagram-expand" aria-label={t('page.diagram.expand')} onClick={() => setOpen(true)}><ExpandIcon /></button>
+      {open && <FullScreen svg={svg} onClose={close} />}
+    </div>
+  );
+}
+
+/**
+ * The full-screen view of a drawing: a modal dialog showing a copy of the drawn SVG scaled to the viewport (the diagram is
+ * not rendered again). Escape or the close button closes it, the page behind does not scroll, and the focus starts on the
+ * close button.
+ */
+function FullScreen({ svg, onClose }: { svg: string; onClose: () => void }) {
+  const t = useText();
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeButton.current?.focus();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.body.style.overflow = previous;
+    };
+  }, [onClose]);
+  return createPortal(
+    <div className="diagram-modal" role="dialog" aria-modal="true" aria-label={t('page.diagram.expand')} data-part="diagram-dialog">
+      <button ref={closeButton} type="button" className="diagram-close" aria-label={t('page.diagram.close')} onClick={onClose}><CloseIcon /></button>
+      <div className="diagram-full" dangerouslySetInnerHTML={{ __html: svg }} />
+    </div>,
+    document.body,
+  );
 }

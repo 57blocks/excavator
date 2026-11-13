@@ -116,7 +116,7 @@ describe('the results', () => {
   });
 
   it('cut at forty and keep the order of the index', () => {
-    const items: SearchItem[] = Array.from({ length: 60 }, (_, at) => ({ kind: 'heading', title: `Item ${at}`, chapter: 'F1', domain: null, heading: at }));
+    const items: SearchItem[] = Array.from({ length: 60 }, (_, at) => ({ kind: 'heading', title: `Item ${at}`, chapter: 'F1', domain: null, heading: at, level: 2 }));
     const all = searchResults({ query: 'item', groups: [], items, references: [], referencesLabel: 'refs', domainsLabel: 'domains' });
     expect(all).toHaveLength(MAX_RESULTS);
     expect(all.map((one) => one.title)).toEqual(items.slice(0, 40).map((one) => one.title));

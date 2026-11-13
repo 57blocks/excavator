@@ -11,7 +11,7 @@ import { basename } from 'node:path';
 
 import { loadDataSection, pageSection } from './data-section.mjs';
 import { dictionariesPageSection, loadDictionariesSection } from './dict-section.mjs';
-import { domainsData, leadOf, searchIndex } from './page-domains.mjs';
+import { architectureOf, domainsData, leadOf, searchIndex } from './page-domains.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { languageTag } from './language-tag.mjs';
 import { coverageLines } from './md-coverage.mjs';
@@ -35,10 +35,11 @@ import { DEFAULT_VIEWS } from './views.mjs';
  *   `failed` or `changed`, `list` is `{ id, name, features, intro, body }` (ids `d1`..., `intro` the first paragraph of the domain's section of the
  *   domains chapter, `body` the rest, each by selected view) and `handovers` is `{ from, to, what, features, cites? }` (domain ids; `cites` only with the technical view).
  * - `lead`: the first paragraph of the system chapter in the product view's text; `search`: the search index, `{ kind, title, chapter, domain, heading }` for each domain,
- *   chapter and `##` or `###` heading of a chapter (`heading` counts them from 0 in each chapter).
- * (/19: the same without these three keys; /18 and older: the structured handbook of openspec change product-handbook-map and its successors.)
+ *   chapter and `##` or `###` heading of a chapter (`heading` counts them from 0 in each chapter, `level` is 2 or 3; null on the other items).
+ * - `architecture` (/21): the section of the system chapter that holds its first mermaid fence, by selected view (page-domains.mjs); '' without one.
+ * (/20: the same without `architecture` and without `level` in the search items; /19: the same without these three keys; /18 and older: the structured handbook of openspec change product-handbook-map and its successors.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/20';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/21';
 
 const SCRIPT_TITLES = { data: 'md.data.heading', dictionaries: 'md.dict.heading', history: 'md.history.heading' };
 const trimmed = (lines) => lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
@@ -82,6 +83,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     history: history === null ? null : historyPageSection(history),
     domains,
     lead: leadOf(run),
+    architecture: architectureOf(run, views),
     search: searchIndex(domains, chapterBlocks, run),
   };
   if (technical) {

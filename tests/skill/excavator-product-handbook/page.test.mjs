@@ -1,5 +1,5 @@
 // Oracle O4 (script half) of openspec change handbook-skill-first: `page` writes handbook.html with
-// the data format /20 built from the same checked Markdown run `assemble` uses: the chapters as
+// the data format /21 built from the same checked Markdown run `assemble` uses: the chapters as
 // Markdown by view, the outline's parts, the coverage section and the scripts' blocks. A product-only
 // page holds no citation and no project path, the same input gives the same bytes, the page refuses
 // the runs assemble refuses and leaves no file, and a new template rewrites the page from the files
@@ -52,12 +52,12 @@ describe('page: the file and its data', () => {
     expect(policy).toBe("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'");
   });
 
-  it('has format /20, the keys in a fixed order, the ui table and the title of each view', () => {
+  it('has format /21, the keys in a fixed order, the ui table and the title of each view', () => {
     const run = make();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'chunks', 'language', 'languageTag', 'ui', 'views', 'titles', 'outline', 'chapters', 'coverage', 'history', 'domains', 'lead', 'search', 'technical']);
-    expect(data.format).toBe('excavator-product-handbook-page/20');
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'language', 'languageTag', 'ui', 'views', 'titles', 'outline', 'chapters', 'coverage', 'history', 'domains', 'lead', 'architecture', 'search', 'technical']);
+    expect(data.format).toBe('excavator-product-handbook-page/21');
     expect(data.chunks).toEqual({ parts: [], units: {} });
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');

@@ -48,12 +48,12 @@ export function domainData(extra: Partial<PageData> = {}): PageData {
     ...pageData({ outline: outlineWithFeatures(), chapters, domains: DOMAINS }),
     lead: d('A small *synthetic* system.'),
     search: [
-      { kind: 'chapter', title: d('System chapter'), chapter: 'system', domain: null, heading: null },
-      { kind: 'chapter', title: d('Platform core'), chapter: 'F1', domain: 'd1', heading: null },
-      { kind: 'heading', title: d('Platform core first'), chapter: 'F1', domain: 'd1', heading: 0 },
-      { kind: 'chapter', title: d('Order entry'), chapter: 'F2', domain: 'd2', heading: null },
-      { kind: 'heading', title: d('Order entry first'), chapter: 'F2', domain: 'd2', heading: 0 },
-      { kind: 'heading', title: d('Order entry second'), chapter: 'F2', domain: 'd2', heading: 1 },
+      { kind: 'chapter', title: d('System chapter'), chapter: 'system', domain: null, heading: null, level: null },
+      { kind: 'chapter', title: d('Platform core'), chapter: 'F1', domain: 'd1', heading: null, level: null },
+      { kind: 'heading', title: d('Platform core first'), chapter: 'F1', domain: 'd1', heading: 0, level: 2 },
+      { kind: 'chapter', title: d('Order entry'), chapter: 'F2', domain: 'd2', heading: null, level: null },
+      { kind: 'heading', title: d('Order entry first'), chapter: 'F2', domain: 'd2', heading: 0, level: 2 },
+      { kind: 'heading', title: d('Order entry second'), chapter: 'F2', domain: 'd2', heading: 1, level: 2 },
     ],
     ...extra,
   };

@@ -1,4 +1,4 @@
-// O1 of openspec change handbook-page-chunked-data, carried over to the page data /20 of openspec change
+// O1 of openspec change handbook-page-chunked-data, carried over to the page data /21 of openspec change
 // handbook-skill-first: `page` writes one self-contained handbook.html below the size threshold and
 // handbook.html plus handbook-data/part-NNNN.js above it; every part is within the limit and a single call;
 // the same input gives the same bytes; the data restored from the parts equals the single-file data; no
@@ -58,7 +58,7 @@ describe('page: below the threshold it is one file', () => {
     expect(existsSync(join(made.out, PARTS_DIR))).toBe(false);
     const before = readFileSync(join(made.out, 'handbook.html'));
     const data = dataOf(html(made));
-    expect(data.format).toBe('excavator-product-handbook-page/20');
+    expect(data.format).toBe('excavator-product-handbook-page/21');
     expect(data.chunks).toEqual({ parts: [], units: {} });
     expect(data.chapters[1].texts.technical).toContain('# Orders');
     expect(data.technical.dictionaries.dictionaries).toHaveLength(31);
