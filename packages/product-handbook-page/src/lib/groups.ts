@@ -30,22 +30,33 @@ export function groupsOf(data: PageData): Group[] {
   return groups;
 }
 
+/** A group of reference pages in a list: the title of an outline part that holds some, or null (the coverage page, and a list with one group only). */
+export interface ReferenceGroup { title: string | null; items: PageItem[] }
+
+/** The page of the system chapter is named by the fixed text `page.nav.system` wherever a list or a link names it. */
+export const SYSTEM_BLOCK = 'system';
+export const isSystemItem = (item: PageItem): boolean => item.kind === 'chapter' && item.block === SYSTEM_BLOCK;
+export const named = (item: PageItem, systemTitle: string): PageItem => (isSystemItem(item) ? { ...item, title: systemTitle } : item);
+
 /**
- * The references: every outline block that is not a feature chapter in a group (the system and cross chapters, the data, the
- * dictionaries in the technical view, the history), in outline order, then the coverage page. A feature chapter that is in no
- * group is here too, so that nothing is unreachable.
+ * The references in groups: one group per outline part that holds a reference page (the system and cross chapters, the data,
+ * the dictionaries in the technical view, the history), titled by the part, in outline order; the coverage page last in a
+ * group of its own without a title. A feature chapter that is in no domain is a reference too, so that nothing is unreachable.
+ * When there is only one group its title is null. The system chapter is named `systemTitle`.
  */
-export function referencesOf(data: PageData, view: View, coverageTitle: string): PageItem[] {
+export function referencesOf(data: PageData, view: View, coverageTitle: string, systemTitle: string): ReferenceGroup[] {
   const grouped = new Set(groupsOf(data).flatMap((group) => group.features.map((item) => item.block)));
-  const out: PageItem[] = [];
+  const out: ReferenceGroup[] = [];
   for (const part of data.outline.parts) {
-    for (const block of part.blocks) {
-      if (inView(block, view) && !(isFeature(block) && grouped.has(block.block))) out.push(itemOf(block));
-    }
+    const items = part.blocks.filter((block) => inView(block, view) && !(isFeature(block) && grouped.has(block.block))).map((block) => named(itemOf(block), systemTitle));
+    if (items.length > 0) out.push({ title: part.title, items });
   }
-  out.push({ block: COVERAGE_BLOCK, kind: 'coverage', title: coverageTitle, key: 'coverage' });
-  return out;
+  out.push({ title: null, items: [{ block: COVERAGE_BLOCK, kind: 'coverage', title: coverageTitle, key: 'coverage' }] });
+  return out.length === 1 ? [{ title: null, items: out[0].items }] : out;
 }
+
+/** The pages of the reference groups in order, as one list. */
+export const flatReferences = (groups: ReferenceGroup[]): PageItem[] => groups.flatMap((group) => group.items);
 
 /** The group a feature chapter is in (the first, when it is in several), or undefined. */
 export function groupOfFeature(groups: Group[], block: string): Group | undefined {

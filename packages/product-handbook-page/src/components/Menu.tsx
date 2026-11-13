@@ -1,12 +1,11 @@
 import { useLinks } from '../lib/links';
-import type { Group } from '../lib/groups';
-import { hrefOf } from '../lib/pages';
-import type { PageItem } from '../lib/pages';
+import type { Group, ReferenceGroup } from '../lib/groups';
 import type { Pair } from '../lib/strata';
 import { useText } from '../lib/text';
 import { Mark } from './Mark';
+import { ReferenceGroups } from './ReferenceGroups';
 
-interface Props { groups: Group[]; colours: Record<string, Pair>; references: PageItem[]; home: boolean; onNavigate: () => void }
+interface Props { groups: Group[]; colours: Record<string, Pair>; references: ReferenceGroup[]; home: boolean; onNavigate: () => void }
 
 /** The phone's menu, full screen under the bar: the map, the domains, the references. A click on a link closes it. */
 export function Menu({ groups, colours, references, home, onNavigate }: Props) {
@@ -20,7 +19,7 @@ export function Menu({ groups, colours, references, home, onNavigate }: Props) {
         <a key={group.id} href={nav.domain(group.id)} data-group={group.id}><Mark colour={colours[group.id]} />{group.name}<small>{group.features.length}</small></a>
       ))}
       <h2>{t('page.nav.references')}</h2>
-      {references.map((item) => <a key={item.key} href={hrefOf(item, nav)} data-page={item.key}>{item.title}</a>)}
+      <ReferenceGroups groups={references} as="links" />
     </nav>
   );
 }

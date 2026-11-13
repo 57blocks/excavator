@@ -89,7 +89,7 @@ describe('the results', () => {
   it('list the domains, then the reference chapters, for an empty query, with a mark for a domain and the context on the right', () => {
     page();
     press({ key: 'k', metaKey: true });
-    expect(options()).toEqual([d('Platform'), d('Orders'), d('Billing'), d('Support'), d('System chapter')]);
+    expect(options()).toEqual([d('Platform'), d('Orders'), d('Billing'), d('Support'), marked['page.nav.system']]);
     const rows = Array.from(document.querySelectorAll('[role="option"]'));
     expect(rows[0].querySelector('.mark')).not.toBeNull();
     expect(rows[4].querySelector('.mark')).toBeNull();
@@ -117,10 +117,10 @@ describe('the results', () => {
 
   it('cut at forty and keep the order of the index', () => {
     const items: SearchItem[] = Array.from({ length: 60 }, (_, at) => ({ kind: 'heading', title: `Item ${at}`, chapter: 'F1', domain: null, heading: at, level: 2 }));
-    const all = searchResults({ query: 'item', groups: [], items, references: [], referencesLabel: 'refs', domainsLabel: 'domains' });
+    const all = searchResults({ query: 'item', groups: [], items, references: [], referencesLabel: 'refs', domainsLabel: 'domains', systemTitle: 'sys' });
     expect(all).toHaveLength(MAX_RESULTS);
     expect(all.map((one) => one.title)).toEqual(items.slice(0, 40).map((one) => one.title));
-    expect(searchResults({ query: '  ', groups: [], items, references: [], referencesLabel: '', domainsLabel: '' })).toEqual([]);
+    expect(searchResults({ query: '  ', groups: [], items, references: [], referencesLabel: '', domainsLabel: '', systemTitle: '' })).toEqual([]);
   });
 });
 

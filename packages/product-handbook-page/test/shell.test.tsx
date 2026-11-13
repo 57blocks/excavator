@@ -9,7 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { AppView, documentTitle } from '../src/App';
-import { groupsOf, referencesOf } from '../src/lib/groups';
+import { flatReferences, groupsOf, referencesOf } from '../src/lib/groups';
 import { contextOf, neighbours, switchTarget, viewOf } from '../src/lib/navigation';
 import { bodyOf, pageOf, pagesOf } from '../src/lib/pages';
 import { parseHash, routeHash } from '../src/lib/route';
@@ -22,6 +22,7 @@ import { BOTH, MARK, chapter, d, marked, pageData } from './page-fixture';
 afterEach(cleanup);
 
 const COVERAGE = marked['page.nav.coverage'];
+const SYSTEM = marked['page.nav.system'];
 const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
 const between = (html: string, from: string, to: string): string => html.slice(html.indexOf(from), html.indexOf(to, html.indexOf(from)));
 const side = (html: string): string => between(html, '<nav class="side"', '</nav>');
@@ -95,7 +96,7 @@ describe('the groups', () => {
 });
 
 describe('the references', () => {
-  const keys = (data: PageData, view: 'product' | 'technical'): string[] => referencesOf(data, view, COVERAGE).map((item) => item.key);
+  const keys = (data: PageData, view: 'product' | 'technical'): string[] => flatReferences(referencesOf(data, view, COVERAGE, SYSTEM)).map((item) => item.key);
 
   it('are every block that is not a feature chapter, in outline order, the coverage page last; data and dictionaries in the technical view only', () => {
     expect(keys(pageData(), 'technical')).toEqual(['chapter:system', 'data', 'dictionaries', 'history', 'coverage']);
@@ -253,7 +254,7 @@ describe('a reading page', () => {
     const reference = between(render(withDomains(), '#/product/chapter/system'), '<nav class="crumbs"', '</nav>');
     expect(hrefs(reference)).toEqual(['#/product']);
     expect(reference).toContain(`<span>${marked['page.nav.references']}</span>`);
-    expect(reference).toContain(`<span aria-current="page">${d('System chapter')}</span>`);
+    expect(reference).toContain(`<span aria-current="page">${SYSTEM}</span>`);
   });
 
   it('follows the group order for previous and next of a feature, and the references order (the coverage page last) for the others', () => {
@@ -278,11 +279,11 @@ describe('a reading page', () => {
 
   it('computes neighbours and the context from the list directly', () => {
     const data = withDomains();
-    const context = contextOf(data, 'product', COVERAGE, 'chapter:F1');
+    const context = contextOf(data, 'product', COVERAGE, SYSTEM, 'chapter:F1');
     expect(context.kind).toBe('group');
     expect(neighbours(context.items, 'chapter:F1')).toEqual({});
     expect(neighbours(context.items, 'nope')).toEqual({});
-    expect(contextOf(data, 'product', COVERAGE, 'history').kind).toBe('references');
+    expect(contextOf(data, 'product', COVERAGE, SYSTEM, 'history').kind).toBe('references');
   });
 });
 

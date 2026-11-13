@@ -136,6 +136,12 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .menu h2 { margin: 20px 0 4px; font-size: 13px; font-weight: 500; color: var(--text-2); }
 .menu a { display: flex; gap: 10px; align-items: center; min-height: 48px; border-bottom: 1px solid var(--line); color: var(--text); text-decoration: none; }
 .menu a[aria-current="page"] { font-weight: 600; }
+.ref-group-title { display: block; padding: 0 10px; color: var(--text-2); font-size: 13px; }
+.ref-group + .ref-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.pop-panel .ref-group-title { padding: 4px 10px 2px; }
+.menu .ref-group-title { padding: 12px 0 0; }
+.menu .ref-group + .ref-group { margin-top: 0; padding-top: 0; border-top: 0; }
+.side .ref-group-title { padding: 10px 0 4px 12px; }
 .menu small { margin-left: auto; color: var(--text-2); font-size: 13px; }
 
 /* Page frame, breadcrumbs, the home and domain placeholders */

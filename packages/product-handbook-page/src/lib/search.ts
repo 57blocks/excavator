@@ -17,6 +17,8 @@ export interface SearchInput {
   items: SearchItem[];
   /** The references of the page; the chapters among them are what an empty query lists after the domains. */
   references: PageItem[];
+  /** The fixed name of the system chapter in results. */
+  systemTitle: string;
   referencesLabel: string;
   domainsLabel: string;
 }
@@ -25,14 +27,14 @@ export interface SearchInput {
  * The results for a query: the case-insensitive substring match of the title over the domains, then the chapters and their
  * headings in the order of the index; at most 40. An empty query lists the domains, then the reference chapters.
  */
-export function searchResults({ query, groups, items, references, referencesLabel, domainsLabel }: SearchInput): Result[] {
+export function searchResults({ query, groups, items, references, referencesLabel, domainsLabel, systemTitle }: SearchInput): Result[] {
   const needle = query.trim().toLowerCase();
-  const titleOfChapter = new Map(items.filter((item) => item.kind === 'chapter' && item.chapter !== null).map((item) => [item.chapter as string, item.title]));
+  const titleOfChapter = new Map(items.filter((item) => item.kind === 'chapter' && item.chapter !== null).map((item) => [item.chapter as string, item.chapter === 'system' ? systemTitle : item.title]));
   const domains: Result[] = groups.map((group) => ({ key: `domain:${group.id}`, title: group.name, context: domainsLabel, domain: group.id, target: { kind: 'domain', id: group.id } }));
   const chapterResult = (item: SearchItem): Result | null => {
     if (item.chapter === null) return null;
     const group = groupOfFeature(groups, item.chapter);
-    if (item.kind === 'chapter') return { key: `chapter:${item.chapter}`, title: item.title, context: group?.name ?? referencesLabel, domain: group?.id ?? null, target: { kind: 'chapter', id: item.chapter } };
+    if (item.kind === 'chapter') return { key: `chapter:${item.chapter}`, title: titleOfChapter.get(item.chapter) ?? item.title, context: group?.name ?? referencesLabel, domain: group?.id ?? null, target: { kind: 'chapter', id: item.chapter } };
     if (item.kind === 'heading' && item.heading !== null) {
       return { key: `heading:${item.chapter}:${item.heading}`, title: item.title, context: titleOfChapter.get(item.chapter) ?? item.chapter, domain: group?.id ?? null, target: { kind: 'heading', chapter: item.chapter, heading: item.heading } };
     }

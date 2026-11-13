@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { Context } from '../lib/navigation';
 import { useLinks } from '../lib/links';
 import { hrefOf } from '../lib/pages';
+import { ReferenceGroups } from './ReferenceGroups';
 import { colourProps } from '../lib/strata';
 import type { Pair } from '../lib/strata';
 import { useText } from '../lib/text';
@@ -28,11 +29,13 @@ export function SideList({ context, current, colour }: { context: Context; curre
       <h2 className="side-name">{mark}{context.kind === 'group' ? <a href={nav.domain(context.group.id)}>{name}</a> : name}</h2>
       <details open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}>
         <summary>{mark}{name}</summary>
-        <ul>
-          {context.items.map((item) => (
-            <li key={item.key}><a href={hrefOf(item, nav)} data-page={item.key} aria-current={item.key === current ? 'page' : undefined}>{item.title}</a></li>
-          ))}
-        </ul>
+        {context.kind === 'references' ? <ReferenceGroups groups={context.groups} as="list" current={current} /> : (
+          <ul>
+            {context.items.map((item) => (
+              <li key={item.key}><a href={hrefOf(item, nav)} data-page={item.key} aria-current={item.key === current ? 'page' : undefined}>{item.title}</a></li>
+            ))}
+          </ul>
+        )}
       </details>
     </nav>
   );

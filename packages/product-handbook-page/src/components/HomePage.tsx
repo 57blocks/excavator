@@ -1,9 +1,7 @@
-import type { Group } from '../lib/groups';
+import type { Group, ReferenceGroup } from '../lib/groups';
 import { countsOf, handedOver, otherEnds, received } from '../lib/handovers';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
-import { hrefOf } from '../lib/pages';
-import type { PageItem } from '../lib/pages';
 import { emphasised } from '../lib/rich';
 import { colourProps } from '../lib/strata';
 import { useText } from '../lib/text';
@@ -12,8 +10,9 @@ import { Atlas } from './Atlas';
 import { Flows } from './Flows';
 import { InlineMarkdown } from './InlineMarkdown';
 import { Mark } from './Mark';
+import { ReferenceGroups } from './ReferenceGroups';
 
-interface Props { title: string; lead: string; groups: Group[]; references: PageItem[]; /** The architecture text of the view (technical home page only; '' shows no section) and the sections of the system chapter. */ architecture?: string; sections?: { title: string; index: number }[] }
+interface Props { title: string; lead: string; groups: Group[]; references: ReferenceGroup[]; /** The architecture text of the view (technical home page only; '' shows no section) and the sections of the system chapter. */ architecture?: string; sections?: { title: string; index: number }[] }
 
 /** The phone's replacement for the map: one details per domain with its counts, its two lists and the link to its page. */
 function PhoneList() {
@@ -117,9 +116,7 @@ export function HomePage({ title, lead, groups, references, architecture = '', s
       </section>
       <section aria-labelledby="h-refs" className="sec">
         <h2 id="h-refs">{t('page.nav.references')}</h2>
-        <ul className="ref-list">
-          {references.map((item) => <li key={item.key}><a href={hrefOf(item, nav)} data-page={item.key}>{item.title}</a></li>)}
-        </ul>
+        <ReferenceGroups groups={references} as="list" listClass="ref-list" />
       </section>
     </div>
   );
