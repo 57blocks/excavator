@@ -42,7 +42,17 @@ function merge(ranges) {
   return out;
 }
 
-/** The pairs of features (in `order`) whose chapters cite intersecting lines of one file: `[{ features: [x, y], file, ranges }]`. */
+/**
+ * A file cited by more than this many features is shared code (a utility, a menu table, a permission table):
+ * every feature that touches it would pair with every other, which buries the few pairs that mean something.
+ */
+export const SHARED_LIMIT = 3;
+
+/**
+ * The pairs of features (in `order`) whose chapters cite intersecting lines of one file, one pair for two features
+ * with every such file, and the files cited by more than SHARED_LIMIT features, which make no pair:
+ * `{ pairs: [{ features: [x, y], files: [{ file, ranges }] }], shared: [{ file, features: <count> }] }`.
+ */
 export function sharedCodePairs(rangesByFeature, order) {
   const byFile = new Map();
   for (const id of order) {
@@ -51,8 +61,14 @@ export function sharedCodePairs(rangesByFeature, order) {
       byFile.get(file).push({ id, a, b });
     }
   }
+  const shared = [];
   const found = new Map();
-  for (const [file, entries] of byFile) {
+  for (const [file, entries] of [...byFile].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) {
+    const citing = new Set(entries.map((entry) => entry.id)).size;
+    if (citing > SHARED_LIMIT) {
+      shared.push({ file, features: citing });
+      continue;
+    }
     for (let i = 0; i < entries.length; i += 1) {
       for (let j = i + 1; j < entries.length; j += 1) {
         const x = entries[i];
@@ -62,14 +78,17 @@ export function sharedCodePairs(rangesByFeature, order) {
         const b = Math.min(x.b, y.b);
         if (a > b) continue;
         const [first, second] = order.indexOf(x.id) < order.indexOf(y.id) ? [x.id, y.id] : [y.id, x.id];
-        const key = `${first}\u0000${second}\u0000${file}`;
-        if (!found.has(key)) found.set(key, { features: [first, second], file, ranges: [] });
-        found.get(key).ranges.push([a, b]);
+        const key = `${first}|${second}`;
+        if (!found.has(key)) found.set(key, { features: [first, second], files: new Map() });
+        const files = found.get(key).files;
+        if (!files.has(file)) files.set(file, []);
+        files.get(file).push([a, b]);
       }
     }
   }
-  return [...found.values()].map((pair) => ({ ...pair, ranges: merge(pair.ranges) }))
-    .sort((p, q) => order.indexOf(p.features[0]) - order.indexOf(q.features[0]) || order.indexOf(p.features[1]) - order.indexOf(q.features[1]) || (p.file < q.file ? -1 : 1));
+  const pairs = [...found.values()].map((pair) => ({ features: pair.features, files: [...pair.files].map(([file, ranges]) => ({ file, ranges: merge(ranges) })) }))
+    .sort((p, q) => order.indexOf(p.features[0]) - order.indexOf(q.features[0]) || order.indexOf(p.features[1]) - order.indexOf(q.features[1]));
+  return { pairs, shared };
 }
 
 /** The facts of every feature and the pairs, with the batches; `{ ok: false, lines }` when the run is not ready. */
@@ -92,12 +111,13 @@ export function computeFacts(outDir) {
     features[feature.id] = { name: feature.name, batch: batchOf.get(feature.id) ?? null, chapter: true, ...chapterCounts(text, ui.strings) };
     ranges.set(feature.id, citedRanges(text));
   }
-  const pairs = sharedCodePairs(ranges, order).map((pair) => ({
+  const found = sharedCodePairs(ranges, order);
+  const pairs = found.pairs.map((pair) => ({
     ...pair,
     batches: pair.features.map((id) => batchOf.get(id) ?? null),
     scope: batchOf.get(pair.features[0]) === batchOf.get(pair.features[1]) ? 'within' : 'across',
   }));
-  const facts = { format: FACTS_FORMAT, source: batched.source, batches: batched.batches, features, pairs };
+  const facts = { format: FACTS_FORMAT, source: batched.source, batches: batched.batches, features, shared: { limit: SHARED_LIMIT, files: found.shared.length, list: found.shared }, pairs };
   return { ok: true, facts, strings: ui.strings };
 }
 
@@ -119,8 +139,9 @@ export function factLines(facts, onlyBatch = null) {
   for (const pair of facts.pairs) {
     // The cross batch reads the pairs that span batches; any other batch reads the pairs that touch it.
     if (onlyBatch === CROSS_BATCH ? pair.scope !== 'across' : onlyBatch !== null && !pair.batches.includes(onlyBatch)) continue;
-    lines.push(['PAIR', pair.scope, pair.features.join(','), pair.file, rangeText(pair.ranges)].join('\t'));
+    lines.push(['PAIR', pair.scope, pair.features.join(','), pair.files.map((entry) => `${entry.file}:${rangeText(entry.ranges)}`).join('; ')].join('\t'));
   }
+  lines.push(`Shared files (cited by more than ${facts.shared.limit} features, left out of the pairs): ${facts.shared.files}`);
   return lines;
 }
 

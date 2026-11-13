@@ -19,7 +19,7 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review facts "$OUT"
    ```
-   It writes `$OUT/entries/review-facts.json` and prints the `BATCH` lines (`<batch>`, its name, its feature ids), the `FEATURE` lines of every feature (its operations, the steps of each operation, its states and transitions, its server-side steps, its hand-overs; a section it could not recognize is named, not counted) and the `PAIR` lines (two features whose chapters cite the same lines of one file). Exit 1 or 2: show its message and stop.
+   It writes `$OUT/entries/review-facts.json` and prints the `BATCH` lines (`<batch>`, its name, its feature ids), the `FEATURE` lines of every feature (its operations, the steps of each operation, its states and transitions, its server-side steps, its hand-overs; a section it could not recognize is named, not counted) and the `PAIR` lines (one line for two features whose chapters cite the same lines of one file, with every such file; a file cited by more than 3 features is shared code and is not listed, and one `Shared files` line counts them). Exit 1 or 2: show its message and stop.
 
 3. Find what each batch needs, from its files:
    ```bash
@@ -43,7 +43,7 @@ A batch is a business domain (when the domains chapter passed) or else an area o
 5. Write the batch `cross` when its state is `write`, after every other batch has a file that passed (after step 4 the state of each is `verify`, `prune` or `done`). Print what the writer reads, then dispatch one `excavator-handbook-writer` subagent in the foreground with the prompt **Every design-problems writer** followed by the block **Your batch: cross**, with the same substitutions as step 4 and the three outputs below pasted in the places the block names. Check it with `review render "$OUT" cross --project "$PROJECT_ROOT"` and follow step 4's rules for the result.
    ```bash
    jq -r 'if (.handovers | length) > 0 then .handovers[] | "\(.from) -> \(.to): \(.what) (\(.cites | join("; ")))" else empty end' "$OUT/domains.json" 2>/dev/null || true
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review facts "$OUT" cross | grep -E '^(BATCH|PAIR)'
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review facts "$OUT" cross | grep -E '^(BATCH|PAIR|Shared)'
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review titles "$OUT" --project "$PROJECT_ROOT"
    ```
 
@@ -137,7 +137,7 @@ Reply with one line: `<batch>: written`.
 - You read only these three things, and the passages of the chapters that they point to (find a cited line with `grep -n` in `$OUT/chapters/`, read it with `sed -n`). Skip the `$PROBLEMS` command of the instructions: your job is not a batch's own problems.
   1. The hand-overs between business domains (the domains chapter's list, one per line; empty when there is none):
 <the first command's output>
-  2. The pairs of features of different batches whose chapters cite the same lines of one file (`PAIR` lines, `across`): they show shared code, which is evidence of the same thing done in two places but not proof; open both chapters before you write an item:
+  2. The pairs of features of different batches whose chapters cite the same lines of one file (`PAIR` lines, `across`, one line for two features with every such file; code that more than 3 features cite is not listed, the `Shared` line counts it): they show shared code, which is evidence of the same thing done in two places but not proof; open both chapters before you write an item:
 <the second command's output>
   3. The problems the batches found, each with its batch, item, dimension, impact, features and title, so that you do not write them again:
 <the third command's output>

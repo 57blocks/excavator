@@ -26,12 +26,12 @@ Orders are created and sent by clerks (${f('5')}).
 Steps:
 
 1. The clerk opens the form (${f('5')}).
-2. The clerk saves a draft (${f('6')}).
+2. The clerk saves a draft (${f('6')}; \`src/roles.js:1-2\`).
 3. The clerk sends the order (${f('10')}).
 
 Server-side steps:
 
-1. The server stores the order (${f('12')}).
+1. The server stores the order (${f('12')}; \`src/menu.js:4\`).
 
 ### Cancel an order
 
@@ -65,7 +65,10 @@ const simple = (title, operation, steps) => `# ${title}
 
 ### ${operation}
 
-${steps.map((range, at) => `${at + 1}. ${Array.isArray(range) ? range[1] : 'A step of the work'} (${f(Array.isArray(range) ? range[0] : range)}).`).join('\n')}
+${steps.map((step, at) => {
+  const [range, text = 'A step of the work', extra = []] = Array.isArray(step) ? step : [step];
+  return `${at + 1}. ${text} (${[f(range), ...extra.map((cite) => `\`${cite}\``)].join('; ')}).`;
+}).join('\n')}
 
 ## Points to confirm
 
@@ -80,8 +83,8 @@ export const FEATURE_CHAPTERS = {
   F1,
   F2: simple('Archive', 'Archive an order', ['8', ['9', 'Orders are archived after 30 days']]),
   F3: simple('Reminders', 'Send a reminder', ['11']),
-  F4: simple('Admin tool', 'Run the tool', ['12']),
-  F5: simple('Orders list', 'List orders', ['5-6']),
+  F4: simple('Admin tool', 'Run the tool', [['12', 'A step of the work', ['src/menu.js:3-5']]]),
+  F5: simple('Orders list', 'List orders', [['5-6', 'A step of the work', ['src/roles.js:2-3']]]),
 };
 
 /** A checked run with the five feature chapters (areas: A1 holds F1 and F2, A2 holds F3 to F5). */

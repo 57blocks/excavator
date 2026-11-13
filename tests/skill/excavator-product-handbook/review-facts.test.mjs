@@ -7,6 +7,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { chapterText, cite } from './md-run-fixture.mjs';
+import { SHARED_LIMIT, sharedCodePairs } from '../../../skills/excavator-product-handbook/lib/review-facts.mjs';
 import { FEATURE_CHAPTERS, reviewRun } from './review-fixture.mjs';
 
 const cleanups = [];
@@ -46,14 +47,34 @@ describe('review facts', () => {
     expect(f2.uncounted).toEqual(['Operations: 2 list items outside a level-3 operation heading']);
   });
 
-  it('lists the pairs that cite overlapping lines of one file, with the intersecting range, and none for disjoint lines', () => {
+  it('lists one pair for two features that cite overlapping lines, with the intersecting range, and none for disjoint lines', () => {
     const run = reviewRun(cleanups);
     run.facts();
     const { pairs } = run.readFacts();
-    const orders = pairs.find((pair) => pair.features.join() === 'F1,F5');
-    expect(orders).toMatchObject({ file: 'src/forms/order-form.js', ranges: [[5, 6]], scope: 'across', batches: ['b1', 'b2'] });
+    expect(pairs.find((pair) => pair.features.join() === 'F1,F5')).toMatchObject({ files: [{ file: 'src/roles.js', ranges: [[2, 2]] }], scope: 'across', batches: ['b1', 'b2'] });
+    expect(pairs.find((pair) => pair.features.join() === 'F1,F4')).toMatchObject({ files: [{ file: 'src/menu.js', ranges: [[4, 4]] }] });
     expect(pairs.some((pair) => pair.features.includes('F2') && pair.features.includes('F3'))).toBe(false);
-    expect(pairs.find((pair) => pair.features.join() === 'F1,F4')).toMatchObject({ ranges: [[12, 12]] });
+    expect(pairs.length).toBe(2);
+  });
+
+  it('a file cited by more than 3 features makes no pair, is counted as shared, and is listed in the JSON only', () => {
+    const run = reviewRun(cleanups);
+    const result = run.facts();
+    const { shared, pairs } = run.readFacts();
+    expect(shared).toEqual({ limit: 3, files: 1, list: [{ file: 'src/forms/order-form.js', features: 5 }] });
+    expect(pairs.every((pair) => pair.files.every((entry) => entry.file !== 'src/forms/order-form.js'))).toBe(true);
+    expect(result.lines).toContain('Shared files (cited by more than 3 features, left out of the pairs): 1');
+    expect(result.stdout).not.toContain('order-form.js\t');
+    expect(result.lines.filter((line) => line.startsWith('PAIR'))).toEqual(['PAIR\tacross\tF1,F4\tsrc/menu.js:4', 'PAIR\tacross\tF1,F5\tsrc/roles.js:2']);
+  });
+
+  it('two features that share two files give one PAIR line with both files', () => {
+    const both = FEATURE_CHAPTERS.F5.replace('`src/roles.js:2-3`', '`src/roles.js:2-3`; `src/menu.js:4-5`');
+    const run = reviewRun(cleanups, { extra: { F5: both } });
+    const result = run.facts();
+    const lines = result.lines.filter((line) => line.startsWith('PAIR\tacross\tF1,F5'));
+    expect(lines).toEqual(['PAIR\tacross\tF1,F5\tsrc/menu.js:4; src/roles.js:2']);
+    expect(run.readFacts().pairs.find((pair) => pair.features.join() === 'F1,F5').files.map((entry) => entry.file)).toEqual(['src/menu.js', 'src/roles.js']);
   });
 
   it('a pair inside one batch is within; the batch name limits the printed pairs', () => {
@@ -117,5 +138,30 @@ describe('review facts', () => {
     expect(empty.status).toBe(0);
     const f3 = run.readFacts().features.F3;
     expect(f3.operations).toBe(0);
+  });
+});
+
+describe('sharedCodePairs: the shared-code limit', () => {
+  const cite = (file, a, b = a) => ({ file, a, b });
+  const order = ['F1', 'F2', 'F3', 'F4'];
+
+  it('the limit is 3: a file cited by exactly 3 features makes pairs, by 4 makes none and is counted', () => {
+    expect(SHARED_LIMIT).toBe(3);
+    const three = new Map([['F1', [cite('a.js', 1, 5)]], ['F2', [cite('a.js', 2, 6)]], ['F3', [cite('a.js', 3, 4)]]]);
+    const found = sharedCodePairs(three, order);
+    expect(found.shared).toEqual([]);
+    expect(found.pairs.map((pair) => pair.features.join())).toEqual(['F1,F2', 'F1,F3', 'F2,F3']);
+    const four = new Map([...three, ['F4', [cite('a.js', 1, 9)]]]);
+    expect(sharedCodePairs(four, order)).toEqual({ pairs: [], shared: [{ file: 'a.js', features: 4 }] });
+  });
+
+  it('counts the features that cite the file at all, even in disjoint ranges', () => {
+    const disjoint = new Map([['F1', [cite('a.js', 1)]], ['F2', [cite('a.js', 10)]], ['F3', [cite('a.js', 20)]], ['F4', [cite('a.js', 30)], ]]);
+    expect(sharedCodePairs(disjoint, order).shared).toEqual([{ file: 'a.js', features: 4 }]);
+  });
+
+  it('one pair for two features with every file they share, ranges merged', () => {
+    const map = new Map([['F1', [cite('a.js', 1, 3), cite('b.js', 5), cite('a.js', 3, 6)]], ['F2', [cite('a.js', 2, 4), cite('b.js', 5)]]]);
+    expect(sharedCodePairs(map, order).pairs).toEqual([{ features: ['F1', 'F2'], files: [{ file: 'a.js', ranges: [[2, 4]] }, { file: 'b.js', ranges: [[5, 5]] }] }]);
   });
 });

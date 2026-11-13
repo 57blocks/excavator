@@ -112,7 +112,8 @@ Commands:
       chapter passed, else one per area of the map, b1..bn, then cross), for every feature its operations, the steps of
       each operation, its states and transitions, its server-side steps and its hand-overs counted from its chapter
       with the headings of <out>/ui.json (a section that is not recognized is not counted and is named), and the pairs
-      of features whose chapters cite overlapping lines of one file, within a batch and across batches. Writes
+      of features whose chapters cite overlapping lines of one file (one pair for two features, with every such file;
+      a file cited by more than 3 features is shared code and makes no pair), within a batch and across batches. Writes
       <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it.
   review render <out> [<batch>...] --project <root>
       Check the items of <out>/entries/review/<batch>.json against the chapters: fields and values, the features of
