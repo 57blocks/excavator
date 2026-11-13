@@ -1,7 +1,7 @@
 // The reply command of the Markdown handbook: the closing lines in a fixed order, the chapter
 // counts computed from the chapters and state.json, the same refusals as assemble.
 import { afterEach, describe, expect, it } from 'vitest';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { CROSS, chapterText, cite, newMdRun } from './md-run-fixture.mjs';
@@ -20,6 +20,17 @@ const CANDIDATES = 'Candidates: 7 listed, 6 in features, 1 unassigned; none miss
 
 describe('reply: the optional review chapter', () => {
   const all = ['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS];
+  it('says how to get the design problems when the chapter is absent, and the kept and removed counts when present', () => {
+    const run = make(Object.fromEntries([...all, 'review'].map((name) => [name, name === 'review' ? `${chapterText('Design problems')}\n### One\n\nA fact (${cite('5')}).\n\n### Two\n\nA fact (${cite('6')}).\n` : chapterText(name)])));
+    mkdirSync(join(run.out, 'entries'), { recursive: true });
+    writeFileSync(join(run.out, 'entries', 'review-removed.json'), JSON.stringify({ removed: [{ batch: 'b1', title: 'x', dimension: 'other', features: ['F1'], reason: 'r' }, { batch: 'b2', title: 'y', dimension: 'other', features: ['F2'], reason: 'r' }, { batch: 'b2', title: 'z', dimension: 'other', features: ['F3'], reason: 'r' }] }));
+    run.assemble();
+    expect(run.reply().lines).toContain('Design problems: kept 2, removed 3');
+    const bare = make(Object.fromEntries(all.map((name) => [name, chapterText(name)])));
+    bare.assemble();
+    expect(bare.reply().lines).toContain('Design problems: not written; add --review to write them');
+  });
+
   it('counts review only when its chapter exists', () => {
     const without = make(Object.fromEntries(all.map((name) => [name, chapterText(name)])));
     without.assemble();
@@ -45,6 +56,7 @@ describe('reply', () => {
       'Chapters: 12 (passed 2, failed 1, not written 9)',
       'Failed: F2',
       'Not written: F3, F4, F5',
+      'Design problems: not written; add --review to write them',
       CANDIDATES,
       'Run: incomplete (9 not written, 1 failed once); the same command on the same --out resumes',
     ]);
@@ -59,6 +71,7 @@ describe('reply', () => {
       `Handbook: ${join(run.out, 'handbook.md')}`,
       `Page: ${join(run.out, 'handbook.html')}`,
       'Chapters: 12 (passed 12, failed 0, not written 0)',
+      'Design problems: not written; add --review to write them',
       CANDIDATES,
       'Run: complete',
     ]);
@@ -68,7 +81,7 @@ describe('reply', () => {
     const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', ...CROSS].map((name) => [name, chapterText(name)]));
     const run = make(chapters);
     run.assemble();
-    expect(run.reply().lines.slice(-3)).toEqual(['Not written: F5', CANDIDATES, 'Run: incomplete (1 not written, 0 failed once); the same command on the same --out resumes']);
+    expect(run.reply().lines.slice(-4)).toEqual(['Not written: F5', 'Design problems: not written; add --review to write them', CANDIDATES, 'Run: incomplete (1 not written, 0 failed once); the same command on the same --out resumes']);
   });
 
   it('a chapter that failed once makes the run incomplete', () => {

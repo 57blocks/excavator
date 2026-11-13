@@ -29,9 +29,11 @@ import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
+import { remediesState } from './lib/remedies-inputs.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
 import { renderReview } from './lib/review-render.mjs';
+import { resetBatch, reviewStatus, reviewSummary, reviewTitles } from './lib/review-status.mjs';
 import { pruneReview, reviewClaims } from './lib/review-verify.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
@@ -128,6 +130,17 @@ Commands:
       entries/review-removed.json and, when every batch file exists and passes, write chapters/review.md again. The
       first prune keeps the items before pruning in entries/review/<batch>.unpruned.json, which the verdict indexes
       refer to; pruning again with the same verdicts changes nothing.
+  review status <out> --project <root>
+      One line per batch: "<batch>", a state and the batch name, the state being write (no file, or a file that does
+      not pass render; the reasons follow), verify (items to judge), prune (verdicts to apply, or a batch with no
+      item) or done (pruned). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
+      records; review skip <out> <batch> does the same and leaves an empty batch. review titles <out> --project <root>
+      lists the items of the non-cross batches (batch, item, dimension, impact, features, title). review summary <out>
+      prints "<batch> <name> kept=<n> removed=<m>" for each pruned batch.
+  remedies-state <out> --project <root>
+      Print STATUS (the recorded status of the remedies chapter or none), ATTEMPTS, FILE (yes or no) and STALE (yes
+      when it passed and the digest of defects.md and review.md differs from the one recorded with it, or none was
+      recorded and review.md exists).
   check <out> [<chapter>...] [--before cross|review] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
@@ -269,17 +282,29 @@ const COMMANDS = {
   review(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     const [sub, out, ...rest] = positionals;
-    if (!['facts', 'render', 'claims', 'prune'].includes(sub)) throw new UsageError('review takes facts, render, claims or prune, then <out>');
+    if (!['facts', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, render, claims, prune, status, reset, skip, titles or summary, then <out>');
     if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
     if (sub === 'facts') {
       if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
       return report(reviewFacts(resolve(out), rest[0]));
+    }
+    if (sub === 'status') return report(reviewStatus(resolve(out), projectRootOption(options.project)));
+    if (sub === 'titles') return report(reviewTitles(resolve(out), projectRootOption(options.project)));
+    if (sub === 'summary') return report(reviewSummary(resolve(out)));
+    if (sub === 'reset' || sub === 'skip') {
+      if (rest.length !== 1) throw new UsageError(`review ${sub} takes <out> and one batch`);
+      return report(resetBatch(resolve(out), rest[0], { empty: sub === 'skip' }));
     }
     if (sub === 'claims' || sub === 'prune') {
       if (rest.length !== 1) throw new UsageError(`review ${sub} takes <out> and one batch`);
       return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
     }
     return report(renderReview(resolve(out), projectRootOption(options.project), rest));
+  },
+  'remedies-state'(args) {
+    const { positionals } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('remedies-state takes exactly one <out> directory');
+    return report(remediesState(resolve(positionals[0])));
   },
   sections(args) {
     const review = args.includes('--review');

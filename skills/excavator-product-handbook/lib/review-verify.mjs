@@ -18,8 +18,8 @@ import { batchFile, renderReview, reviewContext } from './review-render.mjs';
 import { specKey } from './chapter-cites.mjs';
 
 export const REMOVED_FILE = 'entries/review-removed.json';
-const verdictsFile = (batch) => `entries/review/${batch}.verdicts.json`;
-const unprunedFile = (batch) => `entries/review/${batch}.unpruned.json`;
+export const verdictsFile = (batch) => `entries/review/${batch}.verdicts.json`;
+export const unprunedFile = (batch) => `entries/review/${batch}.unpruned.json`;
 const VERDICTS = ['supported', 'unsupported'];
 
 /** `{ ok: true, ctx, batch, items }` for a batch that exists in the facts file and whose file is a list of items; else `{ ok: false, lines }`. */
@@ -89,7 +89,9 @@ export function pruneReview(outDir, root, id) {
   const hasOriginal = existsSync(join(outDir, unprunedFile(id)));
   const opened = openBatch(outDir, root, id, hasOriginal ? unprunedFile(id) : batchFile(id));
   if (!opened.ok) return { status: 1, lines: opened.lines };
-  const read = readJson(join(outDir, verdictsFile(id)));
+  let read = readJson(join(outDir, verdictsFile(id)));
+  // A batch with no item has nothing to judge: no verifier runs and no verdicts file is needed.
+  if (read.missing && opened.items.length === 0) read = { ok: true, value: { verdicts: [] } };
   if (!read.ok) return { status: 1, lines: [`${id}: ${verdictsFile(id)} ${read.reason}`] };
   const problems = verdictProblems(read.value, opened.items.length);
   if (problems.length > 0) return { status: 1, lines: [...problems.map((line) => `${id}: ${line}`), 'Next: write the verdicts again, one for every item of the batch'] };

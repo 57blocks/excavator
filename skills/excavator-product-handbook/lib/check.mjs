@@ -15,6 +15,7 @@ import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
 import { withStateLock } from './lock.mjs';
 import { projectFiles } from './project-files.mjs';
+import { remediesInputs } from './remedies-inputs.mjs';
 import { loadStateV2, saveStateV2 } from './state-v2.mjs';
 import { loadUi } from './ui.mjs';
 
@@ -95,8 +96,10 @@ function checkChapters(outDir, names, root, record) {
       // For domains the attempt counts a change of either file, so a rewrite that only fixes domains.json is a new attempt.
       const hash = name === 'domains' && listHash !== null ? sha256(Buffer.concat([bytes, Buffer.from(`\n${listHash}`)])) : sha256(bytes);
       const before = state.chapters[name];
-      attempts = before === undefined ? 1 : before.sha256 === hash ? before.attempts : before.attempts + 1;
-      state.chapters[name] = { status, attempts, reasons, sha256: hash, ...(name === 'domains' && status === 'passed' ? { json: listHash } : {}) };
+      // A passed remedies chapter whose inputs changed is written afresh: its rewrite starts again at attempt 1.
+      const fresh = before === undefined || (name === 'remedies' && before.status === 'passed' && before.sha256 !== hash && before.inputs !== remediesInputs(outDir));
+      attempts = fresh ? 1 : before.sha256 === hash ? before.attempts : before.attempts + 1;
+      state.chapters[name] = { status, attempts, reasons, sha256: hash, ...(name === 'domains' && status === 'passed' ? { json: listHash } : {}), ...(name === 'remedies' && status === 'passed' ? { inputs: remediesInputs(outDir) } : {}) };
     }
     lines.push(status === 'passed' ? `${label}: passed` : `${label}: failed${attempts === null ? '' : ` (attempt ${attempts})`}`);
     for (const reason of reasons) lines.push(`  - ${reason}`);

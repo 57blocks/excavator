@@ -117,7 +117,8 @@ export function factLines(facts, onlyBatch = null) {
     lines.push(cells.join('\t'));
   }
   for (const pair of facts.pairs) {
-    if (onlyBatch !== null && !pair.batches.includes(onlyBatch)) continue;
+    // The cross batch reads the pairs that span batches; any other batch reads the pairs that touch it.
+    if (onlyBatch === CROSS_BATCH ? pair.scope !== 'across' : onlyBatch !== null && !pair.batches.includes(onlyBatch)) continue;
     lines.push(['PAIR', pair.scope, pair.features.join(','), pair.file, rangeText(pair.ranges)].join('\t'));
   }
   return lines;
