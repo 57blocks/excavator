@@ -287,14 +287,18 @@ describe('a reading page', () => {
 });
 
 describe('the home and domain pages', () => {
-  it('show the title and the groups as links, and a domain shows its name and features', () => {
+  it('show the title and the groups as links, and a fallback domain shows its name and features', () => {
     const home = render(withDomains(), '#/product');
     expect(home).toContain(`<h1 class="home-title">${d('System chapter')}</h1>`);
-    expect(hrefs(between(home, '<main', '</main>'))).toEqual(['#/product/domain/d1', '#/product/domain/d2']);
-    const domain = render(withDomains(), '#/product/domain/d2');
-    expect(domain).toContain('data-domain="d2"');
-    expect(between(domain, '<main', '</main>')).toContain(d('Sales'));
-    expect(hrefs(between(domain, '<h2>', '</main>'))).toEqual(['#/product/chapter/F1']);
+    const links = hrefs(between(home, '<main', '</main>'));
+    expect(links).toContain('#/product/domain/d1');
+    expect(links).toContain('#/product/domain/d2');
+    expect(links.slice(-3)).toEqual(['#/product/chapter/system', '#/product/history', '#/product/coverage']);
+    // The fallback page has the groups from the outline and the features of a group as links.
+    const domain = render(pageData(), '#/product/domain/d1');
+    expect(domain).toContain('data-domain="d1"');
+    expect(between(domain, '<main', '</main>')).toContain(d('Features'));
+    expect(hrefs(between(domain, '<h2>', '</main>'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2']);
     expect(render(withDomains(), '#/product/domain/zzz')).toContain('data-view="not-found"');
   });
 });

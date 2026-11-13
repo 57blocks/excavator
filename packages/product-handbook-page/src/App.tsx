@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterPage, CoveragePage } from './components/ChapterPage';
 import { DataPage } from './components/DataPage';
@@ -9,15 +9,16 @@ import { HomePage } from './components/HomePage';
 import { Menu } from './components/Menu';
 import { NotFound } from './components/NotFound';
 import { Reading } from './components/Reading';
+import { SearchDialog } from './components/SearchDialog';
 import { TopBar } from './components/TopBar';
 import { LoaderContext, createLoader } from './lib/chunks';
 import { groupOfFeature, groupsOf, referencesOf } from './lib/groups';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
+import { ModelContext, buildModel } from './lib/model';
 import { contextOf, switchTarget, viewOf } from './lib/navigation';
 import { bodyOf, pageOf, pagesOf } from './lib/pages';
 import type { PageItem } from './lib/pages';
 import type { Route } from './lib/route';
-import { domainColours } from './lib/strata';
 import { TextContext, makeText } from './lib/text';
 import type { PageData, View } from './lib/types';
 import { useRoute } from './lib/use-route';
@@ -48,6 +49,13 @@ function brandOf(data: PageData, view: View): string {
   return data.titles[view] ?? '';
 }
 
+/** Whether a key press comes from a place the reader types in, where `/` is a character and not a shortcut. */
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable || (target.getAttribute('contenteditable') ?? 'false') !== 'false';
+}
+
 /** The page for a route: the shell (bar, menu) around one view. Pure in its props, so a test can render any route to a string. */
 export function AppView({ data, route, onSearch = () => undefined }: { data: PageData; route: Route; onSearch?: () => void }) {
   const t = useMemo(() => makeText(data.ui.strings), [data.ui.strings]);
@@ -57,28 +65,55 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   const current: View = view ?? data.views[0];
   const links = useMemo(() => makeLinks(data.views.length > 1 ? current : null), [data.views.length, current]);
   const groups = useMemo(() => groupsOf(data), [data]);
-  const colours = useMemo(() => domainColours(groups.map((group) => group.id)), [groups]);
+  const model = useMemo(() => buildModel(data, groups), [data, groups]);
+  const colours = model.colours;
   const references = useMemo(() => referencesOf(data, current, coverageTitle), [data, current, coverageTitle]);
   const switchTo = Object.fromEntries(data.views.map((item) => [item, switchTarget(data, route, item, coverageTitle)])) as Record<View, string>;
   const body = bodyOf(route);
   const routeText = JSON.stringify(route);
 
+  const [searchOpen, setSearchOpen] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
+  const isOpen = useRef(false);
+  const openSearch = useCallback(() => {
+    if (isOpen.current) return;
+    isOpen.current = true;
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSearchOpen(true);
+  }, []);
+  const closeSearch = useCallback((restore: boolean) => {
+    isOpen.current = false;
+    setSearchOpen(false);
+    if (restore) opener.current?.focus();
+    opener.current = null;
+  }, []);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMenuOpen(false);
+      else if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openSearch();
+      } else if (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey && !isTyping(event.target)) {
+        event.preventDefault();
+        openSearch();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [openSearch]);
   useEffect(() => { setMenuOpen(false); }, [routeText]);
 
   let main = <NotFound />;
   if (view !== null) {
     if (body.name === 'home') {
-      main = <HomePage title={brandOf(data, view)} groups={groups} colours={colours} />;
+      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} references={references} />;
     } else if (body.name === 'domain') {
       const group = groups.find((candidate) => candidate.id === body.id);
-      if (group !== undefined) main = <DomainPage group={group} colour={colours[group.id]} mapLabel={t('page.nav.map')} />;
+      if (group !== undefined) {
+        const at = groups.indexOf(group);
+        main = <DomainPage group={group} colour={colours[group.id]} mapLabel={t('page.nav.map')} previous={groups[at - 1]} next={groups[at + 1]} />;
+      }
     } else {
       const item = pageOf(pagesOf(data, view, coverageTitle), route);
       if (item !== undefined) {
@@ -102,6 +137,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
     <TextContext.Provider value={t}>
       <ViewContext.Provider value={current}>
         <LinksContext.Provider value={links}>
+          <ModelContext.Provider value={model}>
           <div className="app">
             <a className="skip" href="#main" onClick={(event) => { event.preventDefault(); const target = document.getElementById('main'); target?.focus(); target?.scrollIntoView(); }}>{t('page.skip')}</a>
             <TopBar
@@ -113,14 +149,16 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
               home={view !== null && body.name === 'home'}
               menuOpen={menuOpen}
               onMenu={() => setMenuOpen(!menuOpen)}
-              onSearch={onSearch}
+              onSearch={() => { openSearch(); onSearch(); }}
               views={data.views}
               current={current}
               switchTo={switchTo}
             />
             {menuOpen && <Menu groups={groups} colours={colours} references={references} home={view !== null && body.name === 'home'} onNavigate={() => setMenuOpen(false)} />}
             <main id="main" tabIndex={-1}>{main}</main>
+            {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} references={references} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
           </div>
+          </ModelContext.Provider>
         </LinksContext.Provider>
       </ViewContext.Provider>
     </TextContext.Provider>

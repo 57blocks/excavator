@@ -23,11 +23,13 @@ export const STRATA: readonly Pair[] = [
 export const NEUTRAL: Pair = { fill: '#DCDFE3', edge: '#59636F' };
 
 /**
- * The colour pair of each domain id. For now a pair goes to each id by its place in `ids`, wrapping after twelve; the map
- * will assign them by the position on its ring through this one function.
+ * The colour pair of each domain id: the pair of its place on the map's ring (wrapping after twelve), the neutral pair for the
+ * centre. `ring` is the ring order of the layout (the group order when there is no map), so a domain has one colour everywhere.
  */
-export function domainColours(ids: readonly string[]): Record<string, Pair> {
-  return Object.fromEntries(ids.map((id, at) => [id, STRATA[at % STRATA.length]]));
+export function domainColours(ring: readonly string[], centre: string | null = null): Record<string, Pair> {
+  const colours: Record<string, Pair> = Object.fromEntries(ring.map((id, at) => [id, STRATA[at % STRATA.length]]));
+  if (centre !== null) colours[centre] = NEUTRAL;
+  return colours;
 }
 
 /** The attributes an element carries to take a pair: the custom properties the stylesheet reads, and the marker that selects them. */
