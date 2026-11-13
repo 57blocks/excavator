@@ -36,7 +36,7 @@ function SideDefault() {
   );
 }
 
-/** The panel of one domain: its name and intro, the two lists and the link to its page. */
+/** The panel of one domain: its name and intro (the product text when the page has it: the citations belong to the hand-overs), the two lists and the link to its page. */
 function SideDomain({ id }: { id: string }) {
   const t = useText();
   const nav = useLinks();
@@ -46,7 +46,7 @@ function SideDomain({ id }: { id: string }) {
   return (
     <>
       <h3><Mark colour={colours[id]} />{domain.name}</h3>
-      <p className="side-hint">{plainText(domain.intro[view] ?? '')}</p>
+      <p className="side-hint">{plainText(domain.intro.product ?? domain.intro[view] ?? '')}</p>
       <Flows id={id} />
       <a className="side-go" href={nav.domain(id)}>{t('page.flow.open', { name: domain.name })}</a>
     </>

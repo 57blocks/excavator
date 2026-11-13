@@ -105,8 +105,8 @@ describe('the atlas', () => {
       ['dir-out', marked['page.flow.out'].replace('{count}', '1')],
       ['dir-in', marked['page.flow.in'].replace('{count}', '2')],
     ]);
-    expect(Array.from(panel.querySelectorAll('li')).map((one) => one.getAttribute('data-handover'))).toEqual(['2', '0', '3']);
-    expect(panel.querySelector('[data-handover="0"] a[href="#/product/domain/d1"]')?.textContent).toBe(d('Platform'));
+    expect(Array.from(panel.querySelectorAll('[data-handover]')).map((one) => one.getAttribute('data-handover'))).toEqual(['2', '0', '3']);
+    expect(panel.querySelector('h4.dir-in + ul > li[data-other="d1"] > b a[href="#/product/domain/d1"]')?.textContent).toBe(d('Platform'));
     const links = Array.from(panel.querySelectorAll('[data-handover="0"] a[data-feature]'));
     expect(links.map((one) => [one.getAttribute('href'), one.textContent])).toEqual([['#/product/chapter/F1', d('Platform core')], ['#/product/chapter/F2', d('Order entry')]]);
     expect(panel.textContent).not.toContain('(F1)');
@@ -116,11 +116,22 @@ describe('the atlas', () => {
     expect(panel.querySelector('.ho-cites')).toBeNull();
   });
 
+  it('groups the hand-overs of the side panel by the domain at the other end, as the domain page does', () => {
+    const data = domainData();
+    const extra = { from: 'd1', to: 'd2', what: d('Prices reach the orders.'), features: [], cites: ['src/f.js:1-2'] };
+    const host = home({ ...data, domains: { ...data.domains, handovers: [...data.domains.handovers, extra] } });
+    fire(node(host, 'd2'), 'click');
+    const received = Array.from(side(host).querySelectorAll('h4.dir-in + ul > li'));
+    expect(received.map((one) => [one.getAttribute('data-other'), Array.from(one.querySelectorAll('[data-handover]')).map((ho) => ho.getAttribute('data-handover'))])).toEqual([['d1', ['0', '5']], ['d3', ['3']]]);
+    expect(received[0].querySelectorAll('a[href="#/product/domain/d1"]').length).toBe(1);
+  });
+
   it('shows the cites as quiet monospace text in the technical view only', () => {
     const technical = home(domainData(), '#/technical');
     fire(node(technical, 'd2'), 'click');
     expect(Array.from(side(technical).querySelectorAll('.ho-cites code')).map((one) => one.textContent)).toEqual(['src/c.js:2-2', 'src/a.js:1-3', 'src/d.js:7-8']);
-    expect(side(technical).querySelector('.side-hint')?.textContent).toBe(d('Takes orders (code).'));
+    expect(side(technical).querySelector('.side-hint')?.textContent).toBe(d('Takes orders.'));
+    expect(technical.querySelector('tr[data-domain="d2"] td')?.textContent).toBe(d('Takes orders.'));
   });
 
   it('shows one hand-over when its line is clicked: the picked line blue, its two ends in full, the panel with its words', () => {

@@ -67,7 +67,8 @@ function DomainTable({ groups }: { groups: Group[] }) {
         <tbody>
           {groups.map((group) => {
             const domain = domains[group.id];
-            const intro = domain?.intro[view] ?? '';
+            // A summary column: the product text (no citations) when the page has it; the citations are on the domain's page.
+            const intro = domain?.intro.product ?? domain?.intro[view] ?? '';
             return (
               <tr key={group.id} data-domain={group.id} {...colourProps(colours[group.id])}>
                 <th scope="row"><span className="dom-name"><Mark colour={colours[group.id]} /><a href={nav.domain(group.id)}>{group.name}</a></span></th>
