@@ -1,13 +1,26 @@
 import { useLinks } from '../lib/links';
+import type { Group } from '../lib/groups';
+import { hrefOf } from '../lib/pages';
+import type { PageItem } from '../lib/pages';
+import type { Pair } from '../lib/strata';
 import { useText } from '../lib/text';
 import type { View } from '../lib/types';
-import { CloseIcon, MenuIcon } from './Icons';
+import { CloseIcon, MenuIcon, SearchIcon } from './Icons';
+import { Mark } from './Mark';
+import { Popover } from './Popover';
 
 interface Props {
-  /** The title of the view the reader is in. */
-  title: string;
+  /** The first line of the brand and the title of the view the reader is in (the second line). */
+  brand: string;
+  viewTitle: string;
+  groups: Group[];
+  colours: Record<string, Pair>;
+  references: PageItem[];
+  /** The route the page shows, to mark the map link. */
+  home: boolean;
   menuOpen: boolean;
   onMenu: () => void;
+  onSearch: () => void;
   /** The views of the page and the view the reader is in; a page with one view has no switch. */
   views: View[];
   current: View;
@@ -15,34 +28,45 @@ interface Props {
   switchTo: Record<View, string>;
 }
 
-/** The bar above everything: the drawer button on narrow screens, the title of the view, and, when the page has both views, the view switch. */
-export function TopBar({ title, menuOpen, onMenu, views, current, switchTo }: Props) {
+/** The key that opens the search, as the button shows it: the command sign on a Mac, Ctrl elsewhere. */
+function shortcutHint(): string {
+  const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform ?? '');
+  return mac ? `${String.fromCharCode(0x2318)}K` : 'Ctrl K';
+}
+
+/** The bar above everything: brand, the map, the domains and the references, the search button and, with two views, the view switch. On a phone the navigation is the menu button's. */
+export function TopBar({ brand, viewTitle, groups, colours, references, home, menuOpen, onMenu, onSearch, views, current, switchTo }: Props) {
   const t = useText();
   const nav = useLinks();
   return (
     <header className="topbar">
-      <button
-        type="button"
-        className="menu-btn"
-        onClick={onMenu}
-        aria-expanded={menuOpen}
-        aria-controls="rail"
-        aria-label={menuOpen ? t('page.nav.close') : t('page.nav.open')}
-      >
+      <button type="button" className="menu-btn" onClick={onMenu} aria-expanded={menuOpen} aria-controls="menu" aria-label={menuOpen ? t('page.nav.close') : t('page.nav.open')}>
         {menuOpen ? <CloseIcon /> : <MenuIcon />}
       </button>
-      <a className="brand" href={nav.home}>
-        <span className="brand-title">{title}</span>
-      </a>
-      {views.length > 1 && (
-        <nav className="view-switch" aria-label={t('page.view.label')} data-part="view-switch">
-          {views.map((view) => (
-            <a key={view} className="view-switch-link" href={switchTo[view]} data-view-link={view} aria-current={view === current ? 'page' : undefined}>
-              {t(`page.view.${view}`)}
-            </a>
+      <a className="brand" href={nav.home}><b>{brand}</b><span>{viewTitle}</span></a>
+      <nav className="nav" aria-label={t('page.nav.label')}>
+        <a href={nav.home} data-nav="map" aria-current={home ? 'page' : undefined}>{t('page.nav.map')}</a>
+        <Popover id="pop-domains" label={t('page.nav.domains')}>
+          {groups.map((group) => (
+            <a key={group.id} href={nav.domain(group.id)} data-group={group.id}><Mark colour={colours[group.id]} />{group.name}<small>{group.features.length}</small></a>
           ))}
-        </nav>
-      )}
+        </Popover>
+        <Popover id="pop-refs" label={t('page.nav.references')}>
+          {references.map((item) => <a key={item.key} href={hrefOf(item, nav)} data-page={item.key}>{item.title}</a>)}
+        </Popover>
+      </nav>
+      <div className="bar-end">
+        <button type="button" className="search-btn" onClick={onSearch} aria-label={t('page.search.open')}>
+          <SearchIcon /><span>{t('page.search.open')}</span><kbd data-key={shortcutHint()} aria-hidden="true" />
+        </button>
+        {views.length > 1 && (
+          <nav className="views" aria-label={t('page.view.label')} data-part="view-switch">
+            {views.map((view) => (
+              <a key={view} href={switchTo[view]} data-view-link={view} aria-current={view === current ? 'page' : undefined}>{t(`page.view.${view}`)}</a>
+            ))}
+          </nav>
+        )}
+      </div>
     </header>
   );
 }

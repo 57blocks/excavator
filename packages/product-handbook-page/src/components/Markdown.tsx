@@ -4,8 +4,10 @@ import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 
 import { remarkPlugins } from '../lib/markdown-config';
+import { useText } from '../lib/text';
 import { Citation, parseCitation } from './Citation';
 import { Diagram } from './Diagram';
+import { InfoIcon } from './Icons';
 
 interface HastNode {
   type: string;
@@ -38,9 +40,18 @@ function codeOf(node: HastNode | undefined): HastNode | undefined {
  * `path:12-20`) as a citation chip. Raw HTML is not rendered. `idPrefix` makes the ids of the diagrams unique.
  */
 export function Markdown({ source, idPrefix }: { source: string; idPrefix: string }) {
+  const t = useText();
+  // The fixed notices of a chapter: the not-verified text, and the not-passed text up to its first placeholder.
+  const verified = t('chapter.notVerified');
+  const notPassed = t('chapter.notPassed', { count: '{count}' }).split('{')[0];
   const components = useMemo<Components>(() => {
     const fences = mermaidFenceLines(source);
     return {
+      p: ({ node, children, ...props }) => {
+        const text = textOf(node as HastNode).trimStart();
+        const note = verified !== '' && text.startsWith(verified) ? 'not-verified' : notPassed !== '' && text.startsWith(notPassed) ? 'not-passed' : null;
+        return note === null ? <p {...props}>{children}</p> : <p className="note" data-note={note}><InfoIcon /><span>{children}</span></p>;
+      },
       table: ({ node: _node, ...props }) => <div className="table-scroll"><table {...props} /></div>,
       // The policy allows no image load (img-src data:), so an image is shown as its alt text: nothing is blank and nothing is requested.
       img: ({ node: _node, alt }) => <span className="img-alt">[{alt ?? ''}]</span>,
@@ -66,7 +77,7 @@ export function Markdown({ source, idPrefix }: { source: string; idPrefix: strin
         return <pre {...props}><code className={language}>{text}</code></pre>;
       },
     };
-  }, [source, idPrefix]);
+  }, [source, idPrefix, verified, notPassed]);
 
   return (
     <div className="prose">

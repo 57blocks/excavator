@@ -61,8 +61,8 @@ describe('the history route and link', () => {
 
   it('has the sidebar link right before the coverage link in both views, with the heading from the ui table', () => {
     for (const view of ['product', 'technical']) {
-      const html = render(dataFor(), `#/${view}`);
-      const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
+      const html = render(dataFor(), `#/${view}/chapter/system`);
+      const rail = html.slice(html.indexOf('<nav class="side"'), html.indexOf('</nav>', html.indexOf('<nav class="side"')));
       const links = Array.from(rail.matchAll(/href="([^"]*)"/g), (match) => match[1]);
       const at = links.indexOf(`#/${view}/history`);
       expect(at, view).toBeGreaterThan(-1);

@@ -45,6 +45,7 @@ export interface Options {
   technical?: Partial<Technical>;
   chapters?: ChapterData[];
   outline?: Outline;
+  domains?: PageData['domains'];
 }
 
 /** Page data with the chapters system, F1 and F2, the three script blocks in the outline and no data in them unless `options` give it. */
@@ -63,7 +64,7 @@ export function pageData(options: Options = {}): PageData {
     chapters: options.chapters ?? [chapter('system', 'System chapter', views), chapter('F1', 'Orders', views), chapter('F2', 'Reminders', views)],
     coverage,
     history: options.history === undefined ? NO_HISTORY : options.history,
-    domains: { state: 'missing', list: [], handovers: [] },
+    domains: options.domains ?? { state: 'missing', list: [], handovers: [] },
     lead: '',
     search: [],
     ...(views.includes('technical') ? {

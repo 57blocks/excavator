@@ -3,17 +3,20 @@
  * template.mjs
  *
  * The handbook page's one-file template (openspec change product-handbook-map,
- * design D13). The generic plugins (single-file inlining, the licence list,
- * the font inlining) are the explorer's; this file only names this page's
- * template, its font and the packages its notice must list. The template
+ * design D13). The generic plugins (single-file inlining, the licence list)
+ * are the explorer's; this file names this page's template, writes its fonts
+ * into the head and names the packages its notice must list. The template
  * starts with one comment, the bundled third-party packages and their
  * licences, placed right after the charset meta so the charset stays within
  * the first 1024 bytes. Its two markers, `<!-- xv:csp -->` and
  * `<!-- xv:data -->`, are replaced by `handbook.mjs page`.
  */
 
-import { inlineFonts } from '../../explorer/scripts/fonts.mjs';
-import { bundledPackagesNotice, checkLicenseNotice } from '../../explorer/scripts/licenses.mjs';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+
+import { bundledPackagesNotice, checkLicenseNotice, notePackage } from '../../explorer/scripts/licenses.mjs';
 import { checkTemplate, singleFile } from '../../explorer/scripts/single-file.mjs';
 
 export const PAGE_TEMPLATE = 'product-handbook-page.html';
@@ -23,11 +26,47 @@ const CHARSET_META = /<meta\s+charset=(?:"[^"]*"|'[^']*'|[^\s>]+)\s*\/?>/i;
 const ENTRY_NAME = 'index.html';
 
 /**
- * The one face the page inlines: Inter in the Latin subsets. Other scripts
- * (Chinese, Japanese, Arabic, ...) use the reader's system fonts through the
- * font stack in index.css; no font for them is embedded.
+ * The faces the page inlines: IBM Plex Sans and IBM Plex Mono in the Latin subset, normal style (the sans text weights, the
+ * mono 400 and 500). Other scripts (Chinese, Japanese, ...) use the reader's system fonts through the font stack in
+ * index.css; no font for them is embedded. Only the woff2 file of a face is read, so the template holds each face once.
  */
-export const PAGE_FONTS = [{ pkg: '@fontsource/inter', weights: [400, 500, 600], subsets: ['latin', 'latin-ext'] }];
+export const PAGE_FONTS = [
+  { pkg: '@fontsource/ibm-plex-sans', family: 'IBM Plex Sans', slug: 'ibm-plex-sans', weights: [400, 500, 600, 700] },
+  { pkg: '@fontsource/ibm-plex-mono', family: 'IBM Plex Mono', slug: 'ibm-plex-mono', weights: [400, 500] },
+];
+
+const require = createRequire(import.meta.url);
+
+/**
+ * The stylesheet of `PAGE_FONTS`: one `@font-face` rule per weight, its source the woff2 file as a data URL.
+ * @param {(pkg: string, file: string) => Uint8Array} [read] gives the bytes of `files/<file>` of a package
+ * @param {readonly { pkg: string, family: string, slug: string, weights: readonly number[] }[]} [fonts]
+ * @returns {string}
+ */
+export function pageFontsStylesheet(read = (pkg, file) => readFileSync(join(dirname(require.resolve(`${pkg}/package.json`)), 'files', file)), fonts = PAGE_FONTS) {
+  const rules = [];
+  for (const { pkg, family, slug, weights } of fonts) {
+    for (const weight of weights) {
+      const data = Buffer.from(read(pkg, `${slug}-latin-${weight}-normal.woff2`)).toString('base64');
+      rules.push(`@font-face {\n  font-family: '${family}';\n  font-style: normal;\n  font-weight: ${weight};\n  font-display: block;\n  src: url(data:font/woff2;base64,${data}) format("woff2");\n}`);
+    }
+  }
+  return rules.join('\n') + '\n';
+}
+
+/**
+ * The vite plugin that writes the faces into the head and records their packages for the licence notice.
+ * @returns {import('vite').Plugin}
+ */
+function inlinePageFonts() {
+  return {
+    name: 'excavator-product-handbook-page-fonts',
+    transformIndexHtml() {
+      for (const { pkg } of PAGE_FONTS) notePackage(dirname(require.resolve(`${pkg}/package.json`)));
+      return [{ tag: 'style', children: pageFontsStylesheet(), injectTo: 'head' }];
+    },
+  };
+}
 
 /** Packages the template must name: the ones the page certainly bundles. */
 const REQUIRED_PACKAGES = ['react', 'react-dom', '@radix-ui/react-select', ...PAGE_FONTS.map((font) => font.pkg)];
@@ -108,5 +147,5 @@ function asciiOnly() {
  * @returns {import('vite').Plugin[]}
  */
 export function pageTemplate() {
-  return [asciiOnly(), inlineFonts(PAGE_FONTS), renameOutput(ENTRY_NAME, PAGE_TEMPLATE), afterVite(singleFile(bundledPackagesNotice, PAGE_TEMPLATE, 'after-charset'))];
+  return [asciiOnly(), inlinePageFonts(), renameOutput(ENTRY_NAME, PAGE_TEMPLATE), afterVite(singleFile(bundledPackagesNotice, PAGE_TEMPLATE, 'after-charset'))];
 }

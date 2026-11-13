@@ -13,3 +13,11 @@ export const CloseIcon = () => (
 export const CheckIcon = () => (
   <svg {...base}><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.7 2.7L16 9.5" /></svg>
 );
+
+export const SearchIcon = () => (
+  <svg {...base} width={16} height={16} strokeWidth={2}><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+);
+
+export const InfoIcon = () => (
+  <svg {...base} width={14} height={14}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>
+);
