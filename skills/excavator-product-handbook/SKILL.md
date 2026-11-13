@@ -10,7 +10,7 @@ Write a **product handbook**: a document for people who use or manage the produc
 
 Five rules govern everything below:
 
-1. **As-Is only, no advice, except the remedies.** Every chapter describes behavior that exists in the code. Only the remedies chapter (Phase 8) says what to do. The `Problems` sections and the defects chapter state defects and nothing else. Where the code does not settle something, the chapter says so under its open questions, with what was searched.
+1. **As-Is only, no advice, except the remedies.** Every chapter describes behavior that exists in the code. Only the remedies chapter (Phase 8) says what to do. The known-defects sections and the defects chapter state defects and nothing else. Where the code does not settle something, the chapter says so under its points to confirm, with what was searched.
 2. **Nothing is dropped silently.** A script lists the entrypoint candidates (pages, routes, scheduled jobs, program starts). Every candidate belongs to exactly one feature or is listed as unassigned with a reason, and a script checks it. Every feature of the map gets a chapter.
 3. **Every fact cites its lines.** Each sentence, list item and table row that states a fact ends with the file and lines of the project it rests on. A chapter across features copies the citations of the chapter lines it rests on and reads no code.
 4. **Readers see no code, and can scan.** Reader text has no code-shaped words; chapters are headings, short paragraphs, lists, tables and diagrams, never a wall of text.

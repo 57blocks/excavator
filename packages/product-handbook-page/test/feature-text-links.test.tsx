@@ -67,7 +67,7 @@ describe('feature links in the text', () => {
     const host = await open(withF1(body), '#/product/chapter/F1');
     expect(anchors(host)).toEqual([]);
     expect(host.querySelector('.prose p')?.textContent).toContain('(F99)');
-    expect(host.querySelector('.prose h2')?.textContent).toBe(`${d('Order entry')} (F2)`);
+    expect(host.querySelector('#h-0')?.textContent).toBe(`${d('Order entry')} (F2)`);
     expect(host.querySelector('.prose code')?.textContent).toBe('Order entry (F2)');
     expect(mermaid.render.mock.calls[0][1]).toContain('"Order entry (F2)"');
   });

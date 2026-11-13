@@ -1,5 +1,6 @@
 import { useChapterTexts, useCoverage } from '../lib/chunks';
 import type { Detail } from '../lib/chunks';
+import { isFeatureId } from '../lib/groups';
 import { splitHead } from '../lib/head-split';
 import { useView } from '../lib/links';
 import { useModel } from '../lib/model';
@@ -8,6 +9,7 @@ import { useText } from '../lib/text';
 import type { ChapterData, PageData, ViewTexts } from '../lib/types';
 import { ChunkNotice } from './ChunkNotice';
 import { HandoverStrip } from './HandoverStrip';
+import { FeaturePage } from './FeaturePage';
 import { Markdown } from './Markdown';
 import { NotFound } from './NotFound';
 
@@ -19,6 +21,7 @@ function TextPage({ detail, view: name, id, strip = false }: { detail: Detail<Vi
   if (detail.status !== 'ready') return <article className="page" data-view={name} data-chapter={id}><ChunkNotice state={detail} /></article>;
   const text = detail.value[view];
   if (text === undefined) return <NotFound />;
+  if (strip && isFeatureId(id)) return <FeaturePage id={id} view={name} text={text} />;
   if (!strip || !model.map || mentioning(model.handovers, id).length === 0) return <article className="page" data-view={name} data-chapter={id}><Markdown source={text} idPrefix={id} chapter={id} /></article>;
   // The strip goes after the head (the level-1 heading and its notices); the two blocks of Markdown keep every diagram and heading where it was.
   const { head, rest } = splitHead(text, [t('chapter.notVerified'), t('chapter.notPassed', { count: '{count}' }).split('{')[0]]);

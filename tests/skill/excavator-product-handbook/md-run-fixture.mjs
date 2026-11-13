@@ -22,13 +22,13 @@ The clerk fills in the "Customer Name" field (${cite('5')}).
 
 - An order is Draft until it is sent (${cite('10')}).
 ${extra}
-## Open questions
+## Points to confirm
 
 Nobody can tell how long drafts live.
 
-## Problems
+## Known defects
 
-None found.
+None.
 `;
 
 /** A run with a good map; `chapters` is `{ name: text }`; every written chapter is checked once. */

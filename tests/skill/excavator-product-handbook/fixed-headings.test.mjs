@@ -19,7 +19,7 @@ const stubPath = join(stubDir, 'template.html');
 writeFileSync(stubPath, STUB);
 afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
 
-const ORDER = 'Overview, Pages, Operations, Rules, States, Notifications and automatic behavior, Hand-overs, Open questions, Problems';
+const ORDER = 'Overview, Pages, Operations, Rules, States, Notifications and automatic behavior, Hand-overs, Points to confirm, Known defects';
 const make = (chapters = {}) => {
   const run = newMdRun(chapters, { check: false });
   cleanups.push(run.cleanup);
@@ -35,7 +35,7 @@ describe('feature chapter headings', () => {
   it('accepts the fixed headings in order, with any of the first seven left out', () => {
     expect(checked(chapterText()).result.status).toBe(0);
     const full = chapterText().replace('## Operations', '## Overview\n\nOrders are placed by clerks (`src/forms/order-form.js:5`).\n\n## Pages\n\n- The order form (`src/forms/order-form.js:5`)\n\n## Operations')
-      .replace('## Open questions', '## Rules\n\n- A draft is kept (`src/forms/order-form.js:10`)\n\n## Open questions');
+      .replace('## Points to confirm', '## Rules\n\n- A draft is kept (`src/forms/order-form.js:10`)\n\n## Points to confirm');
     const outcome = checked(full);
     expect(outcome.result.status, outcome.result.stdout).toBe(0);
   });
@@ -47,14 +47,14 @@ describe('feature chapter headings', () => {
   });
 
   it('refuses a heading out of order and prints the order', () => {
-    const text = chapterText().replace('## Open questions', '## Rules\n\n- A draft is kept (`src/forms/order-form.js:10`)\n\n## Overview\n\nOrders are placed (`src/forms/order-form.js:5`).\n\n## Open questions');
+    const text = chapterText().replace('## Points to confirm', '## Rules\n\n- A draft is kept (`src/forms/order-form.js:10`)\n\n## Overview\n\nOrders are placed (`src/forms/order-form.js:5`).\n\n## Points to confirm');
     const { result } = checked(text);
     expect(result.status).toBe(1);
     expect(result.stdout).toContain(`the level-2 heading "Overview" is out of order; the order is: ${ORDER}`);
   });
 
   it('does not count level-3 headings or a heading inside a fence', () => {
-    const text = chapterText().replace('## Open questions', '### Placing an order\n\n```text\n## Not a heading\n```\n\n## Open questions');
+    const text = chapterText().replace('## Points to confirm', '### Placing an order\n\n```text\n## Not a heading\n```\n\n## Points to confirm');
     expect(checked(text).result.status).toBe(0);
   });
 

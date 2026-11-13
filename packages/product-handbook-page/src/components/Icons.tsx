@@ -25,3 +25,7 @@ export const InfoIcon = () => (
 export const ExpandIcon = () => (
   <svg {...base} width={16} height={16}><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
 );
+
+export const ChevronIcon = () => (
+  <svg {...base} width={16} height={16}><path d="M9 6l6 6-6 6" /></svg>
+);

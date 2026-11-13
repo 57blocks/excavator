@@ -1,3 +1,6 @@
+/** Sent to a heading the page is about to show: a feature page answers by selecting the tab and opening the folds that hold it. */
+export const REVEAL_EVENT = 'xv-reveal';
+
 const reducedMotion = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
@@ -17,6 +20,7 @@ export function jumpToHeading(chapter: string, index: number, timeout = 10000): 
   };
   const arrive = (heading: HTMLElement): void => {
     stop();
+    heading.dispatchEvent(new CustomEvent(REVEAL_EVENT, { bubbles: true }));
     // After the render that follows the route change, which also scrolls to the top.
     window.requestAnimationFrame(() => {
       heading.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });

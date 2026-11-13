@@ -96,7 +96,7 @@ suite('page in a browser (O4)', () => {
         expect(await page.evaluate("document.querySelector('[data-column=\"in\"] .empty').textContent.length > 0")).toBe(true);
         await goTo(page, '#/chapter/F1', '[data-chapter=\"F1\"] [data-part=\"handover-strip\"]');
         expect(await page.evaluate("document.querySelectorAll('[data-part=\"handover-strip\"] li').length")).toBe(1);
-        expect(await page.evaluate("document.querySelector('.prose h2').id")).toBe('h-0');
+        expect(await page.evaluate("document.querySelector('article h2').id")).toBe('h-0');
         await fits(page, width, 'the feature page with its strip');
         await goTo(page, '#/technical/domain/d1', '[data-view="domain"]');
         expect(await page.evaluate("document.querySelector('[data-view-link=\"product\"]').getAttribute('href')")).toBe('#/product/domain/d1');
@@ -116,6 +116,10 @@ suite('page in a browser (O4)', () => {
         expect(await page.evaluate("document.querySelectorAll('[data-diagram=\"failed\"]').length")).toBe(1);
         expect(await page.evaluate("document.querySelector('[data-diagram=\"failed\"] pre code').textContent")).toContain('flowchart TD');
         expect(await page.evaluate("document.querySelector('[data-diagram=\"failed\"]').textContent")).toContain('This diagram could not be drawn');
+        // The page of a feature has tabs; the panels of the tabs not shown stay in the page, hidden until found.
+        expect(await page.evaluate("document.querySelectorAll('[role=\"tab\"]').length")).toBeGreaterThanOrEqual(2);
+        expect(await page.evaluate("document.querySelector('[role=\"tabpanel\"][hidden]').getAttribute('hidden')")).toBe('until-found');
+        expect(await page.evaluate("document.querySelector('.toc')")).toBeNull();
         await fits(page, width, 'the feature chapter');
         // The drawings are inside the window too.
         expect(await page.evaluate("Math.max(...Array.from(document.querySelectorAll('[data-diagram=\"done\"]')).map((box) => box.getBoundingClientRect().right))")).toBeLessThanOrEqual(width);

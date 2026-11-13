@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 
 import { useLinks } from '../lib/links';
-import { pluginsWithFeatureLinks } from '../lib/markdown-config';
+import { pluginsWithFeatureLinks, remarkPlugins } from '../lib/markdown-config';
 import { useModel } from '../lib/model';
 
 const components: Components = {
@@ -11,11 +11,11 @@ const components: Components = {
   a: ({ node: _node, href, children, ...props }) => <a href={href} data-feature={(props as { 'data-feature'?: string })['data-feature']} target={/^https?:/i.test(href ?? '') ? '_blank' : undefined} rel="noopener noreferrer">{children}</a>,
 };
 
-/** One line of Markdown as inline content: emphasis, code and links, with the paragraph's own element removed. */
-export function InlineMarkdown({ source }: { source: string }) {
+/** One line of Markdown as inline content: emphasis, code and links, with the paragraph's own element removed. `links` false leaves feature names unlinked (a heading, a button). */
+export function InlineMarkdown({ source, links = true }: { source: string; links?: boolean }) {
   const nav = useLinks();
   const { titles } = useModel();
-  const plugins = useMemo(() => pluginsWithFeatureLinks({ titles, hrefOf: nav.chapter }), [titles, nav]);
+  const plugins = useMemo(() => (links ? pluginsWithFeatureLinks({ titles, hrefOf: nav.chapter }) : remarkPlugins), [titles, nav, links]);
   return <ReactMarkdown remarkPlugins={plugins} components={components} allowedElements={['p', 'em', 'strong', 'code', 'a', 'del']} unwrapDisallowed>{source}</ReactMarkdown>;
 }
 
