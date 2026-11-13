@@ -134,11 +134,11 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 The headings, table headers and other fixed words of the handbook and of the page come from a table of fixed text that ships with this skill in English. Every chapter uses three of them: the headings of its open questions and its problems, and the line written under a heading that has nothing.
 
 - When `$RUN_LANGUAGE` is `English`, there is nothing to translate: the script uses the shipped table.
-- Otherwise, when `$OUT/ui.json` exists, run `check-ui` first; when it exits 0 skip the translation. Otherwise dispatch one `excavator-handbook-writer` subagent in the foreground with the prompt below, then check its file:
+- Otherwise, when `$OUT/ui.json` exists, run `check-ui` first; when it exits 0 skip the translation. When it exits 1 and the file exists (a table of an earlier version, which lacks keys a newer version added), keep its words: `cp "$OUT/ui.json" "$OUT/ui.before.json"`. Then dispatch one `excavator-handbook-writer` subagent in the foreground with the prompt below, then check its file; when `$OUT/ui.before.json` exists, add `--keep "$OUT/ui.before.json"`, which copies into `ui.json` every value of the earlier table before it checks, so that the words of the chapters already written do not change (`ui.before.json` is left in place; the next `cp` replaces it):
   ```bash
   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-ui "$OUT" --language "$RUN_LANGUAGE"
   ```
-  Exit 1 prints one line for each key that is missing or extra, each value that is empty and each `{placeholder}` that is lost or added. Delete the file (`rm -f "$OUT/ui.json"`) and dispatch the `excavator-handbook-writer` subagent once more with its prompt followed by this line and then each line printed: `Your previous attempt failed these checks; fix them and write the file again:`. When `check-ui` still exits 1, the run fails: tell the user the lines it printed, as printed, and stop.
+  Exit 1 prints one line for each key that is missing or extra, each value that is empty and each `{placeholder}` that is lost or added. Delete the file (`rm -f "$OUT/ui.json"`) and dispatch the `excavator-handbook-writer` subagent once more with its prompt followed by this line and then each line printed: `Your previous attempt failed these checks; fix them and write the file again:`. Run `check-ui` again the same way, with `--keep "$OUT/ui.before.json"` when that file exists. When `check-ui` still exits 1, the run fails: tell the user the lines it printed, as printed, and stop.
 
 Then print the texts every writer's prompt uses:
 
@@ -154,7 +154,7 @@ The translation prompt:
 ````text
 You translate the fixed text of a product handbook into $LANGUAGE.
 
-Your scope. Read only `$PLUGIN_ROOT/skills/excavator-product-handbook/ui-strings.json`; read no other file and no code. It holds a `format`, a `language` and `strings`, an object from keys to English texts: headings, table headers, short labels, buttons and sentences of a document for readers who do not read code.
+Your scope. Read only `$PLUGIN_ROOT/skills/excavator-product-handbook/ui-strings.json` and, when it exists, `$OUT/ui.before.json`; read no other file and no code. When `$OUT/ui.before.json` exists, copy its value unchanged for every key it holds and translate only the keys it lacks. It holds a `format`, a `language` and `strings`, an object from keys to English texts: headings, table headers, short labels, buttons and sentences of a document for readers who do not read code.
 
 Translate every value into $LANGUAGE, in plain words, as short as the English. Keep every `{placeholder}` of a value exactly as written (same name, in braces) in the translated text, and add none: the program fills them with names, numbers and values. Never translate a key. Add no key and leave none out.
 

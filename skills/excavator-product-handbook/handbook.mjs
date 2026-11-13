@@ -153,12 +153,16 @@ Commands:
       chapter: it exits 0 when every feature has a passed chapter or one that failed twice;
       --before review checks no chapter either and holds the same rule, and also needs a map.
       Never changes a chapter.
-  check-ui <out> [--language <name>]
+  check-ui <out> [--language <name>] [--keep <file>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,
       a non-empty string for each, the same {placeholders} in each. The run's
       language is --language (the fixed text is written before the map), or
-      map.json's language when the option is not given.
+      map.json's language when the option is not given. --keep <file> first copies
+      into <out>/ui.json every value of a previous table (<file>) for a key of the
+      English table (a non-empty string; other keys are ignored), prints
+      "ui.json: kept <n> values from <file>", then checks as above; a file that is
+      missing or unreadable exits 1.
   assemble <out> --project <root> [--views <list>]
       Write the handbook of each selected view from the Markdown chapters
       under <out>/chapters/: <out>/handbook.md for the product view (every
@@ -315,9 +319,9 @@ const COMMANDS = {
     return report({ status: 0, lines: sectionLines(parsed.sections) });
   },
   'check-ui'(args) {
-    const { positionals, options } = parseArgs(args, ['language']);
+    const { positionals, options } = parseArgs(args, ['language', 'keep']);
     if (positionals.length !== 1) throw new UsageError('check-ui takes exactly one <out> directory');
-    return report(checkUi(positionals[0], options.language));
+    return report(checkUi(positionals[0], options.language, options.keep === undefined ? undefined : resolve(options.keep)));
   },
   assemble(args) {
     const { positionals, options } = parseArgs(args, ['project', 'views']);

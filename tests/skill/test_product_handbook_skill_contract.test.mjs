@@ -86,6 +86,16 @@ describe('the commands', () => {
     expect(skill).toMatch(/handbook\.mjs" sections "[^"]*"\n\s*```\n\s*When `--review` is given/);
   });
 
+  it('Phase 2 keeps the words of an earlier ui.json: the copy, the flag on every check-ui after it, and the translator told to keep them', () => {
+    const skill = TEXT['SKILL.md'];
+    const phase = skill.slice(skill.indexOf('## Phase 2:'), skill.indexOf('## Sections'));
+    expect(phase).toContain('cp "$OUT/ui.json" "$OUT/ui.before.json"');
+    expect(phase).toContain('--keep "$OUT/ui.before.json"');
+    expect(phase).toMatch(/copy its value unchanged for every key it holds and translate only the keys it lacks/);
+    const usage = readFileSync(join(skillDir, 'handbook.mjs'), 'utf-8');
+    expect(usage).toContain('check-ui <out> [--language <name>] [--keep <file>]');
+  });
+
   it('keeps --features, --language with English as the default, --fresh and resuming', () => {
     const skill = TEXT['SKILL.md'];
     expect(skill).toMatch(/- `--features <list>`/);
