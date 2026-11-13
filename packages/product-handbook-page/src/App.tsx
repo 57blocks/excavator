@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChapterNav } from './components/ChapterNav';
 import { ChapterPage, CoveragePage } from './components/ChapterPage';
@@ -38,6 +38,7 @@ function PageView({ data, route, view, coverageTitle }: { data: PageData; route:
 export function AppView({ data, route }: { data: PageData; route: Route }) {
   const t = useMemo(() => makeText(data.ui.strings), [data.ui.strings]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
   const coverageTitle = t('page.nav.coverage');
   const view = viewOf(data, route, coverageTitle);
   const current: View = view ?? data.views[0];
@@ -57,11 +58,12 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
       <ViewContext.Provider value={current}>
         <LinksContext.Provider value={links}>
           <div className="app">
+            <a className="skip-link" href="#main" onClick={(event) => { event.preventDefault(); mainRef.current?.focus(); }}>{t('page.skip')}</a>
             <TopBar title={data.titles[current] ?? ''} menuOpen={menuOpen} onMenu={() => setMenuOpen(!menuOpen)} views={data.views} current={current} switchTo={switchTo} />
             <div className="shell">
               {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
               <Sidebar data={data} route={route} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
-              <main className="main" id="main"><PageView data={data} route={route} view={view} coverageTitle={coverageTitle} />{view !== null && <ChapterNav data={data} route={route} />}</main>
+              <main className="main" id="main" tabIndex={-1} ref={mainRef}><PageView data={data} route={route} view={view} coverageTitle={coverageTitle} />{view !== null && <ChapterNav data={data} route={route} />}</main>
             </div>
           </div>
         </LinksContext.Provider>

@@ -334,6 +334,11 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .diagram-failed { margin: 16px 0; }
 .diagram-failed p { margin: 0 0 6px; }
 
+/* Skip link: out of sight until it has the focus, then at the top left above the bar as the primary button. The click is handled in the page (the hash is the route). */
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 60; padding: 8px 16px; border-radius: var(--radius-md); color: #fff; background: var(--accent); font-weight: 600; text-decoration: none; }
+.skip-link:hover { background: var(--accent-hover); text-decoration: none; }
+.skip-link:not(:focus) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 /* Motion and touch */
 :root { --ease: cubic-bezier(.2,.8,.2,1); --m-in: 150ms; --m-out: 120ms; --m-press: 90ms; --m-panel: 200ms; }
 
