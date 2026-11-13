@@ -70,7 +70,7 @@ export function reviewContext(outDir, root) {
     map: mapRead.value,
     strings: ui.strings,
     advice: adviceWordsOf(ui.strings),
-    memberDirs: memberDirectories(root),
+    memberDirs: root === undefined ? [] : memberDirectories(root),
     ids: mapRead.value.features.map((feature) => feature.id),
     chapterOf,
   };

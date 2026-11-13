@@ -23,7 +23,7 @@
 
 ## 3. 核验与删项（design D5）
 
-- [ ] 3.1 `review claims`：打印每一项与它每条引文所在的章节行原文；`review prune`：按核验结果删项、写 `entries/review-removed.json`、重新生成章节。验证：测试断言打印的原文与删除记录，删项后章节仍通过 `check`。
+- [x] 3.1 `review claims`：打印每一项与它每条引文所在的章节行原文；`review prune`：按核验结果删项、写 `entries/review-removed.json`、重新生成章节。验证：测试断言打印的原文与删除记录，删项后章节仍通过 `check`。
 
 ## 4. 提示词（design D4、D6）
 

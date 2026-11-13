@@ -32,6 +32,7 @@ import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
 import { renderReview } from './lib/review-render.mjs';
+import { pruneReview, reviewClaims } from './lib/review-verify.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
 import { checkUi } from './lib/ui.mjs';
@@ -118,6 +119,15 @@ Commands:
       or a fact of a listed feature, and the reader-text rules of the chapters. One line per refusal, exit 1. With
       batches named, only those are checked and nothing is written; with none named, every batch is checked and, when
       all pass, <out>/chapters/review.md is written.
+  review claims <out> <batch>
+      Print each item of entries/review/<batch>.json (its index from 0, its fields) and, for each citation, the
+      chapter lines of the listed features that hold it: the whole input of the verifier of the batch.
+  review prune <out> <batch> --project <root>
+      Read entries/review/<batch>.verdicts.json ({"verdicts": [{"index", "verdict": supported|unsupported, "reason"}]},
+      one verdict for each item, exactly once), remove the unsupported items from the batch file, record them in
+      entries/review-removed.json and, when every batch file exists and passes, write chapters/review.md again. The
+      first prune keeps the items before pruning in entries/review/<batch>.unpruned.json, which the verdict indexes
+      refer to; pruning again with the same verdicts changes nothing.
   check <out> [<chapter>...] [--before cross|review] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
@@ -259,11 +269,15 @@ const COMMANDS = {
   review(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     const [sub, out, ...rest] = positionals;
-    if (sub !== 'facts' && sub !== 'render') throw new UsageError('review takes facts or render, then <out>');
+    if (!['facts', 'render', 'claims', 'prune'].includes(sub)) throw new UsageError('review takes facts, render, claims or prune, then <out>');
     if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
     if (sub === 'facts') {
       if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
       return report(reviewFacts(resolve(out), rest[0]));
+    }
+    if (sub === 'claims' || sub === 'prune') {
+      if (rest.length !== 1) throw new UsageError(`review ${sub} takes <out> and one batch`);
+      return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
     }
     return report(renderReview(resolve(out), projectRootOption(options.project), rest));
   },
