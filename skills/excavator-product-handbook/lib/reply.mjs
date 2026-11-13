@@ -38,5 +38,8 @@ export function replyLines(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
   if (failed.length > 0) lines.push(`Failed: ${failed.join(', ')}`);
   if (unwritten.length > 0) lines.push(`Not written: ${unwritten.join(', ')}`);
   lines.push(candidatesLine(run.map, run.candidates));
+  const notWritten = names.length - written.length;
+  const failedOnce = failed.filter((name) => run.chapters.get(name).record.attempts < 2).length;
+  lines.push(notWritten === 0 && failedOnce === 0 ? 'Run: complete' : `Run: incomplete (${notWritten} not written, ${failedOnce} failed once); the same command on the same --out resumes`);
   return { status: 0, lines };
 }

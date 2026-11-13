@@ -32,6 +32,7 @@ describe('reply', () => {
       'Failed: F2',
       'Not written: F3, F4, F5',
       CANDIDATES,
+      'Run: incomplete (9 not written, 1 failed once); the same command on the same --out resumes',
     ]);
   });
 
@@ -45,7 +46,33 @@ describe('reply', () => {
       `Page: ${join(run.out, 'handbook.html')}`,
       'Chapters: 12 (passed 12, failed 0, not written 0)',
       CANDIDATES,
+      'Run: complete',
     ]);
+  });
+
+  it('a missing feature chapter makes the run incomplete, with the counts', () => {
+    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', ...CROSS].map((name) => [name, chapterText(name)]));
+    const run = make(chapters);
+    run.assemble();
+    expect(run.reply().lines.slice(-3)).toEqual(['Not written: F5', CANDIDATES, 'Run: incomplete (1 not written, 0 failed once); the same command on the same --out resumes']);
+  });
+
+  it('a chapter that failed once makes the run incomplete', () => {
+    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, chapterText(name)]));
+    chapters.F2 = chapterText('Archive').replace(cite('10'), cite('99'));
+    const run = make(chapters);
+    run.assemble();
+    expect(run.reply().lines.at(-1)).toBe('Run: incomplete (0 not written, 1 failed once); the same command on the same --out resumes');
+  });
+
+  it('a chapter that failed twice does not hold the run back', () => {
+    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, chapterText(name)]));
+    chapters.F2 = chapterText('Archive').replace(cite('10'), cite('99'));
+    const run = make(chapters);
+    run.write('F2', chapterText('Archive').replace(cite('10'), cite('98')));
+    run.check('F2');
+    run.assemble();
+    expect(run.reply().lines.at(-1)).toBe('Run: complete');
   });
 
   it('names a selected view whose file is missing', () => {
