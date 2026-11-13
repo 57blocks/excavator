@@ -3,7 +3,7 @@
  * answers the user with at the end of a run, in a fixed order, computed from the chapters and
  * state.json so the model adds nothing up: the handbook file of each selected view, the page
  * line, the chapter counts (system, every map feature and the six chapters across the features),
- * the failed chapters, the features without a chapter and the candidate conservation line.
+ * the failed chapters, the features without a chapter, the design-problems line and the candidate conservation line.
  * Refuses a run `assemble` would refuse. Changes no file.
  */
 
@@ -11,12 +11,23 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { HANDBOOK_FILES } from './assemble.mjs';
-import { CROSS_CHAPTERS, SYSTEM_CHAPTER, candidatesLine, loadMdRun } from './md-run.mjs';
+import { EXPECTED_CROSS_CHAPTERS, SYSTEM_CHAPTER, candidatesLine, loadMdRun } from './md-run.mjs';
+import { readJson } from './json-file.mjs';
 import { PAGE_FILE } from './page-chunks.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /** The label of each view's handbook line. */
 const HANDBOOK_LABELS = Object.freeze({ product: 'Handbook', technical: 'Technical handbook' });
+
+/** The design-problems line: how to get the chapter when it is absent, else the items it keeps and the items the verification removed. */
+function designProblemsLine(run) {
+  const chapter = run.chapters.get('review');
+  if (chapter === undefined) return 'Design problems: not written; add --review to write them';
+  const kept = (chapter.text.match(/^### /gm) ?? []).length;
+  const recorded = readJson(join(run.outDir, 'entries', 'review-removed.json'));
+  const removed = recorded.ok && Array.isArray(recorded.value?.removed) ? recorded.value.removed.length : 0;
+  return `Design problems: kept ${kept}, removed ${removed}`;
+}
 
 /** Returns { status, lines }; status 1 with the reasons when the run is refused or a handbook file of a selected view is missing. */
 export function replyLines(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
@@ -25,7 +36,7 @@ export function replyLines(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
   const missing = views.filter((view) => !existsSync(join(run.outDir, HANDBOOK_FILES[view])));
   if (missing.length > 0) return { status: 1, lines: [...missing.map((view) => `${HANDBOOK_FILES[view]}: missing`), 'Next: run assemble, then this command again'] };
   const featureIds = run.map.features.map((feature) => feature.id);
-  const names = [SYSTEM_CHAPTER, ...featureIds, ...CROSS_CHAPTERS];
+  const names = [SYSTEM_CHAPTER, ...featureIds, ...EXPECTED_CROSS_CHAPTERS, ...(run.chapters.has('review') ? ['review'] : [])];
   const written = names.filter((name) => run.chapters.has(name));
   const failed = written.filter((name) => run.chapters.get(name).record.status === 'failed');
   const unwritten = featureIds.filter((id) => !run.chapters.has(id));
@@ -37,7 +48,7 @@ export function replyLines(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
   ];
   if (failed.length > 0) lines.push(`Failed: ${failed.join(', ')}`);
   if (unwritten.length > 0) lines.push(`Not written: ${unwritten.join(', ')}`);
-  lines.push(candidatesLine(run.map, run.candidates));
+  lines.push(designProblemsLine(run), candidatesLine(run.map, run.candidates));
   const notWritten = names.length - written.length;
   const failedOnce = failed.filter((name) => run.chapters.get(name).record.attempts < 2).length;
   lines.push(notWritten === 0 && failedOnce === 0 ? 'Run: complete' : `Run: incomplete (${notWritten} not written, ${failedOnce} failed once); the same command on the same --out resumes`);

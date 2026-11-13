@@ -289,6 +289,54 @@ describe('the command', () => {
   });
 });
 
+describe('--before review', () => {
+  const ids = ['F1', 'F2', 'F3', 'F4', 'F5'];
+  const NEXT = 'Next: write and check these features before the design problems';
+
+  it('says there is no map, in one line', () => {
+    const run = newRun();
+    rmSync(join(run.out, 'map.json'));
+    const result = run.check('--before', 'review');
+    expect(result.status).toBe(1);
+    expect(result.lines).toEqual(['map.json is missing or has no features; write and check the map first']);
+  });
+
+  it('lists each feature without a checked chapter (three missing), then reports ready; failed twice counts', () => {
+    const run = newRun();
+    for (const id of ids.slice(0, 2)) run.write(id, GOOD);
+    run.check('F1', 'F2');
+    const missing = run.check('--before', 'review');
+    expect(missing.status).toBe(1);
+    expect(missing.lines).toEqual(['missing: F3', 'missing: F4', 'missing: F5', NEXT]);
+
+    for (const id of ['F3', 'F4']) run.write(id, GOOD);
+    run.write('F5', GOOD.replace(c('10'), c('13')));
+    run.check('F3', 'F4', 'F5');
+    expect(run.check('--before', 'review').lines).toEqual(['missing: F5', NEXT]);
+    run.write('F5', GOOD.replace(c('10'), c('12-13')));
+    run.check('F5');
+    const ready = run.check('--before', 'review');
+    expect(ready.status).toBe(0);
+    expect(ready.lines).toEqual(['Design problems: ready (5 features)']);
+  });
+
+  it('refuses --no-record, and a value that is neither cross nor review', () => {
+    const run = newRun();
+    expect(run.check('--before', 'review', '--no-record').status).toBe(2);
+    expect(run.check('--before', 'defects').status).toBe(2);
+  });
+
+  it('checks a review chapter as a cross chapter: no advice words, citations resolved', () => {
+    const run = newRun();
+    run.write('review', `# Design problems\n\nTwo screens do the same job (${c('5')}).\n`);
+    expect(run.check('review').status).toBe(0);
+    run.write('review', `# Design problems\n\nYou should merge the two screens (${c('5')}).\n`);
+    const bad = run.check('review');
+    expect(bad.status).toBe(1);
+    expect(bad.stdout).toMatch(/is a word of advice/);
+  });
+});
+
 describe('--before cross', () => {
   const ids = ['F1', 'F2', 'F3', 'F4', 'F5'];
   it('lists the features without a checked chapter, then reports ready (failed twice counts)', () => {

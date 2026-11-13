@@ -25,7 +25,7 @@ export function defaultParts({ blocks, featureIds, t }) {
     ['md.part.features', featureIds.filter(has)],
     ['md.part.notifications', take('notifications', 'topics')],
     ['md.part.data', take('data', 'dictionaries', 'history')],
-    ['md.part.defects', take('defects', 'remedies')],
+    ['md.part.defects', take('defects', 'review', 'remedies')],
   ];
   return parts.filter(([, chapters]) => chapters.length > 0).map(([key, chapters]) => ({ title: t(key), chapters }));
 }

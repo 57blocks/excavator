@@ -5,7 +5,7 @@
  * project's source statically and never builds or runs it.
  *
  * Subcommands: candidates, applications, check-map, select, check-ui, data,
- * history, check, assemble, page, reply, sections. Run `handbook.mjs --help`
+ * history, check, assemble, page, reply, sections, review. Run `handbook.mjs --help`
  * for the arguments of each.
  *
  * check-map and check hold <out>/state.json.lock while they run.
@@ -29,7 +29,12 @@ import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
+import { remediesState } from './lib/remedies-inputs.mjs';
 import { replyLines } from './lib/reply.mjs';
+import { reviewFacts } from './lib/review-facts.mjs';
+import { renderReview } from './lib/review-render.mjs';
+import { resetBatch, reviewStatus, reviewSummary, reviewTitles } from './lib/review-status.mjs';
+import { pruneReview, reviewClaims } from './lib/review-verify.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
 import { checkUi } from './lib/ui.mjs';
@@ -55,12 +60,13 @@ Commands:
       Every item must match exactly one feature; otherwise print each failing
       item and then every feature as "id  name", end with a Next: line and
       exit 1. No fuzzy matching. Changes no file.
-  sections [<list>]
+  sections [<list>] [--review]
       Validate the --sections list (comma-separated: system, features, data, history, domains, roles, notifications, topics,
-      defects, remedies, outline; empty or absent is all) and print "SECTIONS=<the sections in fixed order>",
+      defects, review, remedies, outline; empty or absent is all but review) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the map stage file first, once, then each
-      section's file, once (the six cross chapters share one). A value that is not a section exits 1 and the
+      section's file, once (the five cross chapters before review share one). --review adds review; whenever review
+      is selected, remedies and outline are selected too. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
@@ -101,7 +107,42 @@ Commands:
       commands and the project files statically; writes nothing under the
       project. Prints one line. A project in no repository writes noHistory
       with the reason and counts the test files all the same.
-  check <out> [<chapter>...] [--before cross] [--no-record] --project <root>
+  review facts <out> [<batch>]
+      The whole-table facts the design-problems writers read: the batches (one per business domain when the domains
+      chapter passed, else one per area of the map, b1..bn, then cross), for every feature its operations, the steps of
+      each operation, its states and transitions, its server-side steps and its hand-overs counted from its chapter
+      with the headings of <out>/ui.json (a section that is not recognized is not counted and is named), and the pairs
+      of features whose chapters cite overlapping lines of one file (one pair for two features, with every such file;
+      a file cited by more than 3 features is shared code and makes no pair), within a batch and across batches. Writes
+      <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it.
+  review render <out> [<batch>...] --project <root>
+      Check the items of <out>/entries/review/<batch>.json against the chapters: fields and values, the features of
+      the batch (a cross item: features of 2 or more batches), each citation copied from a chapter of a listed feature,
+      two different chapter lines for duplication, contradiction, inconsistency and access, every number in a cited line
+      or a fact of a listed feature, and the reader-text rules of the chapters. One line per refusal, exit 1. With
+      batches named, only those are checked and nothing is written; with none named, every batch is checked and, when
+      all pass, <out>/chapters/review.md is written.
+  review claims <out> <batch>
+      Print each item of entries/review/<batch>.json (its index from 0, its fields) and, for each citation, the
+      chapter lines of the listed features that hold it: the whole input of the verifier of the batch.
+  review prune <out> <batch> --project <root>
+      Read entries/review/<batch>.verdicts.json ({"verdicts": [{"index", "verdict": supported|unsupported, "reason"}]},
+      one verdict for each item, exactly once), remove the unsupported items from the batch file, record them in
+      entries/review-removed.json and, when every batch file exists and passes, write chapters/review.md again. The
+      first prune keeps the items before pruning in entries/review/<batch>.unpruned.json, which the verdict indexes
+      refer to; pruning again with the same verdicts changes nothing.
+  review status <out> --project <root>
+      One line per batch: "<batch>", a state and the batch name, the state being write (no file, or a file that does
+      not pass render; the reasons follow), verify (items to judge), prune (verdicts to apply, or a batch with no
+      item) or done (pruned). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
+      records; review skip <out> <batch> does the same and leaves an empty batch. review titles <out> --project <root>
+      lists the items of the non-cross batches (batch, item, dimension, impact, features, title). review summary <out>
+      prints "<batch> <name> kept=<n> removed=<m>" for each pruned batch.
+  remedies-state <out> --project <root>
+      Print STATUS (the recorded status of the remedies chapter or none), ATTEMPTS, FILE (yes or no) and STALE (yes
+      when it passed and the digest of defects.md and review.md differs from the one recorded with it, or none was
+      recorded and review.md exists).
+  check <out> [<chapter>...] [--before cross|review] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
       fact line cites, paragraphs have at most 4 sentences, a feature chapter has a list or a
@@ -110,14 +151,19 @@ Commands:
       line per chapter with its reasons and a Next: line, and records status, attempts and
       reasons in state.json (format /2); a state.json of another format exits 1 and asks for
       --fresh. --no-record prints the same without writing state.json. --before cross checks no
-      chapter: it exits 0 when every feature has a passed chapter or one that failed twice.
+      chapter: it exits 0 when every feature has a passed chapter or one that failed twice;
+      --before review checks no chapter either and holds the same rule, and also needs a map.
       Never changes a chapter.
-  check-ui <out> [--language <name>]
+  check-ui <out> [--language <name>] [--keep <file>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,
       a non-empty string for each, the same {placeholders} in each. The run's
       language is --language (the fixed text is written before the map), or
-      map.json's language when the option is not given.
+      map.json's language when the option is not given. --keep <file> first copies
+      into <out>/ui.json every value of a previous table (<file>) for a key of the
+      English table (a non-empty string; other keys are ignored), prints
+      "ui.json: kept <n> values from <file>", then checks as above; a file that is
+      missing or unreadable exits 1.
   assemble <out> --project <root> [--views <list>]
       Write the handbook of each selected view from the Markdown chapters
       under <out>/chapters/: <out>/handbook.md for the product view (every
@@ -238,17 +284,45 @@ const COMMANDS = {
     if (positionals.length < 1) throw new UsageError('check takes <out> and optionally chapter names');
     return report(checkCommand(positionals[0], positionals.slice(1), projectRootOption(options.project), { before: options.before, record }));
   },
+  review(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    const [sub, out, ...rest] = positionals;
+    if (!['facts', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, render, claims, prune, status, reset, skip, titles or summary, then <out>');
+    if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
+    if (sub === 'facts') {
+      if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
+      return report(reviewFacts(resolve(out), rest[0]));
+    }
+    if (sub === 'status') return report(reviewStatus(resolve(out), projectRootOption(options.project)));
+    if (sub === 'titles') return report(reviewTitles(resolve(out), projectRootOption(options.project)));
+    if (sub === 'summary') return report(reviewSummary(resolve(out)));
+    if (sub === 'reset' || sub === 'skip') {
+      if (rest.length !== 1) throw new UsageError(`review ${sub} takes <out> and one batch`);
+      return report(resetBatch(resolve(out), rest[0], { empty: sub === 'skip' }));
+    }
+    if (sub === 'claims' || sub === 'prune') {
+      if (rest.length !== 1) throw new UsageError(`review ${sub} takes <out> and one batch`);
+      return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
+    }
+    return report(renderReview(resolve(out), projectRootOption(options.project), rest));
+  },
+  'remedies-state'(args) {
+    const { positionals } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('remedies-state takes exactly one <out> directory');
+    return report(remediesState(resolve(positionals[0])));
+  },
   sections(args) {
-    const { positionals } = parseArgs(args, []);
+    const review = args.includes('--review');
+    const { positionals } = parseArgs(args.filter((arg) => arg !== '--review'), []);
     if (positionals.length > 1) throw new UsageError('sections takes one comma-separated list at most');
-    const parsed = parseSections(positionals[0]);
+    const parsed = parseSections(positionals[0], { review });
     if (!parsed.ok) return report({ status: 1, lines: parsed.lines });
     return report({ status: 0, lines: sectionLines(parsed.sections) });
   },
   'check-ui'(args) {
-    const { positionals, options } = parseArgs(args, ['language']);
+    const { positionals, options } = parseArgs(args, ['language', 'keep']);
     if (positionals.length !== 1) throw new UsageError('check-ui takes exactly one <out> directory');
-    return report(checkUi(positionals[0], options.language));
+    return report(checkUi(positionals[0], options.language, options.keep === undefined ? undefined : resolve(options.keep)));
   },
   assemble(args) {
     const { positionals, options } = parseArgs(args, ['project', 'views']);
