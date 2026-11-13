@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 
+import { chainSteps } from '../lib/chain-steps';
 import { useLinks } from '../lib/links';
 import { pluginsWithFeatureLinks } from '../lib/markdown-config';
 import { useModel } from '../lib/model';
@@ -75,6 +76,8 @@ export function Markdown({ source, idPrefix, chapter }: { source: string; idPref
         const language = (code?.properties?.className ?? []).find((name) => name.startsWith('language-'));
         const text = code === undefined ? '' : textOf(code).replace(/\n$/, '');
         if (language === 'language-mermaid') {
+          const steps = chainSteps(text);
+          if (steps !== null) return <ol className="steps">{steps.map((step, at) => <li key={at}>{step}</li>)}</ol>;
           const line = (node as HastNode).position?.start.line ?? -1;
           const index = fences.indexOf(line);
           return <Diagram id={`xv-diagram-${idPrefix}-${index === -1 ? `line-${line}` : index}`} source={text} />;

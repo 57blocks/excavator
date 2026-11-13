@@ -10,7 +10,7 @@ Write a **product handbook**: a document for people who use or manage the produc
 
 Five rules govern everything below:
 
-1. **As-Is only, no advice, except the remedies.** Every chapter describes behavior that exists in the code. Only the remedies chapter (Phase 8) says what to do. The `Problems` sections and the defects chapter state defects and nothing else. Where the code does not settle something, the chapter says so under its open questions, with what was searched.
+1. **As-Is only, no advice, except the remedies.** Every chapter describes behavior that exists in the code. Only the remedies chapter (Phase 8) says what to do. The known-defects sections and the defects chapter state defects and nothing else. Where the code does not settle something, the chapter says so under its points to confirm, with what was searched.
 2. **Nothing is dropped silently.** A script lists the entrypoint candidates (pages, routes, scheduled jobs, program starts). Every candidate belongs to exactly one feature or is listed as unassigned with a reason, and a script checks it. Every feature of the map gets a chapter.
 3. **Every fact cites its lines.** Each sentence, list item and table row that states a fact ends with the file and lines of the project it rests on. A chapter across features copies the citations of the chapter lines it rests on and reads no code.
 4. **Readers see no code, and can scan.** Reader text has no code-shaped words; chapters are headings, short paragraphs, lists, tables and diagrams, never a wall of text.
@@ -137,14 +137,14 @@ The headings, table headers and other fixed words of the handbook and of the pag
   ```
   Exit 1 prints one line for each key that is missing or extra, each value that is empty and each `{placeholder}` that is lost or added. Delete the file (`rm -f "$OUT/ui.json"`) and dispatch the `excavator-handbook-writer` subagent once more with its prompt followed by this line and then each line printed: `Your previous attempt failed these checks; fix them and write the file again:`. When `check-ui` still exits 1, the run fails: tell the user the lines it printed, as printed, and stop.
 
-Then print the three texts every writer's prompt uses:
+Then print the texts every writer's prompt uses:
 
 ```bash
 UI="$OUT/ui.json"; [ -f "$UI" ] || UI="$PLUGIN_ROOT/skills/excavator-product-handbook/ui-strings.json"
-jq -r '.strings | "OPEN_QUESTIONS=\(.["chapter.openQuestions"])", "PROBLEMS=\(.["chapter.problems"])", "NONE=\(.["chapter.none"])"' "$UI"
+jq -r '.strings | "OPEN_QUESTIONS=\(.["chapter.openQuestions"])", "PROBLEMS=\(.["chapter.problems"])", "NONE=\(.["chapter.none"])", "S_OVERVIEW=\(.["chapter.section.overview"])", "S_SCREENS=\(.["chapter.section.screens"])", "S_OPERATIONS=\(.["chapter.section.operations"])", "S_RULES=\(.["chapter.section.rules"])", "S_STATES=\(.["chapter.section.states"])", "S_NOTIFICATIONS=\(.["chapter.section.notifications"])", "S_HANDOVERS=\(.["chapter.section.handovers"])", "SERVER_STEPS=\(.["chapter.serverSteps"])"' "$UI"
 ```
 
-In every prompt of this run, write `$OPEN_QUESTIONS`, `$PROBLEMS` and `$NONE` as the values it printed.
+In every prompt of this run, write `$OPEN_QUESTIONS`, `$PROBLEMS`, `$NONE`, `$S_OVERVIEW`, `$S_SCREENS`, `$S_OPERATIONS`, `$S_RULES`, `$S_STATES`, `$S_NOTIFICATIONS`, `$S_HANDOVERS` and `$SERVER_STEPS` as the values it printed, exactly as printed.
 
 The translation prompt:
 

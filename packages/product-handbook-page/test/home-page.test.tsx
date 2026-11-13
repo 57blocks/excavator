@@ -212,7 +212,7 @@ describe('the domain table and the references', () => {
   it('lists each domain with its mark and link, what it does, its feature count and the domains it receives from and hands over to', () => {
     const host = home();
     const head = Array.from(host.querySelectorAll('.dom-table thead th')).map((one) => one.textContent);
-    expect(head).toEqual(['Domain', 'What it does', 'Features', 'Receives from', 'Hands over to'].map((word) => `@@${word}`));
+    expect(head).toEqual(['Domain', 'Responsibilities', 'Features', 'Upstream domains', 'Downstream domains'].map((word) => `@@${word}`));
     const rows = Array.from(host.querySelectorAll('.dom-table tbody tr'));
     expect(rows).toHaveLength(4);
     const cells = (row: Element) => Array.from(row.children).map((cell) => cell.textContent);

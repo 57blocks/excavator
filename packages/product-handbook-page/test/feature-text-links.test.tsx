@@ -11,12 +11,14 @@ import { cleanup, mount, settle } from './dom';
 import { domainData } from './domains-fixture';
 import { d } from './page-fixture';
 
-const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
+const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(), parse: vi.fn() }));
 vi.mock('mermaid', () => ({ default: mermaid }));
 
 beforeEach(() => {
   mermaid.initialize.mockReset();
   mermaid.render.mockReset();
+  mermaid.parse.mockReset();
+  mermaid.parse.mockImplementation(async (source: string) => { if (source.includes('BROKEN')) throw new Error('Parse error on line 2'); return { diagramType: 'flowchart' }; });
   mermaid.render.mockImplementation(async (id: string) => ({ svg: `<svg data-id="${id}"></svg>` }));
 });
 afterEach(cleanup);
@@ -59,20 +61,20 @@ describe('feature links in the text', () => {
       '`Order entry (F2)`',
       `[${d('Order entry')} (F2)](https://example.test/x)`,
       `## ${d('Order entry')} (F2)`,
-      '```mermaid\nflowchart TD\n  A["Order entry (F2)"] --> B\n```',
+      '```mermaid\nstateDiagram-v2\n  Draft\n  Draft --> Done : "Order entry (F2)"\n```',
       '',
     ].join('\n\n');
     const host = await open(withF1(body), '#/product/chapter/F1');
     expect(anchors(host)).toEqual([]);
     expect(host.querySelector('.prose p')?.textContent).toContain('(F99)');
-    expect(host.querySelector('.prose h2')?.textContent).toBe(`${d('Order entry')} (F2)`);
+    expect(host.querySelector('#h-0')?.textContent).toBe(`${d('Order entry')} (F2)`);
     expect(host.querySelector('.prose code')?.textContent).toBe('Order entry (F2)');
-    expect(mermaid.render.mock.calls[0][1]).toContain('A["Order entry (F2)"]');
+    expect(mermaid.render.mock.calls[0][1]).toContain('"Order entry (F2)"');
   });
 
   it('links in a table cell, and the table of contents ids and the diagram ids do not change', async () => {
-    const plain = withF1(`## ${d('First')}\n\ntext\n\n## ${d('Second')}\n\n\`\`\`mermaid\nflowchart TD\n  A --> B\n\`\`\`\n`);
-    const linked = withF1(`## ${d('First')}\n\n${d('Order entry')} (F2)\n\n## ${d('Second')}\n\n| Feature |\n| --- |\n| ${d('Invoicing')} (F3) |\n\n\`\`\`mermaid\nflowchart TD\n  A --> B\n\`\`\`\n`);
+    const plain = withF1(`## ${d('First')}\n\ntext\n\n## ${d('Second')}\n\n\`\`\`mermaid\nstateDiagram-v2\n  Draft\n  [*] --> Draft\n\`\`\`\n`);
+    const linked = withF1(`## ${d('First')}\n\n${d('Order entry')} (F2)\n\n## ${d('Second')}\n\n| Feature |\n| --- |\n| ${d('Invoicing')} (F3) |\n\n\`\`\`mermaid\nstateDiagram-v2\n  Draft\n  [*] --> Draft\n\`\`\`\n`);
     const idsOf = (host: HTMLElement): string[] => Array.from(host.querySelectorAll('[id]')).map((el) => el.id);
     const before = await open(plain, '#/product/chapter/F1');
     const plainIds = idsOf(before);

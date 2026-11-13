@@ -189,7 +189,7 @@ describe('page data /21: lead and search', () => {
 
   it('search lists the domains, then each chapter with its ## and ### headings numbered from 0', () => {
     const run = make();
-    run.write('F1', `${readFileSync(join(run.out, 'chapters', 'F1.md'), 'utf-8').replace('## Open questions', `### A sub part\n\nText (${cite('5')}).\n\n\`\`\`text\n## Not a heading\n\`\`\`\n\n## Open questions`)}`);
+    run.write('F1', `${readFileSync(join(run.out, 'chapters', 'F1.md'), 'utf-8').replace('## Points to confirm', `### A sub part\n\nText (${cite('5')}).\n\n\`\`\`text\n## Not a heading\n\`\`\`\n\n## Points to confirm`)}`);
     run.check('F1');
     const { search } = page(run);
     expect(Object.keys(search[0])).toEqual(['kind', 'title', 'chapter', 'domain', 'heading', 'level']);
@@ -202,10 +202,10 @@ describe('page data /21: lead and search', () => {
     const f1 = rest.filter((item) => item[2] === 'F1');
     expect(f1).toEqual([
       ['chapter', 'Orders', 'F1', null, null],
-      ['heading', 'Placing an order', 'F1', 0, 2],
+      ['heading', 'Operations', 'F1', 0, 2],
       ['heading', 'A sub part', 'F1', 1, 3],
-      ['heading', 'Open questions', 'F1', 2, 2],
-      ['heading', 'Problems', 'F1', 3, 2],
+      ['heading', 'Points to confirm', 'F1', 2, 2],
+      ['heading', 'Known defects', 'F1', 3, 2],
     ]);
     const order = rest.filter((item) => item[0] === 'chapter').map((item) => item[2]);
     expect(order).toEqual(['system', 'domains', 'F1']);

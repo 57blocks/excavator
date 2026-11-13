@@ -6,7 +6,10 @@ import type { OutlineBlock, PageData, View } from './types';
 export interface Group { id: string; name: string; features: PageItem[] }
 
 /** A feature chapter is a chapter block whose id is `F` and a number. */
-export const isFeature = (block: OutlineBlock): boolean => block.kind === 'chapter' && /^F\d+$/.test(block.block);
+/** Whether a chapter id is a feature's: `F` and a number. */
+export const isFeatureId = (id: string): boolean => /^F\d+$/.test(id);
+
+export const isFeature = (block: OutlineBlock): boolean => block.kind === 'chapter' && isFeatureId(block.block);
 
 /**
  * The groups of the page: one per domain when `domains.state` is `ok` (the feature chapters the outline has, in the domain's

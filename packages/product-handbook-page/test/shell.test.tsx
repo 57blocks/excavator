@@ -388,11 +388,11 @@ describe('what each route is', () => {
 
 describe('the table of contents', () => {
   const body = (headings: string): string => `# ${d('Title')}\n\n${headings}`;
-  const chaptered = (text: string): PageData => pageData({ chapters: [chapter('system', 'System chapter'), { id: 'F1', texts: { product: text, technical: text } }, chapter('F2', 'Reminders')] });
+  const chaptered = (text: string): PageData => pageData({ chapters: [{ id: 'system', texts: { product: text, technical: text } }, chapter('F1', 'Orders'), chapter('F2', 'Reminders')] });
   const FIVE = body(`## ${d('One')}\n\ntext\n\n### ${d('One a')}\n\ntext\n\n## ${d('Two')}\n\ntext\n\n### ${d('Two a')}\n\n#### ${d('deep')}\n\n## ${d('Three')}\n`);
 
   it('numbers the h2 and h3 of the article h-0, h-1, ... in document order, and lists them as buttons (not links)', () => {
-    const host = mount(<AppView data={chaptered(FIVE)} route={parseHash('#/product/chapter/F1')} />);
+    const host = mount(<AppView data={chaptered(FIVE)} route={parseHash('#/product/chapter/system')} />);
     const headings = Array.from(host.querySelectorAll('.prose h2, .prose h3'));
     expect(headings.map((heading) => heading.id)).toEqual(['h-0', 'h-1', 'h-2', 'h-3', 'h-4']);
     expect(headings.every((heading) => heading.getAttribute('tabindex') === '-1')).toBe(true);
@@ -407,7 +407,7 @@ describe('the table of contents', () => {
   });
 
   it('is absent for an article with fewer than two h2, and the page then has no third column', () => {
-    const host = mount(<AppView data={chaptered(body(`## ${d('Only')}\n\n### ${d('sub')}\n`))} route={parseHash('#/product/chapter/F1')} />);
+    const host = mount(<AppView data={chaptered(body(`## ${d('Only')}\n\n### ${d('sub')}\n`))} route={parseHash('#/product/chapter/system')} />);
     expect(host.querySelector('.toc')).toBeNull();
     expect(host.querySelector('.read')?.getAttribute('data-toc')).toBe('none');
     expect(host.querySelector('.prose h2')?.id).toBe('h-0');
@@ -419,13 +419,13 @@ describe('the table of contents', () => {
     const saved = proto.scrollIntoView;
     proto.scrollIntoView = function scroll(this: HTMLElement, options?: unknown) { calls.push({ id: this.id, options }); };
     try {
-      window.location.hash = '#/product/chapter/F1';
-      const host = mount(<AppView data={chaptered(FIVE)} route={parseHash('#/product/chapter/F1')} />);
+      window.location.hash = '#/product/chapter/system';
+      const host = mount(<AppView data={chaptered(FIVE)} route={parseHash('#/product/chapter/system')} />);
       const buttons = host.querySelectorAll<HTMLElement>('.toc button');
       act(() => buttons[2].click());
       expect(calls).toEqual([{ id: 'h-2', options: { behavior: 'smooth', block: 'start' } }]);
       expect(document.activeElement?.id).toBe('h-2');
-      expect(window.location.hash).toBe('#/product/chapter/F1');
+      expect(window.location.hash).toBe('#/product/chapter/system');
       expect(buttons[2].getAttribute('aria-current')).toBe('true');
     } finally {
       proto.scrollIntoView = saved;
@@ -440,7 +440,7 @@ describe('the table of contents', () => {
     proto.scrollIntoView = (options?: unknown) => { calls.push(options); };
     window.matchMedia = ((query: string) => ({ matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
     try {
-      const host = mount(<AppView data={chaptered(FIVE)} route={parseHash('#/product/chapter/F1')} />);
+      const host = mount(<AppView data={chaptered(FIVE)} route={parseHash('#/product/chapter/system')} />);
       act(() => host.querySelectorAll<HTMLElement>('.toc button')[1].click());
       expect(calls).toEqual([{ behavior: 'auto', block: 'start' }]);
     } finally {

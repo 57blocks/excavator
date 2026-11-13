@@ -13,12 +13,14 @@ import type { PageData, View } from '../src/lib/types';
 import { cleanup, mount, settle } from './dom';
 import { MARK, d, marked, pageData, shipped } from './page-fixture';
 
-const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
+const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(), parse: vi.fn() }));
 vi.mock('mermaid', () => ({ default: mermaid }));
 
 beforeEach(() => {
   mermaid.initialize.mockReset();
   mermaid.render.mockReset();
+  mermaid.parse.mockReset();
+  mermaid.parse.mockImplementation(async (source: string) => { if (source.includes('BROKEN')) throw new Error('Parse error on line 2'); return { diagramType: 'flowchart' }; });
   mermaid.render.mockImplementation(async (id: string, source: string) => {
     if (source.includes('BROKEN')) throw new Error('Parse error on line 2');
     return { svg: `<svg data-id="${id}"><text>${source.split('\n')[0]}</text></svg>` };
@@ -66,15 +68,61 @@ describe('tables and lists', () => {
 describe('diagrams', () => {
   const flow = '```mermaid\nflowchart TD\n  A --> B\n```\n';
   const state = '```mermaid\nstateDiagram-v2\n  [*] --> Draft\n```\n';
+  const bare = '```mermaid\nstateDiagram-v2\n  Draft\n  [*] --> Draft\n```\n';
 
-  it('a flowchart and a state diagram are handed to mermaid and the drawing is shown', async () => {
+  it('a flowchart and a state diagram are drawn by the lighter engine: parsed by mermaid, not drawn by it, and no font import', async () => {
     const text = CHAPTER(`${flow}\n${state}`);
     const host = await settled(withText({ product: text, technical: text }), '#/product/chapter/F1');
-    expect(mermaid.render).toHaveBeenCalledTimes(2);
-    expect(mermaid.render.mock.calls.map((call) => String(call[1]).split('\n')[0])).toEqual(['flowchart TD', 'stateDiagram-v2']);
+    expect(mermaid.parse).toHaveBeenCalledTimes(2);
+    expect(mermaid.render).not.toHaveBeenCalled();
     const drawn = host.querySelectorAll('[data-diagram="done"] svg');
     expect(drawn).toHaveLength(2);
     expect(host.querySelector('pre')).toBeNull();
+    for (const svg of Array.from(drawn)) {
+      expect(svg.outerHTML).not.toContain('@import');
+      expect(svg.outerHTML).toContain('var(--dg-');
+    }
+  });
+
+  it('a drawing carries its natural width, which the style turns into the size rule (natural width, at least 85% of it)', async () => {
+    const text = CHAPTER(flow);
+    const host = await settled(withText({ product: text, technical: text }), '#/product/chapter/F1');
+    const box = host.querySelector('[data-diagram="done"]') as HTMLElement;
+    const viewBox = /viewBox="[-\d.]+ [-\d.]+ ([\d.]+) /.exec(box.innerHTML);
+    expect(viewBox).not.toBeNull();
+    expect(box.style.getPropertyValue('--vw')).toBe(`${viewBox![1]}px`);
+  });
+
+  it('a state diagram with a state on a line of its own is drawn by mermaid', async () => {
+    const text = CHAPTER(bare);
+    const host = await settled(withText({ product: text, technical: text }), '#/product/chapter/F1');
+    expect(mermaid.render).toHaveBeenCalledTimes(1);
+    expect(String(mermaid.render.mock.calls[0][1]).split('\n')[0]).toBe('stateDiagram-v2');
+    expect(host.querySelectorAll('[data-diagram="done"] svg')).toHaveLength(1);
+  });
+
+  it('a source mermaid cannot parse shows the note and the source and no drawing', async () => {
+    const text = CHAPTER('```mermaid\nflowchart TD\n  A[BROKEN --> B\n```\n');
+    const host = await settled(withText({ product: text, technical: text }), '#/product/chapter/F1');
+    expect(host.querySelector('[data-diagram="failed"]')).not.toBeNull();
+    expect(host.querySelector('[data-diagram="done"]')).toBeNull();
+    expect(mermaid.render).not.toHaveBeenCalled();
+  });
+
+  it('a straight chain with no edge text is a numbered list of steps, not a drawing', async () => {
+    const text = CHAPTER('```mermaid\nflowchart LR\n  A[Draft] --> B[Review] --> C[Approved]\n```\n');
+    const host = await settled(withText({ product: text, technical: text }), '#/product/chapter/F1');
+    const steps = host.querySelector('ol.steps') as HTMLElement;
+    expect(Array.from(steps.querySelectorAll('li')).map((li) => li.textContent)).toEqual(['Draft', 'Review', 'Approved']);
+    expect(host.querySelector('.diagram')).toBeNull();
+    expect(mermaid.parse).not.toHaveBeenCalled();
+  });
+
+  it('a chain with text on an edge stays a diagram', async () => {
+    const text = CHAPTER('```mermaid\nflowchart LR\n  A --> B -->|ok| C\n```\n');
+    const host = await settled(withText({ product: text, technical: text }), '#/product/chapter/F1');
+    expect(host.querySelector('ol.steps')).toBeNull();
+    expect(host.querySelectorAll('[data-diagram="done"] svg')).toHaveLength(1);
   });
 
   it('a fence that cannot be drawn shows its source as text with the fixed note, and the rest of the page stays', async () => {

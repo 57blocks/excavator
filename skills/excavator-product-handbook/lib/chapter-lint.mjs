@@ -16,6 +16,11 @@ import { adviceWordsOf, wordsIn } from './word-lists.mjs';
 
 export const MAX_SENTENCES = 4;
 export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies']);
+/** The fixed level-2 headings of a feature chapter, in order: the seven section names, then the two closing sections. */
+export const FEATURE_HEADING_KEYS = Object.freeze([
+  'chapter.section.overview', 'chapter.section.screens', 'chapter.section.operations', 'chapter.section.rules',
+  'chapter.section.states', 'chapter.section.notifications', 'chapter.section.handovers', 'chapter.openQuestions', 'chapter.problems',
+]);
 const DIAGRAM_TYPES = ['flowchart', 'graph', 'sequenceDiagram', 'stateDiagram-v2', 'stateDiagram', 'erDiagram', 'classDiagram', 'journey', 'gantt', 'pie', 'mindmap', 'timeline'];
 const COLONS = [':', String.fromCharCode(0xff1a)];
 const PAREN_NAMES = 'U+FF08 and U+FF09';
@@ -35,6 +40,21 @@ function fixedMatchers(strings) {
   return ['chapter.none', 'chapter.notVerified', 'chapter.notPassed']
     .filter((key) => typeof strings[key] === 'string')
     .map((key) => new RegExp(`^${escapeRegex(strings[key].trim()).replace(/\\\{count\\\}/g, '\\d+').replace(/\{count\}/g, '\\d+')}$`));
+}
+
+/** Reasons for the level-2 headings of a feature chapter: each must be one of the fixed nine, and they must come in the fixed order. Skipped when the run's text lacks the keys. */
+function headingReasons(headings, strings) {
+  const fixed = FEATURE_HEADING_KEYS.map((key) => strings[key]);
+  if (fixed.some((value) => typeof value !== 'string' || value === '')) return [];
+  const reasons = [];
+  let last = -1;
+  for (const heading of headings.filter((entry) => entry.level === 2)) {
+    const at = fixed.indexOf(heading.text);
+    if (at === -1) reasons.push(`a level-2 heading that is not one of the fixed headings: ${heading.text}`);
+    else if (at < last) reasons.push(`the level-2 heading "${heading.text}" is out of order; the order is: ${fixed.join(', ')}`);
+    else last = at;
+  }
+  return reasons;
 }
 
 /**
@@ -141,6 +161,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
     });
   }
 
+  if (kind === 'feature') reasons.push(...headingReasons(seenHeadings, strings));
   if (kind === 'feature' && !listOrTable) reasons.push('no list or table; write fields, steps and rules as lists or tables');
   if (kind === 'feature' || kind === 'system') {
     for (const key of ['chapter.openQuestions', 'chapter.problems']) {

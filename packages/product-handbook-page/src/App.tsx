@@ -13,7 +13,7 @@ import { Reading } from './components/Reading';
 import { SearchDialog } from './components/SearchDialog';
 import { TopBar } from './components/TopBar';
 import { LoaderContext, createLoader } from './lib/chunks';
-import { flatReferences, groupOfFeature, groupsOf, named, referencesOf } from './lib/groups';
+import { flatReferences, groupOfFeature, groupsOf, isFeatureId, named, referencesOf } from './lib/groups';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
 import { ModelContext, buildModel } from './lib/model';
 import { contextOf, switchTarget, viewOf } from './lib/navigation';
@@ -127,7 +127,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
           { label: named(item, systemTitle).title },
         ];
         main = (
-          <Reading item={item} context={context} colour={group === undefined ? null : colours[group.id]} trail={trail} wide={WIDE.has(item.kind)}>
+          <Reading item={item} context={context} colour={group === undefined ? null : colours[group.id]} trail={trail} wide={WIDE.has(item.kind)} toc={!(item.kind === 'chapter' && isFeatureId(item.block))}>
             <PageContent data={data} item={item} view={view} />
           </Reading>
         );

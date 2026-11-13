@@ -19,19 +19,19 @@ const wide = (...points) => String.fromCharCode(...points);
 
 const GOOD = `# Orders
 
-## Placing an order
+## Operations
 
 The clerk fills in the "Customer Name" field (${c('5')}).
 
 - An order is Draft until it is sent (${c('10')}).
 
-## Open questions
+## Points to confirm
 
 Nobody can tell how long drafts live.
 
-## Problems
+## Known defects
 
-None found.
+None.
 `;
 
 function newRun() {
@@ -93,15 +93,15 @@ describe('A: citations', () => {
 describe('B: fact lines must cite', () => {
   rejects('an uncited paragraph sentence', (t) => t.replace(`field (${c('5')}).`, `field (${c('5')}). Orders can be cancelled.`), /line 5: a fact without a citation: Orders can be cancelled\./);
   rejects('an uncited list item', (t) => t.replace(`- An order is Draft until it is sent (${c('10')}).`, '- An order is Draft until it is sent.'), /line 7: a fact without a citation: An order is Draft/);
-  rejects('an uncited table data row', (t) => t.replace('## Open questions', '| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order |\n\n## Open questions'), /a fact without a citation: \| Clerk/);
-  accepts('a cited table data row, header and separator without citations', (t) => t.replace('## Open questions', `| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order ${c('1', 'src/roles.js')} |\n\n## Open questions`));
-  accepts('a lead-in line ending with a colon', (t) => t.replace('## Open questions', `Who can do what:\n\n| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order ${c('1', 'src/roles.js')} |\n\n## Open questions`));
-  accepts('a lead-in with a full-width colon', (t) => t.replace('## Open questions', `${wide(0x89d2, 0x8272)}${wide(0xff1a)}\n\n- Clerk ${c('1', 'src/roles.js')}\n\n## Open questions`));
-  accepts('a fenced block without citations', (t) => t.replace('## Open questions', '```text\nplain words\nwithout citations\n```\n\n## Open questions'));
+  rejects('an uncited table data row', (t) => t.replace('## Points to confirm', '| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order |\n\n## Points to confirm'), /a fact without a citation: \| Clerk/);
+  accepts('a cited table data row, header and separator without citations', (t) => t.replace('## Points to confirm', `| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order ${c('1', 'src/roles.js')} |\n\n## Points to confirm`));
+  accepts('a lead-in line ending with a colon', (t) => t.replace('## Points to confirm', `Who can do what:\n\n| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order ${c('1', 'src/roles.js')} |\n\n## Points to confirm`));
+  accepts('a lead-in with a full-width colon', (t) => t.replace('## Points to confirm', `${wide(0x89d2, 0x8272)}${wide(0xff1a)}\n\n- Clerk ${c('1', 'src/roles.js')}\n\n## Points to confirm`));
+  accepts('a fenced block without citations', (t) => t.replace('## Points to confirm', '```text\nplain words\nwithout citations\n```\n\n## Points to confirm'));
   accepts('the open questions section holds uncited lines', (t) => t.replace('Nobody can tell how long drafts live.', 'Nobody can tell how long drafts live.\n\n- Is a draft kept?\n\n| Q | A |\n| --- | --- |\n| Who | Unknown |'));
-  accepts('a fixed-text line (None found.) under Problems', (t) => t);
-  accepts('the not-verified fixed line as a quote', (t) => t.replace('## Open questions', '> Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.\n\n## Open questions'));
-  accepts('the not-passed fixed line with a count', (t) => t.replace('None found.', 'This chapter did not pass the final check; 3 problems remain, and the chapter is kept as written.'));
+  accepts('a fixed-text line (None.) under Known defects', (t) => t);
+  accepts('the not-verified fixed line as a quote', (t) => t.replace('## Points to confirm', '> Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.\n\n## Points to confirm'));
+  accepts('the not-passed fixed line with a count', (t) => t.replace('None.', 'This chapter did not pass the final check; 3 problems remain, and the chapter is kept as written.'));
   rejects('an uncited sentence after a dotted path in a citation', (t) => t.replace(`(${c('5')}).`, `(${c('5')}). It also holds ${c('2', 'src/menu.js')} and more. Third without any.`), /a fact without a citation: Third without any\./);
 });
 
@@ -136,7 +136,7 @@ describe('D: list or table in a feature chapter', () => {
 });
 
 describe('E: mermaid', () => {
-  const diagram = (first) => (t) => t.replace('## Open questions', `\`\`\`mermaid\n${first}\n  A --> B\n\`\`\`\n\n## Open questions`);
+  const diagram = (first) => (t) => t.replace('## Points to confirm', `\`\`\`mermaid\n${first}\n  A --> B\n\`\`\`\n\n## Points to confirm`);
   rejects('a mermaid block that does not start with a diagram type', diagram('A --> B'), /a mermaid block must start with a diagram type, found: A --> B/);
   accepts('a flowchart block', diagram('flowchart TD'));
   accepts('a stateDiagram-v2 block', diagram('stateDiagram-v2'));
@@ -146,7 +146,7 @@ describe('F: code-shaped words', () => {
   rejects('a camelCase word outside quotes', (t) => t.replace('The clerk fills in', 'The orderForm fills in'), /line 5: "orderForm" is not allowed in reader text \(camelCase identifier\)/);
   accepts('the same word inside quotes', (t) => t.replace('"Customer Name"', '"orderForm"'));
   rejects('a snake_case word in a list item', (t) => t.replace('An order is Draft', 'An order_row is Draft'), /"order_row" is not allowed/);
-  rejects('a call form in a heading', (t) => t.replace('## Placing an order', '## Placing an order()'), /line 3: "order\(" is not allowed/);
+  rejects('a call form in a heading', (t) => t.replace('## Operations', '## Operations()'), /line 3: "Operations\(" is not allowed/);
   accepts('a citation path is not reader text', (t) => t);
 });
 
@@ -168,7 +168,7 @@ describe('G: advice words', () => {
 describe('I: citation punctuation in Chinese or Japanese text', () => {
   const wide = (...points) => String.fromCharCode(...points);
   const sentence = (open, close, stop) => `${wide(0x5ba2, 0x670d)}${open}${c('5')}${close}${stop}`;
-  const chapter = (line) => `# Orders\n\n## Fields\n\n- ${line}\n\n## Open questions\n\n${wide(0x65e0)}\n\n## Problems\n\nNone found.\n`;
+  const chapter = (line) => `# Orders\n\n## Rules\n\n- ${line}\n\n## Points to confirm\n\n${wide(0x65e0)}\n\n## Known defects\n\nNone.\n`;
   it('ASCII parentheses after Chinese text are refused, and say which characters to use', () => {
     const run = newRun();
     run.write('F1', chapter(sentence('(', ')', '.')));
@@ -190,8 +190,8 @@ describe('I: citation punctuation in Chinese or Japanese text', () => {
 });
 
 describe('H: sections', () => {
-  rejects('a missing Problems section', (t) => t.replace(/## Problems[\s\S]*$/, ''), /missing the section "Problems"/);
-  rejects('a missing Open questions section', (t) => t.replace(/## Open questions\n\nNobody can tell how long drafts live\.\n\n/, ''), /missing the section "Open questions"/);
+  rejects('a missing Known defects section', (t) => t.replace(/## Known defects[\s\S]*$/, ''), /missing the section "Known defects"/);
+  rejects('a missing Points to confirm section', (t) => t.replace(/## Points to confirm\n\nNobody can tell how long drafts live\.\n\n/, ''), /missing the section "Points to confirm"/);
   it('a cross chapter does not need them', () => {
     const run = newRun();
     run.write('roles', `# Roles\n\n- Orders (${c('5')})\n`);

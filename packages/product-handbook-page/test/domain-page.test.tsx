@@ -12,12 +12,14 @@ import { cleanup, mount, settle } from './dom';
 import { domainData } from './domains-fixture';
 import { d, marked } from './page-fixture';
 
-const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn() }));
+const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(), parse: vi.fn() }));
 vi.mock('mermaid', () => ({ default: mermaid }));
 
 beforeEach(() => {
   mermaid.initialize.mockReset();
   mermaid.render.mockReset();
+  mermaid.parse.mockReset();
+  mermaid.parse.mockImplementation(async (source: string) => { if (source.includes('BROKEN')) throw new Error('Parse error on line 2'); return { diagramType: 'flowchart' }; });
   mermaid.render.mockImplementation(async (id: string) => ({ svg: `<svg data-id="${id}"></svg>` }));
 });
 afterEach(cleanup);
@@ -133,18 +135,17 @@ describe('the strip on a feature page', () => {
 
   it('is after the head (the heading and its notice) and before the rest, between rules, with no box', () => {
     const article = page('#/product/chapter/F2').querySelector('article') as HTMLElement;
-    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'strip', 'prose']);
+    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'strip', 'tabs', 'panel', 'panel']);
     expect(article.children[0].querySelector('h1')).not.toBeNull();
     expect(article.children[0].querySelector('p.note')).not.toBeNull();
-    expect(article.children[2].querySelector('h2')).not.toBeNull();
+    expect(article.children[4].querySelector('h2')).not.toBeNull();
     expect(article.children[1].querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
   });
 
   it('keeps the heading numbers: the first level-2 heading of the chapter is still h-0, with the strip in the page', () => {
     const host = page('#/product/chapter/F2');
-    expect(Array.from(host.querySelectorAll('.prose h2')).map((one) => [one.id, one.textContent])).toEqual([['h-0', d('Order entry first')], ['h-1', d('Order entry second')]]);
-    expect(host.querySelector('.toc')).not.toBeNull();
-    expect(Array.from(host.querySelectorAll('.toc button')).map((one) => one.getAttribute('data-target'))).toEqual(['h-0', 'h-1']);
+    expect(Array.from(host.querySelectorAll('article h2')).map((one) => [one.id, one.textContent])).toEqual([['h-0', d('Order entry first')], ['h-1', d('Order entry second')]]);
+    expect(host.querySelector('.toc')).toBeNull();
   });
 
   it('has none for a chapter no hand-over names, and none without a usable list', () => {
@@ -155,19 +156,20 @@ describe('the strip on a feature page', () => {
   });
 
   it('keeps a diagram of the chapter under the same id as without the strip', async () => {
-    const text = `# ${d('Order entry')}\n\n${marked['chapter.notVerified']}\n\n## ${d('Flow')}\n\n\`\`\`mermaid\nflowchart TD\n  A --> B\n\`\`\`\n`;
+    const text = `# ${d('Order entry')}\n\n${marked['chapter.notVerified']}\n\n## ${d('Flow')}\n\n\`\`\`mermaid\nstateDiagram-v2\n  Draft\n  [*] --> Draft\n\`\`\`\n`;
     const data = domainData();
     data.chapters = data.chapters.map((chapter) => (chapter.id === 'F2' ? { id: 'F2', texts: { product: text, technical: text } } : chapter));
     const withStrip = page('#/product/chapter/F2', data);
     await settle();
     await settle();
     expect(withStrip.querySelector('[data-part="handover-strip"]')).not.toBeNull();
-    expect(withStrip.querySelector('svg[data-id]')?.getAttribute('data-id')).toBe('xv-diagram-F2-0');
+    const first = withStrip.querySelector('svg[data-id]')?.getAttribute('data-id');
+    expect(first).toMatch(/^xv-diagram-F2-/);
     cleanup();
     const without = page('#/product/chapter/F2', { ...data, domains: { state: 'missing', list: [], handovers: [] } });
     await settle();
     await settle();
-    expect(without.querySelector('svg[data-id]')?.getAttribute('data-id')).toBe('xv-diagram-F2-0');
+    expect(without.querySelector('svg[data-id]')?.getAttribute('data-id')).toBe(first);
   });
 });
 

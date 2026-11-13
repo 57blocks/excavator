@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 
+import { renderMermaidSVG } from 'beautiful-mermaid';
+
 import { useDarkMode } from '../lib/dark-mode';
+import { hasBareState, viewBoxWidth, withoutImports } from '../lib/diagram-source';
 import { useText } from '../lib/text';
 import { CloseIcon, ExpandIcon } from './Icons';
 
@@ -60,14 +64,42 @@ async function renderMermaid(id: string, source: string, dark: boolean): Promise
   }
 }
 
+/** The lighter engine, coloured by the page's `--dg-*` tokens so one drawing follows the page theme; its font import is removed. */
+function renderLight(source: string): string {
+  return withoutImports(renderMermaidSVG(source, {
+    bg: 'var(--dg-bg)', fg: 'var(--dg-text)', surface: 'var(--dg-fill)', border: 'var(--dg-border)',
+    line: 'var(--dg-line)', accent: 'var(--dg-arrow)', muted: 'var(--dg-muted)',
+    font: "'IBM Plex Sans', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Microsoft YaHei', system-ui, sans-serif",
+    transparent: true, nodeSpacing: 28, layerSpacing: 44,
+  }));
+}
+
+/**
+ * The drawing of one source: mermaid's parser decides first (a syntax error throws, the caller shows the source), a state
+ * diagram with a state on a line of its own goes to mermaid, the rest to the lighter engine, which falls back to mermaid
+ * when it throws.
+ */
+async function draw(id: string, source: string, dark: boolean): Promise<string> {
+  const { default: mermaid } = await import('mermaid');
+  await mermaid.parse(source);
+  if (!hasBareState(source)) {
+    try {
+      return renderLight(source);
+    } catch {
+      // Drawn by mermaid below.
+    }
+  }
+  return renderMermaid(id, source, dark);
+}
+
 function enqueue(id: string, source: string, dark: boolean): Promise<string> {
-  const run = queue.then(() => renderMermaid(id, source, dark));
+  const run = queue.then(() => draw(id, source, dark));
   queue = run.catch(() => undefined);
   return run;
 }
 
 /**
- * One mermaid block, rendered with `mermaid.render`. When the render throws, the source stays visible as text under
+ * One mermaid block. When the source does not parse or neither engine can draw it, the source stays visible as text under
  * the fixed note: a bad diagram is never a blank space and never breaks the page.
  */
 export function Diagram({ id, source }: { id: string; source: string }) {
@@ -101,6 +133,7 @@ export function Diagram({ id, source }: { id: string; source: string }) {
 function DrawnDiagram({ svg }: { svg: string }) {
   const t = useText();
   const [open, setOpen] = useState(false);
+  const natural = viewBoxWidth(svg);
   const button = useRef<HTMLButtonElement>(null);
   const close = useCallback((): void => {
     setOpen(false);
@@ -108,7 +141,7 @@ function DrawnDiagram({ svg }: { svg: string }) {
   }, []);
   return (
     <div className="diagram">
-      <div className="diagram-svg" data-diagram="done" dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="diagram-svg" data-diagram="done" style={natural === null ? undefined : { '--vw': `${natural}px` } as CSSProperties} dangerouslySetInnerHTML={{ __html: svg }} />
       <button ref={button} type="button" className="diagram-expand" aria-label={t('page.diagram.expand')} onClick={() => setOpen(true)}><ExpandIcon /></button>
       {open && <FullScreen svg={svg} onClose={close} />}
     </div>
