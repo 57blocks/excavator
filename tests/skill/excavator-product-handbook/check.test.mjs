@@ -19,7 +19,7 @@ const wide = (...points) => String.fromCharCode(...points);
 
 const GOOD = `# Orders
 
-## Placing an order
+## Operations
 
 The clerk fills in the "Customer Name" field (${c('5')}).
 
@@ -146,7 +146,7 @@ describe('F: code-shaped words', () => {
   rejects('a camelCase word outside quotes', (t) => t.replace('The clerk fills in', 'The orderForm fills in'), /line 5: "orderForm" is not allowed in reader text \(camelCase identifier\)/);
   accepts('the same word inside quotes', (t) => t.replace('"Customer Name"', '"orderForm"'));
   rejects('a snake_case word in a list item', (t) => t.replace('An order is Draft', 'An order_row is Draft'), /"order_row" is not allowed/);
-  rejects('a call form in a heading', (t) => t.replace('## Placing an order', '## Placing an order()'), /line 3: "order\(" is not allowed/);
+  rejects('a call form in a heading', (t) => t.replace('## Operations', '## Operations()'), /line 3: "Operations\(" is not allowed/);
   accepts('a citation path is not reader text', (t) => t);
 });
 
@@ -168,7 +168,7 @@ describe('G: advice words', () => {
 describe('I: citation punctuation in Chinese or Japanese text', () => {
   const wide = (...points) => String.fromCharCode(...points);
   const sentence = (open, close, stop) => `${wide(0x5ba2, 0x670d)}${open}${c('5')}${close}${stop}`;
-  const chapter = (line) => `# Orders\n\n## Fields\n\n- ${line}\n\n## Open questions\n\n${wide(0x65e0)}\n\n## Problems\n\nNone found.\n`;
+  const chapter = (line) => `# Orders\n\n## Rules\n\n- ${line}\n\n## Open questions\n\n${wide(0x65e0)}\n\n## Problems\n\nNone found.\n`;
   it('ASCII parentheses after Chinese text are refused, and say which characters to use', () => {
     const run = newRun();
     run.write('F1', chapter(sentence('(', ')', '.')));

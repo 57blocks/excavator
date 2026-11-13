@@ -10,8 +10,8 @@
 
 ## 2. 固定小标题（design D1）
 
-- [ ] 2.1 `ui-strings.json` 加 `chapter.section.*`（7 个）与 `chapter.serverSteps`；Phase 2 打印这些值；`sections/features.md` 写明小标题与系统内部步骤的写法。
-- [ ] 2.2 `chapter-lint` 对功能章节拒绝不在集合里与顺序错的二级小标题；测试：近义词、顺序错、省略某节仍通过、系统章节不受影响、已记录的旧章节 `assemble`/`page` 照常。
+- [x] 2.1 `ui-strings.json` 加 `chapter.section.*`（7 个）与 `chapter.serverSteps`；Phase 2 打印这些值；`sections/features.md` 写明小标题与系统内部步骤的写法。
+- [x] 2.2 `chapter-lint` 对功能章节拒绝不在集合里与顺序错的二级小标题；测试：近义词、顺序错、省略某节仍通过、系统章节不受影响、已记录的旧章节 `assemble`/`page` 照常。
 
 ## 3. 功能页（design D3）
 

@@ -132,14 +132,14 @@ describe('fixed sentences', () => {
     run.assemble('--views', 'product,technical');
     for (const text of Object.values(outputs(run))) {
       expect(text.split(NOT_VERIFIED).length - 1).toBe(3);
-      expect(text).toContain(`## Archive\n\n${NOT_VERIFIED}\n\n### Placing an order`);
+      expect(text).toContain(`## Archive\n\n${NOT_VERIFIED}\n\n### Operations`);
     }
   });
 
   it('a chapter without a level-1 heading gets the sentence on top', () => {
     const run = make({ F1: chapterText('Orders').replace('# Orders\n\n', '') });
     run.assemble();
-    expect(run.read('handbook.md')).toContain(`${NOT_VERIFIED}\n\n### Placing an order`);
+    expect(run.read('handbook.md')).toContain(`${NOT_VERIFIED}\n\n### Operations`);
   });
 
   it('a chapter that failed twice also says it did not pass, with its number of reasons', () => {

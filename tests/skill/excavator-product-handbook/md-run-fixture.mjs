@@ -16,7 +16,7 @@ export const CROSS = ['domains', 'roles', 'notifications', 'topics', 'defects', 
 /** A chapter that passes `check` as a feature or system chapter. */
 export const chapterText = (title = 'Orders', extra = '') => `# ${title}
 
-## Placing an order
+## Operations
 
 The clerk fills in the "Customer Name" field (${cite('5')}).
 

@@ -202,7 +202,7 @@ describe('page data /21: lead and search', () => {
     const f1 = rest.filter((item) => item[2] === 'F1');
     expect(f1).toEqual([
       ['chapter', 'Orders', 'F1', null, null],
-      ['heading', 'Placing an order', 'F1', 0, 2],
+      ['heading', 'Operations', 'F1', 0, 2],
       ['heading', 'A sub part', 'F1', 1, 3],
       ['heading', 'Open questions', 'F1', 2, 2],
       ['heading', 'Problems', 'F1', 3, 2],

@@ -97,7 +97,7 @@ describe('page: above the threshold it is the page plus handbook-data/', () => {
     expect(html(made)).not.toContain('TicketStatus');
     // The headings are in the core on purpose (the search index, design D3 of handbook-page-domain-map); the chapter text is not.
     expect(html(made)).not.toContain('An order is Draft until it is sent');
-    expect(core.search.some((item) => item.title === 'Placing an order')).toBe(true);
+    expect(core.search.some((item) => item.title === 'Operations')).toBe(true);
     // A unit that does not fit one part spans consecutive parts.
     const spans = Object.values(core.chunks.units).filter((ids) => ids.length > 1);
     expect(spans.length).toBeGreaterThan(0);

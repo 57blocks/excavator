@@ -276,6 +276,14 @@
     "chapter.openQuestions": "Open questions",
     "chapter.problems": "Problems",
     "chapter.none": "None found.",
+    "chapter.section.overview": "Overview",
+    "chapter.section.screens": "Pages",
+    "chapter.section.operations": "Operations",
+    "chapter.section.rules": "Rules",
+    "chapter.section.states": "States",
+    "chapter.section.notifications": "Notifications and automatic behavior",
+    "chapter.section.handovers": "Hand-overs",
+    "chapter.serverSteps": "Server-side steps:",
     "chapter.notVerified": "Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.",
     "chapter.notPassed": "This chapter did not pass the final check; {count} problems remain, and the chapter is kept as written."
   }
