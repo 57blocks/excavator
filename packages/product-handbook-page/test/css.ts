@@ -36,9 +36,9 @@ export function rulesOf(css: string = cssText): Rule[] {
   return rules;
 }
 
-/** The rules whose selector list is exactly `selector` (whitespace-insensitive), optionally only inside the at-rule `at`. */
+/** The rules whose selector list is `selector`, or has it as one of its selectors (whitespace-insensitive), optionally only inside the at-rule `at`. */
 export function rulesFor(selector: string, at: string | null = null, css: string = cssText): Rule[] {
-  return rulesOf(css).filter((rule) => rule.selector === squash(selector) && (at === null || rule.at === squash(at)));
+  return rulesOf(css).filter((rule) => (rule.selector === squash(selector) || rule.selector.split(',').map((part) => part.trim()).includes(squash(selector))) && (at === null || rule.at === squash(at)));
 }
 
 /** The value of `property` in the last rule for `selector`, or undefined. */

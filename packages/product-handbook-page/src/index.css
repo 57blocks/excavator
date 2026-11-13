@@ -186,18 +186,14 @@ h3.section-title { margin: 26px 0 8px; font-size: 17px; line-height: 1.35; lette
   .shell { display: block; }
   .rail {
     position: fixed; top: var(--topbar-h); left: 0; z-index: 30; width: min(var(--rail-w), 86vw);
-    transform: translateX(-102%); visibility: hidden; transition: transform 0.2s ease, visibility 0s linear 0.2s;
+    transform: translateX(-102%); visibility: hidden;
     box-shadow: var(--shadow);
   }
-  .rail[data-open="true"] { transform: none; visibility: visible; transition: transform 0.2s ease; }
+  .rail[data-open="true"] { transform: none; visibility: visible; }
   .scrim { display: block; position: fixed; inset: var(--topbar-h) 0 0 0; z-index: 20; background: var(--scrim); }
   .main { padding-top: 24px; padding-bottom: 56px; }
 
   .section { padding: 16px 16px 18px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rail { transition: none !important; }
 }
 
 /* The view switch in the top bar, and the entity pages and navigation of the two views. */
@@ -337,3 +333,50 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .diagram-pending { min-height: 48px; }
 .diagram-failed { margin: 16px 0; }
 .diagram-failed p { margin: 0 0 6px; }
+
+/* Motion and touch */
+:root { --ease: cubic-bezier(.2,.8,.2,1); --m-in: 150ms; --m-out: 120ms; --m-press: 90ms; --m-panel: 200ms; }
+
+/* Only colours, shadow and transform move; the way out is a little slower than the way in. The focus ring is no part of it and appears at once. */
+.rail-link, .view-switch-link, .menu-btn, .button-link, .chapter-link, .data-sort, .pager button, .field-control, .toc-link {
+  transition-property: color, background-color, border-color, box-shadow, text-decoration-color, transform, opacity;
+  transition-duration: var(--m-out);
+  transition-timing-function: var(--ease);
+}
+.rail-link:hover, .view-switch-link:hover, .menu-btn:hover, .button-link:hover, .chapter-link:hover, .data-sort:hover, .pager button:hover, .field-control:hover, .toc-link:hover { transition-duration: var(--m-in); }
+.chapter-link { border-color: var(--line-strong); }
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .chapter-link:hover { transform: translateY(-2px); border-color: var(--accent); }
+  .button-link:hover, .data-sort:hover, .pager button:hover:not(:disabled) { transform: translateY(-1px); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .chapter-link:active, .button-link:active, .data-sort:active, .pager button:active:not(:disabled), .menu-btn:active, .view-switch-link:active, .rail-link:active, .toc-link:active { transform: translateY(1px) scale(.985); transition-duration: var(--m-press); }
+}
+
+/* The drawer: the panel slides with the panel timing; the scrim is only rendered while the drawer is open, so it fades in and has no fade-out. */
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.scrim { animation: scrim-in var(--m-panel) var(--ease); }
+@media (max-width: 899px) {
+  .rail { transition: transform var(--m-panel) var(--ease), visibility 0s linear var(--m-panel); }
+  .rail[data-open="true"] { transition: transform var(--m-panel) var(--ease); }
+}
+
+/* A reader who asks for less motion gets none: the drawer opens at once and nothing is hidden. No transform is set here, so the diagrams' own are never touched. */
+@media (prefers-reduced-motion: reduce) {
+  .topbar *, .shell *, .skip-link { transition: none !important; animation: none !important; }
+}
+
+/* Touch targets: 44px on a narrow or coarse screen; the table of contents is not shown there. */
+@media (max-width: 899px), (pointer: coarse) {
+  .menu-btn { width: 44px; height: 44px; }
+  .view-switch-link { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 10px; box-sizing: border-box; }
+  .rail-link { display: flex; align-items: center; min-height: 44px; box-sizing: border-box; }
+  .data-sort, .pager button { min-height: 44px; }
+  .field-control { height: 44px; }
+  .brand-title { overflow: hidden; text-overflow: ellipsis; }
+  .toc { display: none; }
+}
