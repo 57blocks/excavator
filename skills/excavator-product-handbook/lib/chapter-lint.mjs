@@ -18,6 +18,9 @@ export const MAX_SENTENCES = 4;
 export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies']);
 const DIAGRAM_TYPES = ['flowchart', 'graph', 'sequenceDiagram', 'stateDiagram-v2', 'stateDiagram', 'erDiagram', 'classDiagram', 'journey', 'gantt', 'pie', 'mindmap', 'timeline'];
 const COLONS = [':', String.fromCharCode(0xff1a)];
+const PAREN_NAMES = 'U+FF08 and U+FF09';
+const STOP_NAME = 'U+3002';
+const CJK_BEFORE = /[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]$/;
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const endsWithColon = (text) => COLONS.some((colon) => text.trimEnd().endsWith(colon));
@@ -55,6 +58,9 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
 
   const checkCitations = (line, source) => {
     for (const group of citationGroups(source)) {
+      if (source[group.start] === '(' && CJK_BEFORE.test(source.slice(0, group.start).trimEnd())) {
+        add(line, `a citation group after Chinese or Japanese text is written in ASCII parentheses; use ${PAREN_NAMES} and end the sentence with ${STOP_NAME}`);
+      }
       for (const spec of group.specs) {
         const key = specKey(spec);
         if (!cache.has(key)) cache.set(key, resolveSpec(spec, files));

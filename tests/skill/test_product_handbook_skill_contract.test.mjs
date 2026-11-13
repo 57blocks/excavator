@@ -130,6 +130,11 @@ describe('the dispatches', () => {
     for (const name of ['domains', 'roles', 'notifications', 'topics', 'defects', 'remedies']) expect(text).toContain(`**${name}** (\`$OUT/chapters/${name}.md\`)`);
   });
 
+  it('the three citation prompts name the full-width parentheses of a language written with them', () => {
+    for (const file of ['sections/system.md', 'sections/features.md', 'sections/cross.md']) expect(TEXT[file]).toContain('U+FF08');
+  });
+
+
   it('only the remedies prompt allows advice', () => {
     const text = TEXT['sections/cross.md'];
     expect(text).toMatch(/\*\*remedies\*\*[\s\S]*the only chapter of the handbook that gives advice/);

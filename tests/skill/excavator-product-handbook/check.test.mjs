@@ -165,6 +165,30 @@ describe('G: advice words', () => {
   });
 });
 
+describe('I: citation punctuation in Chinese or Japanese text', () => {
+  const wide = (...points) => String.fromCharCode(...points);
+  const sentence = (open, close, stop) => `${wide(0x5ba2, 0x670d)}${open}${c('5')}${close}${stop}`;
+  const chapter = (line) => `# Orders\n\n## Fields\n\n- ${line}\n\n## Open questions\n\n${wide(0x65e0)}\n\n## Problems\n\nNone found.\n`;
+  it('ASCII parentheses after Chinese text are refused, and say which characters to use', () => {
+    const run = newRun();
+    run.write('F1', chapter(sentence('(', ')', '.')));
+    const result = run.check('F1');
+    expect(result.status, result.stdout).toBe(1);
+    expect(result.stdout).toMatch(/line 5: a citation group after Chinese or Japanese text is written in ASCII parentheses; use U\+FF08 and U\+FF09 and end the sentence with U\+3002/);
+  });
+  it('the full-width form passes every rule', () => {
+    const run = newRun();
+    run.write('F1', chapter(sentence(wide(0xff08), wide(0xff09), wide(0x3002))));
+    const result = run.check('F1');
+    expect(result.status, result.stdout).toBe(0);
+  });
+  it('ASCII parentheses after English text stay allowed', () => {
+    const run = newRun();
+    run.write('F1', chapter(`Customer (${c('5')}).`));
+    expect(run.check('F1').stdout).not.toMatch(/ASCII parentheses/);
+  });
+});
+
 describe('H: sections', () => {
   rejects('a missing Problems section', (t) => t.replace(/## Problems[\s\S]*$/, ''), /missing the section "Problems"/);
   rejects('a missing Open questions section', (t) => t.replace(/## Open questions\n\nNobody can tell how long drafts live\.\n\n/, ''), /missing the section "Open questions"/);
