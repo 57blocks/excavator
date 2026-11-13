@@ -24,6 +24,20 @@ const NEXT_REMOVE = 'Next: remove these files, then this command again';
 const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
 
 /**
+ * Whether a chapter's record belongs to its bytes. The record of `domains` hashes the chapter together with the digest of its
+ * list (check.mjs): that digest is the record's own `json` when the chapter passed, else the digest of the list as it is now.
+ */
+function recordMatches(record, bytes, outDir, name) {
+  if (record.sha256 === sha256(bytes)) return true;
+  if (name !== 'domains') return false;
+  const digests = [];
+  if (typeof record.json === 'string') digests.push(record.json);
+  const list = join(outDir, 'domains.json');
+  if (existsSync(list)) digests.push(sha256(readFileSync(list)));
+  return digests.some((digest) => record.sha256 === sha256(Buffer.concat([bytes, Buffer.from(`\n${digest}`)])));
+}
+
+/**
  * `{ ok: true, outDir, map, candidates, ui, state, chapters }` (`chapters`: Map of file stem ->
  * `{ text, record }`, in name order) or `{ ok: false, lines }`. Throws a UsageError for a missing
  * out directory, map.json or candidates.json.
@@ -56,7 +70,7 @@ export function loadMdRun(outDirArg, root) {
     const bytes = readFileSync(join(dir, `${name}.md`));
     const record = state.chapters[name];
     if (record === undefined) problems.push(`chapters/${name}.md was not checked`);
-    else if (record.sha256 !== sha256(bytes)) problems.push(`chapters/${name}.md changed after its check`);
+    else if (!recordMatches(record, bytes, outDir, name)) problems.push(`chapters/${name}.md changed after its check`);
     else chapters.set(name, { text: bytes.toString('utf-8'), record });
   }
   if (problems.length > 0) return { ok: false, lines: [...problems, NEXT_CHECK] };
