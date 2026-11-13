@@ -5,6 +5,8 @@
 // and raw HTML in a chapter is not rendered. Mermaid itself is mocked: the page's use of it is under test, not its drawing.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { AppView } from '../src/App';
 import { parseHash } from '../src/lib/route';
 import type { PageData, View } from '../src/lib/types';
@@ -148,5 +150,12 @@ describe('what a chapter cannot do', () => {
     expect((await settled(data, '#/product/chapter/nope')).querySelector('[data-view="not-found"]')).not.toBeNull();
     expect((await settled(pageData({ views: ['product'] }), '#/technical/chapter/F1')).querySelector('[data-view="not-found"]')).not.toBeNull();
     expect(marked['page.notFound.heading']).toContain(MARK);
+  });
+});
+
+describe('chapter table styles', () => {
+  it('a cell of a chapter table has a minimum width, so a short column is not squeezed to one character per line', () => {
+    const css = readFileSync(join(__dirname, '../src/index.css'), 'utf-8');
+    expect(css).toMatch(/\.prose th, \.prose td \{[^}]*min-width: 5em;/);
   });
 });
