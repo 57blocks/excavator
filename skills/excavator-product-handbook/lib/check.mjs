@@ -1,0 +1,103 @@
+/**
+ * check <out> [<chapter>...] [--before cross] --project <root>: the final check of the
+ * Markdown chapters under <out>/chapters/, recorded in state.json (format /2), or the
+ * gate that says whether the cross chapters may be written. Never changes a chapter.
+ */
+
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { memberDirectories } from './banned-words.mjs';
+import { CROSS_CHAPTERS, lintChapter } from './chapter-lint.mjs';
+import { UsageError } from './errors.mjs';
+import { readJson } from './json-file.mjs';
+import { withStateLock } from './lock.mjs';
+import { projectFiles } from './project-files.mjs';
+import { loadStateV2, saveStateV2 } from './state-v2.mjs';
+import { loadUi } from './ui.mjs';
+
+const NEXT_RETRY = 'Next: delete each failed chapter whose attempt is 1 and dispatch it again with its reasons; keep the chapters that failed twice';
+const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
+const stem = (name) => name.replace(/\.md$/, '');
+
+/** The feature ids of map.json, or null when the map is missing or has no features list. */
+function featureIds(outDir) {
+  const read = readJson(join(outDir, 'map.json'));
+  if (!read.ok || !Array.isArray(read.value?.features)) return null;
+  return read.value.features.map((feature) => feature.id);
+}
+
+function kindOf(name, ids) {
+  if (name === 'system') return 'system';
+  if (CROSS_CHAPTERS.includes(name)) return 'cross';
+  return ids.includes(name) ? 'feature' : null;
+}
+
+function beforeCross(outDir) {
+  const ids = featureIds(outDir);
+  if (ids === null) return { status: 1, lines: ['map.json is missing or has no features; write and check the map first'] };
+  const loaded = loadStateV2(outDir);
+  if (!loaded.ok) return { status: 1, lines: [loaded.line] };
+  const missing = ids.filter((id) => {
+    const record = loaded.state.chapters[id];
+    return !(record !== undefined && (record.status === 'passed' || (record.status === 'failed' && record.attempts >= 2)));
+  });
+  if (missing.length === 0) return { status: 0, lines: [`Cross chapters: ready (${ids.length} features)`] };
+  return { status: 1, lines: [...missing.map((id) => `missing: ${id}`), 'Next: write and check these features before the cross chapters'] };
+}
+
+function checkChapters(outDir, names, root, record) {
+  const dir = join(outDir, 'chapters');
+  const available = existsSync(dir) ? readdirSync(dir).filter((file) => file.endsWith('.md')).map(stem).sort() : [];
+  const wanted = names.length > 0 ? [...new Set(names.map(stem))] : available;
+  const ui = loadUi(outDir);
+  if (!ui.ok) return { status: 1, lines: ui.lines };
+  const ids = featureIds(outDir) ?? [];
+  const loaded = loadStateV2(outDir);
+  if (!loaded.ok) return { status: 1, lines: [loaded.line] };
+  const state = loaded.state;
+  const files = projectFiles(root);
+  const memberDirs = memberDirectories(files.root);
+  const cache = new Map();
+  const lines = [];
+  let failed = false;
+  for (const name of wanted) {
+    const path = join(dir, `${name}.md`);
+    const label = `chapters/${name}.md`;
+    const kind = kindOf(name, ids);
+    let reasons;
+    let bytes = null;
+    if (!existsSync(path)) reasons = ['the file does not exist'];
+    else if (kind === null) reasons = [`unknown chapter: not system, a cross chapter or a feature id of map.json`];
+    else {
+      bytes = readFileSync(path);
+      reasons = lintChapter(bytes.toString('utf-8'), { kind, name, files, strings: ui.strings, memberDirs, cache });
+    }
+    const status = reasons.length === 0 ? 'passed' : 'failed';
+    if (status === 'failed') failed = true;
+    let attempts = null;
+    if (record && bytes !== null) {
+      const hash = sha256(bytes);
+      const before = state.chapters[name];
+      attempts = before === undefined ? 1 : before.sha256 === hash ? before.attempts : before.attempts + 1;
+      state.chapters[name] = { status, attempts, reasons, sha256: hash };
+    }
+    lines.push(status === 'passed' ? `${label}: passed` : `${label}: failed${attempts === null ? '' : ` (attempt ${attempts})`}`);
+    for (const reason of reasons) lines.push(`  - ${reason}`);
+  }
+  if (record) saveStateV2(outDir, state);
+  lines.push(failed ? NEXT_RETRY : 'Next: go on');
+  return { status: failed ? 1 : 0, lines };
+}
+
+/** Returns { status, lines }. */
+export function checkCommand(outDir, names, root, { before, record = true } = {}) {
+  if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
+  if (before !== undefined) {
+    if (before !== 'cross') throw new UsageError('--before takes cross');
+    if (!record) throw new UsageError('--no-record cannot be used with --before cross');
+    return beforeCross(outDir);
+  }
+  return record ? withStateLock(outDir, () => checkChapters(outDir, names, root, true)) : checkChapters(outDir, names, root, false);
+}

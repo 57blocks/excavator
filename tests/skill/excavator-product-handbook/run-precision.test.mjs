@@ -1,5 +1,5 @@
 // O1 of openspec change handbook-run-precision: each decision has a positive and a negative case.
-// D1 advice words, D2 JavaScript workspaces and the library kind, D3 entity-decoded quotes, D4 quote locations,
+// D1 advice words, D2 JavaScript workspaces, D3 entity-decoded quotes, D4 quote locations,
 // D6 feature numbers in headings, D7 comment lines are no candidates.
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,7 +11,6 @@ import { listEntrypoints } from '../../../skills/excavator-product-handbook/lib/
 import { projectFiles } from '../../../skills/excavator-product-handbook/lib/project-files.mjs';
 import { decodeEntities, labelOccurs } from '../../../skills/excavator-product-handbook/lib/values.mjs';
 import { adviceWordsOf, wordsIn } from '../../../skills/excavator-product-handbook/lib/word-lists.mjs';
-import { archRun, clone, goodArchitecture } from './architecture-fixture.mjs';
 import { runHandbook } from './helpers.mjs';
 
 const cleanups = [];
@@ -69,32 +68,6 @@ describe('D2: JavaScript workspaces', () => {
   it('without a declaration the topmost manifest directory is the application, as before', () => {
     expect(roots(project({ 'package.json': '{"workspaces":"no"}\n', ...members }))).toEqual(['.']);
     expect(roots(project({ 'package.json': '{ not json', ...members }))).toEqual(['.']);
-  });
-});
-
-describe('D2: the library kind of the architecture fact sheet', () => {
-  const newRun = () => {
-    const run = archRun();
-    cleanups.push(run.cleanup);
-    return run;
-  };
-  it('accepts a library on an application root and draws it in the backend layer', () => {
-    const run = newRun();
-    const doc = goodArchitecture();
-    doc.components[3].kind = 'library';
-    run.writeArch(doc);
-    const result = run.strict('check-architecture');
-    expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
-  });
-  it('refuses an application root written as cloud, and an application on a database', () => {
-    const run = newRun();
-    const doc = clone(goodArchitecture());
-    doc.components[3].kind = 'cloud';
-    run.writeArch(doc);
-    const result = run.strict('check-architecture');
-    expect(result.status).toBe(1);
-    expect(result.stdout).toMatch(/only a frontend, a backend or a library has an application root/);
-    expect(result.stdout).toMatch(/not exactly one frontend, backend or library component/);
   });
 });
 

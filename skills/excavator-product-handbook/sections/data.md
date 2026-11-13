@@ -1,4 +1,4 @@
-## Phase 4b: Data
+## Phase 6: Data
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 

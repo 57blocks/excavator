@@ -1,9 +1,14 @@
+import { useHistory } from '../lib/chunks';
 import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import type { History, PageData, Technical } from '../lib/types';
+import { ChunkNotice } from './ChunkNotice';
+import { NotFound } from './NotFound';
 import { Cell, TableScroll } from './Tables';
-import { PageTitle } from '../lib/outline';
+
+/** The paths of the code health's files (the technical view's), or null in the product view. */
+type Places = Technical['history'];
 
 /** The key of the fixed text of a reason (`not-a-repository` is `notARepository`). */
 const reasonText = (t: Text, reason: string): string => t(`md.history.reason.${reason.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`);
@@ -92,12 +97,10 @@ function Applications({ history }: { history: History }) {
   );
 }
 
-/** The files that change most: the name in the product view, the path in the technical view; each feature links to its page. */
-function Hotspots({ data, technical }: { data: PageData; technical: Technical | undefined }) {
+/** The files that change most: the name in the product view, the path in the technical view; each feature that has a chapter links to its page. */
+function Hotspots({ history, places, titles, technical }: { history: History; places: Places; titles: Map<string, string>; technical: boolean }) {
   const t = useText();
   const nav = useLinks();
-  const { history } = data;
-  const name = (id: string): string => data.features.find((feature) => feature.id === id)?.name ?? id;
   return (
     <section className="section" aria-labelledby="hist-hotspots" data-part="history-hotspots">
       <h2 className="section-title" id="hist-hotspots">{t('md.history.hotspotsHeading')}</h2>
@@ -107,18 +110,18 @@ function Hotspots({ data, technical }: { data: PageData; technical: Technical | 
         <TableScroll label={t('md.history.hotspotsHeading')} wide>
           <thead>
             <tr>
-              <th scope="col">{t(technical === undefined ? 'md.history.table.file' : 'md.history.table.path')}</th><th scope="col">{t('md.table.application')}</th><th scope="col">{t('md.table.commits')}</th>
+              <th scope="col">{t(technical ? 'md.history.table.path' : 'md.history.table.file')}</th><th scope="col">{t('md.table.application')}</th><th scope="col">{t('md.table.commits')}</th>
               <th scope="col">{t('md.table.authors')}</th><th scope="col">{t('md.table.lines')}</th><th scope="col">{t('md.history.table.lastChange')}</th><th scope="col">{t('md.table.features')}</th>
             </tr>
           </thead>
           <tbody>
             {history.hotspots.map((row, index) => (
               <tr key={index}>
-                <Cell row>{technical?.history.hotspots[index] ?? row.name}</Cell>
+                <Cell row>{places?.hotspots[index] ?? row.name}</Cell>
                 <Cell>{row.app ?? undefined}</Cell>
                 <Cell>{row.uncertain > 0 ? t('md.history.commitsUncertain', { commits: row.commits, uncertain: row.uncertain }) : String(row.commits)}</Cell><Cell>{String(row.authors)}</Cell><Cell>{String(row.lines)}</Cell><Cell>{row.last}</Cell>
                 <td data-empty={row.features.length === 0 ? 'true' : undefined}>
-                  {row.features.map((id, at) => <span key={id}>{at > 0 && ', '}<a href={nav.feature(id)}>{name(id)}</a></span>)}
+                  {row.features.map((id, at) => <span key={id}>{at > 0 && ', '}{titles.has(id) ? <a href={nav.chapter(id)}>{titles.get(id)}</a> : id}</span>)}
                 </td>
               </tr>
             ))}
@@ -129,7 +132,7 @@ function Hotspots({ data, technical }: { data: PageData; technical: Technical | 
   );
 }
 
-function CoChange({ history, technical }: { history: History; technical: Technical | undefined }) {
+function CoChange({ history, places }: { history: History; places: Places }) {
   const t = useText();
   const file = (path: string, application: string | null): string => t('md.history.fileInApplication', { file: path, application: application ?? '-' });
   return (
@@ -144,8 +147,8 @@ function CoChange({ history, technical }: { history: History; technical: Technic
           <tbody>
             {history.coChange.map((row, index) => (
               <tr key={index}>
-                <Cell row>{file(technical?.history.coChange[index]?.a ?? row.a, row.appA)}</Cell>
-                <Cell>{file(technical?.history.coChange[index]?.b ?? row.b, row.appB)}</Cell>
+                <Cell row>{file(places?.coChange[index]?.a ?? row.a, row.appA)}</Cell>
+                <Cell>{file(places?.coChange[index]?.b ?? row.b, row.appB)}</Cell>
                 <Cell>{String(row.commits)}</Cell>
               </tr>
             ))}
@@ -176,20 +179,11 @@ function Tests({ history }: { history: History }) {
   );
 }
 
-/**
- * The code health page (both views): the commits of each year with a chart, the applications, the files that change most (the technical view
- * writes the path of each), the files changed together across applications and the source and test files of each application. A project with
- * no version history says so with the reason and still shows the test files; a missing or malformed file has one line. No number is judged.
- */
-export function HistoryPage({ data, technical }: { data: PageData; technical: Technical | undefined }) {
+/** The code health page's body, once its detail is loaded: the title and the sections. */
+function HistoryBody({ history, places, titles, technical }: { history: History; places: Places; titles: Map<string, string>; technical: boolean }) {
   const t = useText();
-  const { history } = data;
   return (
-    <article className="page" data-view="history">
-      <header className="page-head">
-        <p className="eyebrow">{data.project}</p>
-        <PageTitle fallback={t('md.history.heading')} />
-      </header>
+    <>
       {history.state === 'missing' && <p className="muted" data-part="history-missing">{t('md.history.notWritten')}</p>}
       {history.state === 'malformed' && <p className="muted" data-part="history-malformed">{t('md.history.malformed')}</p>}
       {history.state === 'ok' && (
@@ -199,13 +193,39 @@ export function HistoryPage({ data, technical }: { data: PageData; technical: Te
             <>
               <Years history={history} />
               <Applications history={history} />
-              <Hotspots data={data} technical={technical} />
-              <CoChange history={history} technical={technical} />
+              <Hotspots history={history} places={places} titles={titles} technical={technical} />
+              <CoChange history={history} places={places} />
             </>
           ) : <p className="muted" data-part="history-none">{t('md.history.noHistory', { reason: reasonText(t, history.noHistory.reason) })}</p>}
           <Tests history={history} />
         </>
       )}
+    </>
+  );
+}
+
+/**
+ * The code health page (both views): the commits of each year with a chart, the applications, the files that change most (the technical view
+ * writes the path of each), the files changed together across applications and the source and test files of each application. A project with
+ * no version history says so with the reason and still shows the test files; a missing or malformed file has one line. No number is judged.
+ */
+export function HistoryPage({ data, technical }: { data: PageData; technical: Technical | undefined }) {
+  if (data.history === null) return <NotFound />;
+  return <HistoryDetail data={data} history={data.history} technical={technical} />;
+}
+
+function HistoryDetail({ data, history, technical }: { data: PageData; history: History; technical: Technical | undefined }) {
+  const t = useText();
+  const detail = useHistory(history, technical?.history ?? null);
+  const titles = new Map(data.outline.parts.flatMap((part) => part.blocks).filter((item) => item.kind === 'chapter').map((item) => [item.block, item.title]));
+  return (
+    <article className="page" data-view="history">
+      <header className="page-head">
+        <h1 className="page-title">{t('md.history.heading')}</h1>
+      </header>
+      {detail.status !== 'ready'
+        ? <ChunkNotice state={detail} />
+        : <HistoryBody history={detail.value.history} places={detail.value.places} titles={titles} technical={technical !== undefined} />}
     </article>
   );
 }

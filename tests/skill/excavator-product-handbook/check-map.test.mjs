@@ -3,7 +3,7 @@
 // Every case is a pair: the bad fixture must exit 1 with its line, then the
 // good counterpart (the same run, the map restored) must exit 0.
 import { afterEach, describe, expect, it } from 'vitest';
-import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { clone, makeRun, runHandbook, set } from './helpers.mjs';
@@ -36,15 +36,13 @@ function rejects(name, mutate, expected) {
 }
 
 describe('check-map: the good map', () => {
-  it('passes, prints a summary, and creates state.json with every feature planned', () => {
+  it('passes, prints a summary, and writes no state.json', () => {
     const run = newRun();
     run.writeMap();
-    const result = run.run('check-map');
+    const result = runHandbook(['check-map', run.out, '--project', run.root]);
     expect(result.status, result.stdout).toBe(0);
     expect(result.lines).toEqual(['map ok: 2 areas, 5 features, 7 candidates (1 unassigned)']);
-    const state = run.readJson('state.json');
-    expect(state.format).toBe('excavator-product-handbook-state/1');
-    expect(state.features).toEqual(Object.fromEntries(['F1', 'F2', 'F3', 'F4', 'F5'].map((id) => [id, { status: 'planned', attempts: 0 }])));
+    expect(existsSync(join(run.out, 'state.json'))).toBe(false);
   });
 
   it('keeps two features with the same name in different areas apart (identity fixture)', () => {
@@ -315,53 +313,13 @@ describe('check-map: candidates.json and state.json', () => {
     expect(run.run('check-map').status).toBe(0);
   });
 
-  it('keeps an existing state.json for the same features', () => {
+  it('leaves an existing state.json of any format alone', () => {
     const run = newRun();
     run.writeMap();
-    expect(run.run('check-map').status).toBe(0);
-    expect(run.run('mark', 'F1', 'dispatched').status).toBe(0);
-    expect(run.run('check-map').status).toBe(0);
-    expect(run.readJson('state.json').features.F1).toEqual({ status: 'dispatched', attempts: 1 });
-  });
-
-  it('refuses a state.json whose features differ from the map and asks for --fresh', () => {
-    const run = newRun();
-    run.writeMap();
-    expect(run.run('check-map').status).toBe(0);
-    const map = clone(run.map);
-    set(map, 'features.4.id', 'F6');
-    run.writeMap(map);
-    const bad = run.run('check-map');
-    expect(bad.status).toBe(1);
-    expect(bad.stdout).toMatch(/state\.json lists the features F1, F2, F3, F4, F5 but map\.json has F1, F2, F3, F4, F6; run again with --fresh/);
-    rmSync(join(run.out, 'state.json'));
-    expect(run.run('check-map').status).toBe(0);
-  });
-
-  it('refuses a map with fewer features than state.json lists, too', () => {
-    const run = newRun();
-    run.writeMap();
-    expect(run.run('check-map').status).toBe(0);
-    const map = clone(run.map);
-    map.unassigned.push({ candidate: map.features[4].candidates[0], reason: 'Left out on purpose.' });
-    map.features.splice(4, 1);
-    run.writeMap(map);
-    const bad = run.run('check-map');
-    expect(bad.status).toBe(1);
-    expect(bad.stdout).toMatch(/state\.json lists the features F1, F2, F3, F4, F5 but map\.json has F1, F2, F3, F4; run again with --fresh/);
-  });
-
-  it('refuses a map with more features than state.json lists', () => {
-    const run = newRun();
-    const small = clone(run.map);
-    small.unassigned.push({ candidate: small.features[4].candidates[0], reason: 'Left out on purpose.' });
-    small.features.splice(4, 1);
-    run.writeMap(small);
-    expect(run.run('check-map').status).toBe(0);
-    run.writeMap();
-    const bad = run.run('check-map');
-    expect(bad.status).toBe(1);
-    expect(bad.stdout).toMatch(/state\.json lists the features F1, F2, F3, F4 but map\.json has F1, F2, F3, F4, F5; run again with --fresh/);
+    const text = `${JSON.stringify({ format: 'excavator-product-handbook-state/2', chapters: {} })}\n`;
+    writeFileSync(join(run.out, 'state.json'), text);
+    expect(runHandbook(['check-map', run.out, '--project', run.root]).status).toBe(0);
+    expect(readFileSync(join(run.out, 'state.json'), 'utf-8')).toBe(text);
   });
 });
 

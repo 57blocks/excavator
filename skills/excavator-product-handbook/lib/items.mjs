@@ -1,5 +1,5 @@
 /**
- * The items of a map or an entry (design D4, D5, D8): each node that carries
+ * The items of a map (design D4, D5, D8): each node that carries
  * evidence, with its own reader-visible strings. An item is
  *
  *   { path, strings, evidence, passages }
@@ -20,8 +20,6 @@
  * and skip the number check but still pass the banned-words gate. A role in
  * `who` is checked against the map's roles instead of the item's passages.
  */
-
-import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
 
 const text = (path, value, { label = false, numbers = true, narrative = false } = {}) => ({ path, text: value, label, numbers, narrative });
 
@@ -56,82 +54,3 @@ export function mapItems(map) {
   }
   return items;
 }
-
-/** The items of a domains file that passed the shape check: a domain name is read like an area name (quoted with evidence, or the model's own words). */
-export function domainItems(doc) {
-  return doc.domains.map((domain, i) => item(
-    `domains[${i}]`,
-    [text(`domains[${i}].name`, domain.name, { label: domain.evidence !== undefined, narrative: domain.evidence === undefined })],
-    domain.evidence,
-  ));
-}
-
-/** The items of an entry that passed the shape check. */
-export function entryItems(entry) {
-  const items = [];
-  // A settled entry whose purpose was removed has none (entry-shape.mjs).
-  if (entry.purpose !== undefined) items.push(item('purpose', [text('purpose.text', entry.purpose.text, { narrative: true })], entry.purpose.evidence));
-  entry.who.forEach((who, i) => {
-    items.push(item(`who[${i}]`, [text(`who[${i}].role`, who.role, { numbers: false }), text(`who[${i}].can`, who.can, { narrative: true })], who.evidence));
-  });
-  entry.where.forEach((place, i) => {
-    items.push(item(`where[${i}]`, [text(`where[${i}].label`, place.label, { label: true })], place.evidence));
-  });
-  entry.screens.forEach((screen, i) => {
-    const sPath = `screens[${i}]`;
-    items.push(item(sPath, [text(`${sPath}.name`, screen.name, { label: true })], screen.evidence));
-    (screen.fields ?? []).forEach((field, j) => {
-      const fPath = `${sPath}.fields[${j}]`;
-      items.push(item(fPath, [text(`${fPath}.label`, field.label, { label: true })], field.evidence));
-      field.rules.forEach((rule, k) => {
-        items.push(item(`${fPath}.rules[${k}]`, [text(`${fPath}.rules[${k}].text`, rule.text, { narrative: true })], rule.evidence));
-      });
-    });
-  });
-  (entry.operations ?? []).forEach((operation, i) => {
-    const oPath = `operations[${i}]`;
-    const sentences = operation.sentences.map((sentence, j) => item(`${oPath}.sentences[${j}]`, [text(`${oPath}.sentences[${j}].text`, sentence.text, { narrative: true })], sentence.evidence));
-    // The name has no citation of its own: its numbers are read against the passages of its sentences.
-    items.push({
-      path: oPath,
-      strings: [text(`${oPath}.name`, operation.name, { narrative: true })],
-      evidence: [],
-      passages: sentences.flatMap((s) => s.passages),
-      source: 'its sentences',
-    });
-    items.push(...sentences);
-    // Each new part is its own item with its own citations; a handoff's feature id is not reader text, so it is no string.
-    for (const part of OPERATION_PARTS) {
-      partList(operation, part).forEach((element, k) => {
-        const path = `${oPath}.${part.key}[${k}]`;
-        items.push(item(path, part.strings.map((key) => text(`${path}.${key}`, element[key], { narrative: true })), element.evidence));
-      });
-    }
-  });
-  // The fact sheet (/3) lists its hand-overs at the top level; a /2 entry keeps them in its operations.
-  (entry.handoffs ?? []).forEach((handoff, i) => {
-    items.push(item(`handoffs[${i}]`, [text(`handoffs[${i}].text`, handoff.text, { narrative: true })], handoff.evidence));
-  });
-  entry.states.forEach((state, i) => {
-    items.push(item(`states[${i}]`, [text(`states[${i}].label`, state.label, { label: true }), text(`states[${i}].meaning`, state.meaning, { narrative: true })], state.evidence));
-  });
-  // A transition names two states quoted from the source, like a state label; how it happens is narrative.
-  transitionList(entry).forEach((transition, i) => {
-    const p = `transitions[${i}]`;
-    items.push(item(p, [text(`${p}.from`, transition.from, { label: true }), text(`${p}.to`, transition.to, { label: true }), text(`${p}.by`, transition.by, { narrative: true })], transition.evidence));
-  });
-  entry.notifications.forEach((n, i) => {
-    const p = `notifications[${i}]`;
-    items.push(item(p, ['trigger', 'recipient', 'channel', 'content'].map((key) => text(`${p}.${key}`, n[key], { narrative: true })), n.evidence));
-  });
-  entry.automatic.forEach((a, i) => {
-    items.push(item(`automatic[${i}]`, [text(`automatic[${i}].when`, a.when, { narrative: true }), text(`automatic[${i}].effect`, a.effect, { narrative: true })], a.evidence));
-  });
-  entry.unknowns.forEach((u, i) => {
-    items.push(item(`unknowns[${i}]`, [text(`unknowns[${i}].item`, u.item, { numbers: false, narrative: true }), text(`unknowns[${i}].searched`, u.searched, { numbers: false, narrative: true })], undefined));
-  });
-  return items;
-}
-
-/** The constructors of an item and of its strings, for the other kinds of unit (overview-items.mjs). */
-export { item as itemOf, text as textOf };

@@ -1,45 +1,35 @@
-## Phase 6e: The outline
+## Phase 9: The outline
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-The outline decides how the handbook is laid out: which parts and chapters there are, in what order, and what each is called. It runs after Phase 6d (after Phase 6c and Phase 6b when those did not run, and after the written sections when none of them is selected) and before Phase 7. It needs the map and nothing else; it reads no code, and it dispatches no subagent: you write it yourself, in one file, from the blocks the script lists. The outline never removes or edits content: a block's content is computed from the entries and the facts of the run, and each block is shown the same way wherever you put it. The outline only places blocks, and `check-outline` holds you to placing every one of them.
+The outline decides how the handbook is laid out: which parts there are, which chapters each holds, in what order and under what names. You write it yourself, in one file, from the list of chapters; it dispatches no subagent and reads no code. It never changes a chapter: it only places them. Without an outline, or with one that does not hold every chapter exactly once, the handbook uses the default order under the fixed names and says so in its coverage section.
 
-1. List the blocks (`<ids>` is `$SELECTED` space-separated, or empty without `--features`):
+1. List what can be placed:
    ```bash
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" outline-facts "$OUT" --features "<ids>" --project "$PROJECT_ROOT"
+   ls "$OUT/chapters"
+   for f in "$OUT"/chapters/*.md; do printf '%s\t%s\n' "$(basename "$f" .md)" "$(grep -m1 '^# ' "$f" | sed 's/^# //')"; done
+   test -f "$OUT/data.json" && echo data
+   test -f "$OUT/dictionaries.json" && echo dictionaries
+   test -f "$OUT/entries/history.json" && echo history
    ```
-   - Exit 1: a line that starts `Next: go back to Phase 4` means the features of this run are not all written: read `sections/features.md` again if needed, do Phase 4 for the units listed (the line before it), then run this command again. Any other exit 1: tell the user the lines it printed, as they are, and stop.
-   - Exit 2: the command could not run. Show its message and stop.
-   - Exit 0: one line per block, tab separated: the id, `block` or `list`, `technical` (only the technical view has it) or `both`, and the block's default title in the fixed text of this run. A `list` block is not one page: it expands into one page for each entity (the business domains, the applications, the external systems). Read the default titles for what each block holds. When you need to know what a block holds in this run, read the verified entries and `$OUT/map.json` as you have already read them; open no source file for it.
+   The chapters are `system`, one `F<n>` per feature and the cross chapters `domains`, `roles`, `notifications`, `topics`, `defects` and `remedies`; `data`, `dictionaries` and `history` are written by the scripts. Each is a block of the outline.
 2. Write `$OUT/outline.json`:
    ```json
    {
-     "format": "excavator-product-handbook-outline/1",
+     "format": "excavator-product-handbook-outline/2",
      "language": "<$RUN_LANGUAGE>",
      "parts": [
-       {"title": "<the part, in the reader's words>", "chapters": [
-         {"title": "<the chapter, in the reader's words>", "block": "<a block id>"},
-         {"title": "<the chapter, in the reader's words>", "list": "<a list id>"}
-       ]}
+       {"title": "<the part, in the reader's words>", "chapters": ["system", "domains", "F1", "F2"]}
      ],
-     "unplaced": [{"block": "<a block id>", "reason": "<why this block is not in the handbook>"}]
+     "unplaced": [{"block": "<a block>", "reason": "<why it is not in the handbook>"}]
    }
    ```
-   - Group the blocks into parts, and name parts and chapters, the way the readers of this project think of it: use the words of the project's own menus, screens and documents that you have already read, and never a name taken from these instructions or from another project.
-   - Write every part title, chapter title and reason in `$LANGUAGE`, under the reader-text rules of Phase 3: no code-shaped word, and no number the source does not hold. The `language` is the map's language.
-   - Put what a reader asks first at the front: what the product is, what it is for and how work moves through it, then the people and what they may do, then each business area, then the cross-cutting pages. Put the technical blocks (the ones marked `technical`) after them, together. Put the findings, the recommendations, the open questions, the glossary and the sources of the run last.
-   - One block goes in one chapter, and a chapter holds exactly one block, written as `block`, or one list, written as `list`. A list is written as `list` and a block as `block`, never the other way. A part holds at least one chapter. A block that only the technical view has is placed like any other: the product view leaves it out by itself, and a part that then has no chapter is left out with it.
-   - Every block id from the listing is in the outline exactly once: in a chapter or in `unplaced`. A block with nothing in it in this run still has to be placed or listed; where the run has nothing to write for a block, the handbook leaves its chapter out and the coverage section says why.
-   - A block may go to `unplaced` only with a reason that is true and that a reader could check: say what the block holds in this run and why it does not belong in this handbook. Do not use `unplaced` to make the handbook shorter, to avoid naming a chapter, or for a block that holds something. The coverage section of the handbook and the coverage page list each block you leave out with your reason.
-   - The coverage section is not a block: it is always last, and nothing you write moves it.
-3. Check it:
-   ```bash
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-outline "$OUT" --project "$PROJECT_ROOT"
-   ```
-   - Exit 0: it prints `outline ok: ...`; tell the user the parts, one line each: the title and its chapters' titles; go to Phase 7.
-   - Exit 1: it prints, one per line, every block that is not placed, placed twice or not a block, every list written as a block and every block written as a list, every part without a chapter, every code-shaped word, number or language problem in a title or a reason, every empty reason and a language that is not the map's. Fix `outline.json` for each line it prints and run it again, until it exits 0. Fix the cause, never the check: do not move a block to `unplaced` to make its line go away. When the third run still exits 1, tell the user the lines it printed, as printed, and go to Phase 7 with the file as it is: the handbook then uses the default order under the default names and says so, with those lines, in its coverage section.
-   - Exit 2: show its message and stop.
+   - Group the chapters into parts the way the readers of this project think of it, using the words of the project's own menus and screens that the map and the chapters use; never a name taken from these instructions.
+   - Put what a reader asks first at the front: the system, the domains and the people, then the features part by part (a feature's place follows its domain in `chapters/domains.md` when there is one, else its area in `map.json`), then notifications and topics, then data, dictionaries and history, then defects and remedies last.
+   - Write every part title and reason in `$LANGUAGE`, under the reader-text rules of Phase 3.
+   - Every block from step 1 is in the outline exactly once: in one part's `chapters` or in `unplaced` with a reason a reader could check. Do not use `unplaced` to make the handbook shorter.
+3. Phase 10 checks the outline when it assembles: `assemble` prints a line starting `Outline:` for each block that is missing, placed twice or unknown, and for each empty part. Fix `outline.json` for those lines and run `assemble` again, at most twice; then leave it, and the handbook uses the default order and says why.
 
-   A run with no `outline.json`, or with one that does not pass, still assembles: Phase 7 writes the handbook in the default order under the fixed names and says so in its coverage section. An outline can be written again after the handbook was assembled, and Phase 7 run again, without repeating any other phase.
+Then tell the user the parts, one line each: the title and the number of chapters it holds.
 
 ---

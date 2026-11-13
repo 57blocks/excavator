@@ -9,7 +9,7 @@ export function NotFound() {
     <article className="page" data-view="not-found">
       <h1 className="page-title">{t('page.notFound.heading')}</h1>
       <p className="lede">{t('page.notFound.body')}</p>
-      <p><a className="button-link" href={nav.overview}>{t('page.notFound.back')}</a></p>
+      <p><a className="button-link" href={nav.home}>{t('page.notFound.back')}</a></p>
     </article>
   );
 }

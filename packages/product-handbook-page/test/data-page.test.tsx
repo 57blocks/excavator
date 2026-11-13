@@ -4,9 +4,6 @@
 // by name and by the number of applications, with the places where each name
 // appears under a details element; a missing or malformed data.json is one
 // line; every fixed text comes from the ui table.
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -14,15 +11,8 @@ import { AppView } from '../src/App';
 import { sortedTables } from '../src/components/DataPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import type { DataSection, PageData, View } from '../src/lib/types';
-import { switchTarget } from '../src/lib/views';
-import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
-import { defaultOutline } from './outline-fixture';
-
-const MARK = '@@';
-const DATA = 'd~';
-const shipped = JSON.parse(readFileSync(fileURLToPath(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url)), 'utf-8')) as { strings: Record<string, string> };
-const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
-const d = (text: string): string => `${DATA}${text}`;
+import { switchTarget } from '../src/lib/pages';
+import { BOTH, DATA, MARK, d, marked, pageData } from './page-fixture';
 
 const mention = (file: string, line: number, rule: 'a' | 'b' | 'c') => ({ file: d(file), line, rule });
 const table = (name: string, mentions: DataSection['tables'][number]['mentions'], extra: Partial<DataSection['tables'][number]> = {}): DataSection['tables'][number] => ({
@@ -59,38 +49,9 @@ const section: DataSection = {
 };
 
 function dataFor(views: View[], dataSection: DataSection | null = section, dataState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
-  return {
-    format: 'excavator-product-handbook-page/18',
-    chunks: { parts: [], units: {} },
-    project: d('project'),
-    language: d('language'),
-    languageTag: 'xx',
-    ui: { strings: marked },
-    views,
-    areas: [{ id: 'A1', name: d('area') }],
-    domains: [{ id: 'D1', name: d('domain') }],
-    domainBasis: 'domains',
-    outline: defaultOutline(marked, 'domains'),
-    features: [],
-    findings: [],
-    remedies: { categories: [], recommendations: [] },
-    topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
-    history: NO_HISTORY,
-    appendix: NO_APPENDIX,
-    coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
-    summary: { notifications: [], jobs: [], counts: { featureTotal: 0, featuresWithEntry: 0, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
-    system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 0, featuresWithEntry: 0, roles: 0 }, areas: [], domains: [] },
-    entities: { domains: [{ id: 'D1', name: d('domain'), features: [], purposes: [] }], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
-    ...(views.includes('technical') ? {
-      technical: {
-        featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [], findingLocations: [], topicLocations: [], history: { hotspots: [], coChange: [] }, data: dataSection, dataState, dictionaries: null, dictionariesState: 'missing' as const,
-      },
-    } : {}),
-  };
+  return pageData({ views, technical: { data: dataSection, dataState } });
 }
 
-const BOTH: View[] = ['product', 'technical'];
 const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 function visibleTexts(html: string): string[] {
@@ -137,10 +98,11 @@ describe('the data route and link', () => {
     expect(render(dataFor(['technical']), '#/data')).toContain('data-view="data"');
   });
 
-  it('switching from the data page goes to the overview of the product view, and into it from the product overview stays on the overview', () => {
+  it('switching from the data page goes to the first chapter of the product view, and from a chapter into the technical view stays on it', () => {
     const data = dataFor(BOTH);
-    expect(switchTarget(data, parseHash('#/technical/data'), 'product')).toBe('#/product');
-    expect(switchTarget(data, parseHash('#/product/data'), 'technical')).toBe('#/technical/data');
+    const coverage = marked['page.nav.coverage'];
+    expect(switchTarget(data, parseHash('#/technical/data'), 'product', coverage)).toBe('#/product/chapter/system');
+    expect(switchTarget(data, parseHash('#/product/chapter/F1'), 'technical', coverage)).toBe('#/technical/chapter/F1');
   });
 });
 

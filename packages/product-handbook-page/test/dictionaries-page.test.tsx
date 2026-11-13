@@ -6,10 +6,6 @@
 // dictionaries.json is one line; every fixed text comes from the ui table.
 // The data is written by hand with a prefix on every data text, so a fixed text
 // the code wrote itself is found by the absence of both markers.
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -17,16 +13,9 @@ import { AppView } from '../src/App';
 import { filterDictionaries } from '../src/components/DictionariesPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import type { DictionariesSection, DictionaryEntry, PageData, View } from '../src/lib/types';
-import { switchTarget } from '../src/lib/views';
+import { switchTarget } from '../src/lib/pages';
 import { choose, cleanup, mount, openWithKeyboard, optionTexts, selectByLabel, status as statusOf, typeInto } from './dom';
-import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
-import { defaultOutline } from './outline-fixture';
-
-const MARK = '@@';
-const DATA = 'd~';
-const shipped = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')) as { strings: Record<string, string> };
-const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
-const d = (text: string): string => `${DATA}${text}`;
+import { BOTH, DATA, MARK, d, marked, pageData } from './page-fixture';
 
 const member = (name: string, value: string | number | null, extra: Partial<DictionaryEntry['members'][number]> = {}): DictionaryEntry['members'][number] => ({
   name: d(name), value, computed: value !== null && !extra.reason, file: d('src/a.go'), line: 5, comments: [], labels: [], ...extra,
@@ -80,38 +69,9 @@ const section: DictionariesSection = {
 };
 
 function dataFor(views: View[], dictionaries: DictionariesSection | null = section, dictionariesState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
-  return {
-    format: 'excavator-product-handbook-page/18',
-    chunks: { parts: [], units: {} },
-    project: d('project'),
-    language: d('language'),
-    languageTag: 'xx',
-    ui: { strings: marked },
-    views,
-    areas: [{ id: 'A1', name: d('area') }],
-    domains: [{ id: 'D1', name: d('domain') }],
-    domainBasis: 'domains',
-    outline: defaultOutline(marked, 'domains'),
-    features: [],
-    findings: [],
-    remedies: { categories: [], recommendations: [] },
-    topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
-    history: NO_HISTORY,
-    appendix: NO_APPENDIX,
-    coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
-    summary: { notifications: [], jobs: [], counts: { featureTotal: 0, featuresWithEntry: 0, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
-    system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 0, featuresWithEntry: 0, roles: 0 }, areas: [], domains: [] },
-    entities: { domains: [{ id: 'D1', name: d('domain'), features: [], purposes: [] }], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
-    ...(views.includes('technical') ? {
-      technical: {
-        featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [], findingLocations: [], topicLocations: [], history: { hotspots: [], coChange: [] }, data: null, dataState: 'missing' as const, dictionaries, dictionariesState,
-      },
-    } : {}),
-  };
+  return pageData({ views, technical: { dictionaries, dictionariesState } });
 }
 
-const BOTH: View[] = ['product', 'technical'];
 const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 function visibleTexts(html: string): string[] {
@@ -155,10 +115,10 @@ describe('the dictionaries route and link', () => {
     expect(render(dataFor(['technical']), '#/dictionaries')).toContain('data-view="dictionaries"');
   });
 
-  it('switching from the page goes to the overview of the product view, and into it stays on the page', () => {
+  it('switching from the page goes to the first chapter of the product view, and into the technical view stays on the page', () => {
     const data = dataFor(BOTH);
-    expect(switchTarget(data, parseHash('#/technical/dictionaries'), 'product')).toBe('#/product');
-    expect(switchTarget(data, parseHash('#/product/dictionaries'), 'technical')).toBe('#/technical/dictionaries');
+    expect(switchTarget(data, parseHash('#/technical/dictionaries'), 'product', marked['page.nav.coverage'])).toBe('#/product/chapter/system');
+    expect(switchTarget(data, parseHash('#/technical/chapter/F1'), 'technical', marked['page.nav.coverage'])).toBe('#/technical/chapter/F1');
   });
 });
 

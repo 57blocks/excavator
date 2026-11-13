@@ -1,16 +1,15 @@
 import { useState } from 'react';
 
 import { useDictionaries } from '../lib/chunks';
-import { systemName, useText } from '../lib/text';
+import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
-import type { DictionariesSection, DictionaryEntry, DictionaryMember, DictionaryMismatch, DictionaryValue, PageData, Technical } from '../lib/types';
+import type { DictionariesSection, DictionaryEntry, DictionaryMember, DictionaryMismatch, DictionaryValue, Technical } from '../lib/types';
 import { ChunkNotice } from './ChunkNotice';
 import { TableScroll } from './Tables';
 import { SelectField } from './ui/Select';
 import { Item, ItemField, ItemList } from './ui/ItemList';
 import { StatStrip } from './ui/StatStrip';
 import { FilterToolbar, SearchField } from './ui/Toolbar';
-import { PageTitle } from '../lib/outline';
 
 /** The bucket of the files that belong to no application. */
 const NO_APPLICATION = '';
@@ -218,15 +217,14 @@ function SectionBody({ section }: { section: DictionariesSection }) {
 }
 
 /** The technical view's status dictionary page: the value sets the code declares with the comments and display names it gives them; the same content as the handbook's status dictionary part, filterable by application and searchable by name. A dictionary that was not written, or is malformed, is one line. */
-export function DictionariesPage({ data, technical }: { data: PageData; technical: Technical }) {
+export function DictionariesPage({ technical }: { technical: Technical }) {
   const t = useText();
   const { dictionariesState } = technical;
   const detail = useDictionaries(technical.dictionaries);
   return (
     <article className="page" data-view="dictionaries">
       <header className="page-head">
-        <p className="eyebrow">{systemName(data.project, t)}</p>
-        <PageTitle fallback={t('md.dict.heading')} />
+        <h1 className="page-title">{t('md.dict.heading')}</h1>
       </header>
       {detail.status !== 'ready' ? <ChunkNotice state={detail} /> : detail.value === null
         ? <p className="muted" data-part="dict-status">{t(dictionariesState === 'malformed' ? 'md.dict.malformed' : 'md.dict.notWritten')}</p>

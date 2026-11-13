@@ -1,45 +1,42 @@
 /**
- * The verified features that cite each file (openspec change
- * handbook-history-appendix, design D2): for the hotspot table, the ids of the
- * features whose verified entry holds a citation in the file. Read from
- * state.json and the entry files of the output directory, with no check of the
- * project and no map: a run that has none (the history section run first) has no
- * feature to name. A feature counts only while its state is `verified`, or `checked` with a chapter (a /3 entry); the
- * assembly checks the entries again and lists only the features still verified.
+ * The features that cite each file, for the "features" column of the hotspot table: the ids of the
+ * feature chapters (`chapters/F<n>.md`) that state.json (format /2) records, whatever their
+ * status, and that cite a line of the file. Read from the output directory only, with no check of
+ * the project: a run with no feature chapter yet (the history section run first) names none.
  */
 
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { isObject, readJson } from './json-file.mjs';
-import { loadState } from './state.mjs';
+import { citationGroups, parseSpec } from './chapter-cites.mjs';
+import { loadStateV2 } from './state-v2.mjs';
 
-/** The files cited anywhere in a parsed entry: every `evidence` list of `{ file }`, at any depth. */
-export function citedFiles(value, into = new Set()) {
-  if (Array.isArray(value)) {
-    for (const item of value) citedFiles(item, into);
-  } else if (isObject(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      if (key === 'evidence' && Array.isArray(child)) {
-        for (const citation of child) if (isObject(citation) && typeof citation.file === 'string') into.add(citation.file);
-      } else {
-        citedFiles(child, into);
-      }
+const FEATURE_CHAPTER = /^(F\d+)\.md$/;
+
+/** The project-relative files the citation groups of a chapter text cite. */
+export function citedFiles(text) {
+  const files = new Set();
+  for (const group of citationGroups(text)) {
+    for (const spec of group.specs) {
+      const parsed = parseSpec(spec);
+      if (parsed.file !== undefined) files.add(parsed.file);
     }
   }
-  return into;
+  return files;
 }
 
-/** A Map from a project-relative path to the ids of the verified features that cite it, in the order of state.json. */
+/** A Map from a project-relative path to the ids of the recorded feature chapters that cite it, in feature-number order. */
 export function featuresByFile(outDir) {
-  const loaded = loadState(outDir);
   const byFile = new Map();
-  if (!loaded.ok) return byFile;
-  for (const [id, entry] of Object.entries(loaded.state.features)) {
-    // A checked /3 entry (a chapter, written and not verified) is in the output as well (openspec change handbook-light-scheme); a checked entry without a chapter is not.
-    if (entry.status !== 'verified' && !(entry.status === 'checked' && entry.chapter !== undefined && !entry.rewriting)) continue;
-    const read = readJson(join(outDir, 'entries', `${id}.json`));
-    if (!read.ok) continue;
-    for (const file of citedFiles(read.value)) byFile.set(file, [...(byFile.get(file) ?? []), id]);
+  const loaded = loadStateV2(outDir);
+  const dir = join(outDir, 'chapters');
+  if (!loaded.ok || !existsSync(dir)) return byFile;
+  const ids = readdirSync(dir)
+    .map((name) => FEATURE_CHAPTER.exec(name)?.[1])
+    .filter((id) => id !== undefined && loaded.state.chapters[id] !== undefined)
+    .sort((x, y) => Number(x.slice(1)) - Number(y.slice(1)));
+  for (const id of ids) {
+    for (const file of citedFiles(readFileSync(join(dir, `${id}.md`), 'utf-8'))) byFile.set(file, [...(byFile.get(file) ?? []), id]);
   }
   return byFile;
 }

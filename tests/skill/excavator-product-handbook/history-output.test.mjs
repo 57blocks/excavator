@@ -1,30 +1,21 @@
-// O2 of openspec change handbook-history-appendix: the Code health chapter comes after the Cross-cutting topics chapter and before the
-// coverage section, the Appendix chapter after the coverage section, both in the product and the technical view; the product view
-// shows a file by its name and the application it is in and never a path; a project with no version history, a missing file and a
-// malformed file each have their own line; the appendix writes the open questions, the glossary and the sources and scope from
-// the verified entries and the records of the run; no fixed text or written line advises or evaluates; and the page data is /14
-// with `history` and `appendix`, the paths only in the technical part.
+// The Code health chapter (openspec changes handbook-history-appendix and handbook-skill-first): it comes after the feature chapters
+// and before the coverage section, in both views; the product view shows a file by its name and the application it is in and never a
+// path; a feature is named only when it has a chapter; a project with no version history, a missing file and a malformed file each
+// have their own line; no fixed text or written line advises or evaluates. (The page data's half is in page-scripts.test.mjs.)
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { adviceWordsOf, wordsIn } from '../../../skills/excavator-product-handbook/lib/word-lists.mjs';
 import { MAX_FILES_PER_COMMIT, MIN_TOGETHER } from '../../../skills/excavator/hotspots/co-change.mjs';
 import { HOTSPOT_FILES, CO_CHANGE_PAIRS } from '../../../skills/excavator-product-handbook/lib/history-hotspots.mjs';
-import { runHandbook } from './helpers.mjs';
-import { appendixRun, countEvidenceItems, goodHistory, writeHistory } from './appendix-fixture.mjs';
+import { chapterText, newMdRun } from './md-run-fixture.mjs';
+import { goodHistory, writeHistory } from './history-doc-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()();
 });
-
-const STUB = '<!doctype html><html lang="und"><head><meta charset="UTF-8"><!-- xv:csp --></head><body><div id="root"></div><!-- xv:data --></body></html>';
-const stubDir = mkdtempSync(join(tmpdir(), 'xhb-stub-'));
-const stubPath = join(stubDir, 'template.html');
-writeFileSync(stubPath, STUB);
-afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
 
 const ui = JSON.parse(readFileSync(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url), 'utf-8')).strings;
 const text = (run, name) => readFileSync(join(run.out, name), 'utf-8');
@@ -33,8 +24,6 @@ const assemble = (run, views = 'product') => {
   expect(result.status, result.stdout + result.stderr).toBe(0);
   return result;
 };
-const page = (run, views = 'product,technical') => runHandbook(['page', run.out, '--project', run.root, '--views', views], { env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: stubPath } });
-const dataOf = (run) => JSON.parse(/<script type="application\/json" id="xv-product-handbook-data">([\s\S]*?)<\/script>/.exec(text(run, 'handbook.html'))[1]);
 
 /** The part of the handbook between a heading and the next heading of the same or a higher level. */
 function section(body, heading) {
@@ -46,17 +35,22 @@ function section(body, heading) {
   return end === -1 ? rest : rest.slice(0, end);
 }
 const historyOf = (body) => section(body, `## ${ui['md.history.heading']}`);
-/** The open questions, the glossary and the sources and scope are chapters of their own in the default outline (handbook-outline): the appendix is the three of them. */
-const APPENDIX_KEYS = ['md.appendix.openHeading', 'md.appendix.glossaryHeading', 'md.appendix.sourcesHeading'];
-const appendixOfBody = (body) => APPENDIX_KEYS.map((key) => section(body, `## ${ui[key]}`)).join('\n');
-const chapterOf = (body, key) => section(body, `## ${ui[key]}`);
+/**
+ * A run with the system chapter and the chapters of F1 and F3 (F2 has none), checked; the history file is not written.
+ * Hotspots that cite F2 must not name it.
+ */
+function historyRun(cleanups_) {
+  const run = newMdRun({ system: chapterText('System'), F1: chapterText('Orders'), F3: chapterText('Reminders') });
+  cleanups_.push(run.cleanup);
+  return run;
+}
 
 // The tests that only read share one run with a history file; the ones that change it build their own.
 const sharedCleanups = [];
 let sharedRun = null;
 function shared() {
   if (sharedRun === null) {
-    sharedRun = appendixRun(sharedCleanups);
+    sharedRun = historyRun(sharedCleanups);
     writeHistory(sharedRun);
     assemble(sharedRun, 'product,technical');
   }
@@ -67,13 +61,13 @@ afterAll(() => {
 });
 
 describe('the Code health chapter', () => {
-  it('comes after the Cross-cutting topics chapter and before the coverage section, in both views', () => {
+  it('comes after the feature chapters and before the coverage section, in both views', () => {
     const run = shared();
     for (const name of ['handbook.md', 'handbook-technical.md']) {
       const body = text(run, name);
       const at = (heading) => body.indexOf(`\n## ${heading}\n`);
-      expect(at(ui['md.topics.heading']), name).toBeGreaterThan(0);
-      expect(at(ui['md.history.heading']), name).toBeGreaterThan(at(ui['md.topics.heading']));
+      expect(at('Reminders'), name).toBeGreaterThan(0);
+      expect(at(ui['md.history.heading']), name).toBeGreaterThan(at('Reminders'));
       expect(at(ui['md.coverage.heading']), name).toBeGreaterThan(at(ui['md.history.heading']));
     }
   });
@@ -94,7 +88,7 @@ describe('the Code health chapter', () => {
   });
 
   it('writes an application without history with its reason in the first cell and dashes after it', () => {
-    const run = appendixRun(cleanups);
+    const run = historyRun(cleanups);
     const doc = goodHistory();
     doc.apps = [{ dir: '.', first: null, last: null, commits: null, authors: null, authors80: null, reason: 'no-commits' }];
     writeHistory(run, doc);
@@ -122,7 +116,7 @@ describe('the Code health chapter', () => {
   });
 
   it('writes the commits of a file with an uncertain count as "commits (n uncertain)" and one note after the hotspots note, in both views', () => {
-    const run = appendixRun(cleanups);
+    const run = historyRun(cleanups);
     const doc = goodHistory();
     doc.hotspots[0].uncertain = 3;
     writeHistory(run, doc);
@@ -165,7 +159,7 @@ describe('the Code health chapter', () => {
   });
 
   it('says the project has no version history, with the reason, and still writes the test counts', () => {
-    const run = appendixRun(cleanups);
+    const run = historyRun(cleanups);
     writeHistory(run, { ...goodHistory(), noHistory: { reason: 'inside-repository' }, years: [], apps: [{ dir: '.', first: null, last: null, commits: null, authors: null, authors80: null, reason: 'inside-repository' }], hotspots: [], coChange: [] });
     assemble(run);
     const body = historyOf(text(run, 'handbook.md'));
@@ -175,18 +169,17 @@ describe('the Code health chapter', () => {
     expect(body).not.toContain(ui['md.history.hotspotsHeading']);
   });
 
-  it('says it was not written when the file is missing, and that the file is not in the format when it is malformed, and still writes the appendix', () => {
-    const run = appendixRun(cleanups);
+  it('writes no chapter when the file is missing, and says the file is not in the format when it is malformed', () => {
+    const run = historyRun(cleanups);
     assemble(run);
-    expect(historyOf(text(run, 'handbook.md'))).toContain(ui['md.history.notWritten']);
-    expect(historyOf(text(run, 'handbook.md'))).not.toContain('###');
-    expect(text(run, 'handbook.md')).toContain(`\n## ${ui['md.appendix.openHeading']}\n`);
+    expect(text(run, 'handbook.md')).not.toContain(`\n## ${ui['md.history.heading']}\n`);
+    mkdirSync(join(run.out, 'entries'), { recursive: true });
     writeFileSync(join(run.out, 'entries/history.json'), '{"format":"excavator-product-handbook-history/1"}\n');
     assemble(run);
     expect(historyOf(text(run, 'handbook.md'))).toContain(ui['md.history.malformed']);
   });
 
-  it('names a file by the features still verified: a feature of the file that is not verified now is left out', () => {
+  it('names a file by the features that have a chapter: a feature of the file with no chapter is left out', () => {
     const run = shared();
     expect(historyOf(text(run, 'handbook.md'))).not.toContain('Archive');
   });
@@ -203,148 +196,21 @@ describe('the Code health chapter', () => {
   });
 });
 
-describe('the appendix chapters', () => {
-  it('is three chapters of their own, in order, before the coverage section, which is last, in both views', () => {
-    const run = shared();
-    for (const name of ['handbook.md', 'handbook-technical.md']) {
-      const body = text(run, name);
-      const headings = [...body.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
-      expect(headings.at(-1), name).toBe(ui['md.coverage.heading']);
-      expect(headings.slice(-4, -1), name).toEqual([ui['md.appendix.openHeading'], ui['md.appendix.glossaryHeading'], ui['md.appendix.sourcesHeading']]);
-      expect(chapterOf(body, 'md.appendix.openHeading'), name).toContain(ui['md.appendix.note']);
-    }
-  });
-
-  it('writes the open questions by domain, each with the feature, its own words and the place searched, and none of a feature that is not verified', () => {
-    const run = shared();
-    const part = chapterOf(text(run, 'handbook.md'), 'md.appendix.openHeading');
-    expect(part).toContain('Open questions: 2.');
-    expect(part).toContain('### Customer orders\n\n| Feature | Question | Searched |\n| --- | --- | --- |\n| Orders | Who approves a large order | the order form and the routes of the orders area |');
-    expect(part).toContain('### System upkeep\n\n| Feature | Question | Searched |\n| --- | --- | --- |\n| Reminders | Who approves a large order | the order form and the routes of the orders area |');
-    expect(part).not.toContain('Where the archive is kept');
-  });
-
-  it('writes the glossary with the kind, the meaning with its features and the features of each term, in code point order, and nothing that was removed', () => {
-    const run = shared();
-    const part = chapterOf(text(run, 'handbook.md'), 'md.appendix.glossaryHeading');
-    expect(part).toContain('Terms: 4.');
-    expect(part).toContain('| Term | Kind | Meaning | Features |\n| --- | --- | --- | --- |\n| Clerk | Role | Create an order. (Orders, Reminders) | Orders, Reminders |\n| Draft | State label | The order is not sent yet. (Orders, Reminders) | Orders, Reminders |\n| New Order | Entry name, Screen name | - | Orders, Reminders |\n| Orders | Entry name | - | Orders, Reminders |');
-    expect(part).not.toContain('Submitted');
-    expect(part).not.toContain('Approver');
-  });
-
-  it('writes the sources and scope: what was read and not read, the checks, and the counts of each section as state.json holds them', () => {
-    const run = shared();
-    const part = chapterOf(text(run, 'handbook.md'), 'md.appendix.sourcesHeading');
-    for (const key of ['md.appendix.read', 'md.appendix.notRead', 'md.appendix.checks', 'md.appendix.sectionsNote']) expect(part).toContain(ui[key]);
-    const state = run.readJson('state.json');
-    const records = Object.values(state.features).flatMap((entry) => entry.removed ?? []);
-    const again = Object.values(state.features).reduce((sum, entry) => sum + Math.max(0, entry.attempts - 1), 0);
-    const items = ['F1', 'F3'].reduce((sum, id) => sum + countEvidenceItems(run.readJson(`entries/${id}.json`)), 0);
-    expect(part).toContain('| Section | Units | Verified units | Items kept | Removed by the verifiers | Removed by the tracers | Written again |');
-    expect(part).toContain('| System overview | 1 | 0 | 0 | 0 | 0 | 0 |');
-    expect(part).toContain(`| Feature entries | 5 | 2 | ${items} | ${records.filter((one) => one.step !== 'trace').length} | ${records.filter((one) => one.step === 'trace').length} | ${again} |`);
-    expect(part).toContain('| Findings of the features | 5 | 0 | 0 | 0 | 0 | 0 |');
-    expect(part).toContain('| System findings | 1 | 0 | 0 | 0 | 0 | 0 |');
-    expect(part).toContain('| Part | Kept | Left out |\n| --- | --- | --- |\n| Levels of the groups of findings | 0 | 0 |\n| Causes, measures and recommendations | 0 | 0 |\n| Rows of the cross-cutting topics | 0 | 0 |');
-  });
-
-  it('counts the removals the tracers made apart from the ones the verifiers made', () => {
-    const run = shared();
-    const part = chapterOf(text(run, 'handbook.md'), 'md.appendix.sourcesHeading');
-    expect(part).toMatch(/\| Feature entries \| 5 \| 2 \| \d+ \| 2 \| 1 \| \d+ \|/);
-  });
-
-  it('is written when no entry is verified: None. for the questions and the terms, and the sections with their units', () => {
-    const run = appendixRun(cleanups);
-    const state = run.readJson('state.json');
-    for (const id of ['F1', 'F3']) state.features[id] = { status: 'planned', attempts: 0 };
-    run.writeJson(join(run.out, 'state.json'), state);
-    assemble(run);
-    const body = text(run, 'handbook.md');
-    expect(chapterOf(body, 'md.appendix.openHeading')).toContain('Open questions: 0.\n\nNone.');
-    expect(chapterOf(body, 'md.appendix.glossaryHeading')).toContain('Terms: 0.\n\nNone.');
-  });
-});
-
 describe('no advice and no evaluation', () => {
-  it('has none of the advice words in a fixed text of the two chapters', () => {
+  it('has none of the advice words in a fixed text of the chapter', () => {
     const words = adviceWordsOf(ui);
     expect(words.length).toBeGreaterThan(5);
-    const keys = Object.keys(ui).filter((key) => key.startsWith('md.history.') || key.startsWith('md.appendix.'));
-    expect(keys.length).toBeGreaterThan(70);
+    const keys = Object.keys(ui).filter((key) => key.startsWith('md.history.'));
+    expect(keys.length).toBeGreaterThan(40);
     for (const key of keys) expect(wordsIn(ui[key], words), key).toEqual([]);
   });
 
-  it('has none in the two chapters of the handbook of either view', () => {
+  it('has none in the chapter of the handbook of either view', () => {
     const run = shared();
     const words = adviceWordsOf(ui);
     for (const name of ['handbook.md', 'handbook-technical.md']) {
       const body = text(run, name);
       expect(wordsIn(historyOf(body), words), name).toEqual([]);
-      expect(wordsIn(appendixOfBody(body), words), name).toEqual([]);
     }
-  });
-});
-
-describe('the page data', () => {
-  it('has the format /14, history and appendix between topics and coverage, and no path outside the technical part', () => {
-    const run = shared();
-    const made = page(run);
-    expect(made.status, made.stdout).toBe(0);
-    const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/18');
-    const keys = Object.keys(data);
-    expect(keys.slice(keys.indexOf('topics'), keys.indexOf('topics') + 4)).toEqual(['topics', 'history', 'appendix', 'coverage']);
-    const { technical, ...product } = data;
-    expect(JSON.stringify(product)).not.toContain('src/routes');
-    expect(JSON.stringify(product)).not.toContain('src/app.js');
-    expect(JSON.stringify(technical)).toContain('src/routes/orders.js');
-  });
-
-  it('holds the history with the file names, the features still verified, and the conventions', () => {
-    const run = shared();
-    page(run);
-    const { history } = dataOf(run);
-    expect(Object.keys(history)).toEqual(['state', 'noHistory', 'years', 'apps', 'hotspots', 'coChange', 'tests', 'conventions']);
-    expect(history.state).toBe('ok');
-    expect(history.hotspots[0]).toEqual({ name: 'orders.js', app: '.', commits: 5, authors: 2, lines: 20, last: '2024-09-09', uncertain: 0, features: ['F1', 'F3'] });
-    expect(history.coChange).toEqual([{ a: 'app.js', appA: '.', b: 'orders.js', appB: '.', commits: 4 }]);
-    expect(history.years).toEqual(goodHistory().years);
-    expect(history.conventions).toEqual(['goTest', 'dotTest', 'dotSpec', 'pyPrefix', 'pySuffix', 'javaTest', 'testsDir']);
-  });
-
-  it('holds the uncertain count of each hotspot file in the page data', () => {
-    const run = appendixRun(cleanups);
-    const doc = goodHistory();
-    doc.hotspots[1].uncertain = 4;
-    writeHistory(run, doc);
-    page(run);
-    expect(dataOf(run).history.hotspots.map((row) => row.uncertain)).toEqual([0, 4]);
-  });
-
-  it('holds the paths of the hotspot files and of each file of a pair in the technical part, in the order of the rows', () => {
-    const run = shared();
-    page(run);
-    const { technical } = dataOf(run);
-    expect(technical.history).toEqual({ hotspots: ['src/routes/orders.js', 'src/app.js'], coChange: [{ a: 'src/app.js', b: 'src/routes/orders.js' }] });
-  });
-
-  it('holds the appendix with the ids of the features and the domains', () => {
-    const run = shared();
-    page(run);
-    const { appendix } = dataOf(run);
-    expect(Object.keys(appendix)).toEqual(['open', 'glossary', 'sources']);
-    expect(appendix.open.map((row) => [row.feature, row.domain])).toEqual([['F1', 'D1'], ['F3', 'D2']]);
-    expect(appendix.glossary.map((row) => row.term)).toEqual(['Clerk', 'Draft', 'New Order', 'Orders']);
-    expect(appendix.sources.parts.map((part) => part.id)).toEqual(['overview', 'features', 'findings', 'system-findings']);
-  });
-
-  it('says the history is missing in the page data when the file is not there, and the appendix is still there', () => {
-    const run = appendixRun(cleanups);
-    page(run, 'product');
-    const data = dataOf(run);
-    expect(data.history).toEqual({ state: 'missing', noHistory: null, years: [], apps: [], hotspots: [], coChange: [], tests: [], conventions: ['goTest', 'dotTest', 'dotSpec', 'pyPrefix', 'pySuffix', 'javaTest', 'testsDir'] });
-    expect(data.appendix.open).toHaveLength(2);
   });
 });

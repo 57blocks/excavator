@@ -1,44 +1,35 @@
 // O2 of openspec change handbook-status-dictionary: the technical view shows
 // the status dictionary as a part of the data chapter, the product view never
 // does; a missing and a malformed dictionaries.json each give one visible
-// line; the numbers of the count line equal the lengths of the lists; the
-// page data carries the dictionary (format /7) in its technical part only.
+// line; the numbers of the count line equal the lengths of the lists. (The
+// page data's half is in page-scripts.test.mjs.)
 // The expectations are written by hand from the purpose-built fixture project.
-import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { afterEach, describe, expect, it } from 'vitest';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { extractDictionaries } from '../../../skills/excavator-product-handbook/lib/dict-extract.mjs';
 import { computeDictionaryCounts } from '../../../skills/excavator-product-handbook/lib/dict-shape.mjs';
 import { JS_NAME_WORDS } from '../../../skills/excavator-product-handbook/lib/dict-js.mjs';
-import { SHIPPED_UI, clone, repoRoot, runHandbook, verifyChecked } from './helpers.mjs';
-import { checkedOverviewRun } from './overview-fixture.mjs';
+import { SHIPPED_UI, clone, repoRoot } from './helpers.mjs';
+import { chapterText, newMdRun } from './md-run-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()();
 });
 
-const STUB = '<!doctype html><html lang="und"><head><meta charset="UTF-8"><!-- xv:csp --></head><body><div id="root"></div><!-- xv:data --></body></html>';
-const stubDir = mkdtempSync(join(tmpdir(), 'xhb-stub-'));
-const stubPath = join(stubDir, 'template.html');
-writeFileSync(stubPath, STUB);
-afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
-
 const FIXTURE = join(repoRoot, 'tests/fixtures/product-handbook/dict-project');
 const ui = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8')).strings;
 const dictionaries = extractDictionaries(FIXTURE);
 
 const assemble = (run, views) => run.run('assemble', '--views', views);
-const page = (run, views) => runHandbook(['page', run.out, '--project', run.root, '--views', views], { env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: stubPath } });
 const text = (run, name) => readFileSync(join(run.out, name), 'utf-8');
-const pageData = (run) => JSON.parse(/<script type="application\/json" id="xv-product-handbook-data">([\s\S]*?)<\/script>/.exec(text(run, 'handbook.html'))[1]);
 
-/** A run with a verified overview; `dict` is written to dictionaries.json unless null (a string is written as it is). */
+/** A run with a checked system chapter; `dict` is written to dictionaries.json unless null (a string is written as it is). */
 function run(dict) {
-  const made = checkedOverviewRun(cleanups);
-  verifyChecked(made, 'overview');
+  const made = newMdRun({ system: chapterText('System') });
+  cleanups.push(made.cleanup);
   if (dict !== null) writeFileSync(join(made.out, 'dictionaries.json'), typeof dict === 'string' ? dict : `${JSON.stringify(dict, null, 2)}\n`);
   return made;
 }
@@ -79,16 +70,14 @@ describe('the shipped fixed text', () => {
   });
 });
 
-describe('the technical handbook has the status dictionary as a chapter after the data chapter', () => {
-  it('comes after the tables and gaps of the data chapter and before the grouping of the features', () => {
+describe('the technical handbook has the status dictionary as a chapter after the system chapter', () => {
+  it('comes after the system chapter', () => {
     const made = run(dictionaries);
     expect(assemble(made, 'technical').status).toBe(0);
     const body = text(made, 'handbook-technical.md');
     const at = (needle) => body.indexOf(needle);
-    expect(at(`## ${ui['md.data.heading']}`)).toBeGreaterThan(0);
-    expect(at(`\n## ${ui['md.dict.heading']}\n`)).toBeGreaterThan(at(`### ${ui['md.data.gapsHeading']}`));
-    const grouping = body.search(/^## (Business domains|Areas)$/m);
-    expect(at(`\n## ${ui['md.dict.heading']}\n`)).toBeLessThan(grouping);
+    expect(at('## System')).toBeGreaterThan(0);
+    expect(at(`\n## ${ui['md.dict.heading']}\n`)).toBeGreaterThan(at('## System'));
   });
 
   it('writes the fixed notes, the recognized forms and the two count lines', () => {
@@ -207,12 +196,11 @@ describe('the product view never shows the status dictionary', () => {
   });
 });
 
-describe('a missing or malformed dictionaries.json is one visible line in the technical view', () => {
-  it('missing: the heading and the one line that says the status dictionary was not written', () => {
+describe('a missing dictionaries.json writes no part and a malformed one is one visible line in the technical view', () => {
+  it('missing: the run has no status dictionary part at all', () => {
     const made = run(null);
     expect(assemble(made, 'technical').status).toBe(0);
-    const lines = dictionaryPart(text(made, 'handbook-technical.md')).split('\n').filter((line) => line.trim() !== '');
-    expect(lines).toEqual([`## ${ui['md.dict.heading']}`, ui['md.dict.notWritten']]);
+    expect(text(made, 'handbook-technical.md')).not.toContain(`\n## ${ui['md.dict.heading']}\n`);
   });
 
   it('malformed (a JSON that fails the shape check, or text that is not JSON): the heading and the one line that says so', () => {
@@ -239,43 +227,5 @@ describe('a missing or malformed dictionaries.json is one visible line in the te
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
     expect(part).toContain('Value sets: 0 (0 Go types, 0 TS enums, 0 TS const objects, 0 JS objects).');
     expect(part).not.toContain('#####');
-  });
-});
-
-describe('the page data carries the dictionary in its technical part only', () => {
-  it('uses format /7; the technical part holds the lists the page shows and neither the candidates nor the scan counts', () => {
-    const made = run(dictionaries);
-    expect(page(made, 'product,technical').status).toBe(0);
-    const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/18');
-    expect(Object.keys(got.technical).slice(-2)).toEqual(['dictionaries', 'dictionariesState']);
-    expect(got.technical.dictionariesState).toBe('ok');
-    expect(Object.keys(got.technical.dictionaries)).toEqual(['recognized', 'applications', 'dictionaries', 'mismatches', 'counts']);
-    expect(got.technical.dictionaries.dictionaries).toHaveLength(31);
-    expect(got.technical.dictionaries.mismatches).toHaveLength(3);
-    expect(got.technical.dictionaries.counts).toEqual(dictionaries.counts);
-    expect(got.technical.dictionaries.recognized).toEqual(['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object', 'js-record-member']);
-    const status = got.technical.dictionaries.dictionaries.find((entry) => entry.id === 'go-app/status/types.go:Status');
-    expect(status.members[0]).toEqual(dictionaries.dictionaries.find((entry) => entry.id === 'go-app/status/types.go:Status').members[0]);
-  });
-
-  it('a product-only page has no technical part and so no value set', () => {
-    const made = run(dictionaries);
-    expect(page(made, 'product').status).toBe(0);
-    const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/18');
-    expect(Object.hasOwn(got, 'technical')).toBe(false);
-    expect(text(made, 'handbook.html')).not.toContain('TicketStatus');
-  });
-
-  it('missing and malformed dictionaries.json give a null section and the reason', () => {
-    const missing = run(null);
-    expect(page(missing, 'technical').status).toBe(0);
-    expect(pageData(missing).technical.dictionaries).toBeNull();
-    expect(pageData(missing).technical.dictionariesState).toBe('missing');
-    const malformed = run('{ not json');
-    expect(page(malformed, 'technical').status).toBe(0);
-    expect(pageData(malformed).technical.dictionaries).toBeNull();
-    expect(pageData(malformed).technical.dictionariesState).toBe('malformed');
   });
 });

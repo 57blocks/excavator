@@ -1,12 +1,12 @@
-import { Fragment, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
-import { chapterKey, chapterList } from '../lib/chapters';
-import type { Chapter } from '../lib/chapters';
-import type { PageData } from '../lib/types';
 import { useLinks, useView } from '../lib/links';
+import { hrefOf, pageOf } from '../lib/pages';
+import type { PageItem } from '../lib/pages';
 import type { Route } from '../lib/route';
 import { useText } from '../lib/text';
-import { bodyOf } from '../lib/views';
+import type { PageData } from '../lib/types';
+import { usePages } from '../lib/use-pages';
 
 interface Props {
   data: PageData;
@@ -16,44 +16,28 @@ interface Props {
 }
 
 /**
- * The navigation (openspec change handbook-deep-entry, design D11; handbook-outline, D6): two levels, a part title and its
- * links, all shown, none folding or numbered, in the order of `chapterList`, which follows the outline (a list chapter
- * whose title is not its part's has a label of its own; the coverage page is last, in no part). No feature is listed: a feature is reached from its
- * domain's page, and on a feature page the link of its domain is marked as the current place. Below 900px it is a
- * drawer that the top bar's button opens.
+ * The navigation: one group per part of the outline, in its order, each with the title of its chapters as the links; the
+ * coverage page last, in no part. All shown, none folding or numbered. A part with no page in this view is not shown. Below
+ * 900px it is a drawer that the top bar's button opens.
  */
 export function Sidebar({ data, route, open, onNavigate }: Props) {
   const t = useText();
   const nav = useLinks();
   const view = useView();
-  const routeKey = JSON.stringify(route);
+  const pages = usePages(data);
+  const current = pageOf(pages, route);
   const scroller = useRef<HTMLDivElement>(null);
+  const routeKey = JSON.stringify(route);
   // Keep the current link in view inside the rail's one scroll container.
   useEffect(() => {
-    const current = scroller.current?.querySelector('[aria-current]');
-    if (current instanceof HTMLElement && typeof current.scrollIntoView === 'function') current.scrollIntoView({ block: 'nearest' });
+    const here = scroller.current?.querySelector('[aria-current]');
+    if (here instanceof HTMLElement && typeof here.scrollIntoView === 'function') here.scrollIntoView({ block: 'nearest' });
   }, [routeKey]);
-  const currentKey = chapterKey(bodyOf(route));
-  const currentDomain = route.name === 'feature' ? data.features.find((feature) => feature.id === route.id)?.domain : undefined;
-  const chapters = chapterList(data, view, nav, t);
-  const link = (chapter: Chapter) => {
-    const current = chapter.key === currentKey ? 'page' : currentDomain !== undefined && chapter.key === `domain:${currentDomain}` ? 'true' : undefined;
-    return <a className="rail-link" key={chapter.key} {...chapter.data} href={chapter.href} aria-current={current}>{chapter.label}</a>;
-  };
-  // One group per part of the outline, its links in the order of the chapters; a list chapter whose title is not the part's has its own label.
-  const parts = data.outline.parts.map((part, at) => ({ at, title: part.title, links: chapters.filter((chapter) => chapter.part === at) })).filter((part) => part.links.length > 0);
-  const coverage = chapters.find((chapter) => chapter.part === null);
-  const group = (part: { at: number; title: string; links: Chapter[] }) => (
-    <section className="rail-group" data-group={`part-${part.at}`} key={part.at} aria-labelledby={`rail-group-${part.at}`}>
-      <h2 className="rail-group-name" id={`rail-group-${part.at}`}>{part.title}</h2>
-      {part.links.map((chapter, at) => (
-        <Fragment key={chapter.key}>
-          {chapter.list && chapter.chapterTitle !== part.title && part.links[at - 1]?.chapterTitle !== chapter.chapterTitle && <h3 className="rail-subgroup-name">{chapter.chapterTitle}</h3>}
-          {link(chapter)}
-        </Fragment>
-      ))}
-    </section>
+  const link = (item: PageItem) => (
+    <a className="rail-link" key={item.key} data-page={item.key} href={hrefOf(item, nav)} aria-current={item.key === current?.key ? 'page' : undefined}>{item.title}</a>
   );
+  const groups = data.outline.parts.map((part, at) => ({ at, title: part.title, links: pages.filter((item) => item.part === at) })).filter((group) => group.links.length > 0);
+  const coverage = pages.find((item) => item.part === null);
   return (
     <nav
       className="rail"
@@ -66,8 +50,13 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
       }}
     >
       <div className="rail-scroll" ref={scroller}>
-        {parts.map(group)}
-        {coverage !== undefined && <section className="rail-group" data-group="coverage" aria-label={coverage.label}>{link(coverage)}</section>}
+        {groups.map((group) => (
+          <section className="rail-group" data-group={`part-${group.at}`} key={group.at} aria-labelledby={`rail-group-${group.at}`}>
+            <h2 className="rail-group-name" id={`rail-group-${group.at}`}>{group.title}</h2>
+            {group.links.map(link)}
+          </section>
+        ))}
+        {coverage !== undefined && <section className="rail-group" data-group="coverage" aria-label={coverage.title}>{link(coverage)}</section>}
       </div>
     </nav>
   );

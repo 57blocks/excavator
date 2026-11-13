@@ -1,68 +1,41 @@
-// Oracle O5 (page half) of openspec change product-handbook-map: handbook.html
-// is the same bytes from the same input, holds no citation path, no project
-// path and no evidence, and is refused for the same runs as handbook.md. These
-// tests use a stub template with the two markers; the real template is
-// exercised by page-browser.test.mjs.
+// Oracle O4 (script half) of openspec change handbook-skill-first: `page` writes handbook.html with
+// the data format /19 built from the same checked Markdown run `assemble` uses: the chapters as
+// Markdown by view, the outline's parts, the coverage section and the scripts' blocks. A product-only
+// page holds no citation and no project path, the same input gives the same bytes, the page refuses
+// the runs assemble refuses and leaves no file, and a new template rewrites the page from the files
+// alone. These tests use a stub template with the two markers; the real template is exercised by
+// page-browser.test.mjs.
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { buildPageData } from '../../../skills/excavator-product-handbook/lib/page-data.mjs';
 import { languageTag } from '../../../skills/excavator-product-handbook/lib/language-tag.mjs';
-import { SHIPPED_UI, clone, makeCheckedMapRun, markedMap, runHandbook, verifyChecked } from './helpers.mjs';
+import { productText } from '../../../skills/excavator-product-handbook/lib/md-views.mjs';
+import { SHIPPED_UI, runHandbook } from './helpers.mjs';
+import { FORM, chapterText, cite } from './md-run-fixture.mjs';
+import { STUB, STUB_TWO, dataOf, html, listing, pageRun, runPage } from './page-md-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()();
 });
 
-const STUB = '<!doctype html><html lang="und"><head><meta charset="UTF-8"><!-- xv:csp --></head><body><div id="root"></div><!-- xv:data --></body></html>';
 const stubDir = mkdtempSync(join(tmpdir(), 'xhb-stub-'));
 const stubPath = join(stubDir, 'template.html');
+const stubTwoPath = join(stubDir, 'template-two.html');
 writeFileSync(stubPath, STUB);
+writeFileSync(stubTwoPath, STUB_TWO);
 afterAll(() => rmSync(stubDir, { recursive: true, force: true }));
 
-const withTemplate = (path) => ({ env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: path } });
+const make = (options) => pageRun(cleanups, options);
+const page = (run, options = {}) => runPage(run, { template: stubPath, ...options });
 const cjk = (...points) => String.fromCodePoint(...points);
-
-function checkedRun(adjust) {
-  const run = makeCheckedMapRun();
-  cleanups.push(run.cleanup);
-  const entry = clone(run.entry);
-  adjust?.(entry);
-  run.writeEntry('F1', entry);
-  const result = run.run('check-entry', 'F1');
-  expect(result.status, result.stdout).toBe(0);
-  verifyChecked(run);
-  return run;
-}
-
-const page = (run, template = stubPath) => runHandbook(['page', run.out, '--project', run.root], withTemplate(template));
-const html = (run) => readFileSync(join(run.out, 'handbook.html'), 'utf-8');
-/** The page data parsed out of the data block. */
-function dataOf(text) {
-  const match = /<script type="application\/json" id="xv-product-handbook-data">([\s\S]*?)<\/script>/.exec(text);
-  expect(match).not.toBeNull();
-  return JSON.parse(match[1]);
-}
-
-function citedFiles(...documents) {
-  const files = new Set();
-  const walk = (value) => {
-    if (Array.isArray(value)) value.forEach(walk);
-    else if (value !== null && typeof value === 'object') {
-      if (typeof value.file === 'string' && typeof value.passage === 'string') files.add(value.file);
-      Object.values(value).forEach(walk);
-    }
-  };
-  documents.forEach(walk);
-  return [...files];
-}
+const ANY_CITATION = /[\w./-]+\.\w+:\d+(?:-\d+)?/;
 
 describe('page: the file and its data', () => {
   it('writes handbook.html, prints its path, and replaces both markers', () => {
-    const run = checkedRun();
+    const run = make();
     const result = page(run);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(result.lines).toEqual([join(run.out, 'handbook.html')]);
@@ -70,66 +43,196 @@ describe('page: the file and its data', () => {
     expect(text).not.toContain('<!-- xv:csp -->');
     expect(text).not.toContain('<!-- xv:data -->');
     expect(text.startsWith('<!doctype html>')).toBe(true);
-    expect(readdirSync(run.out).filter((name) => name.includes('.tmp'))).toEqual([]);
   });
 
   it('carries the content security policy: no network, only inline code, data: images and fonts', () => {
-    const run = checkedRun();
+    const run = make();
     page(run);
     const policy = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/.exec(html(run))[1];
     expect(policy).toBe("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'");
   });
 
-  it('has the data keys in a fixed order, no project name without a verified overview name, and the ui table', () => {
-    const run = checkedRun();
+  it('has format /19, the keys in a fixed order, the ui table and the title of each view', () => {
+    const run = make();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'outline', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
-    expect(data.format).toBe('excavator-product-handbook-page/18');
-    expect(data.project).toBeNull();
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'language', 'languageTag', 'ui', 'views', 'titles', 'outline', 'chapters', 'coverage', 'history', 'technical']);
+    expect(data.format).toBe('excavator-product-handbook-page/19');
+    expect(data.chunks).toEqual({ parts: [], units: {} });
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
     expect(data.ui.strings).toEqual(JSON.parse(readFileSync(SHIPPED_UI, 'utf-8')).strings);
-    expect(data.areas).toEqual([{ id: 'A1', name: 'Order handling' }, { id: 'A2', name: 'Automatic work' }]);
-    expect(Object.keys(data.features[0])).toEqual(['id', 'name', 'area', 'domain', 'reach', 'label', 'status', 'entry', 'findingsStatus']);
+    expect(data.views).toEqual(['product', 'technical']);
+    expect(data.titles).toEqual({ product: data.ui.strings['md.title'], technical: data.ui.strings['md.titleTechnical'] });
   });
 
-  it('gives a verified feature its entry without evidence and every other feature its status and no entry', () => {
-    const run = checkedRun();
-    run.run('mark', 'F3', 'dispatched');
+  it('has the outline in parts of blocks with their titles, and the chapters in that order', () => {
+    const run = make();
+    page(run);
+    const { outline, chapters } = dataOf(html(run));
+    expect(outline.source).toBe('default');
+    expect(outline.problems).toEqual([]);
+    expect(outline.parts.map((part) => part.title)).toEqual(['System', 'Features', 'Data and code health']);
+    const flat = outline.parts.flatMap((part) => part.blocks);
+    expect(flat.map((item) => [item.block, item.kind, item.title])).toEqual([
+      ['system', 'chapter', 'System'],
+      ['F1', 'chapter', 'Orders'],
+      ['data', 'data', 'Data'],
+      ['dictionaries', 'dictionaries', 'Status dictionary'],
+      ['history', 'history', 'Code health'],
+    ]);
+    expect(chapters.map((chapter) => chapter.id)).toEqual(['system', 'F1']);
+  });
+
+  it('the product text drops a table column the citation removal emptied; the technical text keeps it', () => {
+    const run = make();
+    const rows = `\n| Role | Can do | Cite |\n| --- | --- | --- |\n| Clerk | Creates an order | ${cite('1', 'src/roles.js')} |\n`;
+    run.write('F1', chapterText('Orders', rows));
+    expect(run.check('F1').status).toBe(0);
+    page(run);
+    const f1 = dataOf(html(run)).chapters.find((chapter) => chapter.id === 'F1');
+    expect(f1.texts.product).toContain('| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order |');
+    expect(f1.texts.product).not.toContain('Cite');
+    expect(f1.texts.technical).toContain('| Role | Can do | Cite |');
+  });
+
+  it('puts in each chapter the Markdown of each view, made by the functions assemble uses', () => {
+    const run = make();
+    page(run);
+    const f1 = dataOf(html(run)).chapters.find((chapter) => chapter.id === 'F1');
+    expect(Object.keys(f1.texts)).toEqual(['product', 'technical']);
+    const written = run.read('chapters/F1.md');
+    // Not heading-shifted: the chapter's own level-1 heading is the page heading.
+    expect(f1.texts.product.startsWith('# Orders\n')).toBe(true);
+    expect(f1.texts.technical).toContain(written.replace('# Orders\n', '').split('\n')[2]);
+    expect(f1.texts.technical).toContain(`(\`${FORM}:5\`)`);
+    expect(f1.texts.product).toContain(productText(written).split('\n').find((line) => line.startsWith('- An order is Draft')));
+    expect(f1.texts.product).toContain('Not verified: this chapter was written by a model');
+    expect(f1.texts.technical).toContain('Not verified: this chapter was written by a model');
+    // The fences stay as written in both views.
+    expect(f1.texts.product).toContain('```mermaid\nflowchart TD');
+    expect(f1.texts.technical).toContain('```mermaid\nstateDiagram-v2');
+  });
+
+  it('has the coverage section as Markdown with its title as the level-1 heading, once per view', () => {
+    const run = make();
+    page(run);
+    const { coverage, ui } = dataOf(html(run));
+    expect(Object.keys(coverage)).toEqual(['product', 'technical']);
+    expect(coverage.product.startsWith(`# ${ui.strings['md.coverage.heading']}\n`)).toBe(true);
+    expect(coverage.technical).toBe(coverage.product);
+    expect(coverage.product).toContain('\n## ');
+  });
+
+  it('has the data, the dictionaries and the code health structured, the data and the paths in the technical part only', () => {
+    const run = make();
     page(run);
     const data = dataOf(html(run));
-    const [f1, f2, f3] = data.features;
-    expect(f1.status).toBe('verified');
-    expect(Object.keys(f1.entry)).toEqual(['purpose', 'who', 'where', 'screens', 'operations', 'states', 'transitions', 'notifications', 'automatic', 'unknowns']);
-    expect(f1.entry.purpose).toBe('Staff place new orders for customers.');
-    expect(f1.entry.where).toEqual(['Orders', 'New Order']);
-    expect(f1.entry.screens[0].fields[1].rules).toEqual([{ side: 'backend', text: 'At most 35,000 items.' }, { side: 'frontend', text: 'An upload may hold up to 100,000 bytes.' }]);
-    expect(f1.entry.operations[0].sentences).toEqual(['The clerk fills in the customer name.', 'The item count is limited to 35000.']);
-    expect(f2).toMatchObject({ id: 'F2', reach: 'link', label: 'Archive', status: 'planned', entry: null });
-    expect(f3).toMatchObject({ id: 'F3', status: 'dispatched', entry: null });
-    expect(Object.hasOwn(f3, 'label')).toBe(false);
-    expect(JSON.stringify(data)).not.toContain('evidence');
+    expect(data.technical.dataState).toBe('ok');
+    expect(data.technical.data.tables.length).toBeGreaterThan(0);
+    expect(data.technical.dictionariesState).toBe('ok');
+    expect(data.technical.dictionaries.dictionaries.length).toBeGreaterThan(0);
+    expect(data.history.state).toBe('ok');
+    expect(data.history.hotspots.length).toBeGreaterThan(0);
+    expect(data.technical.history.hotspots).toHaveLength(data.history.hotspots.length);
+    expect(data.technical.history.hotspots[0]).toMatch(/\//);
+    expect(data.history.hotspots[0].name).not.toMatch(/\//);
+  });
+});
+
+describe('page: the views', () => {
+  it('a product-only page carries no citation, no project path and no technical part', () => {
+    const run = make();
+    const result = page(run, { views: 'product' });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const text = html(run);
+    const data = dataOf(text);
+    expect(data.views).toEqual(['product']);
+    expect(Object.keys(data)).not.toContain('technical');
+    expect(Object.keys(data.titles)).toEqual(['product']);
+    expect(Object.keys(data.coverage)).toEqual(['product']);
+    for (const chapter of data.chapters) expect(Object.keys(chapter.texts)).toEqual(['product']);
+    const prose = data.chapters.map((chapter) => chapter.texts.product.replace(/```[\s\S]*?```/g, '')).join('\n');
+    expect(prose).not.toMatch(ANY_CITATION);
+    expect(text).not.toContain('order-form.js');
+    expect(text).not.toContain('src/roles.js');
+    expect(text).not.toContain(run.root);
+    expect(text).not.toContain(run.out);
+    // The code health names files, never paths.
+    expect(JSON.stringify(data.history)).not.toMatch(/src\//);
   });
 
-  it('counts candidates, assigned, unassigned and reaches as candidates.json and map.json do', () => {
-    const run = checkedRun();
+  it('a technical-only page has every citation group as written and no product text', () => {
+    const run = make();
+    expect(page(run, { views: 'technical' }).status).toBe(0);
+    const data = dataOf(html(run));
+    expect(data.views).toEqual(['technical']);
+    const f1 = data.chapters.find((chapter) => chapter.id === 'F1');
+    expect(Object.keys(f1.texts)).toEqual(['technical']);
+    expect(f1.texts.technical).toContain(`\`${FORM}:5\``);
+    expect(f1.texts.technical).toContain('`src/roles.js:3`');
+  });
+
+  it('both views: the product text is the technical text without its citations', () => {
+    const run = make();
     page(run);
-    const { coverage } = dataOf(html(run));
-    const assigned = run.map.features.reduce((sum, feature) => sum + feature.candidates.length, 0);
-    expect(coverage.candidateTotal).toBe(run.candidates.items.length);
-    expect(coverage.assigned).toBe(assigned);
-    expect(coverage.candidateTotal).toBe(coverage.assigned + coverage.unassigned.length);
-    expect(coverage.unassigned).toEqual([{ candidate: run.idOf('src/app.js', 8), kind: 'route', reason: 'A health check that no reader uses.' }]);
-    expect(coverage.reachCounts.map(({ reach }) => reach)).toEqual(['menu', 'link', 'automated', 'interface', 'operator']);
-    expect(coverage.reachCounts.map(({ count }) => count)).toEqual([1, 1, 1, 1, 1]);
+    const f1 = dataOf(html(run)).chapters.find((chapter) => chapter.id === 'F1');
+    expect(f1.texts.technical).toMatch(ANY_CITATION);
+    expect(f1.texts.product.replace(/```[\s\S]*?```/g, '')).not.toMatch(ANY_CITATION);
+  });
+});
+
+describe('page: the outline, the chapters that were not written, a chapter that did not pass', () => {
+  it('follows a written outline and leaves out the blocks it puts aside, with their chapters', () => {
+    const run = make();
+    run.writeJson(join(run.out, 'outline.json'), {
+      format: 'excavator-product-handbook-outline/2',
+      language: 'English',
+      parts: [{ title: 'Everything', chapters: ['F1', 'system', 'history'] }],
+      unplaced: [{ block: 'data', reason: 'Not for this reader.' }, { block: 'dictionaries', reason: 'Not for this reader.' }],
+    });
+    expect(page(run).status).toBe(0);
+    const data = dataOf(html(run));
+    expect(data.outline.source).toBe('outline');
+    expect(data.outline.parts.map((part) => [part.title, part.blocks.map((item) => item.block)])).toEqual([['Everything', ['F1', 'system', 'history']]]);
+    expect(data.outline.unplaced).toEqual([{ block: 'data', reason: 'Not for this reader.' }, { block: 'dictionaries', reason: 'Not for this reader.' }]);
+    expect(data.chapters.map((chapter) => chapter.id)).toEqual(['F1', 'system']);
+    expect(data.technical.data).toBeNull();
+  });
+
+  it('an outline that breaks conservation is replaced by the default and its problems are kept', () => {
+    const run = make();
+    run.writeJson(join(run.out, 'outline.json'), { format: 'excavator-product-handbook-outline/2', language: 'English', parts: [{ title: 'Some', chapters: ['F1'] }], unplaced: [] });
+    expect(page(run).status).toBe(0);
+    const { outline } = dataOf(html(run));
+    expect(outline.source).toBe('default');
+    expect(outline.problems.length).toBeGreaterThan(0);
+    expect(outline.problems.every((line) => line.startsWith('Outline: '))).toBe(true);
+  });
+
+  it('a run with no scripts blocks has only its chapters, and a chapter that failed twice carries the fixed sentence', () => {
+    const run = make({ withScripts: false });
+    const bad = `${chapterText('Orders')}\nThe clerk fills in a field (\`${FORM}:999\`).\n`;
+    run.write('F1', bad);
+    expect(run.check('F1').status).toBe(1);
+    expect(run.check('F1').status).toBe(1);
+    run.check('F1');
+    expect(page(run).status).toBe(0);
+    const data = dataOf(html(run));
+    expect(data.history).toBeNull();
+    expect(data.technical.data).toBeNull();
+    expect(data.technical.dataState).toBe('missing');
+    expect(data.technical.history).toBeNull();
+    expect(data.outline.parts.flatMap((part) => part.blocks.map((item) => item.block))).toEqual(['system', 'F1']);
+    const f1 = data.chapters.find((chapter) => chapter.id === 'F1');
+    expect(f1.texts.product).toContain('did not pass');
   });
 });
 
 describe('page: deterministic bytes and nothing local', () => {
   it('gives identical bytes on two runs and from separate copies of the same input at other paths', () => {
-    const first = checkedRun();
-    const second = checkedRun();
+    const first = make();
+    const second = make();
     expect(first.root).not.toBe(second.root);
     page(first);
     const before = readFileSync(join(first.out, 'handbook.html'));
@@ -140,114 +243,46 @@ describe('page: deterministic bytes and nothing local', () => {
   });
 
   it('does not change when only the attempt count in state.json changes', () => {
-    const run = checkedRun();
+    const run = make();
     page(run);
     const before = html(run);
     const state = run.readJson('state.json');
-    state.features.F3.attempts = 1;
+    state.chapters.system.attempts = 1;
     run.writeJson(join(run.out, 'state.json'), state);
     page(run);
     expect(html(run)).toBe(before);
   });
 
-  it('holds no citation path, no candidate file, no project or out path, no time and no evidence key', () => {
-    const run = checkedRun();
+  it('holds no project path and no out path', () => {
+    const run = make();
     page(run);
     const text = html(run);
-    const files = citedFiles(run.map, run.entry);
-    expect(files.length).toBeGreaterThanOrEqual(3);
-    for (const file of files) expect(text).not.toContain(file);
-    for (const file of run.candidates.items.map((item) => item.file)) expect(text).not.toContain(file);
     expect(text).not.toContain(run.root);
     expect(text).not.toContain(run.out);
-    expect(text).not.toContain('.excavator');
-    expect(text).not.toContain('evidence');
-    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
-  });
-
-  it('replaces the project path by the directory name in every string of the data (defence in depth: the banned-word gate already refuses a path)', () => {
-    // The system facts read the project, so the root is a real directory named shop.
-    const parent = realpathSync(mkdtempSync(join(tmpdir(), 'xhb-root-')));
-    cleanups.push(() => rmSync(parent, { recursive: true, force: true }));
-    const root = join(parent, 'shop');
-    mkdirSync(root);
-    const run = {
-      // The remedies' facts read the data section of the output directory, which this stub run has none of.
-      outDir: parent,
-      map: {
-        language: 'English',
-        areas: [{ id: 'A1', name: `Area at ${root}/src` }],
-        features: [{ id: 'F1', name: 'One', area: 'A1', reach: 'automated', candidates: ['c1'], seedFiles: [] }],
-        unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and ${root}.bak` }, { candidate: 'c3', reason: `registered at ${root}/jobs` }],
-        roles: [],
-      },
-      entries: new Map(),
-      findings: new Map(),
-      state: { features: { F1: { status: 'planned', attempts: 0 } } },
-      candidates: [{ id: 'c1', kind: 'job', file: 'a.js', line: 1, text: 'run()' }, { id: 'c2', kind: 'route' }, { id: 'c3', kind: 'job', file: 'b.js', line: 1, text: 'run()' }],
-      ui: { 'md.title': `Handbook of ${root}` },
-    };
-    const data = buildPageData(run, [root, '/links/shop']);
-    // The directory name rewrites paths inside strings; it is not the name the page shows.
-    expect(data.project).toBeNull();
-    expect(data.areas[0].name).toBe('Area at shop/src');
-    expect(data.coverage.unassigned[0].reason).toBe(`see shop and ${root}-two and ${root}.bak`);
-    expect(data.ui.strings['md.title']).toBe('Handbook of shop');
-    expect(data.summary.jobs.map((row) => [row.candidate, row.feature, row.reason])).toEqual([['c1', 'F1', null], ['c3', null, 'registered at shop/jobs']]);
   });
 
   it('writes a "<" inside the data as an escape, so no text can close the data block', () => {
-    const run = checkedRun((entry) => {
-      entry.purpose.text = 'Staff place orders when a < b and a <!-- c.';
-    });
+    const run = make();
+    run.write('system', chapterText('System', `\nA reader may see a < b and a <!-- c (${cite('5')}).\n`));
+    expect(run.check('system').status, run.check('system').stdout).toBe(0);
     const result = page(run);
     expect(result.status, result.stdout).toBe(0);
     const text = html(run);
     const block = text.slice(text.indexOf('<script type="application/json"'));
     expect(block.slice(block.indexOf('>') + 1, block.indexOf('</script>'))).not.toContain('<');
-    expect(dataOf(text).features[0].entry.purpose).toBe('Staff place orders when a < b and a <!-- c.');
-  });
-});
-
-describe('page: a translated run', () => {
-  it('puts the translated table in the data and the language tag of the language', () => {
-    const run = makeCheckedMapRun();
-    cleanups.push(run.cleanup);
-    // The fixed text first: the narrative of a run in a language with its own script is checked against it.
-    const table = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8'));
-    table.language = 'Chinese';
-    const word = cjk(0x624b, 0x518c);
-    for (const key of Object.keys(table.strings)) {
-      table.strings[key] = table.strings[key].replace(/[A-Za-z]+(?: [A-Za-z]+)*/g, (piece, offset, whole) => (whole[offset - 1] === '{' ? piece : `${word}${key}`));
-    }
-    run.writeJson(join(run.out, 'ui.json'), table);
-    run.writeMap(markedMap(run.map));
-    expect(run.run('check-map').status).toBe(0);
-    expect(page(run).status).toBe(0);
-    const data = dataOf(html(run));
-    expect(data.language).toBe('Chinese');
-    expect(data.languageTag).toBe('zh');
-    expect(data.ui.strings['page.nav.overview']).toBe(`${word}page.nav.overview`);
+    expect(dataOf(text).chapters[0].texts.technical).toContain('a < b and a <!-- c (');
   });
 });
 
 describe('page: refuses what assemble refuses, and leaves no page', () => {
   const cases = {
-    'a map that no longer passes check-map': (run) => {
-      const map = clone(run.map);
-      map.features[2].name = 'send_reminders';
+    'a chapter that was never checked': (run) => run.write('roles', chapterText('Roles')),
+    'a chapter that changed after its check': (run) => run.write('F1', `${run.read('chapters/F1.md')}\nAn extra line.\n`),
+    'a chapter file that is not a chapter of the run': (run) => run.write('F9', chapterText('Nine')),
+    'a map that no longer holds every candidate': (run) => {
+      const map = JSON.parse(JSON.stringify(run.map));
+      map.features[0].candidates.pop();
       run.writeMap(map);
-    },
-    'a verified entry changed into a bad one': (run) => {
-      const entry = clone(run.entry);
-      entry.who[0].can = 'Only clerk_admin may do this.';
-      run.writeEntry('F1', entry);
-    },
-    'a verified entry whose file is gone': (run) => rmSync(join(run.out, 'entries/F1.json')),
-    'a ui.json that check-ui would refuse': (run) => {
-      const table = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8'));
-      delete table.strings['page.nav.overview'];
-      run.writeJson(join(run.out, 'ui.json'), table);
     },
     'a candidates.json for another project': (run) => {
       const listed = run.readJson('candidates.json');
@@ -255,37 +290,39 @@ describe('page: refuses what assemble refuses, and leaves no page', () => {
       run.writeJson(join(run.out, 'candidates.json'), listed);
     },
   };
-
   for (const [name, spoil] of Object.entries(cases)) {
-    it(`${name}: the same exit status and lines as assemble, and the earlier page is removed`, () => {
-      const run = checkedRun();
+    it(`${name}: the same exit status and lines as assemble, and the earlier page and parts are removed`, () => {
+      const run = make();
       expect(page(run).status).toBe(0);
       expect(existsSync(join(run.out, 'handbook.html'))).toBe(true);
       spoil(run);
-      const assembled = run.run('assemble');
+      const assembled = run.assemble();
       const result = page(run);
       expect(assembled.status).toBe(1);
       expect(result.status).toBe(1);
       expect(result.lines).toEqual(assembled.lines);
       expect(existsSync(join(run.out, 'handbook.html'))).toBe(false);
+      expect(existsSync(join(run.out, 'handbook-data'))).toBe(false);
     });
   }
 
-  it('a missing state.json is a usage error (exit 2) for both, and removes the earlier page', () => {
-    const run = checkedRun();
+  it('a state of format /1 or a missing state.json is refused like assemble, with no page left', () => {
+    const run = make();
     page(run);
     rmSync(join(run.out, 'state.json'));
-    expect(run.run('assemble').status).toBe(2);
-    expect(page(run).status).toBe(2);
+    const assembled = run.assemble();
+    const result = page(run);
+    expect(result.status).toBe(assembled.status);
+    expect(result.lines).toEqual(assembled.lines);
     expect(existsSync(join(run.out, 'handbook.html'))).toBe(false);
   });
 });
 
 describe('page: the template', () => {
   it('a template that was never built is exit 2 with the build command, and no page is left', () => {
-    const run = checkedRun();
+    const run = make();
     page(run);
-    const result = page(run, join(stubDir, 'missing.html'));
+    const result = page(run, { template: join(stubDir, 'missing.html') });
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('pnpm -r build');
     expect(result.stderr).toContain('missing.html');
@@ -293,11 +330,11 @@ describe('page: the template', () => {
   });
 
   it('a template with a marker missing or repeated is exit 2', () => {
-    const run = checkedRun();
+    const run = make();
     for (const [name, text] of [['nodata.html', STUB.replace('<!-- xv:data -->', '')], ['twice.html', STUB.replace('<!-- xv:csp -->', '<!-- xv:csp --><!-- xv:csp -->')]]) {
       const path = join(stubDir, name);
       writeFileSync(path, text);
-      const result = page(run, path);
+      const result = page(run, { template: path });
       expect(result.status, name).toBe(2);
       expect(result.stderr, name).toContain('exactly once');
       expect(existsSync(join(run.out, 'handbook.html'))).toBe(false);
@@ -305,13 +342,29 @@ describe('page: the template', () => {
   });
 
   it('without the variable the template is looked up under the plugin root, packages/product-handbook-page/dist', () => {
-    const run = checkedRun();
+    const run = make();
     const env = { ...process.env };
     delete env.EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE;
     const result = runHandbook(['page', run.out, '--project', run.root], { env });
     const built = existsSync(join(run.out, 'handbook.html'));
     if (result.status === 2) expect(result.stderr).toContain('packages/product-handbook-page/dist/product-handbook-page.html');
     else expect(built).toBe(true);
+  });
+
+  it('a changed template rewrites the page from the files alone: the same data, and no other file of the out directory changes', () => {
+    const run = make();
+    expect(page(run, { template: stubPath }).status).toBe(0);
+    const first = html(run);
+    const others = (rel) => rel === 'handbook.html' || rel.startsWith('handbook-data');
+    const before = listing(run.out, others);
+    expect(Object.keys(before).length).toBeGreaterThan(5);
+    const result = page(run, { template: stubTwoPath });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const second = html(run);
+    expect(second).toContain('data-template="two"');
+    expect(second).not.toBe(first);
+    expect(dataOf(second)).toEqual(dataOf(first));
+    expect(listing(run.out, others)).toEqual(before);
   });
 });
 

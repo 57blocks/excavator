@@ -1,7 +1,7 @@
 /**
- * The lock on a run's state.json. check-map, check-entry and mark read the
+ * The lock on a run's state.json. check-map and check read the
  * state, change it and write it back; two of them on one run at once would
- * lose a write (two lanes finishing together). Each holds `<out>/state.json.lock`,
+ * lose a write. Each holds `<out>/state.json.lock`,
  * created with an exclusive open, for the whole command, waits up to 10 s for
  * another command's lock and removes its own when it ends. A lock still there
  * after the wait is reported, never broken: only the user can tell that no
