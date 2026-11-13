@@ -116,6 +116,9 @@ suite('page in a browser (O4)', () => {
         expect(await page.evaluate("document.querySelectorAll('[data-diagram=\"failed\"]').length")).toBe(1);
         expect(await page.evaluate("document.querySelector('[data-diagram=\"failed\"] pre code').textContent")).toContain('flowchart TD');
         expect(await page.evaluate("document.querySelector('[data-diagram=\"failed\"]').textContent")).toContain('This diagram could not be drawn');
+        // The page's own rules for the domain map (`.node rect`) stay on the map: a drawn diagram's shapes keep their own fill.
+        expect(await page.evaluate("document.querySelectorAll('[data-diagram=\"done\"] svg rect').length")).toBeGreaterThan(0);
+        expect(await page.evaluate("Array.from(document.querySelectorAll('[data-diagram=\"done\"] svg rect')).filter((shape) => getComputedStyle(shape).fill === 'rgb(0, 0, 0)').length")).toBe(0);
         // The page of a feature has tabs; the panels of the tabs not shown stay in the page, hidden until found.
         expect(await page.evaluate("document.querySelectorAll('[role=\"tab\"]').length")).toBeGreaterThanOrEqual(2);
         expect(await page.evaluate("document.querySelector('[role=\"tabpanel\"][hidden]').getAttribute('hidden')")).toBe('until-found');
