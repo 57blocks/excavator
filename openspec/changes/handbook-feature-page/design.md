@@ -94,6 +94,38 @@
 - **固定文字**：`page.feature.overview`（概览）、`.canDo`（能做什么）、`.screens`（有哪些界面）、`.more`（更多说明）、`.issues`（问题）、`.expandAll`、`.collapseAll`。
 - **代价**：读者第一眼看不到全部内容，要点开；查找、搜索与「全部展开」保证内容都能到达。
 
+### D4 用词
+
+用户审读了页面上的固定用词。以下几处在英文固定文字表里改掉，各语言的翻译随之改变。
+
+- **交接的方向统一成上游与下游**。原来同一个概念有三套说法：交给/来自、交出/接手、交接。「交接」只留作关系本身的名字。
+
+  | 键 | 英文 | 期望的中文 |
+  |---|---|---|
+  | `page.handover.out` / `.in` | Downstream / Upstream | 下游 / 上游 |
+  | `page.table.hands` / `.receives` | Downstream domains / Upstream domains | 下游业务域 / 上游业务域 |
+  | `page.flow.out` / `.in` | Downstream ({count}) / Upstream ({count}) | 下游（{count}）/ 上游（{count}） |
+  | `page.flow.counts` | {in} upstream, {out} downstream | 上游 {in}，下游 {out} |
+  | `page.map.legend.out` / `.in` | downstream / upstream | 下游 / 上游 |
+  | `page.map.legend.centre` | dashed box: no upstream domain | 虚线框：没有上游 |
+  | `page.map.hint` | Choose a domain to see its upstream and downstream domains, or a line to see one hand-over. | 选择一个业务域查看它的上游与下游，选择一条连线查看这一条交接 |
+  | `page.map.edge` | {from} → {to} | {from} → {to} |
+  | `page.handover.between` | → | → |
+  | `page.domain.noneIn` / `.noneOut` | No upstream domain. / No downstream domain. | 没有上游业务域。/ 没有下游业务域。 |
+
+- **章节的最后两节与「无」**：
+
+  | 键 | 英文 | 期望的中文 | 理由 |
+  |---|---|---|---|
+  | `chapter.openQuestions` | Points to confirm | 待确认事项 | 写的是代码定不下来的点；不再和下一节撞名 |
+  | `chapter.problems` | Known defects | 已知缺陷 | 写的是能复现的缺陷 |
+  | `chapter.none` | None. | 无。 | 放在待确认事项下面也通顺 |
+
+- **其他**：
+  - `page.table.what` 改成 Responsibilities，中文「职责」，因为列名用名词；
+  - 小节名 `chapter.section.screens` 改成 Pages（页面），概览的 `page.feature.screens` 改成 Pages（有哪些页面），因为读者说「页面」，「界面」偏设计与开发用语。
+- **已有运行**：已有运行的 `ui.json` 保留原来的译文。`check-ui` 只查键是否齐全，不查值，所以它的 `chapter.*` 仍和它的章节一致，页面照常认得出最后两节。只有新运行会用新名字。验收时只给已有输出补新键，并改掉只在页面上出现的用词（交接方向、职责），不改 `chapter.*` 的值。
+
 ## Risks / Trade-offs
 
 - **已有输出的部分小节认不出**：真实输出约 22 章至少有一节写法不同。这些小节各成一个标签页，概览里少了对应的列表，内容不丢。验收时如实统计。
