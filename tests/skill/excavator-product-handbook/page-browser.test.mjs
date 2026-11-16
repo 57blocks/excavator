@@ -2,7 +2,7 @@
 // file:// in headless Chrome with no network request and no console error, shows a chapter's Markdown (a table is a
 // table, a list is a list, a flowchart and a state diagram are drawn by mermaid, a diagram that cannot be drawn shows
 // its source and a note), shows a citation chip in the technical view and none in the product view, keeps the chapter
-// when the view is switched, shows the home page as the overview (the grid of domains and features, then the domain map, and a list of domains in its place on a phone) and a domain page with its columns, has no horizontal scroll at 375 px (tables scroll inside their own box), and with part
+// when the view is switched, shows the home page as the overview (the domain map, and a list of domains in its place on a phone, then the counts line and the grid of domains and features) and a domain page with its columns, has no horizontal scroll at 375 px (tables scroll inside their own box), and with part
 // files loads only the parts of the page it opens. Needs the built template (`pnpm -r build`) and a Chrome
 // (CHROME_PATH, the macOS application, or google-chrome / chromium on PATH). Without a Chrome the suite is skipped with
 // a visible reason, except when CI is set: CI runners have Chrome, so there it fails.

@@ -36,9 +36,9 @@ function PhoneList() {
 }
 
 /**
- * The overview, the home page: the title and one sentence with the counts line, the grid of the domains and their features,
- * the map (the atlas; a list of domains on a phone) when it is drawn, and the system architecture (technical view only).
- * Without a usable list of hand-overs the page has no map and says why in one quiet line above the grid.
+ * The overview, the home page, in this order: the title and the lead, the map (the atlas; a list of domains on a phone), the
+ * counts line, the grid of the domains and their features, and the system architecture (technical view only).
+ * Without a usable list of links between domains the page has no map and says why in one quiet line in the map's place.
  */
 export function HomePage({ title, lead, groups, architecture = '', sections = [] }: Props) {
   const t = useText();
@@ -47,16 +47,15 @@ export function HomePage({ title, lead, groups, architecture = '', sections = []
     <div className="wrap home" data-view="home" data-map={model.map ? 'yes' : 'no'}>
       <h1 className="home-title">{title}</h1>
       <p className="home-lead">{lead !== '' && <InlineMarkdown source={lead} />}</p>
-      <OverviewCounts groups={groups} />
-      {!model.map && <p className="home-why" data-part="no-map">{t(`page.home.noMap.${model.state === 'ok' ? 'missing' : model.state}`)}</p>}
-      <OverviewGrid groups={groups} />
-      {model.map && (
+      {model.map ? (
         <section aria-labelledby="h-map" className="atlas-section">
           <h2 id="h-map" className="map-heading">{t('page.map.label')}</h2>
           <Atlas />
           <PhoneList />
         </section>
-      )}
+      ) : <p className="home-why" data-part="no-map">{t(`page.home.noMap.${model.state === 'ok' ? 'missing' : model.state}`)}</p>}
+      <OverviewCounts groups={groups} />
+      <OverviewGrid groups={groups} />
       {architecture !== '' && <Architecture source={architecture} sections={sections} />}
     </div>
   );

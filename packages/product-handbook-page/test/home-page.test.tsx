@@ -230,12 +230,14 @@ describe('without a usable list', () => {
     }
   });
 
-  it('groups by the parts of the outline in the grid, with the no-map line above it', () => {
+  it('groups by the parts of the outline in the grid, with the no-map line above it, in the map\'s place (after the lead, before the counts)', () => {
     const host = home(without('failed'));
     expect(Array.from(host.querySelectorAll('.ov-head a')).map((one) => [one.getAttribute('href'), one.textContent])).toEqual([['#/product/domain/d1', d('Features')]]);
     const line = host.querySelector('[data-part="no-map"]') as Element;
     const grid = host.querySelector('[data-part="overview-grid"]') as Element;
     expect(line.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((host.querySelector('.home-lead') as Element).compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.compareDocumentPosition(host.querySelector('[data-part="overview-counts"]') as Element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('treats an ok list with no domain as having no map', () => {

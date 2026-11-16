@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // The overview (openspec change handbook-page-structure, task 5.1): the counts line under the lead, the grid of the domains with
-// their features (the problem count and the level mark of each), the map after the grid, the page without a usable domains list,
+// their features (the problem count and the level mark of each), the map before the counts line and the grid, the page without a usable domains list,
 // and the stylesheet rules the compact layout stands on. Rows are written by hand so every expectation is exact.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -137,11 +137,10 @@ describe('the grid', () => {
     expect(highestLevels([...ROWS, row('x', { type: 'design', level: 'high', features: ['F1'] })], 'F1').design).toBe('high');
   });
 
-  it('is before the map, which is still on the page with its nodes', () => {
+  it('is after the map, which is on the page with its nodes: lead, map, counts, grid in this order', () => {
     const host = home();
-    const grid = host.querySelector('[data-part="overview-grid"]') as Element;
-    const atlas = host.querySelector('.atlas-section') as Element;
-    expect(grid.compareDocumentPosition(atlas) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const parts = ['.home-lead', '.atlas-section', '[data-part="overview-counts"]', '[data-part="overview-grid"]'].map((selector) => host.querySelector(selector) as Element);
+    parts.forEach((part, at) => { if (at > 0) expect(parts[at - 1].compareDocumentPosition(part) & Node.DOCUMENT_POSITION_FOLLOWING, parts[at].className).toBeTruthy(); });
     expect(host.querySelectorAll('[data-node]')).toHaveLength(4);
   });
 
@@ -151,6 +150,8 @@ describe('the grid', () => {
     expect(host.querySelectorAll('[data-part="overview-grid"] li a')).toHaveLength(4);
     expect(host.querySelector('[data-part="no-map"]')?.textContent).toBe(marked['page.home.noMap.changed']);
     expect(host.querySelector('.atlas-section, [data-part="atlas"]')).toBeNull();
+    const parts = ['.home-lead', '[data-part="no-map"]', '[data-part="overview-counts"]', '[data-part="overview-grid"]'].map((selector) => host.querySelector(selector) as Element);
+    parts.forEach((part, at) => { if (at > 0) expect(parts[at - 1].compareDocumentPosition(part) & Node.DOCUMENT_POSITION_FOLLOWING, parts[at].className).toBeTruthy(); });
   });
 });
 
