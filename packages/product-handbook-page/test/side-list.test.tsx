@@ -146,6 +146,17 @@ describe('the domain list at the left', () => {
     expect(side(host).scrollTop).toBe(350);
   });
 
+  it('keeps the back link at the top of the list box and puts the domain just below it, not under it', async () => {
+    const css = readFileSync(join(__dirname, '../src/index.css'), 'utf-8');
+    expect(css).toMatch(/\.side \.side-back \{ position: sticky; top: 0;[^}]*margin: 0;[^}]*background: var\(--bg\);/);
+    const host = await rerender(data(ROWS), '#/product/domain/d3', (one) => {
+      lay(one, new Map([[groups(one)[2], 450]]));
+      const back = side(one).querySelector('.side-back') as HTMLElement;
+      back.getBoundingClientRect = () => ({ top: 100, bottom: 136, height: 36, left: 0, right: 240, width: 240, x: 0, y: 100, toJSON: () => ({}) }) as DOMRect;
+    });
+    expect(side(host).scrollTop).toBe(314);
+  });
+
   it('scrolls only just enough to show the feature of a feature page', async () => {
     const host = await rerender(data(ROWS), '#/product/chapter/F3', (one) => lay(one, new Map([[side(one).querySelector('a[data-page="chapter:F3"]') as Element, 600]])));
     expect(side(host).querySelector('[aria-current="page"]')?.getAttribute('data-page')).toBe('chapter:F3');

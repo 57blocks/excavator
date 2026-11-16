@@ -194,6 +194,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .side-back { display: flex; gap: 8px; align-items: center; margin: 28px 0 8px; font-size: 14px; color: var(--text-2); text-decoration: none; }
 .side-back::before { content: ''; width: 7px; height: 7px; margin-left: 3px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
 .side-back:hover { color: var(--text); }
+/* In the left list the back link stays at the top of the list's box while the domains scroll under it. */
+.side .side-back { position: sticky; top: 0; z-index: 1; margin: 0; padding: 8px 0; background: var(--bg); }
 .side-groups { margin-top: 4px; }
 .side-body li a {
   display: block; padding: 6px 12px; border-left: 2px solid transparent; color: var(--text-2); text-decoration: none; font-size: 14px; line-height: 1.45;

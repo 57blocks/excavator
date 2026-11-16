@@ -35,7 +35,10 @@ function revealIn(box: HTMLElement, target: HTMLElement, top: boolean): void {
   const boxRect = box.getBoundingClientRect();
   const rect = target.getBoundingClientRect();
   if (boxRect.height === 0 || rect.height === 0) return;
-  if (top || rect.top < boxRect.top) box.scrollTop += rect.top - boxRect.top;
+  // The back link stays at the top of the box (sticky) and covers what scrolls under it: the visible range starts below it.
+  const cover = box.querySelector<HTMLElement>('.side-back')?.getBoundingClientRect().height ?? 0;
+  const start = boxRect.top + cover;
+  if (top || rect.top < start) box.scrollTop += rect.top - start;
   else if (rect.bottom > boxRect.bottom) box.scrollTop += rect.bottom - boxRect.bottom;
 }
 
