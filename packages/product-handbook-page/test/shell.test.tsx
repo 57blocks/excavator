@@ -227,15 +227,14 @@ describe('the top bar', () => {
 });
 
 describe('a reading page', () => {
-  it('lists, at the side, every group with its colour and name, the current one open, and marks the current page', () => {
+  it('lists, at the side, every group with its colour and name, all open, and marks the current page', () => {
     const html = render(withDomains(), '#/technical/chapter/F2');
     const list = side(html);
     expect(list).toContain(`aria-label="${marked['page.nav.domains']}"`);
     expect(list).toContain(`--c-fill:${STRATA[0].fill}`);
     expect(list).toContain(`--c-fill:${STRATA[1].fill}`);
     expect(list).toMatch(/<details class="side-group" data-group="d1" open=""/);
-    expect(list).toMatch(/<details class="side-group" data-group="d2"[^>]*>/);
-    expect(list).not.toMatch(/data-group="d2" open/);
+    expect(list).toMatch(/<details class="side-group" data-group="d2" open=""/);
     expect(list).not.toContain('/domain/');
     expect(hrefs(list)).toEqual(['#/technical/chapter/F2', '#/technical/chapter/F1']);
     expect(list).toMatch(/<a [^>]*href="#\/technical\/chapter\/F2"[^>]*aria-current="page"/);

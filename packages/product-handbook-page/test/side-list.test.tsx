@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-// Task 4.2 of openspec change handbook-page-structure: the side list of a feature page lists every group (the current one open), each feature with its problem count. Rows are written by hand.
+// Task 4.2 of openspec change handbook-page-structure: the side list of a feature page lists every group (all open), each feature with its problem count. Rows are written by hand.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AppView } from '../src/App';
@@ -72,9 +73,9 @@ describe('the side list of a feature page', () => {
   const side = (host: HTMLElement): HTMLElement => host.querySelector('.side') as HTMLElement;
   const groups = (host: HTMLElement): HTMLDetailsElement[] => Array.from(side(host).querySelectorAll<HTMLDetailsElement>('details.side-group'));
 
-  it('lists every group, the current one open and the others closed, the groups\' features in each', async () => {
+  it('lists every group, all of them open, the groups\' features in each', async () => {
     const host = await show(data(ROWS));
-    expect(groups(host).map((one) => [one.getAttribute('data-group'), one.open])).toEqual([['d1', false], ['d2', true], ['d3', false], ['d4', false]]);
+    expect(groups(host).map((one) => [one.getAttribute('data-group'), one.open])).toEqual([['d1', true], ['d2', true], ['d3', true], ['d4', true]]);
     expect(groups(host).map((one) => one.querySelector('summary')?.textContent)).toEqual([d('Platform'), d('Orders'), d('Billing'), d('Support')]);
     expect(groups(host).map((one) => Array.from(one.querySelectorAll('a')).map((link) => link.getAttribute('data-page')))).toEqual([['chapter:F1'], ['chapter:F2'], ['chapter:F3'], ['chapter:F4']]);
     expect(side(host).getAttribute('aria-label')).toBe(marked['page.nav.domains']);
@@ -83,21 +84,30 @@ describe('the side list of a feature page', () => {
     expect(side(host).querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it('opens another group when its summary is clicked, and the reader can pick a feature in it', async () => {
-    const host = await show(data(ROWS));
+  it('lets the reader close a group, and a re-render does not reopen it', async () => {
+    const page = data(ROWS);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(<AppView data={page} route={parseHash('#/product/chapter/F2')} />));
+    await settle();
     const third = groups(host)[2];
-    expect(third.open).toBe(false);
     click(third.querySelector('summary') as HTMLElement);
-    expect(third.open).toBe(true);
-    expect(groups(host)[1].open).toBe(true);
+    expect(third.open).toBe(false);
+    expect(groups(host).map((one) => one.open)).toEqual([true, true, false, true]);
     expect(third.querySelector('a')?.getAttribute('href')).toBe('#/product/chapter/F3');
+    act(() => root.render(<AppView data={page} route={parseHash('#/product/chapter/F1')} />));
+    await settle();
+    expect(groups(host).map((one) => one.open)).toEqual([true, true, false, true]);
+    expect(side(host).querySelector('[aria-current="page"]')?.getAttribute('data-page')).toBe('chapter:F1');
+    click(groups(host)[2].querySelector('summary') as HTMLElement);
+    expect(groups(host)[2].open).toBe(true);
+    act(() => root.unmount());
   });
 
-  it('opens the group of the page it moves to', async () => {
-    const page = data(ROWS);
-    const host = mount(<AppView data={page} route={parseHash('#/product/chapter/F2')} />);
-    await settle();
-    expect(groups(host).map((one) => one.open)).toEqual([false, true, false, false]);
+  it('does not touch the scroll position where there is no layout', async () => {
+    const host = await show(data(ROWS));
+    expect(side(host).scrollTop).toBe(0);
   });
 
   it('gives every feature its count, 0 included, equal to the rows of the problems table that name it', async () => {
