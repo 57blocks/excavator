@@ -27,13 +27,16 @@ interface BodyProps {
   architecture: boolean;
 }
 
-/** Scrolls the side list's own box (never the window) just enough to show the link, and only when it is outside the visible range. */
-function revealIn(box: HTMLElement, link: HTMLElement): void {
+/**
+ * Scrolls the side list's own box (never the window) to show the element: `top` puts it at the top of the box (a domain on its
+ * own page, so that its features show below it); otherwise just enough to show it, and only when it is outside the visible range.
+ */
+function revealIn(box: HTMLElement, target: HTMLElement, top: boolean): void {
   const boxRect = box.getBoundingClientRect();
-  const linkRect = link.getBoundingClientRect();
-  if (boxRect.height === 0 || linkRect.height === 0) return;
-  if (linkRect.top < boxRect.top) box.scrollTop += linkRect.top - boxRect.top;
-  else if (linkRect.bottom > boxRect.bottom) box.scrollTop += linkRect.bottom - boxRect.bottom;
+  const rect = target.getBoundingClientRect();
+  if (boxRect.height === 0 || rect.height === 0) return;
+  if (top || rect.top < boxRect.top) box.scrollTop += rect.top - boxRect.top;
+  else if (rect.bottom > boxRect.bottom) box.scrollTop += rect.bottom - boxRect.bottom;
 }
 
 const here = (on: boolean): 'page' | undefined => (on ? 'page' : undefined);
@@ -108,7 +111,8 @@ export function SideList(props: BodyProps) {
   const placeText = JSON.stringify(props.place);
   useEffect(() => {
     const link = box.current?.querySelector<HTMLElement>('a[aria-current="page"]');
-    if (box.current && link) revealIn(box.current, link);
+    const domain = props.place.kind === 'domain' ? link?.closest<HTMLElement>('details.side-group') ?? null : null;
+    if (box.current && link) revealIn(box.current, domain ?? link, domain !== null);
   }, [placeText, props.mode]);
   return (
     <nav className="side" ref={box} aria-label={props.mode === 'domain' ? t('page.nav.domains') : t('page.nav.label')} data-side={props.mode}>

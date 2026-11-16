@@ -182,7 +182,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .read[data-wide="true"] .page { max-width: none; }
 .read-main { min-width: 0; }
 .read-main > .crumbs { margin-top: 28px; }
-.side { position: sticky; top: calc(var(--topbar-h) + 24px); align-self: start; max-height: calc(100vh - var(--topbar-h) - 48px); overflow: auto; padding-bottom: 24px; }
+.side { position: sticky; top: calc(var(--topbar-h) + 24px); align-self: start; max-height: calc(100vh - var(--topbar-h) - 48px); overflow: auto; padding-bottom: 24px; padding-right: 12px; }
 .side-body ul { border-left: 1px solid var(--line); }
 .side-top { margin-top: 28px; }
 .side-back { display: flex; gap: 8px; align-items: center; margin: 28px 0 8px; font-size: 14px; color: var(--text-2); text-decoration: none; }

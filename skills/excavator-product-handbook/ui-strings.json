@@ -247,7 +247,7 @@
     "page.home.noMap.failed": "There is no map because the domains chapter did not pass its check.",
     "page.home.noMap.changed": "There is no map because the list of links between domains was changed after it was checked.",
     "page.map.label": "Upstream and downstream between domains",
-    "page.map.hint": "Choose a domain to see its upstream and downstream domains, or a line to see one link.",
+    "page.map.hint": "Point at a domain to see its upstream and downstream domains and click it to open its page; click a line to see one link.",
     "page.map.node": "{name}, {count} features",
     "page.map.features": "{count} features",
     "page.map.edge": "{from} \u2192 {to}",

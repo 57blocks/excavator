@@ -121,6 +121,37 @@ describe('the domain list at the left', () => {
     act(() => root.unmount());
   });
 
+  /** Gives the list box a 400px window at y=100 and each element of the list its stubbed top (scrolled by the box), 20px high. */
+  const lay = (host: HTMLElement, tops: Map<Element, number>): void => {
+    const box = side(host);
+    const rect = (top: number, height: number): DOMRect => ({ top, bottom: top + height, height, left: 0, right: 240, width: 240, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    box.getBoundingClientRect = () => rect(100, 400);
+    for (const [el, top] of tops) (el as HTMLElement).getBoundingClientRect = () => rect(top - box.scrollTop, 20);
+  };
+  const rerender = async (page: PageData, hash: string, before: (host: HTMLElement) => void): Promise<HTMLElement> => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    act(() => root.render(<AppView data={page} route={parseHash('#/product/domain/d1')} />));
+    await settle();
+    before(host);
+    act(() => root.render(<AppView data={page} route={parseHash(hash)} />));
+    await settle();
+    return host;
+  };
+
+  it('puts the domain of a domain page at the top of the list, so that its features show below it', async () => {
+    const host = await rerender(data(ROWS), '#/product/domain/d3', (one) => lay(one, new Map([[groups(one)[2], 450]])));
+    expect(side(host).querySelector('[aria-current="page"]')?.getAttribute('data-group-link')).toBe('d3');
+    expect(side(host).scrollTop).toBe(350);
+  });
+
+  it('scrolls only just enough to show the feature of a feature page', async () => {
+    const host = await rerender(data(ROWS), '#/product/chapter/F3', (one) => lay(one, new Map([[side(one).querySelector('a[data-page="chapter:F3"]') as Element, 600]])));
+    expect(side(host).querySelector('[aria-current="page"]')?.getAttribute('data-page')).toBe('chapter:F3');
+    expect(side(host).scrollTop).toBe(120);
+  });
+
   it('does not touch the scroll position where there is no layout', async () => {
     const host = await show(data(ROWS));
     expect(side(host).scrollTop).toBe(0);
