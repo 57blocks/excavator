@@ -12,6 +12,7 @@ import { basename } from 'node:path';
 import { loadDataSection, pageSection } from './data-section.mjs';
 import { dictionariesPageSection, loadDictionariesSection } from './dict-section.mjs';
 import { architectureOf, domainsData, leadOf, searchIndex } from './page-domains.mjs';
+import { problemsData } from './page-problems.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { languageTag } from './language-tag.mjs';
 import { coverageLines } from './md-coverage.mjs';
@@ -34,6 +35,9 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * - `domains`: the business domains and their hand-overs from the checked domains.json (page-domains.mjs): `state` is `ok`, `missing`,
  *   `failed` or `changed`, `list` is `{ id, name, features, intro, body }` (ids `d1`..., `intro` the first paragraph of the domain's section of the
  *   domains chapter, `body` the rest, each by selected view) and `handovers` is `{ from, to, what, features, cites? }` (domain ids; `cites` only with the technical view).
+ * - `problems` (added after /21 with the page-structure change; the page ignores it until the format is bumped): `{ sources, rows, remedies }` (page-problems.mjs);
+ *   `sources` is `{ defects, design, open }` each `{ state, count }` (`state` `ok`, `missing`, `failed` or `changed`, `count` null unless `ok`; `open` also has `unmatched`, the stems of the system or feature chapters with no heading equal to the fixed open-questions text, which gave no rows), `rows` the defects,
+ *   then the design problems, then the open questions as `{ id, type, level, group, features, summary, texts, cites?, source, remedy }`, `remedies` the id of the remedies chapter or null.
  * - `lead`: the first paragraph of the system chapter in the product view's text; `search`: the search index, `{ kind, title, chapter, domain, heading }` for each domain,
  *   chapter and `##` or `###` heading of a chapter (`heading` counts them from 0 in each chapter, `level` is 2 or 3; null on the other items).
  * - `architecture` (/21): the section of the system chapter that holds its first mermaid fence, by selected view (page-domains.mjs); '' without one.
@@ -82,6 +86,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     coverage: Object.fromEntries(views.map((view) => [view, coverage])),
     history: history === null ? null : historyPageSection(history),
     domains,
+    problems: problemsData(run, views),
     lead: leadOf(run),
     architecture: architectureOf(run, views),
     search: searchIndex(domains, chapterBlocks, run),
