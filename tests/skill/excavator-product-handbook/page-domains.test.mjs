@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { searchIndex } from '../../../skills/excavator-product-handbook/lib/page-domains.mjs';
 import { FORM, cite } from './md-run-fixture.mjs';
 import { STUB, dataOf, html, pageRun, runPage } from './page-md-fixture.mjs';
 
@@ -176,7 +177,7 @@ describe('page data /21: domains.handovers', () => {
   });
 });
 
-describe('page data /21: lead and search', () => {
+describe('page data /22: lead and search', () => {
   it('lead is the first paragraph of the system chapter, citations out', () => {
     expect(page(make()).lead).toBe('The clerk fills in the "Customer Name" field.');
   });
@@ -291,5 +292,19 @@ describe('page data /21: architecture', () => {
     const run = withSystem(system(SECTION));
     const first = page(run).architecture;
     expect(page(run).architecture).toEqual(first);
+  });
+});
+
+describe('searchIndex: the chapters the problems page replaces', () => {
+  const text = (title) => `# ${title}\n\n## First part\n\nText.\n\n### Sub part\n\nText.\n`;
+  const chapters = new Map(['defects', 'review', 'remedies', 'F1'].map((name) => [name, { text: text(name) }]));
+  const blocks = [...chapters.keys()].map((block) => ({ block, kind: 'chapter', title: block }));
+  const items = searchIndex({ list: [] }, blocks, { chapters });
+
+  it('leaves out the defects and review chapters with their headings, and keeps remedies and the others', () => {
+    expect([...new Set(items.map((item) => item.chapter))]).toEqual(['remedies', 'F1']);
+    expect(items.filter((item) => item.chapter === 'remedies').map((item) => [item.kind, item.title, item.heading])).toEqual([
+      ['chapter', 'remedies', null], ['heading', 'First part', 0], ['heading', 'Sub part', 1],
+    ]);
   });
 });

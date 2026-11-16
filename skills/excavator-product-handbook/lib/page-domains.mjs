@@ -118,10 +118,14 @@ export function leadOf(run) {
   return system === undefined ? '' : firstParagraph(productText(system.text));
 }
 
-/** The search index: the domains, then each chapter the outline places with its `##` and `###` headings. */
+/** The chapters the problems page shows instead (defects, design problems): no item of their own and none of their headings. */
+const NOT_SEARCHED = new Set(['defects', 'review']);
+
+/** The search index: the domains, then each chapter the outline places with its `##` and `###` headings, except the chapters in `NOT_SEARCHED`. */
 export function searchIndex(domains, chapterBlocks, run) {
   const items = domains.list.map((domain) => ({ kind: 'domain', title: domain.name, chapter: null, domain: domain.id, heading: null, level: null }));
   for (const block of chapterBlocks) {
+    if (NOT_SEARCHED.has(block.block)) continue;
     items.push({ kind: 'chapter', title: block.title, chapter: block.block, domain: null, heading: null, level: null });
     pageHeadings(productText(run.chapters.get(block.block).text)).forEach(({ title, level }, index) => {
       items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index, level });
