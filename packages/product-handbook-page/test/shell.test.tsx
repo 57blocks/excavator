@@ -296,7 +296,10 @@ describe('the home and domain pages', () => {
     const links = hrefs(between(home, '<main', '</main>'));
     expect(links).toContain('#/product/domain/d1');
     expect(links).toContain('#/product/domain/d2');
-    expect(links.slice(-3)).toEqual(['#/product/chapter/system', '#/product/history', '#/product/coverage']);
+    // The references are not on the home page; the features are, as links to their pages.
+    expect(links).toContain('#/product/chapter/F1');
+    expect(links).toContain('#/product/chapter/F2');
+    expect(links).not.toContain('#/product/coverage');
     // The fallback page has the groups from the outline and the features of a group as links.
     const domain = render(pageData(), '#/product/domain/d1');
     expect(domain).toContain('data-domain="d1"');

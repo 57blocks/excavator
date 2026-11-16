@@ -415,11 +415,26 @@ ol.steps li { counter-increment: st; display: inline-flex; align-items: center; 
 ol.steps li::before { content: counter(st); flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-bg); color: var(--accent-text); font-size: 12px; font-weight: 650; }
 ol.steps li:not(:last-child)::after { content: ""; width: 18px; height: 1px; margin: 0 10px 0 2px; background: var(--line-strong); }
 
-/* Home: the lead, the atlas (the one big box of the page), the domain table and the references. */
+/* Home, the overview: the lead and counts, the grid of the domains and features, the atlas (the one big box of the page). */
 .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .home-lead { margin-top: 12px; max-width: 760px; color: var(--text-2); font-size: 18px; line-height: 1.7; }
 .home-lead strong { font-weight: 600; color: var(--text); }
 .home-why { margin-top: 8px; max-width: 760px; font-size: 14px; color: var(--text-3); }
+.ov-counts { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-top: 14px; font-size: 14px; color: var(--text-2); }
+.ov-counts strong { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.ov-counts [data-state]:not([data-state="ok"]) { color: var(--text-3); }
+.ov-grid { column-width: 220px; column-gap: 20px; margin-top: 16px; }
+.ov-block { break-inside: avoid; margin: 0 0 12px; padding: 0 0 6px; border-top: 1px solid var(--line-strong); }
+.ov-grid .ov-head { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; padding: 6px 0 2px; font-size: 15px; font-weight: 600; line-height: 24px; }
+.ov-head a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-decoration: none; }
+.ov-head a:hover { color: var(--accent-text); text-decoration: underline; }
+.ov-head small { margin-left: auto; color: var(--text-2); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.ov-block ul { margin: 0; padding: 0; list-style: none; }
+.ov-block li a { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: 13.5px; line-height: 24px; color: var(--text); text-decoration: none; }
+.ov-block li a:hover .ov-title { color: var(--accent-text); text-decoration: underline; }
+.ov-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-level { flex: none; font-size: 11.5px; color: var(--brick); white-space: nowrap; }
+.ov-count { flex: none; min-width: 1.5em; text-align: right; color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; }
 .atlas-section { margin-top: 32px; }
 .map-heading { margin: 0; }
 .atlas { display: grid; grid-template-columns: minmax(0, 1fr) 340px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
@@ -469,20 +484,6 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 
 .sec { margin-top: 48px; }
 .sec > h2 { padding-bottom: 10px; border-bottom: 1px solid var(--line); }
-.dom-table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.55; }
-.dom-table th, .dom-table td { padding: 12px 16px 12px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
-.dom-table thead th { padding-top: 10px; padding-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--text-2); white-space: nowrap; }
-.dom-table tbody th { font-weight: 500; white-space: nowrap; }
-.dom-table .num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 24px; }
-.dom-name { display: inline-flex; gap: 10px; align-items: center; }
-.dom-name a { color: var(--text); text-decoration: none; font-weight: 500; }
-.dom-name a:hover { color: var(--accent-text); text-decoration: underline; }
-.dom-table .end { display: inline-block; margin-right: 12px; white-space: nowrap; }
-.dom-table td[data-empty="true"]::after { content: "\2014"; color: var(--text-3); }
-.ref-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 48px; margin-top: 4px; }
-.ref-list li { border-bottom: 1px solid var(--line); }
-.ref-list a { display: block; padding: 12px 0; color: var(--text); text-decoration: none; font-weight: 500; }
-.ref-list a:hover { color: var(--accent-text); text-decoration: underline; }
 
 /* A domain page: the lead, the two columns of hand-overs, then the domain's own section. */
 .dom-title { display: flex; gap: 14px; align-items: center; }
@@ -619,12 +620,11 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
   .rel-list summary::after { content: ''; width: 8px; height: 8px; margin-left: 10px; border-right: 1.5px solid var(--text-2); border-bottom: 1.5px solid var(--text-2); transform: rotate(45deg) translateY(-3px); transition: transform var(--t-in) var(--ease); }
   .rel-list details[open] summary::after { transform: rotate(225deg) translateY(-1px); }
   .rel-list .flows { margin-bottom: 12px; }
-  .col-hide { display: none; }
-  .ref-list { grid-template-columns: minmax(0, 1fr); }
   .dom-cols { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .strip li { grid-template-columns: minmax(0, 1fr); }
   .search { padding-top: 8vh; }
 }
+@media (max-width: 640px) { .ov-grid { column-width: auto; column-count: 1; } }
 @media (max-width: 480px) { .views a { padding: 0 10px; } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }

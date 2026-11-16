@@ -110,7 +110,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   let main = <NotFound />;
   if (view !== null) {
     if (body.name === 'home') {
-      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} references={references} architecture={view === 'technical' ? data.architecture.technical ?? '' : ''} sections={systemSections(data.search)} />;
+      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} architecture={view === 'technical' ? data.architecture.technical ?? '' : ''} sections={systemSections(data.search)} />;
     } else if (body.name === 'domain') {
       const group = groups.find((candidate) => candidate.id === body.id);
       if (group !== undefined) {

@@ -43,7 +43,7 @@ describe('references in groups', () => {
     expect(referencesOf(data, 'product', COVERAGE, SYSTEM)).toEqual([{ title: null, items: [{ block: 'coverage', kind: 'coverage', title: COVERAGE, key: 'coverage' }] }]);
   });
 
-  it('shows the groups in the popover, the phone menu, the side list and the home page: the title as a small text, no box', () => {
+  it('shows the groups in the popover, the phone menu (inside its closed details) and the side list, and not on the home page: the title as a small text, no box', () => {
     const host = show(domainData(), '#/technical/chapter/system');
     const panel = host.querySelector('#pop-refs') as HTMLElement;
     expect(Array.from(panel.querySelectorAll('.ref-group')).map((one) => one.getAttribute('data-ref-group'))).toEqual([d('System'), d('Data and health') , '']);
@@ -55,12 +55,12 @@ describe('references in groups', () => {
     const menu = host.querySelector('#menu') as HTMLElement;
     expect(Array.from(menu.querySelectorAll('.ref-group-title')).map((one) => one.textContent)).toEqual([d('System'), d('Data and health')]);
     const home = show(domainData(), '#/technical');
-    expect(Array.from(home.querySelectorAll('[data-part="home"] .ref-group-title, .home .ref-group-title')).map((one) => one.textContent)).toEqual([d('System'), d('Data and health')]);
+    expect(home.querySelectorAll('.home .ref-group, .home .ref-list')).toHaveLength(0);
   });
 });
 
 describe('the system chapter is called the system overview in lists and links', () => {
-  it('in the popover, phone menu, side list, home references, breadcrumbs and search results; its own heading stays', () => {
+  it('in the popover, phone menu, side list, breadcrumbs and search results; its own heading stays', () => {
     const host = show(domainData(), '#/technical/chapter/system');
     const named = (root: ParentNode): (string | null)[] => Array.from(root.querySelectorAll('a[data-page="chapter:system"]')).map((one) => one.textContent);
     expect(named(host.querySelector('#pop-refs') as HTMLElement)).toEqual([SYSTEM]);

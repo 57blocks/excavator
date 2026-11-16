@@ -2,7 +2,7 @@
 // file:// in headless Chrome with no network request and no console error, shows a chapter's Markdown (a table is a
 // table, a list is a list, a flowchart and a state diagram are drawn by mermaid, a diagram that cannot be drawn shows
 // its source and a note), shows a citation chip in the technical view and none in the product view, keeps the chapter
-// when the view is switched, shows the home page with the domain map (and a list of domains in its place on a phone) and a domain page with its columns, has no horizontal scroll at 375 px (tables scroll inside their own box), and with part
+// when the view is switched, shows the home page as the overview (the grid of domains and features, then the domain map, and a list of domains in its place on a phone) and a domain page with its columns, has no horizontal scroll at 375 px (tables scroll inside their own box), and with part
 // files loads only the parts of the page it opens. Needs the built template (`pnpm -r build`) and a Chrome
 // (CHROME_PATH, the macOS application, or google-chrome / chromium on PATH). Without a Chrome the suite is skipped with
 // a visible reason, except when CI is set: CI runners have Chrome, so there it fails.
@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url';
 
 import { Browser, findChrome } from './chrome-cdp.mjs';
 import { repoRoot } from './helpers.mjs';
-import { addDomains, pageRun, runPage } from './page-md-fixture.mjs';
+import { addDomains, dataOf, html, pageRun, runPage } from './page-md-fixture.mjs';
 
 const TEMPLATE = join(repoRoot, 'packages/product-handbook-page/dist/product-handbook-page.html');
 const chrome = findChrome();
@@ -86,7 +86,14 @@ suite('page in a browser (O4)', () => {
         const [atlas, list] = await page.evaluate("[getComputedStyle(document.querySelector('.atlas')).display, getComputedStyle(document.querySelector('.rel-list')).display]");
         if (width < 900) expect([atlas, list]).toEqual(['none', 'block']);
         else expect([atlas, list]).toEqual(['grid', 'none']);
-        expect(await page.evaluate("document.querySelectorAll('.dom-table tbody tr').length")).toBe(3);
+        // The overview grid: visible, one block per domain, and a link for every feature chapter of the page data.
+        const wanted = dataOf(html(run)).chapters.map((chapter) => chapter.id).filter((id) => /^F\d+$/.test(id));
+        expect(wanted.length).toBeGreaterThan(0);
+        expect(await page.evaluate("(() => { const grid = document.querySelector('[data-part=\"overview-grid\"]'); const box = grid.getBoundingClientRect(); return getComputedStyle(grid).display !== 'none' && box.width > 0 && box.height > 0; })()")).toBe(true);
+        expect(await page.evaluate("document.querySelectorAll('[data-part=\"overview-grid\"] .ov-block').length")).toBe(3);
+        const linked = await page.evaluate("Array.from(document.querySelectorAll('[data-part=\"overview-grid\"] li a[data-feature]')).map((link) => link.getAttribute('data-feature'))");
+        expect(linked.sort()).toEqual([...wanted].sort());
+        expect(await page.evaluate("document.querySelectorAll('.dom-table, [data-part=\"domain-table\"]').length")).toBe(0);
         await fits(page, width, 'the home page with the map');
         await goTo(page, '#/domain/d1', '[data-view="domain"] [data-column="in"]');
         expect(await page.evaluate("document.querySelectorAll('[data-view=\"domain\"] [data-column]').length")).toBe(2);

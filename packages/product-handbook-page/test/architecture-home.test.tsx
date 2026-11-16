@@ -56,7 +56,7 @@ describe('the architecture section of the home page', () => {
     expect(section(await open(withArchitecture(), '#/product'))).toBeNull();
   });
 
-  it('is on the technical home page after the map and before the domain table, with its heading, Markdown and drawing', async () => {
+  it('is on the technical home page after the grid and the map, with its heading, Markdown and drawing', async () => {
     const host = await open(withArchitecture(), '#/technical');
     const arch = section(host) as HTMLElement;
     expect(arch).not.toBeNull();
@@ -64,8 +64,8 @@ describe('the architecture section of the home page', () => {
     expect(arch.textContent).toContain('Apps and stores.');
     expect(arch.querySelector('table')).not.toBeNull();
     expect(arch.querySelectorAll('[data-diagram="done"] svg')).toHaveLength(1);
-    const order = Array.from(host.querySelectorAll('.atlas-section, [data-part="architecture"], [data-part="domain-table"]')).map((el) => el.getAttribute('data-part') ?? 'atlas');
-    expect(order).toEqual(['atlas', 'architecture', 'domain-table']);
+    const order = Array.from(host.querySelectorAll('[data-part="overview-grid"], .atlas-section, [data-part="architecture"]')).map((el) => el.getAttribute('data-part') ?? 'atlas');
+    expect(order).toEqual(['overview-grid', 'atlas', 'architecture']);
   });
 
   it('is not shown when the text is empty', async () => {

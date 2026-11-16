@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-// The home page (openspec change handbook-page-domain-map, task 4.2): the lead and the counts, the atlas (selection classes and
-// markers, the side panel, keyboard, clearing), the phone list in place of the map, the domain table, the references, and the
-// page without a usable list (no map, one quiet line saying why).
+// The home page (openspec change handbook-page-domain-map, task 4.2; changed by handbook-page-structure, task 5.1): the lead, the
+// atlas (selection classes and markers, the side panel, keyboard, clearing), the phone list in place of the map, the page without
+// the domain table and the references, and the page without a usable list (no map, one quiet line saying why). The counts line and
+// the grid are in overview-page.test.tsx.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
@@ -25,13 +26,13 @@ const markerOf = (host: HTMLElement, edge: number): string => host.querySelector
 const classOf = (host: HTMLElement, edge: number): string[] => Array.from(host.querySelector(`[data-edge="${edge}"] .edge`)?.classList ?? []);
 
 describe('the top of the page', () => {
-  it('has the system title, the lead as inline Markdown and the counts sentence with the numbers in strong', () => {
+  it('has the system title and the lead as inline Markdown, with no counts sentence in the lead', () => {
     const host = home();
     expect(host.querySelector('h1')?.textContent).toBe(d('System chapter'));
     const lead = host.querySelector('.home-lead') as HTMLElement;
     expect(lead.querySelector('em')?.textContent).toBe('synthetic');
-    expect(Array.from(lead.querySelectorAll('strong')).map((one) => one.textContent)).toEqual(['4', '4', '5']);
-    expect(lead.textContent).toContain(marked['page.home.counts'].replace('{domains}', '4').replace('{features}', '4').replace('{handovers}', '5'));
+    expect(lead.querySelector('strong')).toBeNull();
+    expect(lead.textContent).toBe(d('A small synthetic system.'));
     expect(lead.querySelector('p')).toBeNull();
   });
 });
@@ -59,8 +60,8 @@ describe('the atlas', () => {
     expect(fill('d1')).toContain('#DCDFE3');
     const ringFills = ['d2', 'd3', 'd4'].map((id) => fill(id));
     expect(new Set(ringFills).size).toBe(3);
-    const rows = Array.from(host.querySelectorAll('[data-part="domain-table"] tbody tr'));
-    expect(rows.map((row) => row.getAttribute('style'))).toEqual(['d1', 'd2', 'd3', 'd4'].map((id) => fill(id)));
+    const blocks = Array.from(host.querySelectorAll('[data-part="overview-grid"] .ov-block'));
+    expect(blocks.map((block) => block.getAttribute('style'))).toEqual(['d1', 'd2', 'd3', 'd4'].map((id) => fill(id)));
   });
 
   it('shows a domain on hover while nothing is picked: lines out in blue, lines in in ochre, the rest dimmed', () => {
@@ -131,7 +132,6 @@ describe('the atlas', () => {
     fire(node(technical, 'd2'), 'click');
     expect(Array.from(side(technical).querySelectorAll('.ho-cites code')).map((one) => one.textContent)).toEqual(['src/c.js:2-2', 'src/a.js:1-3', 'src/d.js:7-8']);
     expect(side(technical).querySelector('.side-hint')?.textContent).toBe(d('Takes orders.'));
-    expect(technical.querySelector('tr[data-domain="d2"] td')?.textContent).toBe(d('Takes orders.'));
   });
 
   it('shows one hand-over when its line is clicked: the picked line blue, its two ends in full, the panel with its words', () => {
@@ -198,7 +198,6 @@ describe('the phone list and the stylesheet', () => {
     expect(css).toMatch(/\.rel-list \{ display: none; \}/);
     expect(phone).toMatch(/\.atlas \{ display: none; \}/);
     expect(phone).toMatch(/\.rel-list \{ display: block;/);
-    expect(phone).toMatch(/\.col-hide \{ display: none; \}/);
   });
 
   it('keeps the side panel from stretching the map and has no card grid, no all-caps label', () => {
@@ -208,48 +207,35 @@ describe('the phone list and the stylesheet', () => {
   });
 });
 
-describe('the domain table and the references', () => {
-  it('lists each domain with its mark and link, what it does, its feature count and the domains it receives from and hands over to', () => {
-    const host = home();
-    const head = Array.from(host.querySelectorAll('.dom-table thead th')).map((one) => one.textContent);
-    expect(head).toEqual(['Domain', 'Responsibilities', 'Features', 'Upstream domains', 'Downstream domains'].map((word) => `@@${word}`));
-    const rows = Array.from(host.querySelectorAll('.dom-table tbody tr'));
-    expect(rows).toHaveLength(4);
-    const cells = (row: Element) => Array.from(row.children).map((cell) => cell.textContent);
-    expect(cells(rows[0])).toEqual([d('Platform'), 'd~Runs the base services.', '1', '', `${d('Orders')}${d('Billing')}`]);
-    expect(rows[0].children[3].getAttribute('data-empty')).toBe('true');
-    expect(rows[0].querySelector('strong')?.textContent).toBe('base');
-    expect(cells(rows[1])).toEqual([d('Orders'), d('Takes orders.'), '1', `${d('Platform')}${d('Billing')}`, d('Billing')]);
-    expect(rows[1].querySelector('th a')?.getAttribute('href')).toBe('#/product/domain/d2');
-    expect(rows[1].children[3].querySelectorAll('a.end')).toHaveLength(2);
-    expect(rows[1].children[3].classList.contains('col-hide')).toBe(true);
-  });
-
-  it('lists the references as links, in the order of the page', () => {
-    const host = home();
-    const refs = Array.from(host.querySelectorAll('.ref-list a')).map((one) => [one.getAttribute('href'), one.textContent]);
-    expect(refs).toEqual([['#/product/chapter/system', marked['page.nav.system']], ['#/product/history', marked['md.history.heading']], ['#/product/coverage', marked['page.nav.coverage']]]);
+describe('what the home page no longer has', () => {
+  it('has no domain table and no references section, in either view', () => {
+    for (const hash of ['#/product', '#/technical']) {
+      const host = home(domainData(), hash);
+      expect(host.querySelector('.dom-table, [data-part="domain-table"]'), hash).toBeNull();
+      expect(host.querySelector('.home .ref-list, .home .ref-group, #h-refs, #h-domains'), hash).toBeNull();
+    }
   });
 });
 
 describe('without a usable list', () => {
   const without = (state: 'missing' | 'failed' | 'changed') => domainData({ domains: { state, list: [], handovers: [] } });
 
-  it('has no map, no relation columns and one quiet line that says why, for each state', () => {
+  it('has no map, no phone list and one quiet line that says why, for each state', () => {
     for (const state of ['missing', 'failed', 'changed'] as const) {
       const host = home(without(state));
       expect(host.querySelector('[data-part="atlas"]'), state).toBeNull();
       expect(host.querySelector('.rel-list')).toBeNull();
       expect(host.querySelector('[data-part="no-map"]')?.textContent, state).toBe(marked[`page.home.noMap.${state}`]);
-      expect(Array.from(host.querySelectorAll('.dom-table thead th')).map((one) => one.textContent)).toEqual([marked['page.table.name'], marked['page.table.features']]);
       expect(host.querySelector('.home-lead strong')).toBeNull();
     }
   });
 
-  it('groups by the parts of the outline and still lists the groups and the references', () => {
+  it('groups by the parts of the outline in the grid, with the no-map line above it', () => {
     const host = home(without('failed'));
-    expect(Array.from(host.querySelectorAll('.dom-table tbody th a')).map((one) => [one.getAttribute('href'), one.textContent])).toEqual([['#/product/domain/d1', d('Features')]]);
-    expect(host.querySelectorAll('.ref-list a')).toHaveLength(3);
+    expect(Array.from(host.querySelectorAll('.ov-head a')).map((one) => [one.getAttribute('href'), one.textContent])).toEqual([['#/product/domain/d1', d('Features')]]);
+    const line = host.querySelector('[data-part="no-map"]') as Element;
+    const grid = host.querySelector('[data-part="overview-grid"]') as Element;
+    expect(line.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('treats an ok list with no domain as having no map', () => {

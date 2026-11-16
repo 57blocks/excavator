@@ -59,3 +59,10 @@ export const rowsOfFeature = (rows: readonly ProblemRow[], id: string): ProblemR
 
 /** The text of a level: P0 to P2 as they are, an impact by its fixed text. */
 export const levelText = (t: Text, level: string): string => (typeOfLevel(level) === 'design' ? t(`chapter.review.impact.${level}`) : level);
+
+/** The strongest defect level (P0 over P1 over P2) and the strongest design impact (high over medium over low) among the rows of feature `id`; null for a type with none. Points to confirm have no level. */
+export function highestLevels(rows: readonly ProblemRow[], id: string): { defect: ProblemLevel | null; design: ProblemLevel | null } {
+  const own = rowsOfFeature(rows, id);
+  const top = (type: 'defect' | 'design'): ProblemLevel | null => LEVELS[type].find((level) => own.some((row) => row.type === type && row.level === level)) ?? null;
+  return { defect: top('defect'), design: top('design') };
+}
