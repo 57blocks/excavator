@@ -238,7 +238,7 @@ export function ProblemsPage({ data, tab, filters: routeFilters }: { data: PageD
   const tabs: { key: ProblemsTab; label: string }[] = [{ key: 'list', label: t('page.problems.tab.list') }, { key: 'remedies', label: t('page.problems.tab.remedies') }];
   return (
     <div className="problems-page" data-view="problems" data-tab={tab}>
-      <Breadcrumbs trail={[{ label: t('page.nav.map'), href: nav.home }, { label: t('page.problems.title') }]} />
+      <Breadcrumbs trail={[{ label: t('page.nav.overview'), href: nav.home }, { label: t('page.problems.title') }]} />
       <h1 className="page-title">{t('page.problems.title')}</h1>
       <div className="ptabs" role="tablist" aria-label={t('page.problems.tabs')}>
         {tabs.map((entry) => (

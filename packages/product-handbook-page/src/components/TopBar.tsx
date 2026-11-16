@@ -15,8 +15,9 @@ interface Props {
   groups: Group[];
   colours: Record<string, Pair>;
   references: ReferenceGroup[];
-  /** The route the page shows, to mark the map link. */
+  /** The route the page shows, to mark the overview and problems links. */
   home: boolean;
+  problems: boolean;
   menuOpen: boolean;
   onMenu: () => void;
   onSearch: () => void;
@@ -33,8 +34,8 @@ function shortcutHint(): string {
   return mac ? `${String.fromCharCode(0x2318)}K` : 'Ctrl K';
 }
 
-/** The bar above everything: brand, the map, the domains and the references, the search button and, with two views, the view switch. On a phone the navigation is the menu button's. */
-export function TopBar({ brand, viewTitle, groups, colours, references, home, menuOpen, onMenu, onSearch, views, current, switchTo }: Props) {
+/** The bar above everything: brand, the overview, the features, the problems and the references, the search button and, with two views, the view switch. On a phone the navigation is the menu button's. */
+export function TopBar({ brand, viewTitle, groups, colours, references, home, problems, menuOpen, onMenu, onSearch, views, current, switchTo }: Props) {
   const t = useText();
   const nav = useLinks();
   return (
@@ -44,12 +45,13 @@ export function TopBar({ brand, viewTitle, groups, colours, references, home, me
       </button>
       <a className="brand" href={nav.home}><b>{brand}</b><span>{viewTitle}</span></a>
       <nav className="nav" aria-label={t('page.nav.label')}>
-        <a href={nav.home} data-nav="map" aria-current={home ? 'page' : undefined}>{t('page.nav.map')}</a>
-        <Popover id="pop-domains" label={t('page.nav.domains')}>
+        <a href={nav.home} data-nav="overview" aria-current={home ? 'page' : undefined}>{t('page.nav.overview')}</a>
+        <Popover id="pop-features" label={t('page.nav.features')}>
           {groups.map((group) => (
             <a key={group.id} href={nav.domain(group.id)} data-group={group.id}><Mark colour={colours[group.id]} />{group.name}<small>{group.features.length}</small></a>
           ))}
         </Popover>
+        <a href={nav.problems()} data-nav="problems" aria-current={problems ? 'page' : undefined}>{t('page.nav.problems')}</a>
         <Popover id="pop-refs" label={t('page.nav.references')}>
           <ReferenceGroups groups={references} as="links" />
         </Popover>

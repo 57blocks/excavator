@@ -115,7 +115,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
       const group = groups.find((candidate) => candidate.id === body.id);
       if (group !== undefined) {
         const at = groups.indexOf(group);
-        main = <DomainPage group={group} colour={colours[group.id]} mapLabel={t('page.nav.map')} previous={groups[at - 1]} next={groups[at + 1]} />;
+        main = <DomainPage group={group} colour={colours[group.id]} mapLabel={t('page.nav.overview')} previous={groups[at - 1]} next={groups[at + 1]} />;
       }
     } else if (body.name === 'problems') {
       main = <ProblemsPage data={data} tab={body.tab} filters={body.filters} />;
@@ -125,7 +125,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
         const context = contextOf(data, view, coverageTitle, systemTitle, item.key);
         const group = context.kind === 'group' ? context.group : undefined;
         const trail = [
-          { label: t('page.nav.map'), href: links.home },
+          { label: t('page.nav.overview'), href: links.home },
           group === undefined ? { label: t('page.nav.references') } : { label: group.name, href: links.domain(group.id) },
           { label: named(item, systemTitle).title },
         ];
@@ -152,6 +152,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
               colours={colours}
               references={references}
               home={view !== null && body.name === 'home'}
+              problems={view !== null && body.name === 'problems'}
               menuOpen={menuOpen}
               onMenu={() => setMenuOpen(!menuOpen)}
               onSearch={() => { openSearch(); onSearch(); }}
@@ -159,7 +160,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
               current={current}
               switchTo={switchTo}
             />
-            {menuOpen && <Menu groups={groups} colours={colours} references={references} home={view !== null && body.name === 'home'} onNavigate={() => setMenuOpen(false)} />}
+            {menuOpen && <Menu groups={groups} colours={colours} references={references} home={view !== null && body.name === 'home'} problems={view !== null && body.name === 'problems'} onNavigate={() => setMenuOpen(false)} />}
             <main id="main" tabIndex={-1}>{main}</main>
             {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} references={flatReferences(references)} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
           </div>

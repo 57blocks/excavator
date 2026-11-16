@@ -116,12 +116,17 @@ describe('the references', () => {
 });
 
 describe('the top bar', () => {
-  it('has the brand on two lines (the system chapter, then the view title), the map, the domains with colour and count, the references and the search button', () => {
+  it('has the brand on two lines (the system chapter, then the view title), Overview, Features with colour and count, Problems, the references and the search button', () => {
     const html = render(withDomains(), '#/technical/chapter/F1');
     const bar = between(html, '<header', '</header>');
     expect(bar).toContain(`<a class="brand" href="#/technical/"><b>${d('System chapter')}</b><span>${d('Technical handbook')}</span></a>`.replace('href="#/technical/"', 'href="#/technical"'));
-    expect(bar).toContain(`data-nav="map">${marked['page.nav.map']}</a>`);
-    const domains = between(bar, 'id="pop-domains"', 'id="pop-refs"');
+    expect(bar).toContain(`data-nav="overview">${marked['page.nav.overview']}</a>`);
+    expect(bar).toContain(`<a href="#/technical/problems" data-nav="problems">${marked['page.nav.problems']}</a>`);
+    // The items come in this order: Overview, Features, Problems, References, then the search and the view switch.
+    const order = ['data-nav="overview"', 'id="pop-features"', 'data-nav="problems"', 'id="pop-refs"', 'class="bar-end"'].map((part) => bar.indexOf(part));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    const domains = between(bar, 'id="pop-features"', 'data-nav="problems"');
     expect(texts(domains)).toEqual([d('Support'), d('Sales')]);
     expect(domains).toContain('href="#/technical/domain/d1"');
     expect(domains).toContain(`--c-fill:${STRATA[0].fill}`);
@@ -129,15 +134,25 @@ describe('the top bar', () => {
     const refs = between(bar, 'id="pop-refs"', 'class="bar-end"');
     expect(hrefs(refs)).toEqual(['#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
     expect(bar).toContain(`aria-label="${marked['page.search.open']}"`);
-    expect(bar).toContain(`>${marked['page.nav.domains']}</button>`);
+    expect(bar).toContain(`>${marked['page.nav.features']}</button>`);
   });
 
-  it('names the brand by the view title when there is no system chapter, and marks the map link on the home page only', () => {
+  it('names the brand by the view title when there is no system chapter, and marks the Overview link on the home page only', () => {
     const outline: Outline = { source: 'outline', problems: [], parts: [{ title: d('Features'), blocks: [{ block: 'F1', kind: 'chapter', title: d('Orders') }] }], unplaced: [] };
     const html = render(pageData({ outline }), '#/product');
     expect(between(html, '<a class="brand"', '</a>')).toContain(`<b>${d('Handbook')}</b><span>${d('Handbook')}</span>`);
-    expect(between(html, 'data-nav="map"', '</a>')).toBe(`data-nav="map" aria-current="page">${marked['page.nav.map']}`.replace('data-nav="map" aria-current="page">', 'data-nav="map" aria-current="page">'));
-    expect(render(pageData(), '#/product/chapter/F1')).not.toContain('data-nav="map" aria-current');
+    expect(between(html, 'data-nav="overview"', '</a>')).toBe(`data-nav="overview" aria-current="page">${marked['page.nav.overview']}`);
+    expect(render(pageData(), '#/product/chapter/F1')).not.toContain('data-nav="overview" aria-current');
+    expect(render(pageData(), '#/product/chapter/F1')).not.toContain('data-nav="problems" aria-current');
+  });
+
+  it('marks the Problems link on the problems route only, and links it with and without the view prefix', () => {
+    const both = render(pageData(), '#/product/problems');
+    expect(between(both, 'data-nav="problems"', '</a>')).toBe(`data-nav="problems" aria-current="page">${marked['page.nav.problems']}`);
+    expect(both).toContain('<a href="#/product/problems" data-nav="problems"');
+    expect(both).not.toContain('data-nav="overview" aria-current');
+    const single = render(pageData({ views: ['product'] }), '#/problems');
+    expect(single).toContain('<a href="#/problems" data-nav="problems" aria-current="page"');
   });
 
   it('has a skip link to the main region, and the page has the main region', () => {
@@ -148,8 +163,8 @@ describe('the top bar', () => {
 
   it('opens a popover on a click, with aria-expanded, and closes it on Escape, on a click outside and on a click on a link', () => {
     const host = mount(<AppView data={withDomains()} route={parseHash('#/product/chapter/F1')} />);
-    const button = host.querySelector<HTMLElement>('[data-pop="pop-domains"]') as HTMLElement;
-    const panel = host.querySelector<HTMLElement>('#pop-domains') as HTMLElement;
+    const button = host.querySelector<HTMLElement>('[data-pop="pop-features"]') as HTMLElement;
+    const panel = host.querySelector<HTMLElement>('#pop-features') as HTMLElement;
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(panel.hidden).toBe(true);
     act(() => button.click());
@@ -169,13 +184,13 @@ describe('the top bar', () => {
 
   it('keeps a click inside the panel from closing it, and opening the other popover closes the first', () => {
     const host = mount(<AppView data={withDomains()} route={parseHash('#/product/chapter/F1')} />);
-    const domains = host.querySelector<HTMLElement>('[data-pop="pop-domains"]') as HTMLElement;
+    const domains = host.querySelector<HTMLElement>('[data-pop="pop-features"]') as HTMLElement;
     const refs = host.querySelector<HTMLElement>('[data-pop="pop-refs"]') as HTMLElement;
     act(() => domains.click());
-    act(() => { (host.querySelector('#pop-domains') as HTMLElement).dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
-    expect((host.querySelector('#pop-domains') as HTMLElement).hidden).toBe(false);
+    act(() => { (host.querySelector('#pop-features') as HTMLElement).dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
+    expect((host.querySelector('#pop-features') as HTMLElement).hidden).toBe(false);
     act(() => { refs.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); refs.click(); });
-    expect((host.querySelector('#pop-domains') as HTMLElement).hidden).toBe(true);
+    expect((host.querySelector('#pop-features') as HTMLElement).hidden).toBe(true);
     expect((host.querySelector('#pop-refs') as HTMLElement).hidden).toBe(false);
   });
 
@@ -186,7 +201,7 @@ describe('the top bar', () => {
     expect(calls).toEqual([1]);
   });
 
-  it('has the phone menu behind a button: Map, the domains, the references; it closes on Escape and on a link', () => {
+  it('has the phone menu behind a button: Overview, Problems, the features, the references in a closed details; it closes on Escape and on a link', () => {
     const host = mount(<AppView data={withDomains()} route={parseHash('#/technical/chapter/F1')} />);
     const button = host.querySelector<HTMLElement>('.menu-btn') as HTMLElement;
     expect(host.querySelector('#menu')).toBeNull();
@@ -195,10 +210,14 @@ describe('the top bar', () => {
     const menu = host.querySelector('#menu') as HTMLElement;
     expect(button.getAttribute('aria-expanded')).toBe('true');
     expect(Array.from(menu.querySelectorAll('a')).map((link) => link.getAttribute('href'))).toEqual([
-      '#/technical', '#/technical/domain/d1', '#/technical/domain/d2',
+      '#/technical', '#/technical/problems', '#/technical/domain/d1', '#/technical/domain/d2',
       '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage',
     ]);
-    expect(Array.from(menu.querySelectorAll('h2')).map((heading) => heading.textContent)).toEqual([marked['page.nav.domains'], marked['page.nav.references']]);
+    expect(Array.from(menu.querySelectorAll('h2')).map((heading) => heading.textContent)).toEqual([marked['page.nav.features']]);
+    const refs = menu.querySelector('details') as HTMLDetailsElement;
+    expect(refs.open).toBe(false);
+    expect(refs.querySelector('summary')?.textContent).toBe(marked['page.nav.references']);
+    expect(Array.from(refs.querySelectorAll('a')).map((link) => link.getAttribute('href'))).toHaveLength(5);
     act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
     expect(host.querySelector('#menu')).toBeNull();
     act(() => button.click());
@@ -247,16 +266,26 @@ describe('a reading page', () => {
     }
   });
 
-  it('has the breadcrumbs Map / group (a link to its domain page) / title for a feature, and Map / references / title for the others', () => {
+  it('has the breadcrumbs Overview / group (a link to its domain page) / title for a feature, and Overview / references / title for the others', () => {
     const feature = between(render(withDomains(), '#/product/chapter/F1'), '<nav class="crumbs"', '</nav>');
     expect(hrefs(feature)).toEqual(['#/product', '#/product/domain/d2']);
-    expect(texts(feature)).toEqual([marked['page.nav.map'], d('Sales')]);
+    expect(texts(feature)).toEqual([marked['page.nav.overview'], d('Sales')]);
     expect(feature).toContain(`<span aria-current="page">${d('Orders')}</span>`);
     expect(feature).toContain(`aria-label="${marked['page.crumbs.label']}"`);
     const reference = between(render(withDomains(), '#/product/chapter/system'), '<nav class="crumbs"', '</nav>');
     expect(hrefs(reference)).toEqual(['#/product']);
     expect(reference).toContain(`<span>${marked['page.nav.references']}</span>`);
     expect(reference).toContain(`<span aria-current="page">${SYSTEM}</span>`);
+  });
+
+  it('starts the breadcrumbs of a domain page and of the problems page with Overview, linking home', () => {
+    const domain = between(render(withDomains(), '#/product/domain/d1'), '<nav class="crumbs"', '</nav>');
+    expect(hrefs(domain)).toEqual(['#/product']);
+    expect(texts(domain)).toEqual([marked['page.nav.overview']]);
+    expect(domain).toContain(`<span aria-current="page">${d('Support')}</span>`);
+    const problems = between(render(withDomains(), '#/product/problems'), '<nav class="crumbs"', '</nav>');
+    expect(hrefs(problems)).toEqual(['#/product']);
+    expect(texts(problems)).toEqual([marked['page.nav.overview']]);
   });
 
   it('follows the group order for previous and next of a feature, and the references order (the coverage page last) for the others', () => {
