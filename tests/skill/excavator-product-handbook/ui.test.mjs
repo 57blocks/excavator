@@ -4,7 +4,7 @@
 // keeps keys and placeholders passes. Non-English text is built from code
 // points so that this file holds only ASCII.
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { SHIPPED_UI, clone, makeRun, runHandbook } from './helpers.mjs';
@@ -49,7 +49,7 @@ describe('the shipped English table', () => {
     const keys = Object.keys(table.strings);
     expect(keys.length).toBeGreaterThan(30);
     for (const key of keys) {
-      expect(key).toMatch(/^(md|page|chapter)\.[A-Za-z.]+$/);
+      expect(key).toMatch(/^(md|page|chapter)\.[A-Za-z.-]+$/);
       expect(typeof table.strings[key]).toBe('string');
       expect(table.strings[key].trim()).not.toBe('');
     }
@@ -233,5 +233,85 @@ describe('check-ui: single-character words of the word lists', () => {
     const run = newRun('English');
     run.writeJson(join(run.out, 'ui.json'), shipped());
     expect(ui(run).status).toBe(0);
+  });
+});
+
+describe('check-ui --keep: the words of an earlier table survive the keys a newer version added', () => {
+  const withoutMap = () => {
+    const run = makeRun();
+    cleanups.push(run.cleanup);
+    return run;
+  };
+  const keepFor = (run, file) => runHandbook(['check-ui', run.out, '--language', 'Chinese', '--keep', file]);
+  const read = (run) => JSON.parse(readFileSync(join(run.out, 'ui.json'), 'utf-8'));
+
+  /** The earlier table: every key but the review ones, with the section headings worded as the chapters already use them. */
+  function earlier(run) {
+    const table = translated(cjk(0x6587));
+    for (const key of Object.keys(table.strings)) if (key.startsWith('chapter.review.')) delete table.strings[key];
+    table.strings['chapter.section.operations'] = cjk(0x64cd, 0x4f5c);
+    const file = join(run.base, 'ui.before.json');
+    run.writeJson(file, table);
+    return file;
+  }
+
+  it('overwrites a changed value with the kept one, prints how many it kept, then checks as before', () => {
+    const run = withoutMap();
+    const file = earlier(run);
+    const fresh = translated(cjk(0x6587));
+    fresh.strings['chapter.section.operations'] = cjk(0x4e1a, 0x52a1);
+    run.writeJson(join(run.out, 'ui.json'), fresh);
+    const kept = Object.keys(JSON.parse(readFileSync(file, 'utf-8')).strings).length;
+    const result = keepFor(run, file);
+    expect(result.status, result.stdout).toBe(0);
+    expect(result.lines[0]).toBe(`ui.json: kept ${kept} values from ${file}`);
+    expect(read(run).strings['chapter.section.operations']).toBe(cjk(0x64cd, 0x4f5c));
+    expect(read(run).strings['chapter.review.title']).toBe(fresh.strings['chapter.review.title']);
+  });
+
+  it('an earlier table that lacks the new keys leaves them missing for the translator, and the kept words stay', () => {
+    const run = withoutMap();
+    const file = earlier(run);
+    const partial = JSON.parse(readFileSync(file, 'utf-8'));
+    run.writeJson(join(run.out, 'ui.json'), partial);
+    const result = keepFor(run, file);
+    expect(result.status).toBe(1);
+    expect(result.lines.filter((line) => line.startsWith('ui.json: missing key "chapter.review.')).length).toBe(20);
+    expect(read(run).strings['chapter.section.operations']).toBe(cjk(0x64cd, 0x4f5c));
+  });
+
+  it('ignores keys the English table does not have, and an empty value', () => {
+    const run = withoutMap();
+    const file = earlier(run);
+    const table = JSON.parse(readFileSync(file, 'utf-8'));
+    table.strings['not.a.key'] = 'x';
+    table.strings['chapter.section.rules'] = '  ';
+    run.writeJson(file, table);
+    run.writeJson(join(run.out, 'ui.json'), translated(cjk(0x6587)));
+    const result = keepFor(run, file);
+    expect(result.status, result.stdout).toBe(0);
+    expect(read(run).strings['not.a.key']).toBeUndefined();
+    expect(read(run).strings['chapter.section.rules']).not.toBe('  ');
+  });
+
+  it('refuses a kept file that is missing or unreadable, in one line', () => {
+    const run = withoutMap();
+    run.writeJson(join(run.out, 'ui.json'), translated(cjk(0x6587)));
+    const missing = keepFor(run, join(run.base, 'none.json'));
+    expect(missing.status).toBe(1);
+    expect(missing.lines).toEqual([`--keep ${join(run.base, 'none.json')} is missing`]);
+    const bad = join(run.base, 'bad.json');
+    writeFileSync(bad, 'nope');
+    expect(keepFor(run, bad).lines[0]).toMatch(/^--keep .*bad\.json is not valid JSON/);
+  });
+
+  it('with no ui.json in the out directory, the kept values start the table', () => {
+    const run = withoutMap();
+    const file = earlier(run);
+    const result = keepFor(run, file);
+    expect(result.status).toBe(1);
+    expect(existsSync(join(run.out, 'ui.json'))).toBe(true);
+    expect(read(run).language).toBe('Chinese');
+    expect(read(run).strings['chapter.section.operations']).toBe(cjk(0x64cd, 0x4f5c));
   });
 });

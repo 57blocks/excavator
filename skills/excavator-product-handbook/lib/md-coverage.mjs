@@ -5,7 +5,7 @@
  * outline was used. Computed from the map, the candidates, state.json and the file list.
  */
 
-import { CROSS_CHAPTERS } from './chapter-lint.mjs';
+import { EXPECTED_CROSS_CHAPTERS } from './chapter-lint.mjs';
 import { inline, table } from './markdown.mjs';
 import { fill } from './ui.mjs';
 
@@ -36,7 +36,7 @@ export function coverageLines({ map, candidates, chapters, outline, t }) {
   const failed = [...chapters].filter(([, chapter]) => chapter.record.status === 'failed');
   out.push(...(failed.length === 0 ? [t('md.none')] : failed.map(([name, chapter]) => `- ${inline(fill(t('md.coverage.failedItem'), { name, count: chapter.record.reasons.length }))}`)), '');
 
-  const crossMissing = CROSS_CHAPTERS.filter((name) => !chapters.has(name));
+  const crossMissing = EXPECTED_CROSS_CHAPTERS.filter((name) => !chapters.has(name));
   out.push(`### ${t('md.coverage.crossHeading')}`, '');
   if (crossMissing.length === 0) out.push(t('md.coverage.crossAll'), '');
   else {

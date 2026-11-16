@@ -92,27 +92,63 @@ function runLanguage(outDir) {
 const namedLanguage = (language) => (language.trim() === '' ? { ok: false, line: '--language must be a non-empty name' } : { ok: true, language });
 
 /**
- * `handbook.mjs check-ui <out> [--language <name>]`. The fixed text is written
+ * `--keep <file>`: copy into `<out>/ui.json` every value a previous table holds for a key of the English table, so that a
+ * run whose table lacks keys a newer version added keeps the words its chapters already use. Returns the number kept, or
+ * `{ problem }` when the file cannot be used; an `<out>/ui.json` that is missing starts as an empty table.
+ */
+function keepValues(outDir, keepFile, language) {
+  const kept = readJson(keepFile);
+  if (!kept.ok || !kept.value || typeof kept.value !== 'object' || kept.value.strings === null || typeof kept.value.strings !== 'object') {
+    return { problem: `--keep ${keepFile} ${kept.ok ? 'has no "strings" object' : kept.reason}` };
+  }
+  const english = shippedTable();
+  const path = join(outDir, UI_FILE);
+  const read = readJson(path);
+  if (read.missing && isEnglish(language)) return { count: 0 };
+  let table;
+  if (read.missing) table = { format: UI_FORMAT, language, strings: {} };
+  else if (!read.ok || !read.value || typeof read.value !== 'object' || read.value.strings === null || typeof read.value.strings !== 'object') return { count: 0 };
+  else table = read.value;
+  let count = 0;
+  for (const key of Object.keys(english.strings)) {
+    const value = kept.value.strings[key];
+    if (typeof value === 'string' && value.trim() !== '') {
+      table.strings[key] = value;
+      count += 1;
+    }
+  }
+  writeJson(path, table);
+  return { count };
+}
+
+/**
+ * `handbook.mjs check-ui <out> [--language <name>] [--keep <file>]`. The fixed text is written
  * before the map, so the run's language comes from `--language` when it is
  * given and from map.json otherwise. Returns { status, lines }.
  */
-export function checkUi(outDir, givenLanguage) {
+export function checkUi(outDir, givenLanguage, keepFile) {
   if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
   const language = givenLanguage === undefined ? runLanguage(outDir) : namedLanguage(givenLanguage);
   if (!language.ok) return { status: 1, lines: [language.line] };
+  const prefix = [];
+  if (keepFile !== undefined) {
+    const kept = keepValues(outDir, keepFile, language.language);
+    if (kept.problem !== undefined) return { status: 1, lines: [kept.problem] };
+    prefix.push(`${UI_FILE}: kept ${kept.count} values from ${keepFile}`);
+  }
   const english = shippedTable();
   const path = join(outDir, UI_FILE);
   const read = readJson(path);
   if (read.missing) {
-    if (!isEnglish(language.language)) return { status: 1, lines: [`${UI_FILE} is missing; the run's language is ${language.language}, so ${UI_FILE} must hold the translated table`] };
+    if (!isEnglish(language.language)) return { status: 1, lines: [...prefix, `${UI_FILE} is missing; the run's language is ${language.language}, so ${UI_FILE} must hold the translated table`] };
     writeJson(path, english);
-    return { status: 0, lines: [`${UI_FILE}: copied the English table (${Object.keys(english.strings).length} strings)`] };
+    return { status: 0, lines: [...prefix, `${UI_FILE}: copied the English table (${Object.keys(english.strings).length} strings)`] };
   }
-  if (!read.ok) return { status: 1, lines: [`${UI_FILE} ${read.reason}`] };
+  if (!read.ok) return { status: 1, lines: [...prefix, `${UI_FILE} ${read.reason}`] };
   const problems = uiProblems(read.value, english);
   return problems.length > 0
-    ? { status: 1, lines: problems }
-    : { status: 0, lines: [`${UI_FILE} ok: ${Object.keys(english.strings).length} strings`] };
+    ? { status: 1, lines: [...prefix, ...problems] }
+    : { status: 0, lines: [...prefix, `${UI_FILE} ok: ${Object.keys(english.strings).length} strings`] };
 }
 
 /**

@@ -10,7 +10,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { loadCandidates } from './candidates.mjs';
-import { CROSS_CHAPTERS } from './chapter-lint.mjs';
+import { CROSS_CHAPTERS, EXPECTED_CROSS_CHAPTERS } from './chapter-lint.mjs';
 import { UsageError } from './errors.mjs';
 import { conservationProblems, readMap } from './map-check.mjs';
 import { mapShapeProblems } from './map-shape.mjs';
@@ -78,7 +78,7 @@ export function loadMdRun(outDirArg, root) {
 }
 
 /** The six chapters across the features, in the default order of their own groups. */
-export { CROSS_CHAPTERS };
+export { CROSS_CHAPTERS, EXPECTED_CROSS_CHAPTERS };
 
 /** The candidate conservation line of `reply`, computed from the map and the candidate list. */
 export function candidatesLine(map, candidates) {
