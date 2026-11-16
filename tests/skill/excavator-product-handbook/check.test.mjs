@@ -367,4 +367,28 @@ describe('--before cross', () => {
   });
 });
 
+describe('defects chapter (openspec change handbook-page-structure, task 1.2)', () => {
+  const defects = (item) => `# Defects\n\nThe defects found (${c('5')}).\n\n## P0\n\n- ${item}\n\n## P1\n\nNone.\n\n## P2\n\nNone.\n`;
+  it('fails with the parser reason and its line when an item has no feature id', () => {
+    const run = newRun();
+    run.write('defects', defects(`**display** A button is hidden (${c('5')}).`));
+    const result = run.check('defects');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toMatch(/line 7: defect item cannot be split: it names no feature id/);
+  });
+  it('fails when a feature chapter has problems that no defect names', () => {
+    const run = newRun();
+    run.write('F1', GOOD.replace('None.', `- A draft never expires (${c('10')}).`));
+    run.write('defects', defects(`**display** A button is hidden, Archive (F2) (${c('5')}).`));
+    expect(run.check('defects').stdout).toMatch(/F1: its "Known defects" section has 1 item but no defect item names F1/);
+  });
+  it('passes a well-formed chapter', () => {
+    const run = newRun();
+    run.write('F1', GOOD.replace('None.', `- A draft never expires (${c('10')}).`));
+    run.write('defects', defects(`**display** A draft never expires, Orders (F1) (${c('10')}).`));
+    const result = run.check('defects');
+    expect(result.status, result.stdout).toBe(0);
+  });
+});
+
 const rmMap = (run) => rmSync(join(run.out, 'map.json'));

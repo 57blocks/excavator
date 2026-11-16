@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
 import { CROSS_CHAPTERS, lintChapter } from './chapter-lint.mjs';
+import { defectsReasons } from './defects-items.mjs';
 import { domainsListReasons } from './domains-list.mjs';
 import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
@@ -88,6 +89,7 @@ function checkChapters(outDir, names, root, record) {
         reasons = [...reasons, ...list.reasons];
         listHash = list.hash;
       }
+      if (name === 'defects') reasons = [...reasons, ...defectsReasons(outDir, chapterText, ids, ui.strings)];
     }
     const status = reasons.length === 0 ? 'passed' : 'failed';
     if (status === 'failed') failed = true;
