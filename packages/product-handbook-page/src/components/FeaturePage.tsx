@@ -4,9 +4,16 @@ import { flushSync } from 'react-dom';
 
 import { splitChapter, splitLede, splitServerSteps, previewOf, ROLE_KEYS } from '../lib/feature-split';
 import type { Item, Role, Section } from '../lib/feature-split';
+import { useProblems } from '../lib/chunks';
 import { REVEAL_EVENT } from '../lib/heading-jump';
+import { useLinks } from '../lib/links';
+import { useModel } from '../lib/model';
+import { PROBLEM_TYPES, levelText, rowsOfFeature, sortRows } from '../lib/problems';
 import { useText } from '../lib/text';
+import type { ProblemRow, ProblemType } from '../lib/types';
 import { ChevronIcon } from './Icons';
+import { ChunkNotice } from './ChunkNotice';
+import { ProblemDetail } from './ProblemsPage';
 import { HandoverStrip } from './HandoverStrip';
 import { InlineMarkdown } from './InlineMarkdown';
 import { Markdown } from './Markdown';
@@ -15,6 +22,10 @@ const reducedMotion = (): boolean => typeof window.matchMedia === 'function' && 
 const ROLES = Object.keys(ROLE_KEYS) as Role[];
 /** The roles whose sections are not tabs of their own: the overview and hand-overs sit on the overview tab, the last two on the issues tab. */
 const OWN_TAB = (role: Role | null): boolean => role !== 'overview' && role !== 'handovers' && role !== 'openQuestions' && role !== 'problems';
+/** How many problems the block of a feature lists at most. */
+const TOP = 3;
+const SOURCE_OF: Record<ProblemType, 'defects' | 'design' | 'open'> = { defect: 'defects', design: 'design', open: 'open' };
+const problemKey = (row: ProblemRow): string => `p-${row.id}`;
 
 interface Tab { key: string; label: string; count: number | null }
 
@@ -24,6 +35,8 @@ const innerKey = (item: Item): string => `i${item.n}-steps`;
 /** The page of a feature chapter: the head, then tabs; every piece of the chapter's text is in the page, folded or on a hidden tab. */
 export function FeaturePage({ id, view, text }: { id: string; view: string; text: string }) {
   const t = useText();
+  const nav = useLinks();
+  const model = useModel();
   const root = useRef<HTMLElement>(null);
   const [tab, setTab] = useState('overview');
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -37,14 +50,20 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   const operations = sections.find((section) => section.role === 'operations');
   const screens = sections.find((section) => section.role === 'screens');
   const handovers = sections.find((section) => section.role === 'handovers');
-  const issues = sections.filter((section) => section.role === 'openQuestions' || section.role === 'problems');
+  // The issues tab is built from the problems table; the chapter's own problems section is shown only when the defects chapter cannot be used.
+  const ownProblems = sections.filter((section) => section.role === 'problems');
+  const ownOpen = sections.find((section) => section.role === 'openQuestions');
+  const sources = model.problems.sources;
+  const mine = useMemo(() => rowsOfFeature(model.problems.rows, id), [model.problems.rows, id]);
+  const detail = useProblems(model.problems.rows);
+  const full = useMemo(() => (detail.status === 'ready' ? new Map(detail.value.map((row) => [row.id, row])) : null), [detail]);
   const own = sections.filter((section) => OWN_TAB(section.role));
   const { lede, rest: overviewRest } = splitLede(overview?.intro ?? '');
 
   const tabs: Tab[] = [
     { key: 'overview', label: t('page.feature.overview'), count: null },
     ...own.map((section) => ({ key: `s${section.n}`, label: section.title, count: section.items.length > 0 ? section.items.length : null })),
-    ...(issues.length > 0 ? [{ key: 'issues', label: t('page.feature.issues'), count: null }] : []),
+    { key: 'issues', label: t('page.feature.issues'), count: mine.length > 0 ? mine.length : null },
   ];
   const tabOf = (section: Section): string => `s${section.n}`;
 
@@ -103,6 +122,17 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     heading.focus({ preventScroll: true });
   };
 
+  const goToProblem = (row: ProblemRow): void => {
+    flushSync(() => {
+      setTab('issues');
+      setOpenKeys([problemKey(row)], true);
+    });
+    const fold = root.current?.querySelector<HTMLElement>(`details[data-problem="${CSS.escape(row.id)}"]`);
+    if (fold === null || fold === undefined) return;
+    fold.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    fold.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+  };
+
   const choose = (key: string, focus = false): void => {
     setTab(key);
     const list = root.current?.querySelector<HTMLElement>('[role="tablist"]');
@@ -150,12 +180,109 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   };
 
   const keysOf = (list: readonly Section[]): string[] => list.flatMap((section) => section.items.flatMap((item) => [itemKey(item), ...(section.role === 'operations' && splitServerSteps(item.body, serverSteps) !== null ? [innerKey(item)] : [])]));
-  const expandAll = (list: readonly Section[]) => {
-    const keys = keysOf(list);
-    const total = list.reduce((sum, section) => sum + section.items.length, 0);
-    if (total < 2) return null;
+  const expandAll = (list: readonly Section[], extra: readonly string[] = []) => {
+    const keys = [...extra, ...keysOf(list)];
+    if (keys.length < 2) return null;
     const all = keys.every((key) => open.has(key));
     return <button type="button" className="all" onClick={() => setOpenKeys(keys, !all)}>{all ? t('page.feature.collapseAll') : t('page.feature.expandAll')}</button>;
+  };
+
+  const problemFold = (row: ProblemRow) => {
+    const key = problemKey(row);
+    const text = full?.get(row.id);
+    return (
+      <details key={row.id} className="item" data-key={key} data-problem={row.id} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
+        <summary>
+          <span className="t">{row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}{row.summary}</span>
+          <span className="chev"><ChevronIcon /></span>
+        </summary>
+        <div className="item-body">{text !== undefined && <ProblemDetail row={text} filters={{}} />}</div>
+      </details>
+    );
+  };
+
+  /** The block under the head: the counts of this feature's problems, its worst three, and the way to the rest. */
+  const problemsBlock = () => {
+    const unmatched = sources.open.unmatched.includes(id);
+    const allOk = PROBLEM_TYPES.every((type) => sources[SOURCE_OF[type]].state === 'ok');
+    const top = sortRows(mine.filter((row) => row.type !== 'open')).slice(0, TOP);
+    return (
+      <section className="feature-problems" data-part="feature-problems">
+        <h2 className="sub">{t('page.feature.problems.title')}</h2>
+        {allOk && !unmatched && mine.length === 0 ? <p className="muted" data-part="feature-problems-none">{t('page.feature.problems.none')}</p> : (
+          <>
+            <ul className="fp-counts" role="list" data-part="feature-problem-counts">
+              {PROBLEM_TYPES.map((type) => {
+                const source = sources[SOURCE_OF[type]];
+                const count = mine.filter((row) => row.type === type).length;
+                return (
+                  <li key={type} data-source={type} data-state={source.state !== 'ok' ? source.state : undefined}>
+                    <span className="fp-type">{t(`page.problems.type.${type}`)}</span>{' '}
+                    {source.state !== 'ok' ? <span className="muted">{t(`page.problems.count.${source.state}`)}</span> : (
+                      <>
+                        <b>{count}</b>
+                        {type === 'open' && unmatched && <>{' '}<span className="muted">{t('page.problems.count.incomplete')}</span></>}
+                      </>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {top.length > 0 && (
+              <ul className="fp-top" role="list" data-part="feature-problem-top">
+                {top.map((row) => (
+                  <li key={row.id}>
+                    <button type="button" data-top-problem={row.id} onClick={() => goToProblem(row)}>
+                      {row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}<span className="fp-summary">{row.summary}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="fp-links">
+              <button type="button" className="linklike" data-part="feature-problems-tab" onClick={() => choose('issues')}>{t('page.feature.problems.openTab')}</button>
+              <a href={nav.problems({ feature: id })} data-part="feature-problems-all">{t('page.feature.problems.viewAll')}</a>
+            </p>
+          </>
+        )}
+      </section>
+    );
+  };
+
+  const issuesPanel = () => {
+    const defects = sources.defects;
+    const design = sources.design;
+    const open_ = sources.open;
+    const ranked = sortRows(mine);
+    const of = (type: ProblemType): ProblemRow[] => ranked.filter((row) => row.type === type);
+    const none = <p className="muted">{t('chapter.none')}</p>;
+    const unmatched = open_.unmatched.includes(id);
+    const stateLine = (type: ProblemType, state: string) => <p className="muted" data-part="issues-state" data-source={type}>{t(`page.problems.state.${state}`, { source: t(`page.problems.type.${type}`) })}</p>;
+    const anchor = (section: Section | undefined) => (section === undefined ? {} : { id: `h-${section.n}`, tabIndex: -1 });
+    return (
+      <>
+        <div className="panel-head">{expandAll(defects.state === 'ok' ? [] : ownProblems, mine.map(problemKey))}</div>
+        <h2 className="sub" {...anchor(ownProblems[0])}>{t('page.problems.type.defect')}</h2>
+        {defects.state === 'ok' ? (of('defect').length === 0 ? none : of('defect').map(problemFold)) : (
+          <>
+            <p className="notice" role="note" data-part="issues-unranked">{t('page.feature.problems.unranked', { reason: t(`page.problems.count.${defects.state}`) })}</p>
+            {ownProblems.length === 0 ? none : ownProblems.map((section) => (
+              <div key={section.n}>
+                {piece(section.intro, `h${section.n}`)}
+                {section.items.map((item) => itemRow(section, item))}
+              </div>
+            ))}
+          </>
+        )}
+        <h2 className="sub">{t('page.problems.type.design')}</h2>
+        {design.state !== 'ok' ? stateLine('design', design.state) : of('design').length === 0 ? none : of('design').map(problemFold)}
+        <h2 className="sub" {...anchor(ownOpen)}>{t('page.problems.type.open')}</h2>
+        {open_.state !== 'ok' && stateLine('open', open_.state)}
+        {unmatched && <p className="notice" role="note" data-part="issues-open-unmatched">{t('page.feature.problems.openUnmatched', { heading: t('chapter.openQuestions') })}</p>}
+        {open_.state === 'ok' && (of('open').length > 0 ? of('open').map(problemFold) : unmatched ? null : none)}
+        {mine.length > 0 && detail.status !== 'ready' && <ChunkNotice state={detail} />}
+      </>
+    );
   };
 
   const rows = (section: Section) => (
@@ -194,18 +321,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
       );
     }
     if (key === 'issues') {
-      return (
-        <>
-          <div className="panel-head">{expandAll(issues)}</div>
-          {issues.map((section) => (
-            <div key={section.n}>
-              {heading(section, 'sub')}
-              {piece(section.intro, `h${section.n}`)}
-              {section.items.map((item) => itemRow(section, item))}
-            </div>
-          ))}
-        </>
-      );
+      return issuesPanel();
     }
     const section = own.find((candidate) => tabOf(candidate) === key) as Section;
     return (
@@ -222,6 +338,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
       {head !== '' && <Markdown source={head} idPrefix={`${id}-head`} chapter={id} />}
       {lede !== '' && <div className="lede"><Markdown source={lede} idPrefix={`${id}-lede`} chapter={id} /></div>}
       <HandoverStrip chapter={id} />
+      {problemsBlock()}
       <div className="tabs" role="tablist" aria-label={t('page.feature.tabs')}>
         {tabs.map((entry, at) => (
           <button

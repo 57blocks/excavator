@@ -11,7 +11,7 @@ import { parseHash } from '../src/lib/route';
 import type { PageData } from '../src/lib/types';
 import { cleanup, mount, settle } from './dom';
 import { domainData } from './domains-fixture';
-import { d, marked } from './page-fixture';
+import { NO_PROBLEMS, d, marked } from './page-fixture';
 
 const mermaid = vi.hoisted(() => ({ initialize: vi.fn(), render: vi.fn(), parse: vi.fn() }));
 vi.mock('mermaid', () => ({ default: mermaid }));
@@ -119,7 +119,7 @@ describe('the head', () => {
   it('has the heading, its notice, the lede (the first paragraph of the overview), the hand-over strip and then the tabs', async () => {
     const host = await open('#/product/chapter/F2');
     const article = host.querySelector('article') as HTMLElement;
-    expect(Array.from(article.children).map((one) => one.className.split(' ')[0])).toEqual(['prose', 'lede', 'strip', 'tabs', 'panel', 'panel', 'panel', 'panel', 'panel', 'panel']);
+    expect(Array.from(article.children).map((one) => one.className.split(' ')[0])).toEqual(['prose', 'lede', 'strip', 'feature-problems', 'tabs', 'panel', 'panel', 'panel', 'panel', 'panel', 'panel']);
     expect(article.querySelector('h1')?.textContent).toBe(d('Order entry'));
     expect(article.children[0].querySelector('p.note')).not.toBeNull();
     expect(article.children[1].textContent).toBe(d('Clerks place orders. The approver sends them on.'));
@@ -214,18 +214,22 @@ describe('the items', () => {
     expect(host.querySelectorAll('.diagram, [data-diagram]').length).toBeGreaterThan(0);
   });
 
-  it('put the open questions and the defects, with their own titles, on the issues tab', async () => {
+  it('put the three kinds of problems on the issues tab, and the chapter\'s own problems section there when the defects chapter is not usable', async () => {
     const host = await open('#/product/chapter/F2');
     const issues = panelOf(host, S('page.feature.issues'));
-    expect(Array.from(issues.querySelectorAll('h2')).map((one) => one.textContent)).toEqual([S('chapter.openQuestions'), S('chapter.problems')]);
-    expect(issues.textContent).toContain(d('Nobody can tell how long drafts live.'));
-    expect(item(host, d('Double send')).querySelector('.p')?.textContent).toBe(d('Sending twice makes two orders.'));
+    expect(Array.from(issues.querySelectorAll('h2')).map((one) => one.textContent)).toEqual([S('page.problems.type.defect'), S('page.problems.type.design'), S('page.problems.type.open')]);
+    cleanup();
+    const fallback = await open('#/product/chapter/F2', { ...withText(TEXT), problems: { ...NO_PROBLEMS, sources: { ...NO_PROBLEMS.sources, defects: { state: 'missing', count: null } } } });
+    expect(item(fallback, d('Double send')).querySelector('.p')?.textContent).toBe(d('Sending twice makes two orders.'));
   });
 });
 
 describe('going to a heading', () => {
+  /** The page with the defects chapter unusable, so the chapter's own problems section is on the issues tab. */
+  const unranked = (): PageData => ({ ...withText(TEXT), problems: { ...NO_PROBLEMS, sources: { ...NO_PROBLEMS.sources, defects: { state: 'missing', count: null } } } });
+
   it('selects its tab, opens its item and focuses its heading, also inside the nested fold', async () => {
-    const host = await open('#/product/chapter/F2');
+    const host = await open('#/product/chapter/F2', unranked());
     const heading = item(host, d('Double send')).querySelector('h3') as HTMLElement;
     const n = Number(heading.id.slice(2));
     expect(item(host, d('Double send')).open).toBe(false);
@@ -237,13 +241,13 @@ describe('going to a heading', () => {
   });
 
   it('numbers its headings as the search does: the heading of each section and item is h-<n> in chapter order', async () => {
-    const host = await open('#/product/chapter/F2');
+    const host = await open('#/product/chapter/F2', unranked());
     const ids = Array.from(host.querySelectorAll('article h2[id], article h3[id]')).map((el) => [Number(el.id.slice(2)), el.textContent]);
     ids.sort((a, b) => (a[0] as number) - (b[0] as number));
     expect(ids.map((entry) => entry[0])).toEqual(Array.from({ length: ids.length }, (_, at) => at));
     expect(ids.map((entry) => entry[1])).toEqual([
       S('chapter.section.overview'), d('Background'), S('chapter.section.screens'), d('Order form'), S('chapter.section.operations'), d('Place an order'), d('Cancel an order'),
-      S('chapter.section.rules'), d('Shipping zones'), S('chapter.section.handovers'), S('chapter.openQuestions'), S('chapter.problems'), d('Double send'),
+      S('chapter.section.rules'), d('Shipping zones'), S('chapter.section.handovers'), S('page.problems.type.open'), S('page.problems.type.defect'), d('Double send'),
     ]);
   });
 });
@@ -284,10 +288,11 @@ describe('the text of the chapter', () => {
     const reference = plain.querySelector('article') as HTMLElement;
     const expected = words(reference);
     cleanup();
-    const host = await open('#/product/chapter/F2');
+    // With the defects chapter unusable the chapter's problems section is in the page; the points to confirm are the problems table's now, and the issues tab names the defects sub-section by its own fixed text (the word "known" of the old heading).
+    const host = await open('#/product/chapter/F2', { ...withText(TEXT), problems: { ...NO_PROBLEMS, sources: { ...NO_PROBLEMS.sources, defects: { state: 'missing', count: null } } } });
     const shown = words(host.querySelector('article') as HTMLElement);
     const missing = Array.from(expected).filter(([word, count]) => (shown.get(word) ?? 0) < count).map(([word]) => word);
-    expect(missing).toEqual([]);
+    expect(missing).toEqual(['nobody', 'can', 'tell', 'how', 'long', 'drafts', 'live', 'known']);
     expect(expected.size).toBeGreaterThan(30);
   });
 });

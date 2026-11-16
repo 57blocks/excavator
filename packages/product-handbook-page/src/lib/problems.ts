@@ -1,5 +1,6 @@
 import type { Group } from './groups';
 import type { ProblemFilters } from './route';
+import type { Text } from './text';
 import type { DesignText, ProblemLevel, ProblemRow, ProblemType, View } from './types';
 
 /** The types in the order the problems page lists them. */
@@ -52,3 +53,9 @@ export function countRows(rows: readonly ProblemRow[], type: ProblemType): { tot
   const own = rows.filter((row) => row.type === type);
   return { total: own.length, byLevel: LEVELS[type].map((level) => ({ level, count: own.filter((row) => row.level === level).length })) };
 }
+
+/** The rows that concern feature `id` (the chapter id, or `system`), in their original order: the one predicate of every count and list of a feature. */
+export const rowsOfFeature = (rows: readonly ProblemRow[], id: string): ProblemRow[] => rows.filter((row) => row.features.includes(id));
+
+/** The text of a level: P0 to P2 as they are, an impact by its fixed text. */
+export const levelText = (t: Text, level: string): string => (typeOfLevel(level) === 'design' ? t(`chapter.review.impact.${level}`) : level);

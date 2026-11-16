@@ -351,6 +351,46 @@ describe('the problems unit', () => {
     expect(host.textContent).not.toContain(LOADING);
   });
 
+  it('a feature page shows the loading text in its issues tab while the texts load, then the bodies; the summaries are there at once', async () => {
+    const { core, unit, listed } = chunked();
+    const chapterF1 = listed.find((one) => one.key === 'chapter:F1') as Listed;
+    core.chunks = { parts: ['part-0001', 'part-0002'], units: { 'chapter:F1': ['part-0001'], problems: ['part-0002'] } };
+    const parts: Record<string, Record<string, Piece[]>> = { 'part-0001': { 'chapter:F1': chapterF1.pieces }, 'part-0002': { problems: unit.pieces } };
+    // The part with the problems is held back until the test lets it go, so the loading state can be looked at.
+    const win = {} as PartWindow;
+    installPartRegistry(win);
+    let release: () => void = () => undefined;
+    const loader = createLoader(core.chunks, {
+      win,
+      insert: (src, onload) => {
+        const id = src.replace(/^.*\//, '').replace(/\.js$/, '');
+        const done = (): void => { win.__xvHandbookPart?.(id, parts[id]); onload(); };
+        if (id === 'part-0002') release = done; else setTimeout(done, 0);
+      },
+    });
+    const host = mount(page(core, '#/technical/chapter/F1', loader));
+    await wait();
+    const panel = host.querySelector('[data-panel="issues"]') as HTMLElement;
+    expect(panel.querySelector('[data-part="chunk-loading"]')).not.toBeNull();
+    expect(panel.querySelector('details[data-problem="d1"] summary')?.textContent).toContain(d('summary'));
+    expect(panel.querySelector('#problem-d1')).toBeNull();
+    act(() => release());
+    await wait();
+    expect(panel.querySelector('[data-part="chunk-loading"]')).toBeNull();
+    expect(panel.querySelector('#problem-d1')?.textContent).toContain(d('technical words'));
+  });
+
+  it('a missing part is named in the issues tab of a feature page', async () => {
+    const { core, listed } = chunked();
+    const chapterF1 = listed.find((one) => one.key === 'chapter:F1') as Listed;
+    core.chunks = { parts: ['part-0001', 'part-0002'], units: { 'chapter:F1': ['part-0001'], problems: ['part-0002'] } };
+    const { loader } = fakeLoader(core, { 'part-0001': { 'chapter:F1': chapterF1.pieces } });
+    const host = mount(page(core, '#/product/chapter/F1', loader));
+    await wait();
+    await wait();
+    expect((host.querySelector('[data-panel="issues"]') as HTMLElement).textContent).toContain('handbook-data/part-0002.js');
+  });
+
   it('a missing part is named on the problems page', async () => {
     const { core } = chunked();
     const { loader } = fakeLoader(core, {});

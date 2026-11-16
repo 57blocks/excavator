@@ -96,7 +96,8 @@ suite('page in a browser (O4)', () => {
         expect(await page.evaluate("document.querySelector('[data-column=\"in\"] .empty').textContent.length > 0")).toBe(true);
         await goTo(page, '#/chapter/F1', '[data-chapter=\"F1\"] [data-part=\"handover-strip\"]');
         expect(await page.evaluate("document.querySelectorAll('[data-part=\"handover-strip\"] li').length")).toBe(1);
-        expect(await page.evaluate("document.querySelector('article h2').id")).toBe('h-0');
+        // The block of the feature's problems comes first and has an unnumbered heading; the chapter's first section is h-0.
+        expect(await page.evaluate("document.querySelector('article h2[id]').id")).toBe('h-0');
         await fits(page, width, 'the feature page with its strip');
         await goTo(page, '#/technical/domain/d1', '[data-view="domain"]');
         expect(await page.evaluate("document.querySelector('[data-view-link=\"product\"]').getAttribute('href')")).toBe('#/product/domain/d1');

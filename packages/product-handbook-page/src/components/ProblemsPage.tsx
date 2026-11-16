@@ -6,11 +6,10 @@ import { groupsOf, isFeature, SYSTEM_BLOCK } from '../lib/groups';
 import { jumpToHeading } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
-import { ALL_LEVELS, PROBLEM_TYPES, countRows, filterRows, sortRows, typeOfLevel } from '../lib/problems';
+import { ALL_LEVELS, PROBLEM_TYPES, countRows, filterRows, levelText, sortRows, typeOfLevel } from '../lib/problems';
 import { routeHash } from '../lib/route';
 import type { ProblemFilters, ProblemsTab } from '../lib/route';
 import { useText } from '../lib/text';
-import type { Text } from '../lib/text';
 import { numberHeadings } from '../lib/toc';
 import type { DesignText, PageData, ProblemRow, ProblemType, View } from '../lib/types';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -25,9 +24,6 @@ import { FilterToolbar, SearchField } from './ui/Toolbar';
 const ALL = '*';
 
 const SOURCE_OF: Record<ProblemType, 'defects' | 'design' | 'open'> = { defect: 'defects', design: 'design', open: 'open' };
-
-/** The text of a level: P0 to P2 as they are, an impact by its fixed text. */
-const levelText = (t: Text, level: string): string => (typeOfLevel(level) === 'design' ? t(`chapter.review.impact.${level}`) : level);
 
 /**
  * Write the current filters into the address, replacing the history entry (no entry per keystroke). The route follows the
@@ -73,7 +69,8 @@ function Cites({ cites }: { cites: string[] }) {
   );
 }
 
-function Detail({ row, filters }: { row: ProblemRow; filters: ProblemFilters }) {
+/** The body of a problem: its text in the reader's view, group, features and remedy link. Needs a row with its texts. */
+export function ProblemDetail({ row, filters }: { row: ProblemRow; filters: ProblemFilters }) {
   const t = useText();
   const view = useView();
   const nav = useLinks();
@@ -205,7 +202,7 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
                     <span className="prob-features" data-part="problem-features">{first}{row.features.length > 1 && <span className="prob-more">{t('page.problems.moreFeatures', { count: row.features.length - 1 })}</span>}</span>
                     <span className="prob-type">{t(`page.problems.type.${row.type}`)}{row.level !== null && <span className="prob-level" data-level={row.level}>{levelText(t, row.level)}</span>}</span>
                   </button>
-                  {expanded && <Detail row={row} filters={filters} />}
+                  {expanded && <ProblemDetail row={row} filters={filters} />}
                 </li>
               );
             })}

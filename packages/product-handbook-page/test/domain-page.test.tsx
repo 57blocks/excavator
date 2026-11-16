@@ -135,16 +135,16 @@ describe('the strip on a feature page', () => {
 
   it('is after the head (the heading and its notice) and before the rest, between rules, with no box', () => {
     const article = page('#/product/chapter/F2').querySelector('article') as HTMLElement;
-    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'strip', 'tabs', 'panel', 'panel']);
+    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'strip', 'feature-problems', 'tabs', 'panel', 'panel', 'panel']);
     expect(article.children[0].querySelector('h1')).not.toBeNull();
     expect(article.children[0].querySelector('p.note')).not.toBeNull();
-    expect(article.children[4].querySelector('h2')).not.toBeNull();
+    expect(article.children[5].querySelector('h2')).not.toBeNull();
     expect(article.children[1].querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
   });
 
   it('keeps the heading numbers: the first level-2 heading of the chapter is still h-0, with the strip in the page', () => {
     const host = page('#/product/chapter/F2');
-    expect(Array.from(host.querySelectorAll('article h2')).map((one) => [one.id, one.textContent])).toEqual([['h-0', d('Order entry first')], ['h-1', d('Order entry second')]]);
+    expect(Array.from(host.querySelectorAll('article h2[id]')).map((one) => [one.id, one.textContent])).toEqual([['h-0', d('Order entry first')], ['h-1', d('Order entry second')]]);
     expect(host.querySelector('.toc')).toBeNull();
   });
 
