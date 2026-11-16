@@ -183,7 +183,7 @@ Commands:
   page <out> --project <root> [--views <list>]
       Write <out>/handbook.html: the same run, checked the same way, as one
       self-contained page (a home page with the map of the domains and their
-      hand-overs from a checked domains.json, else the outline's parts; a page per
+      upstream and downstream links from a checked domains.json, else the outline's parts; a page per
       domain and per chapter, search, a switch between the views when both are
       selected, the data, status dictionary and code health pages, a coverage page;
       light and dark; every fixed text from <out>/ui.json). Removes an earlier handbook.html
