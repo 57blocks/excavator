@@ -18,10 +18,20 @@ export const HANDOVERS: HandoverData[] = [
   { from: 'd3', to: 'd4', what: `${d('Disputes go to')} ${d('Help desk')} (F4) after ${d('Order entry')} (F2).`, features: ['F4', 'F2'], cites: ['src/e.js:5-6'] },
 ];
 
+/** A domain section in the three prescribed forms: a features table, a hand-over list and a main line (mermaid chart, numbered steps). */
+const sections = (cite: string): string => [
+  `### ${d('Notes')}\n\n${d('Body of the platform.')}${cite}\n`,
+  `### ${d('Domain features')}\n\n| ${d('Feature')} | ${d('Purpose')} |\n| --- | --- |\n| ${d('Platform core')} | ${d('Runs services')} |\n`,
+  `### ${d('Domain hand-overs')}\n\n- ${d('Hands settings over to orders.')}\n- ${d('Receives nothing.')}\n`,
+  `### ${d('Domain main line')}\n\n\`\`\`mermaid\nflowchart TD\n  A --> B\n\`\`\`\n\n1. ${d('Start the services.')}\n2. ${d('Serve requests.')}\n`,
+].join('\n');
+const BODY_PRODUCT = sections('');
+const BODY_TECHNICAL = sections(' `src/z.js:1-2`');
+
 export const DOMAINS: PageData['domains'] = {
   state: 'ok',
   list: [
-    { id: 'd1', name: d('Platform'), features: ['F1'], intro: { product: `${d('Runs the **base** services.')}`, technical: `${d('Runs the base services (code).')}` }, body: { product: `### ${d('Notes')}\n\n${d('Body of the platform.')}\n`, technical: `### ${d('Notes')}\n\n${d('Body of the platform.')} \`src/z.js:1-2\`\n` } },
+    { id: 'd1', name: d('Platform'), features: ['F1'], intro: { product: `${d('Runs the **base** services.')}`, technical: `${d('Runs the base services (code).')}` }, body: { product: BODY_PRODUCT, technical: BODY_TECHNICAL } },
     { id: 'd2', name: d('Orders'), features: ['F2'], intro: { product: d('Takes orders.'), technical: d('Takes orders (code).') }, body: { product: '', technical: '' } },
     { id: 'd3', name: d('Billing'), features: ['F3'], intro: { product: d('Bills customers.'), technical: d('Bills customers (code).') }, body: {} },
     { id: 'd4', name: d('Support'), features: ['F4'], intro: { product: d('Answers customers.'), technical: d('Answers customers (code).') }, body: {} },

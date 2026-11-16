@@ -79,7 +79,7 @@ describe('a domain page', () => {
     expect(page('#/product/domain/d3').querySelector('.ho-cites')).toBeNull();
   });
 
-  it('shows the body of the domain section by view under the columns, and nothing when there is none', () => {
+  it('shows the body of the domain section by view without its hand-over list, and nothing when there is none', () => {
     const host = page('#/product/domain/d1');
     const body = host.querySelector('.dom-body') as HTMLElement;
     expect(body.querySelector('h3')?.textContent).toBe(d('Notes'));
@@ -87,6 +87,19 @@ describe('a domain page', () => {
     expect(body.querySelector('.cite')).toBeNull();
     expect(page('#/technical/domain/d1').querySelector('.dom-body .cite')).not.toBeNull();
     expect(page('#/product/domain/d2').querySelector('.dom-body')).toBeNull();
+  });
+
+  it('orders a domain page with a usable list: title, intro, body, columns, domain nav, with no features list, the hand-over list hidden and the table and main line shown', () => {
+    const host = page('#/product/domain/d1');
+    const wrap = host.querySelector('.wrap.domain') as HTMLElement;
+    expect(Array.from(wrap.children).map((one) => (one.matches('nav.crumbs, .crumbs') ? 'crumbs' : one.tagName === 'H1' ? 'h1' : one.className.split(' ').find((name) => ['dom-lede', 'dom-body', 'dom-cols', 'chap-nav'].includes(name)) ?? one.className))).toEqual(['crumbs', 'h1', 'dom-lede', 'dom-body', 'dom-cols', 'chap-nav']);
+    expect(host.querySelector('[data-part="domain-features"]')).toBeNull();
+    const body = host.querySelector('.dom-body') as HTMLElement;
+    expect(body.querySelector('table')?.textContent).toContain(d('Runs services'));
+    expect(body.textContent).toContain(d('Start the services.'));
+    expect(body.textContent).not.toContain(d('Hands settings over to orders.'));
+    expect(body.querySelector('ul')).toBeNull();
+    expect(Array.from(body.querySelectorAll('h3')).map((one) => one.textContent)).toEqual([d('Notes'), d('Domain features'), d('Domain main line')]);
   });
 
   it('ends with the previous and the next domain, and has only one of them at an end', () => {
@@ -105,6 +118,7 @@ describe('a domain page', () => {
   it('has the features section and no columns when there is no usable list', () => {
     const host = page('#/product/domain/d1', domainData({ domains: { state: 'failed', list: [], handovers: [] } }));
     expect(host.querySelector('[data-column]')).toBeNull();
+    expect(host.querySelector('.dom-body')).toBeNull();
     expect(Array.from(host.querySelectorAll('[data-part="domain-features"] a')).map((one) => one.getAttribute('href'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2', '#/product/chapter/F3', '#/product/chapter/F4']);
   });
 

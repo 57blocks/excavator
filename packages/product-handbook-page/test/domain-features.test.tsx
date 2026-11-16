@@ -11,7 +11,7 @@ import { highestLevels, rowsOfFeature } from '../src/lib/problems';
 import { parseHash } from '../src/lib/route';
 import type { PageData, ProblemRow, ProblemsData } from '../src/lib/types';
 import { cleanup, mount } from './dom';
-import { FEATURES, domainData } from './domains-fixture';
+import { DOMAINS, FEATURES, domainData } from './domains-fixture';
 import { d, marked } from './page-fixture';
 
 afterEach(cleanup);
@@ -32,55 +32,50 @@ const ROWS: ProblemRow[] = [
 const problemsOf = (over: Partial<ProblemsData> = {}): ProblemsData => ({
   sources: { defects: { state: 'ok', count: 3 }, design: { state: 'ok', count: 2 }, open: { state: 'ok', count: 2, unmatched: [] } }, rows: ROWS, remedies: null, ...over,
 });
-/** A page whose first domain holds F1 and F2 (the fixture has one feature per domain), the others F3 and F4 apiece. */
-const dataWith = (problems: ProblemsData = problemsOf(), extra: Partial<PageData> = {}): PageData => {
-  const base = domainData({ problems });
-  const list = base.domains.list.map((domain) => (domain.id === 'd1' ? { ...domain, features: ['F1', 'F2'] } : domain.id === 'd2' ? { ...domain, features: [] } : domain));
-  return { ...base, domains: { ...base.domains, list }, ...extra };
-};
+/** The features section stands in for the domain section only without a usable list: one fallback domain (d1) holds F1 to F4. */
+const dataWith = (problems: ProblemsData = problemsOf(), extra: Partial<PageData> = {}): PageData => ({ ...domainData({ problems }), domains: { state: 'failed', list: [], handovers: [] }, ...extra });
 const page = (data: PageData, hash: string): HTMLElement => mount(<AppView data={data} route={parseHash(hash)} />);
 const features = (host: HTMLElement): HTMLElement => host.querySelector('section[data-part="domain-features"]') as HTMLElement;
 const feature = (host: HTMLElement, id: string): HTMLElement => features(host).querySelector(`a[data-feature="${id}"]`) as HTMLElement;
 const t = (key: string): string => marked[key];
 
 describe('the features section of a domain page', () => {
-  it('comes after the title and the lede and before the columns, with the heading and one link per feature of the domain', () => {
+  it('comes after the title and the lede with the heading and one link per feature of the domain, when there is no usable list', () => {
     const host = page(dataWith(), '#/product/domain/d1');
     const section = features(host);
     expect(section.querySelector('h2')?.textContent).toBe(t('page.domain.features'));
     expect(Array.from(section.querySelectorAll('a')).map((one) => [one.getAttribute('href'), one.getAttribute('data-feature'), one.querySelector('.feat-title')?.textContent])).toEqual([
       ['#/product/chapter/F1', 'F1', d('Platform core')],
       ['#/product/chapter/F2', 'F2', d('Order entry')],
+      ['#/product/chapter/F3', 'F3', d('Invoicing')],
+      ['#/product/chapter/F4', 'F4', d('Help desk')],
     ]);
     const after = (first: Element, second: Element) => first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING;
     expect(after(host.querySelector('h1') as Element, section)).toBeTruthy();
-    expect(after(host.querySelector('.dom-lede') as Element, section)).toBeTruthy();
-    expect(after(section, host.querySelector('.dom-cols') as Element)).toBeTruthy();
   });
 
-  it('is there without a usable list too, and the columns are not', () => {
-    const host = page(dataWith(problemsOf(), { domains: { state: 'failed', list: [], handovers: [] } }), '#/product/domain/d1');
-    expect(Array.from(features(host).querySelectorAll('a')).map((one) => one.getAttribute('data-feature'))).toEqual(['F1', 'F2', 'F3', 'F4']);
-    expect(host.querySelector('.dom-cols')).toBeNull();
+  it('is replaced by the features table of the domain section when the list is usable', () => {
+    const host = page({ ...dataWith(), domains: DOMAINS }, '#/product/domain/d1');
+    expect(host.querySelector('section[data-part="domain-features"]')).toBeNull();
+    expect(host.querySelector('.dom-cols')).not.toBeNull();
   });
 
   it('shows for every feature a count equal to its rows in the problems table, 0 included', () => {
-    for (const hash of ['#/product/domain/d1', '#/product/domain/d3', '#/product/domain/d4']) {
+    for (const hash of ['#/product/domain/d1']) {
       const host = page(dataWith(), hash);
       for (const link of Array.from(features(host).querySelectorAll<HTMLElement>('a[data-feature]'))) {
         const id = link.getAttribute('data-feature') as string;
         expect(link.querySelector('[data-part="problem-count"]')?.textContent, id).toBe(String(rowsOfFeature(ROWS, id).length));
       }
     }
-    const none = page(dataWith(problemsOf({ rows: ROWS.filter((one) => !one.features.includes('F4')) })), '#/product/domain/d4');
+    const none = page(dataWith(problemsOf({ rows: ROWS.filter((one) => !one.features.includes('F4')) })), '#/product/domain/d1');
     expect(feature(none, 'F4').querySelector('[data-part="problem-count"]')?.textContent).toBe('0');
   });
 
   it('equals the number of rows the problems page shows when it is filtered by the feature', () => {
     const data = dataWith();
     for (const [id] of FEATURES) {
-      const at = data.domains.list.find((domain) => domain.features.includes(id));
-      const domainPage = page(data, `#/product/domain/${at?.id}`);
+      const domainPage = page(data, '#/product/domain/d1');
       const shown = feature(domainPage, id).querySelector('[data-part="problem-count"]')?.textContent;
       cleanup();
       const table = page(data, `#/product/problems?feature=${id}`);
@@ -94,12 +89,11 @@ describe('the features section of a domain page', () => {
     const mark = (id: string): string | null => feature(host, id).querySelector('[data-part="level-mark"]')?.textContent ?? null;
     expect(mark('F1')).toBe(`P1${DOT}${t('chapter.review.impact.medium')}`);
     expect(mark('F2')).toBe('P0');
-    const billing = page(dataWith(), '#/product/domain/d3');
-    expect(feature(billing, 'F3').querySelector('[data-part="level-mark"]')?.textContent).toBe(t('chapter.review.impact.low'));
+    expect(feature(host, 'F3').querySelector('[data-part="level-mark"]')?.textContent).toBe(t('chapter.review.impact.low'));
   });
 
   it('gives no level mark to a feature with only points to confirm, or with nothing', () => {
-    const host = page(dataWith(), '#/product/domain/d4');
+    const host = page(dataWith(), '#/product/domain/d1');
     expect(feature(host, 'F4').querySelector('[data-part="level-mark"]')).toBeNull();
     const bare = page(dataWith(problemsOf({ rows: [] })), '#/product/domain/d1');
     for (const id of ['F1', 'F2']) expect(feature(bare, id).querySelector('[data-part="level-mark"]'), id).toBeNull();

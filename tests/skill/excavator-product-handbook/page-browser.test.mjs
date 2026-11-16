@@ -91,16 +91,12 @@ suite('page in a browser (O4)', () => {
         expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').getAttribute('href')")).toBe('#/product/domain/d1');
         expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').textContent")).toBe('Browse the domains');
         await fits(page, width, 'the home page with the map');
-        // The domain pages list every feature chapter of the page data between them, each with a problem count.
-        const wanted = dataOf(html(run)).chapters.map((chapter) => chapter.id).filter((id) => /^F\d+$/.test(id));
-        expect(wanted.length).toBeGreaterThan(0);
-        const linked = [];
+        // With a usable list the domain pages have no features list (the domains chapter section gives the features); the two columns come last, before the domain nav.
         for (const id of ['d1', 'd2', 'd3']) {
-          await goTo(page, `#/domain/${id}`, `[data-view="domain"][data-domain="${id}"] [data-part="domain-features"]`);
-          linked.push(...await page.evaluate("Array.from(document.querySelectorAll('[data-part=\"domain-features\"] a[data-feature]')).map((link) => link.getAttribute('data-feature'))"));
-          expect(await page.evaluate("Array.from(document.querySelectorAll('[data-part=\"domain-features\"] a[data-feature] [data-part=\"problem-count\"]')).every((one) => /^\\d+$/.test(one.textContent))")).toBe(true);
+          await goTo(page, `#/domain/${id}`, `[data-view="domain"][data-domain="${id}"] .dom-cols`);
+          expect(await page.evaluate("document.querySelectorAll('[data-part=\"domain-features\"]').length")).toBe(0);
+          expect(await page.evaluate("(() => { const body = document.querySelector('.dom-body'); const cols = document.querySelector('.dom-cols'); return body === null || Boolean(body.compareDocumentPosition(cols) & Node.DOCUMENT_POSITION_FOLLOWING); })()")).toBe(true);
         }
-        expect(linked.sort()).toEqual([...wanted].sort());
         await goTo(page, '#/domain/d1', '[data-view="domain"] [data-column="in"]');
         expect(await page.evaluate("document.querySelectorAll('[data-view=\"domain\"] [data-column]').length")).toBe(2);
         expect(await page.evaluate("document.querySelectorAll('[data-column=\"out\"] li[data-other]').length")).toBe(1);

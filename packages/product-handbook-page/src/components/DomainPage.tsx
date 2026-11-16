@@ -1,6 +1,7 @@
 import type { Group } from '../lib/groups';
 import { groupByOther, handedOver, received } from '../lib/handovers';
 import type { Indexed } from '../lib/handovers';
+import { withoutHandoverList } from '../lib/domain-body';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
 import { highestLevels, levelText } from '../lib/problems';
@@ -67,9 +68,11 @@ function Features({ group }: { group: Group }) {
 interface Props { group: Group; colour: Pair; mapLabel: string; previous?: Group; next?: Group }
 
 /**
- * A domain page, inside the frame with the domain list at the left: the breadcrumbs, the name with its colour mark, the intro
- * as the lead, every feature of the domain as a link with its worst level and its problem count, then (with a usable list of
- * links) the two columns of hand-overs and the domain's own section of the domains chapter, and previous and next domain.
+ * A domain page, inside the frame with the domain list at the left: the breadcrumbs, the name with its colour mark and the
+ * intro as the lead. With a usable list of links the domain's own section of the domains chapter follows (its features table
+ * and main line, without the hand-over list, which the two columns replace), then the two columns of hand-overs; without one,
+ * every feature of the domain as a link with its worst level and its problem count stands in for the section. Last come the
+ * previous and the next domain.
  */
 export function DomainPage({ group, colour, mapLabel, previous, next }: Props) {
   const t = useText();
@@ -78,22 +81,21 @@ export function DomainPage({ group, colour, mapLabel, previous, next }: Props) {
   const model = useModel();
   const domain = model.domains[group.id];
   const intro = domain?.intro[view] ?? '';
-  const body = domain?.body[view] ?? '';
+  const shown = withoutHandoverList(domain?.body[view] ?? '').trim();
   return (
     <div className="wrap domain" data-view="domain" data-domain={group.id} {...colourProps(colour)}>
       <Breadcrumbs trail={[{ label: mapLabel, href: nav.home }, { label: group.name }]} />
       <h1 className="page-title dom-title"><Mark colour={colour} />{group.name}</h1>
       {intro !== '' && <p className="lede dom-lede"><InlineMarkdown source={intro} /></p>}
-      <Features group={group} />
-      {model.map && (
+      {model.map ? (
         <>
+          {shown !== '' && <div className="dom-body"><Markdown source={shown} idPrefix={`domain-${group.id}`} /></div>}
           <div className="dom-cols">
             <Column kind="in" list={received(model.handovers, group.id)} side="from" />
             <Column kind="out" list={handedOver(model.handovers, group.id)} side="to" />
           </div>
-          {body !== '' && <div className="dom-body"><Markdown source={body} idPrefix={`domain-${group.id}`} /></div>}
         </>
-      )}
+      ) : <Features group={group} />}
       {(previous !== undefined || next !== undefined) && (
         <nav className="chap-nav" aria-label={t('page.domain.nav')} data-part="domain-nav">
           {previous !== undefined && <a rel="prev" data-side="previous" href={nav.domain(previous.id)}><small>{t('page.domain.previous')}</small>{previous.name}</a>}
