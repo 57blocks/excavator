@@ -7,6 +7,7 @@ import { DomainPage } from './components/DomainPage';
 import { HistoryPage } from './components/HistoryPage';
 import { systemSections } from './components/Architecture';
 import { HomePage } from './components/HomePage';
+import { ProblemsPage } from './components/ProblemsPage';
 import { Menu } from './components/Menu';
 import { NotFound } from './components/NotFound';
 import { Reading } from './components/Reading';
@@ -116,6 +117,8 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
         const at = groups.indexOf(group);
         main = <DomainPage group={group} colour={colours[group.id]} mapLabel={t('page.nav.map')} previous={groups[at - 1]} next={groups[at + 1]} />;
       }
+    } else if (body.name === 'problems') {
+      main = <ProblemsPage data={data} tab={body.tab} filters={body.filters} />;
     } else {
       const item = pageOf(pagesOf(data, view, coverageTitle), route);
       if (item !== undefined) {
@@ -177,6 +180,7 @@ export function documentTitle(data: PageData, route: Route): string {
   let page: string;
   if (body.name === 'home') page = brandOf(data, view);
   else if (body.name === 'domain') page = groupsOf(data).find((group) => group.id === body.id)?.name ?? t('page.notFound.heading');
+  else if (body.name === 'problems') page = t('page.problems.title');
   else page = pageOf(pagesOf(data, view, coverageTitle), route)?.title ?? t('page.notFound.heading');
   const title = data.titles[view];
   return title === undefined || title === '' || title === page ? page : `${page} - ${title}`;
@@ -192,12 +196,18 @@ function useDocument(data: PageData, route: Route): void {
   }, [route, data]);
 }
 
+/** Where a route is, without the filters of the problems page: a change of the filters alone keeps the reader's place. */
+export function placeOf(route: Route): string {
+  return JSON.stringify(route.name === 'problems' ? { ...route, filters: null } : route);
+}
+
 export function App({ data }: { data: PageData }) {
   const route = useRoute();
   useDocument(data, route);
+  const place = placeOf(route);
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [route]);
+  }, [place]);
   const loader = useMemo(() => createLoader(data.chunks), [data.chunks]);
   return <LoaderContext.Provider value={loader}><AppView data={data} route={route} /></LoaderContext.Provider>;
 }

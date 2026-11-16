@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 
 import { routeHash } from './route';
+import type { ProblemFilters, ProblemsTab } from './route';
 import type { View } from './types';
 
 /** The address of each page, in the view the reader is in: with the view in front when the page has two views, without it when it has one. */
@@ -12,6 +13,8 @@ export interface Links {
   history: string;
   chapter: (id: string) => string;
   domain: (id: string) => string;
+  /** The problems page: its list (default) or its remedies tab, with the filters in the address. */
+  problems: (filters?: ProblemFilters, tab?: ProblemsTab) => string;
 }
 
 export function makeLinks(prefix: View | null): Links {
@@ -23,6 +26,7 @@ export function makeLinks(prefix: View | null): Links {
     history: routeHash({ name: 'history' }, prefix),
     chapter: (id) => routeHash({ name: 'chapter', id }, prefix),
     domain: (id) => routeHash({ name: 'domain', id }, prefix),
+    problems: (filters = {}, tab = 'list') => routeHash({ name: 'problems', tab, filters }, prefix),
   };
 }
 

@@ -605,3 +605,37 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 @media (max-width: 480px) { .views a { padding: 0 10px; } }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+
+/* The problems page: wide, no side list; the table is a grid of rows that become stacked blocks on a narrow screen. */
+.problems-page { max-width: 1240px; margin: 0 auto; padding: 0 28px 48px; min-width: 0; }
+.ptabs { display: flex; gap: 4px; margin: 20px 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.ptabs a { flex: none; padding: 8px 14px; border-radius: 999px 999px 0 0; color: var(--text-2); text-decoration: none; font-size: 14.5px; white-space: nowrap; }
+.ptabs a:hover { background: var(--surface-2); color: var(--text); }
+.ptabs a[aria-selected="true"] { color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.prob-state { margin: 0 0 10px; }
+.prob-counts { margin: 0 0 12px; }
+.prob-table { margin: 0 0 8px; }
+.prob-cols, .prob-head { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1.2fr) minmax(0, 1.4fr); gap: 4px 20px; }
+.prob-cols { padding: 8px 8px; font-size: 12.5px; font-weight: 600; color: var(--text-2); border-bottom: 1px solid var(--line-strong); }
+.prob-list { display: grid; margin: 0; }
+.prob { min-width: 0; border-bottom: 1px solid var(--line); }
+.prob-head { width: 100%; padding: 10px 8px; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; align-items: baseline; }
+.prob-head:hover { background: var(--surface-2); }
+.prob-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.prob-summary { min-width: 0; overflow-wrap: anywhere; }
+.prob-head[aria-expanded="true"] .prob-summary { font-weight: 600; }
+.prob-features, .prob-type { min-width: 0; font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
+.prob-more { margin-left: 6px; font-size: 12.5px; color: var(--text-3); }
+.prob-level { margin-left: 8px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--text); }
+.prob-level[data-level="P0"], .prob-level[data-level="high"] { color: var(--brick); }
+.prob-detail { padding: 4px 8px 16px; display: grid; gap: 8px; max-width: 78ch; min-width: 0; overflow-wrap: anywhere; }
+.prob-body > * + * { margin-top: 6px; }
+.prob-cites { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+@media (max-width: 900px) {
+  .problems-page { padding: 0 16px 40px; }
+}
+@media (max-width: 640px) {
+  .prob-cols { display: none; }
+  .prob-head { grid-template-columns: minmax(0, 1fr); padding: 12px 4px; }
+  .prob-features::before { content: none; }
+}

@@ -13,12 +13,14 @@ export function viewOf(data: PageData, route: Route, coverageTitle: string): Vie
   const body = bodyOf(route);
   if (body.name === 'home') return view;
   if (body.name === 'domain') return groupsOf(data).some((group) => group.id === body.id) ? view : null;
+  if (body.name === 'problems') return view;
   return pageOf(pagesOf(data, view, coverageTitle), route) === undefined ? null : view;
 }
 
 /** The fragment that shows the same page in `view`; the home page when that view does not have the page (the data page in the product view). */
 export function switchTarget(data: PageData, route: Route, view: View, coverageTitle: string): string {
   const body = bodyOf(route);
+  if (body.name === 'problems') return routeHash(body, view);
   if (body.name === 'domain') return routeHash(groupsOf(data).some((group) => group.id === body.id) ? body : { name: 'home' }, view);
   const key = routeKey(body);
   const keep = key !== null && pagesOf(data, view, coverageTitle).some((item) => item.key === key);

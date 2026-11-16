@@ -51,7 +51,11 @@ export function SearchDialog({ groups, colours, items, references, onClose, onDo
     const { target } = result;
     onDone();
     if (target.kind === 'domain') window.location.hash = nav.domain(target.id);
-    else window.location.hash = nav.chapter(target.kind === 'chapter' ? target.id : target.chapter);
+    else {
+      // The remedies chapter is the remedies tab of the problems page, not a page of its own.
+      const chapter = target.kind === 'chapter' ? target.id : target.chapter;
+      window.location.hash = chapter === 'remedies' ? nav.problems({}, 'remedies') : nav.chapter(chapter);
+    }
     if (target.kind === 'heading') jumpToHeading(target.chapter, target.heading);
   };
 
