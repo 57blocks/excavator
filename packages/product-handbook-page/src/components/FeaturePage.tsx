@@ -134,7 +134,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
           <span className="t">{row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}{row.summary}</span>
           <span className="chev"><ChevronIcon /></span>
         </summary>
-        <div className="item-body">{text !== undefined && <ProblemDetail row={text} filters={{}} />}</div>
+        <div className="item-body">{text !== undefined && <ProblemDetail row={text} />}</div>
       </details>
     );
   };

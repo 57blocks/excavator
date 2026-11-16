@@ -1,8 +1,9 @@
 /**
  * The page's routes live in the URL fragment so the back button and shared links work: `#/` (the home page, the
  * map), `#/domain/<id>` (a domain page), `#/chapter/<block>` (a chapter written as Markdown), `#/data` and `#/dictionaries` (technical view only),
- * `#/history`, `#/coverage` and `#/architecture` (technical view only), and `#/problems` with `#/problems/remedies` (the problems page and its remedies tab; a query after `?`
- * holds its filters: `?domain=d1&feature=F7&type=defect&level=P0&q=text`). A page that has both views puts the view in front of each (`#/technical/chapter/F1`);
+ * `#/history`, `#/coverage` and `#/architecture` (technical view only), and `#/problems` (the problems page; a query after `?`
+ * holds its filters: `?domain=d1&feature=F7&type=defect&level=P0&q=text`) and `#/remedies` (the improvement suggestions page; the
+ * old address `#/problems/remedies` still parses to it, its query ignored). A page that has both views puts the view in front of each (`#/technical/chapter/F1`);
  * a page with one view has no prefix, and a fragment without one is the first view. Parsing never throws: a fragment
  * that names no route is `not-found`.
  */
@@ -12,7 +13,6 @@ import type { View } from './types';
 
 /** The filters of the problems page, one value each; a value is a string as written, and one the data does not know matches nothing. */
 export interface ProblemFilters { domain?: string; feature?: string; type?: string; level?: string; q?: string }
-export type ProblemsTab = 'list' | 'remedies';
 
 /** The filter keys in the order the address writes them. */
 export const FILTER_KEYS = ['domain', 'feature', 'type', 'level', 'q'] as const;
@@ -26,7 +26,8 @@ export type RouteBody =
   | { name: 'history' }
   | { name: 'coverage' }
   | { name: 'architecture' }
-  | { name: 'problems'; tab: ProblemsTab; filters: ProblemFilters }
+  | { name: 'problems'; filters: ProblemFilters }
+  | { name: 'remedies' }
   | { name: 'not-found'; hash: string };
 
 /** A route with the view its fragment names, when it names one. */
@@ -64,10 +65,12 @@ export function parseFilters(query: string): ProblemFilters {
 
 function parseBody(rest: string[], hash: string, query: string | null): RouteBody {
   if (rest.length >= 1 && rest[0] === 'problems') {
-    if (rest.length === 1) return { name: 'problems', tab: 'list', filters: parseFilters(query ?? '') };
-    if (rest.length === 2 && rest[1] === 'remedies') return { name: 'problems', tab: 'remedies', filters: parseFilters(query ?? '') };
+    if (rest.length === 1) return { name: 'problems', filters: parseFilters(query ?? '') };
+    // The old address of the remedies tab: its filters are ignored.
+    if (rest.length === 2 && rest[1] === 'remedies') return { name: 'remedies' };
     return { name: 'not-found', hash };
   }
+  if (rest.length === 1 && rest[0] === 'remedies') return query === null ? { name: 'remedies' } : { name: 'not-found', hash };
   if (query !== null) return { name: 'not-found', hash };
   if (rest.length === 0) return { name: 'home' };
   if (rest.length === 1 && Object.prototype.hasOwnProperty.call(SINGLE, rest[0])) return SINGLE[rest[0]];
@@ -105,7 +108,8 @@ function segments(route: RouteBody): string[] {
     case 'history': return ['history'];
     case 'coverage': return ['coverage'];
     case 'architecture': return ['architecture'];
-    case 'problems': return route.tab === 'remedies' ? ['problems', 'remedies'] : ['problems'];
+    case 'problems': return ['problems'];
+    case 'remedies': return ['remedies'];
     case 'home': return [];
     case 'not-found': return [];
   }

@@ -8,6 +8,7 @@ import { HistoryPage } from './components/HistoryPage';
 import { Architecture, systemSections } from './components/Architecture';
 import { HomePage } from './components/HomePage';
 import { ProblemsPage } from './components/ProblemsPage';
+import { RemediesPage } from './components/RemediesPage';
 import { Menu } from './components/Menu';
 import { NotFound } from './components/NotFound';
 import { Reading } from './components/Reading';
@@ -129,7 +130,10 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
       }
     } else if (body.name === 'problems') {
       place = { kind: 'problems' };
-      main = <ProblemsPage data={data} tab={body.tab} filters={body.filters} />;
+      main = <ProblemsPage data={data} filters={body.filters} />;
+    } else if (body.name === 'remedies') {
+      place = { kind: 'remedies' };
+      main = <RemediesPage data={data} />;
     } else {
       const item = pageOf(pagesOf(data, view, coverageTitle), route);
       if (item !== undefined) {
@@ -194,6 +198,7 @@ export function documentTitle(data: PageData, route: Route): string {
   if (body.name === 'home') page = brandOf(data, view);
   else if (body.name === 'domain') page = groupsOf(data).find((group) => group.id === body.id)?.name ?? t('page.notFound.heading');
   else if (body.name === 'problems') page = t('page.problems.title');
+  else if (body.name === 'remedies') page = t('page.nav.remedies');
   else if (body.name === 'architecture') page = t('page.nav.architecture');
   else page = pageOf(pagesOf(data, view, coverageTitle), route)?.title ?? t('page.notFound.heading');
   const title = data.titles[view];

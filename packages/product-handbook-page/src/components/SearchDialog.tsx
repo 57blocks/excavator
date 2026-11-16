@@ -52,9 +52,9 @@ export function SearchDialog({ groups, colours, items, references, onClose, onDo
     onDone();
     if (target.kind === 'domain') window.location.hash = nav.domain(target.id);
     else {
-      // The remedies chapter is the remedies tab of the problems page, not a page of its own.
+      // The remedies chapter is the improvement suggestions page, not a chapter page.
       const chapter = target.kind === 'chapter' ? target.id : target.chapter;
-      window.location.hash = chapter === 'remedies' ? nav.problems({}, 'remedies') : nav.chapter(chapter);
+      window.location.hash = chapter === 'remedies' ? nav.remedies : nav.chapter(chapter);
     }
     if (target.kind === 'heading') jumpToHeading(target.chapter, target.heading);
   };

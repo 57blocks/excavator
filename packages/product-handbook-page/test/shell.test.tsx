@@ -199,11 +199,11 @@ describe('the phone menu', () => {
     expect(host.querySelector('#menu')).toBeNull();
   });
 
-  it('shows the list of the current state: the global list on a page that is not a domain page, with the architecture entry in the technical view', () => {
+  it('shows the list of the current state: the global list on a page that is not a domain page, with the improvement suggestions entry before the architecture entry in the technical view', () => {
     const data = { ...withDomains(), architecture: { technical: 'Text.' } };
     const { menu } = open(data, '#/technical/data');
     expect(menu.getAttribute('data-side')).toBe('global');
-    expect(links(menu)).toEqual(['#/technical', '#/technical/problems', '#/technical/architecture', '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
+    expect(links(menu)).toEqual(['#/technical', '#/technical/problems', '#/technical/remedies', '#/technical/architecture', '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
     expect(menu.querySelector('a[aria-current="page"]')?.getAttribute('href')).toBe('#/technical/data');
     expect(menu.querySelector('.side-group')).toBeNull();
   });
@@ -228,7 +228,7 @@ describe('the left list', () => {
   const currents = (html: string): string[] => Array.from(side(html).matchAll(/<a [^>]*href="([^"]*)"[^>]*aria-current="page"/g), (match) => match[1]);
 
   it('is in the frame next to main on every route, with its state on the nav and on the frame', () => {
-    for (const [hash, mode] of [['#/product', 'global'], ['#/product/problems', 'global'], ['#/technical/architecture', 'global'], ['#/technical/chapter/system', 'global'], ['#/product/coverage', 'global'], ['#/product/nowhere', 'global'], ['#/product/domain/d1', 'domain'], ['#/product/chapter/F1', 'domain']] as const) {
+    for (const [hash, mode] of [['#/product', 'global'], ['#/product/problems', 'global'], ['#/product/remedies', 'global'], ['#/technical/architecture', 'global'], ['#/technical/chapter/system', 'global'], ['#/product/coverage', 'global'], ['#/product/nowhere', 'global'], ['#/product/domain/d1', 'domain'], ['#/product/chapter/F1', 'domain']] as const) {
       const html = render(withArch(), hash);
       expect(html, hash).toContain(`<nav class="side"`);
       expect(side(html), hash).toContain(`data-side="${mode}"`);
@@ -238,11 +238,11 @@ describe('the left list', () => {
     }
   });
 
-  it('is global on the home page: Overview, Problems, then the reference pages by their groups, no domains and no features', () => {
+  it('is global on the home page: Overview, Problems, Improvement suggestions, then the reference pages by their groups, no domains and no features', () => {
     const html = render(withDomains(), '#/product');
-    expect(keys(html)).toEqual(['#/product', '#/product/problems', '#/product/chapter/system', '#/product/history', '#/product/coverage']);
+    expect(keys(html)).toEqual(['#/product', '#/product/problems', '#/product/remedies', '#/product/chapter/system', '#/product/history', '#/product/coverage']);
     expect(currents(html)).toEqual(['#/product']);
-    expect(texts(side(html)).slice(0, 2)).toEqual([marked['page.nav.overview'], marked['page.nav.problems']]);
+    expect(texts(side(html)).slice(0, 3)).toEqual([marked['page.nav.overview'], marked['page.nav.problems'], marked['page.nav.remedies']]);
     expect(side(html)).not.toContain('/domain/');
     expect(side(html)).not.toContain('side-group');
     expect(side(html)).not.toContain('/chapter/F');
@@ -252,9 +252,10 @@ describe('the left list', () => {
   it('marks the problems page, the architecture page and a reference page in the global state, and lists the architecture before the references', () => {
     expect(currents(render(withArch(), '#/technical/problems'))).toEqual(['#/technical/problems']);
     const architecture = render(withArch(), '#/technical/architecture');
-    expect(keys(architecture)).toEqual(['#/technical', '#/technical/problems', '#/technical/architecture', '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
+    expect(keys(architecture)).toEqual(['#/technical', '#/technical/problems', '#/technical/remedies', '#/technical/architecture', '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
     expect(currents(architecture)).toEqual(['#/technical/architecture']);
-    expect(texts(side(architecture))[2]).toBe(marked['page.nav.architecture']);
+    expect(texts(side(architecture))[3]).toBe(marked['page.nav.architecture']);
+    expect(currents(render(withArch(), '#/technical/remedies'))).toEqual(['#/technical/remedies']);
     const data = render(withArch(), '#/technical/data');
     expect(currents(data)).toEqual(['#/technical/data']);
     expect(side(data)).not.toContain('--c-fill');
@@ -274,7 +275,7 @@ describe('the left list', () => {
     const missing = render(withArch(), '#/technical/chapter/nope');
     expect(frameOf(missing)).toBe('global');
     expect(currents(missing)).toEqual([]);
-    expect(keys(render({ ...pageData({ views: ['technical'] }), architecture: ARCH }, '#/')).slice(0, 3)).toEqual(['#/', '#/problems', '#/architecture']);
+    expect(keys(render({ ...pageData({ views: ['technical'] }), architecture: ARCH }, '#/')).slice(0, 4)).toEqual(['#/', '#/problems', '#/remedies', '#/architecture']);
   });
 
   it('is global for a feature that is in no domain, and domain for one that is', () => {

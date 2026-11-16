@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // Task 3.1 and 3.2 of openspec change handbook-page-structure: the route of the problems page, its table and order, its filters (also from
-// the address), its counts, its expanded rows, the lines for the state of each source, its remedies tab, and the chapters that are no
+// the address), its counts, its expanded rows, the lines for the state of each source, the improvement suggestions page, and the chapters that are no
 // longer reference pages. Rows are written by hand with fixed texts so every expectation is exact.
 import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -79,43 +79,64 @@ const counts = (html: string, type: string): string => {
 };
 
 describe('the route', () => {
-  it('parses the page, its tab and its filters, with and without the view prefix, and builds them back in a fixed key order', () => {
-    expect(parseHash('#/problems')).toEqual({ name: 'problems', tab: 'list', filters: {} });
-    expect(parseHash('#/problems/remedies')).toEqual({ name: 'problems', tab: 'remedies', filters: {} });
+  it('parses the page and its filters, with and without the view prefix, and builds them back in a fixed key order', () => {
+    expect(parseHash('#/problems')).toEqual({ name: 'problems', filters: {} });
     expect(parseHash('#/technical/problems?q=a%20b&level=P0&type=defect&feature=F7&domain=d1')).toEqual({
-      name: 'problems', tab: 'list', filters: { q: 'a b', level: 'P0', type: 'defect', feature: 'F7', domain: 'd1' }, view: 'technical',
+      name: 'problems', filters: { q: 'a b', level: 'P0', type: 'defect', feature: 'F7', domain: 'd1' }, view: 'technical',
     });
-    const body = { name: 'problems' as const, tab: 'remedies' as const, filters: { q: 'a b/c?', domain: 'd1', level: 'P0', type: 'defect', feature: 'F7' } };
-    expect(routeHash(body, null)).toBe('#/problems/remedies?domain=d1&feature=F7&type=defect&level=P0&q=a%20b%2Fc%3F');
-    expect(routeHash(body, 'product')).toBe('#/product/problems/remedies?domain=d1&feature=F7&type=defect&level=P0&q=a%20b%2Fc%3F');
-    for (const hash of ['#/problems', '#/technical/problems/remedies?feature=F7', '#/problems?q=x%26y%3Dz']) {
+    const body = { name: 'problems' as const, filters: { q: 'a b/c?', domain: 'd1', level: 'P0', type: 'defect', feature: 'F7' } };
+    expect(routeHash(body, null)).toBe('#/problems?domain=d1&feature=F7&type=defect&level=P0&q=a%20b%2Fc%3F');
+    expect(routeHash(body, 'product')).toBe('#/product/problems?domain=d1&feature=F7&type=defect&level=P0&q=a%20b%2Fc%3F');
+    for (const hash of ['#/problems', '#/problems?feature=F7', '#/remedies', '#/technical/remedies', '#/problems?q=x%26y%3Dz']) {
       const parsed = parseHash(hash);
       expect(routeHash(parsed as never, 'view' in parsed && parsed.view !== undefined ? parsed.view : null)).toBe(hash);
     }
   });
 
   it('ignores an unknown key, an empty value, an undecodable one and a second value, and writes no empty value', () => {
-    expect(parseHash('#/problems?x=1&domain=&feature=%E0%A4%A&type=defect&type=design&level')).toEqual({ name: 'problems', tab: 'list', filters: { type: 'defect' } });
-    expect(routeHash({ name: 'problems', tab: 'list', filters: { domain: '', q: undefined } }, null)).toBe('#/problems');
+    expect(parseHash('#/problems?x=1&domain=&feature=%E0%A4%A&type=defect&type=design&level')).toEqual({ name: 'problems', filters: { type: 'defect' } });
+    expect(routeHash({ name: 'problems', filters: { domain: '', q: undefined } }, null)).toBe('#/problems');
+  });
+
+  it('parses the remedies route, with and without the view, and the old problems/remedies address to it (its query ignored)', () => {
+    expect(parseHash('#/remedies')).toEqual({ name: 'remedies' });
+    expect(parseHash('#/product/remedies')).toEqual({ name: 'remedies', view: 'product' });
+    for (const hash of ['#/problems/remedies', '#/problems/remedies?level=P0&q=x', '#/technical/problems/remedies?feature=F7']) {
+      const parsed = parseHash(hash);
+      expect(parsed.name, hash).toBe('remedies');
+      expect(Object.keys(parsed).filter((key) => key !== 'view' && key !== 'name'), hash).toEqual([]);
+    }
+    expect(parseHash('#/technical/problems/remedies').view).toBe('technical');
+    expect(routeHash({ name: 'remedies' }, null)).toBe('#/remedies');
+    expect(routeHash({ name: 'remedies' }, 'product')).toBe('#/product/remedies');
+    expect(routeHash(parseHash('#/problems/remedies?level=P0') as never, null)).toBe('#/remedies');
+    expect(routeHash({ name: 'problems', filters: { level: 'P0' } }, 'technical')).not.toContain('remedies');
+    expect(parseHash('#/remedies?x=1').name).toBe('not-found');
   });
 
   it('makes a query on any other route, and a deeper problems path, not found', () => {
-    for (const hash of ['#/?domain=d1', '#/chapter/F1?x=1', '#/history?q=a', '#/domain/d1?q=a', '#/problems/remedies/x', '#/problems/other']) expect(parseHash(hash).name, hash).toBe('not-found');
+    for (const hash of ['#/?domain=d1', '#/chapter/F1?x=1', '#/history?q=a', '#/domain/d1?q=a', '#/problems/remedies/x', '#/problems/other', '#/remedies/x']) expect(parseHash(hash).name, hash).toBe('not-found');
   });
 
-  it('makes the link with and without the view, and keeps tab and filters when the view is switched', () => {
+  it('makes the links with and without the view, and keeps the filters when the view is switched', () => {
     expect(makeLinks(null).problems()).toBe('#/problems');
-    expect(makeLinks('technical').problems({ feature: 'F7' }, 'remedies')).toBe('#/technical/problems/remedies?feature=F7');
+    expect(makeLinks(null).remedies).toBe('#/remedies');
+    expect(makeLinks('technical').remedies).toBe('#/technical/remedies');
+    expect(makeLinks('technical').problems({ feature: 'F7' })).toBe('#/technical/problems?feature=F7');
     const page = data();
-    const route = parseHash('#/product/problems/remedies?level=P0');
+    const route = parseHash('#/product/problems?level=P0');
     expect(viewOf(page, route, 'c')).toBe('product');
+    expect(viewOf(page, parseHash('#/remedies'), 'c')).toBe('product');
+    expect(viewOf(page, parseHash('#/technical/remedies'), 'c')).toBe('technical');
+    expect(switchTarget(page, parseHash('#/product/remedies'), 'technical', 'c')).toBe('#/technical/remedies');
     expect(viewOf(page, parseHash('#/technical/problems'), 'c')).toBe('technical');
     expect(viewOf(data({ views: ['product'] }), parseHash('#/technical/problems'), 'c')).toBeNull();
-    expect(switchTarget(page, route, 'technical', 'c')).toBe('#/technical/problems/remedies?level=P0');
+    expect(switchTarget(page, route, 'technical', 'c')).toBe('#/technical/problems?level=P0');
   });
 
   it('titles the document with the fixed text', () => {
     expect(documentTitle(data(), parseHash('#/product/problems'))).toBe(`${t('page.problems.title')} - ${d('Handbook')}`);
+    expect(documentTitle(data(), parseHash('#/product/remedies'))).toBe(`${t('page.nav.remedies')} - ${d('Handbook')}`);
   });
 });
 
@@ -238,7 +259,7 @@ describe('the expanded rows', () => {
     expect(product.textContent).not.toContain('technical text');
     expect(product.querySelector('[data-field="group"]')?.textContent).toContain(`${t('page.problems.field.category')} security`);
     expect(Array.from(product.querySelectorAll('[data-field="features"] a')).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([[d('Orders'), '#/product/chapter/F1'], [d('Reminders'), '#/product/chapter/F2']]);
-    expect(product.querySelector('[data-part="remedy-link"]')?.getAttribute('href')).toBe('#/product/problems/remedies');
+    expect(product.querySelector('[data-part="remedy-link"]')?.getAttribute('href')).toBe('#/product/remedies');
     cleanup();
     const technical = await expanded(data(), '#/technical/problems', 'd2');
     expect(technical.textContent).toContain(d('technical text d2'));
@@ -319,32 +340,90 @@ describe('the route follows the filters', () => {
 
   it('places a problems route without its filters, and every other route as it is', () => {
     expect(placeOf(parseHash('#/problems?type=design'))).toBe(placeOf(parseHash('#/problems?level=P0')));
-    expect(placeOf(parseHash('#/problems'))).not.toBe(placeOf(parseHash('#/problems/remedies')));
+    expect(placeOf(parseHash('#/problems'))).not.toBe(placeOf(parseHash('#/remedies')));
     expect(placeOf(parseHash('#/chapter/F1'))).not.toBe(placeOf(parseHash('#/chapter/F2')));
   });
 });
 
-describe('the remedies tab', () => {
-  it('shows the remedies chapter with the tab selected and the list tab link carrying the filters', () => {
-    const html = render(data(), '#/product/problems/remedies?level=P0');
-    expect(html).toContain('data-chapter="remedies"');
-    expect(html).toContain(d('fix secrets'));
-    expect(html).not.toContain('data-problem=');
-    expect(html).toContain('aria-selected="true" data-tab="remedies"');
-    expect(html).toContain('href="#/product/problems?level=P0"');
+describe('the problems page has no tabs', () => {
+  it('has no tablist and no tabpanel, and keeps its notices, counts, filters and list', () => {
+    const host = mount(<AppView data={data()} route={parseHash('#/product/problems')} />);
+    expect(host.querySelector('[role="tablist"], [role="tab"], [role="tabpanel"], .ptabs')).toBeNull();
+    expect(host.querySelector('.problems-page')?.getAttribute('data-tab')).toBeNull();
+    expect(host.querySelector('[data-part="problem-counts"]')).not.toBeNull();
+    expect(host.querySelector('[data-part="problem-filters"]')).not.toBeNull();
+    expect(host.querySelector('[data-part="problem-table"]')).not.toBeNull();
+  });
+});
+
+describe('the improvement suggestions page', () => {
+  const mounted = (page: PageData, hash: string): HTMLElement => {
+    window.history.replaceState(null, '', hash);
+    return mount(<AppView data={page} route={parseHash(hash)} />);
+  };
+
+  it('has the fixed title once, no title of the chapter, the sections of the chapter and the table of contents', () => {
+    const host = mounted(data(), '#/product/remedies');
+    const page = host.querySelector('[data-view="remedies"]') as HTMLElement;
+    expect(page).not.toBeNull();
+    expect(Array.from(page.querySelectorAll('h1')).map((h) => h.textContent)).toEqual([t('page.nav.remedies')]);
+    expect(page.textContent).not.toContain(d('Remedies'));
+    expect(page.querySelector('[data-chapter="remedies"]')).not.toBeNull();
+    expect(page.textContent).toContain(d('fix secrets'));
+    expect(page.querySelector('[data-chapter="remedies"] #h-0')?.textContent).toBe(d('Security'));
+    expect(page.querySelector('[data-chapter="remedies"] #h-1')?.textContent).toBe(d('Duplication'));
+    expect(Array.from(page.querySelectorAll('.crumbs a, .crumbs span:not(.sep)')).map((e) => e.textContent)).toEqual([t('page.nav.overview'), t('page.nav.remedies')]);
+    const toc = page.querySelector('.toc, [data-part="toc"], nav.toc');
+    expect(toc, 'a table of contents').not.toBeNull();
+    expect(toc?.textContent).toContain(d('Duplication'));
+    expect(page.querySelector('[data-part="prev-next"], .prevnext, nav[aria-label="Previous and next"]')).toBeNull();
+    expect(page.getAttribute('data-toc')).toBe('yes');
   });
 
-  it('numbers the headings of the chapter so a remedy link can jump to one', () => {
-    window.history.replaceState(null, '', '#/product/problems/remedies');
-    const host = mount(<AppView data={data()} route={parseHash('#/product/problems/remedies')} />);
-    expect(host.querySelector('[data-chapter="remedies"] #h-1')?.textContent).toBe(d('Duplication'));
+  it('is in every view, and marks its entry in the global left list', () => {
+    for (const view of ['product', 'technical'] as const) {
+      const host = mounted(data(), `#/${view}/remedies`);
+      expect(host.querySelector('[data-view="remedies"]')).not.toBeNull();
+      expect(host.querySelector('.side [aria-current="page"]')?.getAttribute('data-nav')).toBe('remedies');
+      expect(host.querySelector('.frame')?.getAttribute('data-side')).toBe('global');
+      cleanup();
+    }
   });
 
-  it('says there is no remedies chapter when the data has none', () => {
+  it('answers the old problems/remedies address too', () => {
+    expect(render(data(), '#/product/problems/remedies?level=P0')).toContain('data-view="remedies"');
+  });
+
+  it('says there is no chapter of improvement suggestions when the data has none, and shows no table of contents', () => {
     for (const page of [data({ problems: problems({ remedies: null }), remedies: false }), data({ remedies: false })]) {
-      const html = decode(render(page, '#/problems/remedies'));
+      const html = decode(render(page, '#/remedies'));
+      expect(html).toContain('data-part="no-remedies"');
       expect(html).toContain(t('page.problems.noRemediesChapter'));
+      expect(html).toContain(`<h1 class="page-title">${t('page.nav.remedies')}</h1>`);
       expect(html).not.toContain('data-chapter="remedies"');
+      expect(html).toContain('data-toc="none"');
+    }
+  });
+
+  it('is reached from a row remedy link of the problems page, and opens at that section', async () => {
+    window.history.replaceState(null, '', '#/product/problems');
+    const scrolled: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function scrollIntoViewStub(this: Element) { scrolled.push(this.id); } as typeof Element.prototype.scrollIntoView;
+    try {
+      const host = mount(<App data={data()} />);
+      act(() => (host.querySelector('[data-problem="d2"] button') as HTMLElement).click());
+      const link = host.querySelector('[data-problem="d2"] [data-part="remedy-link"]') as HTMLAnchorElement;
+      expect(link.getAttribute('href')).toBe('#/product/remedies');
+      act(() => link.click());
+      // A click on an anchor navigates in a browser; happy-dom does not, so follow the link the way the browser would.
+      await act(async () => { window.location.hash = link.getAttribute('href') as string; await new Promise((done) => { setTimeout(done, 50); }); });
+      expect(host.querySelector('[data-view="remedies"]')).not.toBeNull();
+      expect(host.querySelector('[data-view="problems"]')).toBeNull();
+      expect(scrolled).toContain('h-1');
+      expect(document.activeElement?.id).toBe('h-1');
+    } finally {
+      Element.prototype.scrollIntoView = original;
     }
   });
 });
@@ -361,7 +440,7 @@ describe('the chapters that are not reference pages any more', () => {
     expect(render(page, '#/chapter/defects')).toContain(fixed('page.notFound.heading'));
   });
 
-  it('sends a search result of the remedies chapter to the remedies tab, and the others where they were', () => {
+  it('keeps a search result of the remedies chapter, and the others where they were', () => {
     const items = [
       { kind: 'chapter' as const, title: 'Remedies', chapter: 'remedies', domain: null, heading: null, level: null },
       { kind: 'heading' as const, title: 'Duplication', chapter: 'remedies', domain: null, heading: 1, level: 2 as const },
@@ -372,7 +451,7 @@ describe('the chapters that are not reference pages any more', () => {
 });
 
 describe('the search dialog', () => {
-  it('goes to the remedies tab of the problems page for a remedies heading, and still to the chapter for another one', () => {
+  it('goes to the improvement suggestions page for a remedies heading, and still to the chapter for another one', () => {
     const page = { ...data(), search: [
       { kind: 'chapter' as const, title: 'Remedies', chapter: 'remedies', domain: null, heading: null, level: null },
       { kind: 'heading' as const, title: 'Duplication of work', chapter: 'remedies', domain: null, heading: 1, level: 2 as const },
@@ -387,7 +466,7 @@ describe('the search dialog', () => {
       act(() => option.click());
     };
     choose('Duplication of work');
-    expect(window.location.hash).toBe('#/product/problems/remedies');
+    expect(window.location.hash).toBe('#/product/remedies');
     choose('Duplication in orders');
     expect(window.location.hash).toBe('#/product/chapter/F1');
     expect(host.querySelector('[role="dialog"]')).toBeNull();

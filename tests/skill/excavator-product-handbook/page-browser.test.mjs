@@ -197,7 +197,7 @@ suite('page in a browser (O4)', () => {
         const sideShown = () => page.evaluate("getComputedStyle(document.querySelector('.side')).display !== 'none' && document.querySelector('.side').getBoundingClientRect().width > 0");
         expect(await sideShown()).toBe(width >= 900);
         expect(await page.evaluate("document.querySelector('.side').getAttribute('data-side')")).toBe('global');
-        expect(await page.evaluate("Array.from(document.querySelectorAll('.side a')).map((link) => link.getAttribute('data-nav') || link.getAttribute('data-page')).join(',')")).toBe('overview,problems,chapter:system,chapter:domains,history,coverage');
+        expect(await page.evaluate("Array.from(document.querySelectorAll('.side a')).map((link) => link.getAttribute('data-nav') || link.getAttribute('data-page')).join(',')")).toBe('overview,problems,remedies,chapter:system,chapter:domains,history,coverage');
         if (width < 900) {
           expect(await page.evaluate("document.querySelector('#menu')")).toBeNull();
           await page.evaluate("document.querySelector('.menu-btn').click()");
@@ -211,6 +211,20 @@ suite('page in a browser (O4)', () => {
           await page.waitFor("document.querySelector('[data-chapter=\"system\"]')", 'the chapter from the left list');
           expect(await page.evaluate("document.querySelector('.side a[aria-current=\"page\"]').getAttribute('data-page')")).toBe('chapter:system');
         }
+        // The improvement suggestions page is reachable from the list (the menu on a phone); this fixture has no such chapter, so it says so.
+        if (width < 900) {
+          await page.evaluate("document.querySelector('.menu-btn').click()");
+          await page.waitFor("document.querySelector('#menu a[data-nav=\"remedies\"]')", 'the open menu');
+          await page.evaluate("document.querySelector('#menu a[data-nav=\"remedies\"]').click()");
+        } else {
+          await page.evaluate("document.querySelector('.side a[data-nav=\"remedies\"]').click()");
+          await page.waitFor("document.querySelector('[data-view=\"remedies\"]')", 'the improvement suggestions page');
+          expect(await page.evaluate("document.querySelector('.side a[aria-current=\"page\"]').getAttribute('data-nav')")).toBe('remedies');
+        }
+        await page.waitFor("document.querySelector('[data-view=\"remedies\"] [data-part=\"no-remedies\"]')", 'the page without a chapter');
+        expect(await page.evaluate("location.hash")).toBe('#/product/remedies');
+        expect(await page.evaluate("document.querySelector('[data-view=\"remedies\"] h1').textContent")).toBe('Improvement suggestions');
+        await fits(page, width, 'the improvement suggestions page');
         await goTo(page, '#/chapter/F1', '[data-chapter="F1"]');
         expect(await page.evaluate("document.querySelector('.side').getAttribute('data-side')")).toBe('domain');
         expect(await page.evaluate("document.querySelector('.side a[aria-current=\"page\"]').getAttribute('data-page')")).toBe('chapter:F1');
@@ -240,12 +254,12 @@ suite('page in a browser (O4)', () => {
   }
 
   // The frame with the left list and the content column never scrolls the window sideways, at any width.
-  it('has no horizontal scroll at 500, 1100 and 1440 px on the home, domain, problems, feature and data pages', async () => {
+  it('has no horizontal scroll at 500, 1100 and 1440 px on the home, domain, problems, improvement suggestions, feature and data pages', async () => {
     for (const width of [500, 1100, 1440]) {
       const page = await browser.openPage({ width, height: 900 });
       await page.goto(url);
       await page.waitFor('document.querySelector(\'[data-view="home"]\')', 'the home page');
-      for (const hash of ['#/', '#/domain/d1', '#/problems', '#/technical/chapter/F1', '#/technical/data', '#/technical/history', '#/coverage']) {
+      for (const hash of ['#/', '#/domain/d1', '#/problems', '#/remedies', '#/technical/remedies', '#/technical/chapter/F1', '#/technical/data', '#/technical/history', '#/coverage']) {
         await page.evaluate(`window.location.hash = ${JSON.stringify(hash)}`);
         await page.waitFor('document.querySelector(\'main > *\')', `the page ${hash}`);
         await fits(page, width, `${hash}`);

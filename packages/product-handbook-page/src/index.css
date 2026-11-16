@@ -597,10 +597,6 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 
 /* The problems page: wide; the table is a grid of rows that become stacked blocks on a narrow screen. */
 .problems-page { max-width: 1240px; margin: 0 auto; padding: 0 0 48px; min-width: 0; }
-.ptabs { display: flex; gap: 4px; margin: 20px 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
-.ptabs a { flex: none; padding: 8px 14px; border-radius: 999px 999px 0 0; color: var(--text-2); text-decoration: none; font-size: 14.5px; white-space: nowrap; }
-.ptabs a:hover { background: var(--surface-2); color: var(--text); }
-.ptabs a[aria-selected="true"] { color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
 .prob-state { margin: 0 0 10px; }
 .prob-counts { margin: 0 0 12px; }
 .prob-table { margin: 0 0 8px; }

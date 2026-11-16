@@ -22,7 +22,7 @@ export function routeKey(route: RouteBody): string | null {
   switch (route.name) {
     case 'chapter': return `chapter:${route.id}`;
     case 'data': case 'dictionaries': case 'history': case 'coverage': return route.name;
-    case 'home': case 'domain': case 'problems': case 'architecture': case 'not-found': return null;
+    case 'home': case 'domain': case 'problems': case 'remedies': case 'architecture': case 'not-found': return null;
   }
 }
 
@@ -34,7 +34,7 @@ export function bodyOfItem(item: PageItem): RouteBody {
   }
 }
 
-/** The chapters the problems page shows (as its table and its remedies tab) instead of reference pages of their own. */
+/** The chapters the problems page shows (its table, and the improvement suggestions page) instead of reference pages of their own. */
 export const PROBLEM_CHAPTERS: ReadonlySet<string> = new Set(['defects', 'review', 'remedies']);
 
 /** Whether a block is a page of the lists in `view`: the technical blocks (data, dictionaries) are not in the product view, and the problem chapters are not pages. */

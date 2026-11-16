@@ -9,12 +9,12 @@ import { useText } from '../lib/text';
 import { Mark } from './Mark';
 import { ReferenceGroups } from './ReferenceGroups';
 
-/** The two states of the list: `global` (overview, problems, system architecture, the other pages) and `domain` (back to the overview, every domain with its features). */
+/** The two states of the list: `global` (overview, problems, improvement suggestions, system architecture, the other pages) and `domain` (back to the overview, every domain with its features). */
 export type SideMode = 'global' | 'domain';
 
 /** The place the reader is at, as the list marks it: a page that is no entry of the list (the not-found page) is `none`; a feature page carries its key and the id of its domain. */
 export type SidePlace =
-  | { kind: 'home' | 'problems' | 'architecture' | 'none' }
+  | { kind: 'home' | 'problems' | 'remedies' | 'architecture' | 'none' }
   | { kind: 'domain'; id: string }
   | { kind: 'page'; key: string; group: string | null };
 
@@ -41,7 +41,7 @@ function revealIn(box: HTMLElement, target: HTMLElement, top: boolean): void {
 
 const here = (on: boolean): 'page' | undefined => (on ? 'page' : undefined);
 
-/** The global state: the overview, the problems, the system architecture (when the view has it), then the pages of the reference groups. */
+/** The global state: the overview, the problems, the improvement suggestions, the system architecture (when the view has it), then the pages of the reference groups. */
 function GlobalList({ place, references, architecture }: Pick<BodyProps, 'place' | 'references' | 'architecture'>) {
   const t = useText();
   const nav = useLinks();
@@ -50,6 +50,7 @@ function GlobalList({ place, references, architecture }: Pick<BodyProps, 'place'
       <ul className="side-top">
         <li><a href={nav.home} data-nav="overview" aria-current={here(place.kind === 'home')}>{t('page.nav.overview')}</a></li>
         <li><a href={nav.problems()} data-nav="problems" aria-current={here(place.kind === 'problems')}>{t('page.nav.problems')}</a></li>
+        <li><a href={nav.remedies} data-nav="remedies" aria-current={here(place.kind === 'remedies')}>{t('page.nav.remedies')}</a></li>
         {architecture && <li><a href={nav.architecture} data-nav="architecture" aria-current={here(place.kind === 'architecture')}>{t('page.nav.architecture')}</a></li>}
       </ul>
       <ReferenceGroups groups={references} current={place.kind === 'page' ? place.key : undefined} />
@@ -101,7 +102,7 @@ export function SideBody(props: BodyProps) {
 
 /**
  * The list at the left of every page, sticky and scrolling in its own box (below 900px it is not shown: the menu has the same
- * list). In the `global` state it lists the overview, the problems, the system architecture (technical view) and the other pages
+ * list). In the `global` state it lists the overview, the problems, the improvement suggestions, the system architecture (technical view) and the other pages
  * by the parts of the outline; in the `domain` state a link back to the overview and every domain with its features. The page
  * the reader is on has `aria-current`; the list scrolls to it when it changes.
  */

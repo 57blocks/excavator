@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject } from 'react';
+import { useMemo, useState } from 'react';
 
 import { useProblems } from '../lib/chunks';
 import { groupsOf, isFeature, SYSTEM_BLOCK } from '../lib/groups';
@@ -8,12 +7,10 @@ import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
 import { ALL_LEVELS, PROBLEM_TYPES, countRows, filterRows, levelText, sortRows, typeOfLevel } from '../lib/problems';
 import { routeHash } from '../lib/route';
-import type { ProblemFilters, ProblemsTab } from '../lib/route';
+import type { ProblemFilters } from '../lib/route';
 import { useText } from '../lib/text';
-import { numberHeadings } from '../lib/toc';
 import type { DesignText, PageData, ProblemRow, ProblemType, View } from '../lib/types';
 import { Breadcrumbs } from './Breadcrumbs';
-import { ChapterPage } from './ChapterPage';
 import { ChunkNotice } from './ChunkNotice';
 import { Citation, parseCitation } from './Citation';
 import { Markdown } from './Markdown';
@@ -30,31 +27,9 @@ const SOURCE_OF: Record<ProblemType, 'defects' | 'design' | 'open'> = { defect: 
  * address, so the view switch and every other link built from the route carry the filters; the app keeps the scroll position
  * when only the filters change (`placeOf` in App.tsx).
  */
-function writeAddress(prefix: View | null, tab: ProblemsTab, filters: ProblemFilters): void {
-  const hash = routeHash({ name: 'problems', tab, filters }, prefix);
+function writeAddress(prefix: View | null, filters: ProblemFilters): void {
+  const hash = routeHash({ name: 'problems', filters }, prefix);
   if (window.location.hash !== hash) window.location.replace(hash);
-}
-
-/** Give the `h2` and `h3` of the remedies chapter their `h-<n>` ids, as the table of contents does elsewhere, so a link can jump to one. */
-function useNumberedHeadings(root: RefObject<HTMLElement | null>): void {
-  useEffect(() => {
-    const element = root.current;
-    if (element === null) return undefined;
-    numberHeadings(element);
-    if (typeof MutationObserver === 'undefined') return undefined;
-    const observer = new MutationObserver(() => { numberHeadings(element); });
-    observer.observe(element, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [root]);
-}
-
-function Remedies({ data }: { data: PageData }) {
-  const t = useText();
-  const root = useRef<HTMLDivElement>(null);
-  useNumberedHeadings(root);
-  const chapter = data.problems.remedies === null ? undefined : data.chapters.find((candidate) => candidate.id === data.problems.remedies);
-  if (chapter === undefined) return <p className="muted" data-part="no-remedies">{t('page.problems.noRemediesChapter')}</p>;
-  return <div ref={root} data-part="remedies"><ChapterPage chapter={chapter} /></div>;
 }
 
 /** The citations of a row, each as the chip chapters show. */
@@ -70,7 +45,7 @@ function Cites({ cites }: { cites: string[] }) {
 }
 
 /** The body of a problem: its text in the reader's view, group, features and remedy link. Needs a row with its texts. */
-export function ProblemDetail({ row, filters }: { row: ProblemRow; filters: ProblemFilters }) {
+export function ProblemDetail({ row }: { row: ProblemRow }) {
   const t = useText();
   const view = useView();
   const nav = useLinks();
@@ -107,7 +82,7 @@ export function ProblemDetail({ row, filters }: { row: ProblemRow; filters: Prob
         <div className="item-field" data-field="remedy">
           {row.remedy === null
             ? <span className="muted">{t('page.problems.noRemedy')}</span>
-            : <a href={nav.problems(filters, 'remedies')} data-part="remedy-link" onClick={() => { jumpToHeading('remedies', (row.remedy as { heading: number }).heading); }}>{t('page.problems.remedyLink')}</a>}
+            : <a href={nav.remedies} data-part="remedy-link" onClick={() => { jumpToHeading('remedies', (row.remedy as { heading: number }).heading); }}>{t('page.problems.remedyLink')}</a>}
         </div>
       )}
     </div>
@@ -202,7 +177,7 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
                     <span className="prob-features" data-part="problem-features">{first}{row.features.length > 1 && <span className="prob-more">{t('page.problems.moreFeatures', { count: row.features.length - 1 })}</span>}</span>
                     <span className="prob-type">{t(`page.problems.type.${row.type}`)}{row.level !== null && <span className="prob-level" data-level={row.level}>{levelText(t, row.level)}</span>}</span>
                   </button>
-                  {expanded && <ProblemDetail row={row} filters={filters} />}
+                  {expanded && <ProblemDetail row={row} />}
                 </li>
               );
             })}
@@ -214,10 +189,10 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
 }
 
 /**
- * The problems page: a table of every defect, design problem and open question with counts, filters kept in the address, and the
- * remedies chapter as a second tab. Wide, with no side list: it is a place of its own, not a chapter.
+ * The problems page: a table of every defect, design problem and open question with counts and filters kept in the address.
+ * Wide: it is a place of its own, not a chapter.
  */
-export function ProblemsPage({ data, tab, filters: routeFilters }: { data: PageData; tab: ProblemsTab; filters: ProblemFilters }) {
+export function ProblemsPage({ data, filters: routeFilters }: { data: PageData; filters: ProblemFilters }) {
   const t = useText();
   const nav = useLinks();
   const view = useView();
@@ -228,32 +203,20 @@ export function ProblemsPage({ data, tab, filters: routeFilters }: { data: PageD
   if (seen !== routeFilters) { setSeen(routeFilters); setFilters(routeFilters); }
   const onFilters = (next: ProblemFilters): void => {
     setFilters(next);
-    writeAddress(data.views.length > 1 ? view : null, tab, next);
+    writeAddress(data.views.length > 1 ? view : null, next);
   };
   const lines = PROBLEM_TYPES.flatMap((type) => {
     const source = data.problems.sources[SOURCE_OF[type]];
     return source.state === 'ok' ? [] : [{ type, text: t(`page.problems.state.${source.state}`, { source: t(`page.problems.type.${type}`) }) }];
   });
   const unmatched = data.problems.sources.open.unmatched.length;
-  const tabs: { key: ProblemsTab; label: string }[] = [{ key: 'list', label: t('page.problems.tab.list') }, { key: 'remedies', label: t('page.problems.tab.remedies') }];
   return (
-    <div className="problems-page" data-view="problems" data-tab={tab}>
+    <div className="problems-page" data-view="problems">
       <Breadcrumbs trail={[{ label: t('page.nav.overview'), href: nav.home }, { label: t('page.problems.title') }]} />
       <h1 className="page-title">{t('page.problems.title')}</h1>
-      <div className="ptabs" role="tablist" aria-label={t('page.problems.tabs')}>
-        {tabs.map((entry) => (
-          <a key={entry.key} role="tab" href={nav.problems(filters, entry.key)} aria-selected={entry.key === tab} data-tab={entry.key}>{entry.label}</a>
-        ))}
-      </div>
-      <section className="panel" role="tabpanel">
-        {tab === 'remedies' ? <Remedies data={data} /> : (
-          <>
-            {lines.map((line) => <p className="notice prob-state" role="note" key={line.type} data-source={line.type}>{line.text}</p>)}
-            {unmatched > 0 && <p className="notice prob-state" role="note" data-part="problem-unmatched">{t('page.problems.unmatched', { count: unmatched, heading: t('chapter.openQuestions') })}</p>}
-            <List data={data} filters={filters} onFilters={onFilters} />
-          </>
-        )}
-      </section>
+      {lines.map((line) => <p className="notice prob-state" role="note" key={line.type} data-source={line.type}>{line.text}</p>)}
+      {unmatched > 0 && <p className="notice prob-state" role="note" data-part="problem-unmatched">{t('page.problems.unmatched', { count: unmatched, heading: t('chapter.openQuestions') })}</p>}
+      <List data={data} filters={filters} onFilters={onFilters} />
     </div>
   );
 }
