@@ -208,16 +208,18 @@ describe('the top bar', () => {
 });
 
 describe('a reading page', () => {
-  it('lists, at the side, the group of a feature chapter with its colour, its name as a link to the domain page, and marks the current page', () => {
+  it('lists, at the side, every group with its colour and name, the current one open, and marks the current page', () => {
     const html = render(withDomains(), '#/technical/chapter/F2');
     const list = side(html);
-    expect(list).toContain(`aria-label="${d('Support')}"`);
-    expect(list).toContain(`data-c-fill`.replace('data-c-fill', `--c-fill:${STRATA[0].fill}`));
-    expect(list).toContain(`<a href="#/technical/domain/d1">${d('Support')}</a>`);
-    expect(hrefs(list)).toEqual(['#/technical/domain/d1', '#/technical/chapter/F2']);
+    expect(list).toContain(`aria-label="${marked['page.nav.domains']}"`);
+    expect(list).toContain(`--c-fill:${STRATA[0].fill}`);
+    expect(list).toContain(`--c-fill:${STRATA[1].fill}`);
+    expect(list).toMatch(/<details class="side-group" data-group="d1" open=""/);
+    expect(list).toMatch(/<details class="side-group" data-group="d2"[^>]*>/);
+    expect(list).not.toMatch(/data-group="d2" open/);
+    expect(list).not.toContain('/domain/');
+    expect(hrefs(list)).toEqual(['#/technical/chapter/F2', '#/technical/chapter/F1']);
     expect(list).toMatch(/<a [^>]*href="#\/technical\/chapter\/F2"[^>]*aria-current="page"/);
-    // The other domain's feature is not in this list.
-    expect(list).not.toContain('chapter/F1');
   });
 
   it('lists the references for every other page, with the current one marked, and no colour', () => {

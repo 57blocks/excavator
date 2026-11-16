@@ -30,12 +30,12 @@ export function switchTarget(data: PageData, route: Route, view: View, coverageT
 }
 
 /**
- * What a reading page sits in: its group (a feature chapter) or the references (every other page), with the pages of the side
+ * What a reading page sits in: its group (a feature chapter, with every group for the side list) or the references (every other page), with the pages of the side
  * list in order. `order` is the order previous and next follow: the features of every group in the groups' order (a group
  * feature chapter is listed once, in the first group that has it), or the references flattened.
  */
 export type Context =
-  | { kind: 'group'; group: Group; items: PageItem[]; order: { item: PageItem; group: Group }[] }
+  | { kind: 'group'; group: Group; groups: Group[]; items: PageItem[]; order: { item: PageItem; group: Group }[] }
   | { kind: 'references'; groups: ReferenceGroup[]; items: PageItem[]; order: { item: PageItem; group: null }[] };
 
 /** The context of the page `key` in `view`. */
@@ -45,7 +45,7 @@ export function contextOf(data: PageData, view: View, coverageTitle: string, sys
   if (group !== undefined) {
     const seen = new Set<string>();
     const order = groups.flatMap((one) => one.features.filter((item) => !seen.has(item.key) && seen.add(item.key)).map((item) => ({ item, group: one })));
-    return { kind: 'group', group, items: group.features, order };
+    return { kind: 'group', group, groups, items: group.features, order };
   }
   const references = referencesOf(data, view, coverageTitle, systemTitle);
   const items = flatReferences(references);
