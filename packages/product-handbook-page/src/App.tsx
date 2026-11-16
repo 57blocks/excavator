@@ -116,7 +116,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   if (view !== null) {
     if (body.name === 'home') {
       place = { kind: 'home' };
-      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} />;
+      main = <HomePage title={brandOf(data, view)} groups={groups} />;
     } else if (body.name === 'architecture') {
       place = { kind: 'architecture' };
       main = <Architecture source={data.architecture.technical ?? ''} sections={systemSections(data.search)} />;

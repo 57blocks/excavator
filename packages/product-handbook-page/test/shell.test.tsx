@@ -366,7 +366,8 @@ describe('the left list', () => {
 describe('the home and domain pages', () => {
   it('show the title on the home page, and the domain page with its features as links; a fallback domain shows its name and features', () => {
     const home = render(withDomains(), '#/product');
-    expect(home).toContain(`<h1 class="home-title">${d('System chapter')}</h1>`);
+    expect(home).toContain(`<h1 class="vh">${d('System chapter')}</h1>`);
+    expect(home).not.toContain('home-lead');
     expect(home).toContain('data-part="open-domains" href="#/product/domain/d1"');
     const domain = render(pageData(), '#/product/domain/d1');
     expect(domain).toContain('data-domain="d1"');

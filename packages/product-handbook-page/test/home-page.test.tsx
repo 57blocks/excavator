@@ -28,14 +28,14 @@ const markerOf = (host: HTMLElement, edge: number): string => host.querySelector
 const classOf = (host: HTMLElement, edge: number): string[] => Array.from(host.querySelector(`[data-edge="${edge}"] .edge`)?.classList ?? []);
 
 describe('the top of the page', () => {
-  it('has the system title and the lead as inline Markdown, with no counts sentence in the lead', () => {
+  it('has the system name as a screen-reader-only h1, and no visible title and no lead', () => {
     const host = home();
-    expect(host.querySelector('h1')?.textContent).toBe(d('System chapter'));
-    const lead = host.querySelector('.home-lead') as HTMLElement;
-    expect(lead.querySelector('em')?.textContent).toBe('synthetic');
-    expect(lead.querySelector('strong')).toBeNull();
-    expect(lead.textContent).toBe(d('A small synthetic system.'));
-    expect(lead.querySelector('p')).toBeNull();
+    const title = host.querySelector('h1') as HTMLElement;
+    expect(title.className).toBe('vh');
+    expect(title.textContent).toBe(d('System chapter'));
+    expect(host.querySelectorAll('h1')).toHaveLength(1);
+    expect(host.querySelector('.home-lead, .home-title, .home-why')).toBeNull();
+    expect(host.textContent).not.toContain(d('A small synthetic system.'));
   });
 });
 
@@ -101,17 +101,50 @@ describe('the atlas', () => {
     expect(map(host)?.classList.contains('focus')).toBe(false);
   });
 
-  it('opens the domain page on a click on a node, and a click on the empty map opens nothing', () => {
+  it('selects a domain on a click and keeps it after the pointer leaves, without navigating; hover does not replace it; a second click keeps it', () => {
     window.location.hash = '#/product';
     const host = home();
-    fire(map(host) as Element, 'click');
-    expect(window.location.hash).toBe('#/product');
     fire(node(host, 'd3'), 'click');
-    expect(window.location.hash).toBe('#/product/domain/d3');
+    expect(window.location.hash).toBe('#/product');
+    expect(node(host, 'd3').getAttribute('aria-pressed')).toBe('true');
+    expect(node(host, 'd3').classList.contains('on')).toBe(true);
+    expect(side(host).querySelector('h3')?.textContent).toBe(d('Billing'));
+    expect(side(host).querySelector('h3 a')?.getAttribute('href')).toBe('#/product/domain/d3');
+    expect(map(host)?.classList.contains('focus')).toBe(true);
+    fire(node(host, 'd3'), 'mouseout');
+    expect(node(host, 'd3').classList.contains('on')).toBe(true);
+    fire(node(host, 'd2'), 'mouseover');
+    expect(side(host).querySelector('h3')?.textContent).toBe(d('Billing'));
+    expect(node(host, 'd2').classList.contains('on')).toBe(false);
+    fire(node(host, 'd3'), 'click');
+    expect(node(host, 'd3').getAttribute('aria-pressed')).toBe('true');
+    fire(node(host, 'd2'), 'click');
+    expect(node(host, 'd3').getAttribute('aria-pressed')).toBe('false');
+    expect(node(host, 'd2').getAttribute('aria-pressed')).toBe('true');
+    expect(side(host).querySelector('h3')?.textContent).toBe(d('Orders'));
+    fire(host.querySelector('[data-edge="2"] .edge-hit') as Element, 'click');
+    expect(node(host, 'd2').getAttribute('aria-pressed')).toBe('false');
+    expect(classOf(host, 2)).toContain('picked');
+    fire(node(host, 'd3'), 'click');
+    expect(classOf(host, 2)).not.toContain('picked');
+    expect(window.location.hash).toBe('#/product');
     window.location.hash = '';
   });
 
-  it('shows the side panel of the hovered domain: its name, its intro as plain text, the two lists with links and the link to its page', () => {
+  it('clears the selection on a click on the empty map and on Escape inside the atlas', () => {
+    const host = home();
+    fire(node(host, 'd3'), 'click');
+    fire(map(host) as Element, 'click');
+    expect(node(host, 'd3').getAttribute('aria-pressed')).toBe('false');
+    expect(side(host).querySelector('h3')?.textContent).toBe(marked['page.map.label']);
+    fire(node(host, 'd3'), 'click');
+    fire(node(host, 'd3'), 'keydown', { key: 'Escape' });
+    expect(node(host, 'd3').getAttribute('aria-pressed')).toBe('false');
+    expect(map(host)?.classList.contains('focus')).toBe(false);
+    expect(side(host).querySelector('h3')?.textContent).toBe(marked['page.map.label']);
+  });
+
+  it('shows the side panel of the hovered domain: its name, its intro, the two headings with counts and one entry per domain at the other end, with no hand-over text', () => {
     const host = home();
     fire(node(host, 'd2'), 'mouseover');
     const panel = side(host);
@@ -122,31 +155,62 @@ describe('the atlas', () => {
       ['dir-out', marked['page.flow.out'].replace('{count}', '1')],
       ['dir-in', marked['page.flow.in'].replace('{count}', '2')],
     ]);
-    expect(Array.from(panel.querySelectorAll('[data-handover]')).map((one) => one.getAttribute('data-handover'))).toEqual(['2', '0', '3']);
-    expect(panel.querySelector('h4.dir-in + ul > li[data-other="d1"] > b a[href="#/product/domain/d1"]')?.textContent).toBe(d('Platform'));
-    const links = Array.from(panel.querySelectorAll('[data-handover="0"] a[data-feature]'));
-    expect(links.map((one) => [one.getAttribute('href'), one.textContent])).toEqual([['#/product/chapter/F1', d('Platform core')], ['#/product/chapter/F2', d('Order entry')]]);
-    expect(panel.textContent).not.toContain('(F1)');
-    expect(panel.querySelector('.side-go')?.getAttribute('href')).toBe('#/product/domain/d2');
-    expect(panel.querySelector('.side-go')?.textContent).toBe(marked['page.flow.open'].replace('{name}', d('Orders')));
+    const entries = (selector: string) => Array.from(panel.querySelectorAll(`${selector} + ul > li`)).map((one) => [one.getAttribute('data-other'), one.querySelector('a')?.getAttribute('href'), one.querySelector('a .link-name')?.textContent, one.querySelector('[data-part="link-count"]')?.textContent]);
+    expect(entries('h4.dir-out')).toEqual([['d3', '#/product/domain/d3', d('Billing'), '1']]);
+    expect(entries('h4.dir-in')).toEqual([['d1', '#/product/domain/d1', d('Platform'), '1'], ['d3', '#/product/domain/d3', d('Billing'), '1']]);
+    expect(panel.querySelector('li[data-other="d1"] .mark')).not.toBeNull();
+    for (const row of Array.from(panel.querySelectorAll('ul.link-list > li'))) {
+      expect(row.querySelectorAll('a')).toHaveLength(1);
+      expect(row.querySelector('a.link-row')?.getAttribute('href')).toBe(`#/product/domain/${row.getAttribute('data-other')}`);
+      expect(row.querySelector('a .mark')).not.toBeNull();
+      expect(row.querySelector('a [data-part="link-count"]')).not.toBeNull();
+    }
+    expect(panel.querySelectorAll('h4.dir-out + ul.link-list > li')).toHaveLength(1);
+    expect(panel.querySelectorAll('h4.dir-in + ul.link-list > li')).toHaveLength(2);
+    const title = panel.querySelector('h3 a.side-title-link') as HTMLAnchorElement;
+    expect(title.getAttribute('href')).toBe('#/product/domain/d2');
+    expect(title.getAttribute('title')).toBe(marked['page.flow.open'].replace('{name}', d('Orders')));
+    expect(title.textContent).toBe(d('Orders'));
+    expect(panel.querySelector('.side-go')).toBeNull();
+    for (const row of Array.from(panel.querySelectorAll('a.link-row'))) expect(row.getAttribute('title')).toBe(row.querySelector('.link-name')?.textContent);
+    expect(panel.querySelector('.link-list')?.hasAttribute('data-cols')).toBe(false);
     expect(panel.getAttribute('aria-live')).toBe('polite');
-    expect(panel.querySelector('.ho-cites')).toBeNull();
+    expect(panel.querySelector('.ho, .ho-cites, [data-handover], a[data-feature], code')).toBeNull();
+    for (const handover of domainData().domains.handovers) expect(panel.textContent).not.toContain(handover.what.slice(0, 12));
+    expect(panel.textContent).not.toContain('(F1)');
   });
 
-  it('groups the hand-overs of the side panel by the domain at the other end, as the domain page does', () => {
+  it('puts a list of more than six domains in two columns and a list of six or fewer in one', () => {
+    const data = domainData();
+    const ids = ['d1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8'];
+    const list = ids.map((id) => ({ ...data.domains.list[0], id, name: d(`Dom ${id}`), features: [] }));
+    const hand = (to: string) => ({ from: 'd1', to, what: d(`To ${to}.`), features: [], cites: [] });
+    const make = (others: string[]) => home({ ...data, domains: { ...data.domains, list, handovers: others.map(hand) } });
+    const seven = make(['d2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8']);
+    fire(node(seven, 'd1'), 'mouseover');
+    expect(side(seven).querySelectorAll('.link-list > li')).toHaveLength(7);
+    expect(side(seven).querySelector('.link-list')?.getAttribute('data-cols')).toBe('2');
+    cleanup();
+    const six = make(['d2', 'd3', 'd4', 'd5', 'd6', 'd7']);
+    fire(node(six, 'd1'), 'mouseover');
+    expect(side(six).querySelectorAll('.link-list > li')).toHaveLength(6);
+    expect(side(six).querySelector('.link-list')?.hasAttribute('data-cols')).toBe(false);
+  });
+
+  it('counts the hand-overs with each domain at the other end in one entry', () => {
     const data = domainData();
     const extra = { from: 'd1', to: 'd2', what: d('Prices reach the orders.'), features: [], cites: ['src/f.js:1-2'] };
     const host = home({ ...data, domains: { ...data.domains, handovers: [...data.domains.handovers, extra] } });
     fire(node(host, 'd2'), 'mouseover');
     const received = Array.from(side(host).querySelectorAll('h4.dir-in + ul > li'));
-    expect(received.map((one) => [one.getAttribute('data-other'), Array.from(one.querySelectorAll('[data-handover]')).map((ho) => ho.getAttribute('data-handover'))])).toEqual([['d1', ['0', '5']], ['d3', ['3']]]);
+    expect(received.map((one) => [one.getAttribute('data-other'), one.querySelector('[data-part="link-count"]')?.textContent])).toEqual([['d1', '2'], ['d3', '1']]);
     expect(received[0].querySelectorAll('a[href="#/product/domain/d1"]').length).toBe(1);
   });
 
-  it('shows the cites as quiet monospace text in the technical view only', () => {
+  it('shows no cites in the technical view either', () => {
     const technical = home(domainData(), '#/technical');
     fire(node(technical, 'd2'), 'mouseover');
-    expect(Array.from(side(technical).querySelectorAll('.ho-cites code')).map((one) => one.textContent)).toEqual(['src/c.js:2-2', 'src/a.js:1-3', 'src/d.js:7-8']);
+    expect(side(technical).querySelector('.ho-cites, code')).toBeNull();
     expect(side(technical).querySelector('.side-hint')?.textContent).toBe(d('Takes orders.'));
   });
 
@@ -162,20 +226,22 @@ describe('the atlas', () => {
     const panel = side(host);
     expect(panel.querySelector('h3')?.textContent).toBe(d('Orders'));
     expect(panel.querySelector('.dir-out')?.textContent).toBe(`${marked['page.handover.out']} ${d('Billing')}`);
-    expect(panel.querySelectorAll('li')).toHaveLength(1);
-    expect(panel.querySelector('li')?.textContent).toContain(d('Order entry'));
+    expect(panel.querySelector('a[href="#/product/domain/d3"]')?.textContent).toBe(d('Billing'));
+    expect(panel.querySelector('li, ul, .ho')).toBeNull();
+    expect(panel.textContent).not.toContain(d('Order entry'));
   });
 
-  it('opens the domain page on Enter and on Space, ignores other keys, and has no pressed state', () => {
+  it('selects on Enter and on Space, ignores other keys, never navigates and has a pressed state', () => {
     window.location.hash = '#/product';
     const host = home();
     fire(node(host, 'd4'), 'keydown', { key: 'Enter' });
-    expect(window.location.hash).toBe('#/product/domain/d4');
+    expect(node(host, 'd4').getAttribute('aria-pressed')).toBe('true');
     fire(node(host, 'd2'), 'keydown', { key: ' ' });
-    expect(window.location.hash).toBe('#/product/domain/d2');
+    expect(node(host, 'd2').getAttribute('aria-pressed')).toBe('true');
+    expect(node(host, 'd4').getAttribute('aria-pressed')).toBe('false');
     fire(node(host, 'd3'), 'keydown', { key: 'a' });
-    expect(window.location.hash).toBe('#/product/domain/d2');
-    expect(node(host, 'd4').hasAttribute('aria-pressed')).toBe(false);
+    expect(node(host, 'd3').getAttribute('aria-pressed')).toBe('false');
+    expect(window.location.hash).toBe('#/product');
     window.location.hash = '';
   });
 
@@ -222,21 +288,30 @@ describe('the phone list and the stylesheet', () => {
     expect(phone).toMatch(/\.rel-list \{ display: block;/);
   });
 
-  it('keeps the side panel from stretching the map and has no card grid, no all-caps label', () => {
-    expect(css).toMatch(/\.atlas-side \{[^}]*overflow: auto;[^}]*contain: size;/);
+  it('lets the side panel grow with its content (no inner scroll, no fixed size) and has no card grid, no all-caps label', () => {
+    const rule = css.match(/\.atlas-side \{([^}]*)\}/)?.[1] ?? '';
+    expect(rule).not.toBe('');
+    expect(css).toMatch(/\.link-list \{[^}]*padding: 0 0 0 1[2-6]px;/);
+    expect(css).toMatch(/\.link-row \{ display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px; border-radius: 6px;/);
+    expect(css).toMatch(/\.link-row:hover, \.link-row:focus-visible \{ background: var\(--tint\); \}/);
+    expect(css).toMatch(/\.link-count \{ margin-left: auto;/);
+    expect(css).toMatch(/\.link-list\[data-cols="2"\] \{ display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/);
+    expect(css).toMatch(/\.link-name \{[^}]*text-overflow: ellipsis;/);
+    expect(rule).not.toContain('contain: size');
+    expect(rule).not.toMatch(/overflow(-y)?: (auto|scroll)/);
     expect(css).toMatch(/\.atlas \{ display: grid; grid-template-columns: minmax\(0, 1fr\) 340px;/);
     expect(css).not.toContain('text-transform: uppercase');
   });
 });
 
 describe('the open-domains button and what the home page does not have', () => {
-  it('has the title, the lead, then one button that opens the first domain at the top right of the map, above it', () => {
+  it('has the hidden title, then one button that opens the first domain at the top right of the map, above it', () => {
     const host = home();
     const button = host.querySelector('a[data-part="open-domains"]') as HTMLAnchorElement;
     expect(button.getAttribute('href')).toBe('#/product/domain/d1');
     expect(button.textContent).toBe(marked['page.home.openDomains']);
     expect(host.querySelectorAll('a[data-part="open-domains"]')).toHaveLength(1);
-    const parts = ['h1', '.home-lead', 'a[data-part="open-domains"]', '[data-part="atlas"]'].map((selector) => host.querySelector(selector) as Element);
+    const parts = ['h1', 'a[data-part="open-domains"]', '[data-part="atlas"]'].map((selector) => host.querySelector(selector) as Element);
     parts.forEach((part, at) => { if (at > 0) expect(parts[at - 1].compareDocumentPosition(part) & Node.DOCUMENT_POSITION_FOLLOWING, parts[at].className).toBeTruthy(); });
     expect(button.parentElement?.className).toBe('map-head');
     expect(button.parentElement?.parentElement?.className).toBe('atlas-section');
@@ -286,7 +361,8 @@ describe('without a usable list', () => {
     expect(button.getAttribute('href')).toBe('#/product/domain/d1');
     expect(button.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(button.parentElement?.className).toBe('map-head');
-    expect((host.querySelector('.home-lead') as Element).compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((host.querySelector('h1') as Element).compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(host.querySelector('.home-lead')).toBeNull();
     expect(host.querySelector('[data-part="overview-grid"], [data-part="overview-counts"]')).toBeNull();
   });
 
