@@ -15,6 +15,8 @@ export const DEFECT_CATEGORIES = Object.freeze([
 const FENCE = /^\s*```/;
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const LIST_ITEM = /^ {0,3}[-*+]\s+(.*)$/;
+/** An item of a section list: a bullet or a numbered item (`1.` or `1)`); writers number open questions as often as they bullet them. */
+const SECTION_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])\s+(.*)$/;
 const CATEGORY = /^\*\*([^*]+)\*\*/;
 const OPEN = `[(${String.fromCharCode(0xff08)}]`;
 const CLOSE = `[)${String.fromCharCode(0xff09)}]`;
@@ -84,7 +86,7 @@ export function parseDefects(text, { none = '' } = {}) {
 }
 
 /**
- * The list items (the fixed none text excluded) of the section of `text` headed exactly `title`, level 2 or 3, as `{ text, line }` (1-based line), or null when no heading equals `title`.
+ * The list items, bulleted or numbered (the fixed none text excluded), of the section of `text` headed exactly `title`, level 2 or 3, as `{ text, line }` (1-based line), or null when no heading equals `title`.
  * A section ends at the next heading of the same or a higher level; an item continues on following lines like a defect item does.
  */
 export function sectionItems(text, title, none) {
@@ -111,7 +113,7 @@ export function sectionItems(text, title, none) {
         found = true;
       }
     } else if (depth > 0) {
-      const bullet = LIST_ITEM.exec(raw);
+      const bullet = SECTION_ITEM.exec(raw);
       if (bullet !== null) {
         finish();
         current = { line, parts: [bullet[1]] };

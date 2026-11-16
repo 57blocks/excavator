@@ -276,6 +276,12 @@ describe('problemsData: states', () => {
     expect(stateOf(run, 'design')).toEqual({ state: 'ok', count: 3 });
   });
 
+  it('takes the items of a numbered list as questions, like bullets', () => {
+    const run = setup({ chapters: { system: '# System\n\n## Points to confirm\n\n1. Who owns the archive?\n2) Is it kept\n   for good?\n10. A third one.\n' } });
+    const open = rowsOf(problemsData(run.load(), ['product']), 'open');
+    expect(open.map((row) => [row.texts.product, row.source.line])).toEqual([['Who owns the archive?', 5], ['Is it kept for good?', 6], ['A third one.', 8]]);
+  });
+
   it('counts an open source with no question as ok with 0', () => {
     const run = setup({ chapters: { system: '# System\n\n## Points to confirm\n\nNone.\n' } });
     expect(stateOf(run, 'open')).toEqual({ state: 'ok', count: 0, unmatched: [] });
