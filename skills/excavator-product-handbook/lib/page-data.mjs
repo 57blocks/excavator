@@ -23,7 +23,7 @@ import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * Format /19 (openspec change handbook-skill-first, design D7), the Markdown chapters:
+ * Format /22 (earlier formats below; openspec change handbook-skill-first, design D7), the Markdown chapters:
  * - `titles`: the title of each selected view (`md.title`, `md.titleTechnical`).
  * - `outline`: `source` and `problems` as `resolveOutlineV2` gives them, `parts` as `{ title, blocks: [{ block, kind, title }] }` (`kind` is `chapter`,
  *   `data`, `dictionaries` or `history`; a chapter's title is its first level-1 heading, else its name) and `unplaced` as `{ block, reason }`.
@@ -35,15 +35,15 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * - `domains`: the business domains and their hand-overs from the checked domains.json (page-domains.mjs): `state` is `ok`, `missing`,
  *   `failed` or `changed`, `list` is `{ id, name, features, intro, body }` (ids `d1`..., `intro` the first paragraph of the domain's section of the
  *   domains chapter, `body` the rest, each by selected view) and `handovers` is `{ from, to, what, features, cites? }` (domain ids; `cites` only with the technical view).
- * - `problems` (added after /21 with the page-structure change; the page ignores it until the format is bumped): `{ sources, rows, remedies }` (page-problems.mjs);
+ * - `problems` (/22, openspec change handbook-page-structure): `{ sources, rows, remedies }` (page-problems.mjs);
  *   `sources` is `{ defects, design, open }` each `{ state, count }` (`state` `ok`, `missing`, `failed` or `changed`, `count` null unless `ok`; `open` also has `unmatched`, the stems of the system or feature chapters with no heading equal to the fixed open-questions text, which gave no rows), `rows` the defects,
  *   then the design problems, then the open questions as `{ id, type, level, group, features, summary, texts, cites?, source, remedy }`, `remedies` the id of the remedies chapter or null.
  * - `lead`: the first paragraph of the system chapter in the product view's text; `search`: the search index, `{ kind, title, chapter, domain, heading }` for each domain,
  *   chapter and `##` or `###` heading of a chapter (`heading` counts them from 0 in each chapter, `level` is 2 or 3; null on the other items).
  * - `architecture` (/21): the section of the system chapter that holds its first mermaid fence, by selected view (page-domains.mjs); '' without one.
- * (/20: the same without `architecture` and without `level` in the search items; /19: the same without these three keys; /18 and older: the structured handbook of openspec change product-handbook-map and its successors.)
+ * (/21: the same without `problems`; /20: the same without `architecture` and without `level` in the search items; /19: the same without these three keys; /18 and older: the structured handbook of openspec change product-handbook-map and its successors.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/21';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/22';
 
 const SCRIPT_TITLES = { data: 'md.data.heading', dictionaries: 'md.dict.heading', history: 'md.history.heading' };
 const trimmed = (lines) => lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();

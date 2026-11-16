@@ -1,6 +1,6 @@
-/** The page data `handbook.mjs page` writes into the template: format /21 (openspec changes handbook-skill-first, design D7, and handbook-page-domain-map, design D3); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
+/** The page data `handbook.mjs page` writes into the template: format /22 (openspec changes handbook-skill-first, design D7, handbook-page-domain-map, design D3, and handbook-page-structure, design D1); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/21';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/22';
 
 /** The views a page can hold: the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -162,7 +162,7 @@ export interface DictionariesSection {
 /**
  * The index of the part files of a page whose data is large (openspec change handbook-page-chunked-data): the ids of the
  * parts in order and, for each unit, the parts that hold it in order. Both are empty when the page is one file. A unit is the
- * detail shown on one page: `chapter:<id>` (the Markdown of one chapter in each view), `coverage`, `data`, `dictionaries` and `history`.
+ * detail shown on one page: `chapter:<id>` (the Markdown of one chapter in each view), `coverage`, `data`, `dictionaries`, `history` and `problems`.
  */
 export interface Chunks {
   parts: string[];
@@ -216,6 +216,42 @@ export interface HandoverData { from: string; to: string; what: string; features
 /** One entry of the search index: a domain, a chapter, or a `##` or `###` heading of a chapter (`heading` counts them from 0 in the chapter). */
 export interface SearchItem { kind: 'domain' | 'chapter' | 'heading'; title: string; chapter: string | null; domain: string | null; heading: number | null; /** 2 or 3 for a heading, null for a domain or a chapter. */ level: 2 | 3 | null }
 
+/** The three kinds of problem rows: defects (parser), design problems (checked batches), open questions (fixed section of a chapter). */
+export type ProblemType = 'defect' | 'design' | 'open';
+export type ProblemLevel = 'P0' | 'P1' | 'P2' | 'high' | 'medium' | 'low';
+
+/** Whether a source of problem rows can be used: `ok`, `missing` (not written), `failed` (did not pass its check) or `changed` (differs from the checked one). */
+export type ProblemSourceState = 'ok' | 'missing' | 'failed' | 'changed';
+export interface ProblemSource { state: ProblemSourceState; count: number | null }
+
+/** A design row's text: the situation and its consequence. */
+export interface DesignText { situation: string; consequence: string }
+
+/**
+ * One row of the problems table. `features` are feature ids or `system`. `texts` is the full text by view (a design row's is a
+ * situation and a consequence); it is empty in the core of a page whose problems are in a part file, like `cites` (the technical view's only).
+ * `remedy.heading` counts the `##` and `###` headings of the remedies chapter from 0.
+ */
+export interface ProblemRow {
+  id: string;
+  type: ProblemType;
+  level: ProblemLevel | null;
+  group: string | null;
+  features: string[];
+  summary: string;
+  texts: Partial<Record<View, string | DesignText>>;
+  cites?: string[];
+  source: { chapter: string; line: number };
+  remedy: { chapter: 'remedies'; heading: number } | null;
+}
+
+/** The problems of the page: the state and count of each source, the rows (defects, then design problems, then open questions) and the remedies chapter id (null without one). */
+export interface ProblemsData {
+  sources: { defects: ProblemSource; design: ProblemSource; open: ProblemSource & { unmatched: string[] } };
+  rows: ProblemRow[];
+  remedies: 'remedies' | null;
+}
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
   chunks: Chunks;
@@ -235,6 +271,8 @@ export interface PageData {
   history: History | null;
   /** The business domains and the hand-overs between them; `list` and `handovers` are empty unless `state` is `ok`. */
   domains: { state: DomainsState; list: DomainData[]; handovers: HandoverData[] };
+  /** The table of problems; its rows' full texts are in the `problems` unit of a chunked page. */
+  problems: ProblemsData;
   /** The first paragraph of the system chapter (product view text); empty without a system chapter. */
   lead: string;
   /** The section of the system chapter that holds its first diagram, by view; '' without one. */

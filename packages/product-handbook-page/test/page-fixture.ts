@@ -1,11 +1,11 @@
-// Page data of the Markdown handbook (format /21) for the tests: the fixed text is the shipped table with a mark in
+// Page data of the Markdown handbook (format /22) for the tests: the fixed text is the shipped table with a mark in
 // front of every value, so a test can tell a fixed text from the content of the data (which starts with `d~`).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PAGE_FORMAT } from '../src/lib/types';
-import type { ChapterData, History, Outline, PageData, Technical, View } from '../src/lib/types';
+import type { ChapterData, History, Outline, PageData, ProblemsData, Technical, View } from '../src/lib/types';
 
 export const MARK = '@@';
 export const DATA = 'd~';
@@ -46,7 +46,11 @@ export interface Options {
   chapters?: ChapterData[];
   outline?: Outline;
   domains?: PageData['domains'];
+  problems?: ProblemsData;
 }
+
+/** The problems of a page with no problem rows, every source usable. */
+export const NO_PROBLEMS: ProblemsData = { sources: { defects: { state: 'ok', count: 0 }, design: { state: 'ok', count: 0 }, open: { state: 'ok', count: 0, unmatched: [] } }, rows: [], remedies: null };
 
 /** Page data with the chapters system, F1 and F2, the three script blocks in the outline and no data in them unless `options` give it. */
 export function pageData(options: Options = {}): PageData {
@@ -65,6 +69,7 @@ export function pageData(options: Options = {}): PageData {
     coverage,
     history: options.history === undefined ? NO_HISTORY : options.history,
     domains: options.domains ?? { state: 'missing', list: [], handovers: [] },
+    problems: options.problems ?? NO_PROBLEMS,
     lead: '',
     architecture: {},
     search: [],

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from 'react';
 
-import type { ChapterData, Chunks, DataSection, DictionariesSection, History, Technical, View, ViewTexts } from './types';
+import type { ChapterData, Chunks, DataSection, DesignText, DictionariesSection, History, ProblemRow, Technical, View, ViewTexts } from './types';
 
 /**
  * Loading of the part files of a page whose data is large (design D3, D4 of openspec change
@@ -122,6 +122,7 @@ export const COVERAGE_UNIT = 'coverage';
 export const DATA_UNIT = 'data';
 export const DICTIONARIES_UNIT = 'dictionaries';
 export const HISTORY_UNIT = 'history';
+export const PROBLEMS_UNIT = 'problems';
 
 /** The merges below are the ones `restorePageData` of the script makes (page-units.mjs); a test holds the two together. */
 export const assembleChapterTexts = (pieces: Piece[]): ViewTexts => textsOf(pieces, 'text');
@@ -137,6 +138,17 @@ export function assembleHistory(history: History, places: Technical['history'], 
     history: { ...history, years: tagged(pieces, 'year'), apps: tagged(pieces, 'app'), hotspots: tagged(pieces, 'hotspot'), coChange: tagged(pieces, 'pair'), tests: tagged(pieces, 'test') },
     places: places === null ? null : { hotspots: tagged(pieces, 'hotspotPath'), coChange: tagged(pieces, 'pairPath') },
   };
+}
+
+/** The rows of the problems table with their `texts` and `cites` put back from the unit, in the key order the script builds them in. */
+export function assembleProblems(rows: ProblemRow[], pieces: Piece[]): ProblemRow[] {
+  const byId = new Map(tagged<{ id: string; texts: Partial<Record<View, string | DesignText>>; cites?: string[] }>(pieces, 'problem').map((piece) => [piece.id, piece]));
+  return rows.map((row) => {
+    const piece = byId.get(row.id);
+    if (piece === undefined) return row;
+    const { id, type, level, group, features, summary, source, remedy } = row;
+    return { id, type, level, group, features, summary, texts: piece.texts, ...(has(piece, 'cites') ? { cites: piece.cites } : {}), source, remedy };
+  });
 }
 
 function detailOf<T>(state: UnitState, fromCore: () => T, fromPieces: (pieces: Piece[]) => T): Detail<T> {
@@ -176,4 +188,10 @@ export function useDictionaries(section: DictionariesSection | null): Detail<Dic
 export function useHistory(history: History, places: Technical['history']): Detail<HistoryDetail> {
   const state = useUnit(HISTORY_UNIT);
   return useMemo(() => detailOf(state, () => ({ history, places }), (pieces) => assembleHistory(history, places, pieces)), [state, history, places]);
+}
+
+/** The rows of the problems table with their full texts; the same rules (a page of one file has them in the core). */
+export function useProblems(rows: ProblemRow[]): Detail<ProblemRow[]> {
+  const state = useUnit(PROBLEMS_UNIT);
+  return useMemo(() => detailOf(state, () => rows, (pieces) => assembleProblems(rows, pieces)), [state, rows]);
 }

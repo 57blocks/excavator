@@ -303,6 +303,6 @@ describe('buildPageData: the problems key', () => {
     expect(keys.indexOf('problems')).toBe(keys.indexOf('domains') + 1);
     expect(data.problems.rows).toHaveLength(9);
     expect(data.problems.sources.defects.count).toBe(3);
-    expect(data.format).toBe('excavator-product-handbook-page/21');
+    expect(data.format).toBe('excavator-product-handbook-page/22');
   });
 });
