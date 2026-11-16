@@ -55,13 +55,6 @@ const show = async (page: PageData, hash = '#/product/chapter/F2'): Promise<HTML
   return host;
 };
 const click = (el: Element): void => { act(() => (el as HTMLElement).click()); };
-const tabs = (host: HTMLElement): HTMLElement[] => Array.from(host.querySelectorAll<HTMLElement>('[role="tab"]'));
-const selected = (host: HTMLElement): string => tabs(host).find((tab) => tab.getAttribute('aria-selected') === 'true')?.textContent ?? '';
-const panelOf = (host: HTMLElement, label: string): HTMLElement => {
-  const tab = tabs(host).find((one) => one.textContent?.startsWith(label)) as HTMLElement;
-  return host.querySelector(`#${CSS.escape(tab.getAttribute('aria-controls') as string)}`) as HTMLElement;
-};
-const issues = (host: HTMLElement): HTMLElement => panelOf(host, marked['page.feature.issues']);
 const block = (host: HTMLElement): HTMLElement => host.querySelector('[data-part="feature-problems"]') as HTMLElement;
 const squash = (el: Element | null): string => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
 const topIds = (host: HTMLElement): string[] => Array.from(block(host).querySelectorAll('[data-top-problem]')).map((one) => one.getAttribute('data-top-problem') as string);

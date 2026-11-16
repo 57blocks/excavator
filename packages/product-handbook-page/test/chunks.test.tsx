@@ -351,7 +351,7 @@ describe('the problems unit', () => {
     expect(host.textContent).not.toContain(LOADING);
   });
 
-  it('a feature page shows the loading text in its issues tab while the texts load, then the bodies; the summaries are there at once', async () => {
+  it('a feature page shows the loading text in the problems block while the texts load, then the bodies; the summaries are there at once', async () => {
     const { core, unit, listed } = chunked();
     const chapterF1 = listed.find((one) => one.key === 'chapter:F1') as Listed;
     core.chunks = { parts: ['part-0001', 'part-0002'], units: { 'chapter:F1': ['part-0001'], problems: ['part-0002'] } };
@@ -370,7 +370,7 @@ describe('the problems unit', () => {
     });
     const host = mount(page(core, '#/technical/chapter/F1', loader));
     await wait();
-    const panel = host.querySelector('[data-panel="issues"]') as HTMLElement;
+    const panel = host.querySelector('[data-block="problems"]') as HTMLElement;
     expect(panel.querySelector('[data-part="chunk-loading"]')).not.toBeNull();
     expect(panel.querySelector('details[data-problem="d1"] summary')?.textContent).toContain(d('summary'));
     expect(panel.querySelector('#problem-d1')).toBeNull();
@@ -388,7 +388,7 @@ describe('the problems unit', () => {
     const host = mount(page(core, '#/product/chapter/F1', loader));
     await wait();
     await wait();
-    expect((host.querySelector('[data-panel="issues"]') as HTMLElement).textContent).toContain('handbook-data/part-0002.js');
+    expect((host.querySelector('[data-block="problems"]') as HTMLElement).textContent).toContain('handbook-data/part-0002.js');
   });
 
   it('a missing part is named on the problems page', async () => {

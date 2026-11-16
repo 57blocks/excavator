@@ -4,16 +4,21 @@ import { useText } from '../lib/text';
 import { DomainLink } from './Flows';
 import { HandoverText } from './HandoverText';
 
+/** The links the strip of a chapter lists (none without a map): the page shows its hint line only when there are some. */
+export function stripRows(model: Pick<ReturnType<typeof useModel>, 'handovers' | 'map'>, chapter: string) {
+  return model.map ? mentioning(model.handovers, chapter) : [];
+}
+
 /**
- * The hand-overs with other domains that name a feature chapter, under the chapter's head: handed over or received, from the
+ * The hand-overs with other domains that name a feature chapter, in the last block of the chapter's page: handed over or received, from the
  * point of view of the chapter's domain (or "from to" when the chapter's domain is neither end). A strip between rules, not a
  * box, and it holds no heading element: the headings of the article are numbered from its text alone.
  */
 export function HandoverStrip({ chapter }: { chapter: string }) {
   const t = useText();
-  const { handovers, chapterDomain, map } = useModel();
-  if (!map) return null;
-  const list = mentioning(handovers, chapter);
+  const model = useModel();
+  const { chapterDomain } = model;
+  const list = stripRows(model, chapter);
   if (list.length === 0) return null;
   const home = chapterDomain[chapter];
   return (

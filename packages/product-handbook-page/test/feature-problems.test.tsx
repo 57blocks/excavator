@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-// Task 4.1 of openspec change handbook-page-structure: the block of a feature's problems under the head, the issues tab built from
-// the problems table (three sub-sections, folds, the fallback when the defects chapter cannot be used, the anchors search jumps to),
+// Tasks 4.1 and 7.3 of openspec change handbook-page-structure: the problems line under the head (counts that jump to their part of
+// the problems block), the problems block built from the problems table (three sub-sections, folds, the fallback when the defects
+// chapter cannot be used, the anchors search jumps to),
 // and the count of the model. Rows are written by hand.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
@@ -56,27 +57,22 @@ const show = async (page: PageData, hash = '#/product/chapter/F2'): Promise<HTML
   return host;
 };
 const click = (el: Element): void => { act(() => (el as HTMLElement).click()); };
-const tabs = (host: HTMLElement): HTMLElement[] => Array.from(host.querySelectorAll<HTMLElement>('[role="tab"]'));
-const selected = (host: HTMLElement): string => tabs(host).find((tab) => tab.getAttribute('aria-selected') === 'true')?.textContent ?? '';
-const panelOf = (host: HTMLElement, label: string): HTMLElement => {
-  const tab = tabs(host).find((one) => one.textContent?.startsWith(label)) as HTMLElement;
-  return host.querySelector(`#${CSS.escape(tab.getAttribute('aria-controls') as string)}`) as HTMLElement;
-};
-const issues = (host: HTMLElement): HTMLElement => panelOf(host, marked['page.feature.issues']);
+const issues = (host: HTMLElement): HTMLElement => host.querySelector('section.fblock[data-block="problems"]') as HTMLElement;
 const block = (host: HTMLElement): HTMLElement => host.querySelector('[data-part="feature-problems"]') as HTMLElement;
 const squash = (el: Element | null): string => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
-const topIds = (host: HTMLElement): string[] => Array.from(block(host).querySelectorAll('[data-top-problem]')).map((one) => one.getAttribute('data-top-problem') as string);
 const fold = (host: HTMLElement, id: string): HTMLDetailsElement => host.querySelector(`details[data-problem="${id}"]`) as HTMLDetailsElement;
-const headings = (panel: HTMLElement): string[] => Array.from(panel.querySelectorAll('h2.sub')).map((one) => one.textContent ?? '');
+const headings = (panel: HTMLElement): string[] => Array.from(panel.querySelectorAll('h3.sub')).map((one) => one.textContent ?? '');
 
 describe('the block of a feature\'s problems', () => {
-  it('sits after the head and before the tabs, with its heading', async () => {
+  it('sits after the head and before the blocks, with its title as a paragraph and not a heading', async () => {
     const host = await show(data([row('d1')]));
     const article = host.querySelector('article') as HTMLElement;
     const classes = Array.from(article.children).map((one) => one.className.split(' ')[0]);
-    expect(classes.indexOf('feature-problems')).toBe(classes.indexOf('strip') + 1);
-    expect(classes.indexOf('tabs')).toBe(classes.indexOf('feature-problems') + 1);
-    expect(block(host).querySelector('h2')?.textContent).toBe(marked['page.feature.problems.title']);
+    expect(classes.indexOf('feature-problems')).toBeGreaterThan(-1);
+    expect(classes.indexOf('fblock')).toBe(classes.indexOf('feature-problems') + 1);
+    expect(classes).not.toContain('strip');
+    expect(block(host).querySelector('p.fp-title')?.textContent).toBe(marked['page.feature.problems.title']);
+    expect(block(host).querySelector('h1, h2, h3, h4')).toBeNull();
   });
 
   it('counts the rows of this feature per type, and leaves out the rows of other features', async () => {
@@ -89,26 +85,9 @@ describe('the block of a feature\'s problems', () => {
     ]);
   });
 
-  it('lists at most three: 2 P0 and a P1 beat the design problems, in the order of the rows within a level', async () => {
-    const rows = [row('p1', { level: 'P1' }), design('h1', { level: 'high' }), row('z1', { level: 'P0' }), row('z2', { level: 'P0' }), design('l1', { level: 'low' }), row('p2', { level: 'P2' })];
-    const host = await show(data(rows));
-    expect(topIds(host)).toEqual(['z1', 'z2', 'p1']);
-    const first = block(host).querySelector('[data-top-problem="z1"]') as HTMLElement;
-    expect(first.querySelector('.lvl')?.textContent).toBe('P0');
-    expect(first.textContent).toContain(d('summary z1'));
-  });
-
-  it('lists one P0, then the high and the low design problems, naming a design level by its fixed text', async () => {
-    const host = await show(data([design('l1', { level: 'low' }), design('h1', { level: 'high' }), row('z1', { level: 'P0' }), open('q1')]));
-    expect(topIds(host)).toEqual(['z1', 'h1', 'l1']);
-    expect(block(host).querySelector('[data-top-problem="h1"] .lvl')?.textContent).toBe(marked['chapter.review.impact.high']);
-    expect(block(host).querySelector('[data-top-problem="l1"] .lvl')?.textContent).toBe(marked['chapter.review.impact.low']);
-  });
-
-  it('never lists a point to confirm, and lists nothing when the feature has only those', async () => {
-    const host = await show(data([open('q1'), open('q2')]));
-    expect(topIds(host)).toEqual([]);
-    expect(block(host).querySelector('[data-part="feature-problem-top"]')).toBeNull();
+  it('has no list of the worst problems any more', async () => {
+    const host = await show(data([row('p1', { level: 'P1' }), design('h1', { level: 'high' }), row('z1', { level: 'P0' })]));
+    expect(block(host).querySelector('[data-part="feature-problem-top"], [data-top-problem]')).toBeNull();
   });
 
   it('links to the problems table filtered by the feature, with the view in the address when the page has two views', async () => {
@@ -123,21 +102,30 @@ describe('the block of a feature\'s problems', () => {
     expect(block(alone).querySelector('a[data-part="feature-problems-all"]')?.getAttribute('href')).toBe('#/problems?feature=F2');
   });
 
-  it('has a button that selects the issues tab', async () => {
-    const host = await show(data([row('d1')]));
-    expect(selected(host)).toBe(marked['page.feature.overview']);
-    const button = block(host).querySelector('[data-part="feature-problems-tab"]') as HTMLElement;
-    expect(button.textContent).toBe(marked['page.feature.problems.openTab']);
-    click(button);
-    expect(selected(host)).toMatch(new RegExp(`^${marked['page.feature.issues']}`));
-    expect(issues(host).hasAttribute('hidden')).toBe(false);
+  it('has a count button for each type that is ok; it scrolls to the heading of that type in the problems block and focuses it, never touching the address', async () => {
+    const host = await show(data([row('d1'), design('r1')], { sources: sourcesOf('ok', 'ok', 'failed') }));
+    const buttons = Array.from(block(host).querySelectorAll<HTMLElement>('button[data-count-type]'));
+    expect(buttons.map((one) => [one.getAttribute('data-count-type'), one.textContent])).toEqual([['defect', '1'], ['design', '1']]);
+    const scrolled: (string | null)[] = [];
+    const proto = globalThis.HTMLElement.prototype as unknown as { scrollIntoView: (options?: unknown) => void };
+    const saved = proto.scrollIntoView;
+    proto.scrollIntoView = function scroll(this: HTMLElement) { scrolled.push(this.getAttribute('data-problem-type')); };
+    try {
+      window.history.replaceState(null, '', '#/product/chapter/F2');
+      click(buttons[1]);
+      expect(scrolled).toEqual(['design']);
+      expect(document.activeElement).toBe(issues(host).querySelector('h3[data-problem-type="design"]'));
+      expect(window.location.hash).toBe('#/product/chapter/F2');
+    } finally {
+      proto.scrollIntoView = saved;
+    }
+    expect(block(host).querySelector('[data-count-type="open"]')).toBeNull();
   });
 
-  it('opens the fold of an item in the issues tab when the item is clicked', async () => {
+  it('keeps every fold of the problems block closed until the reader opens it', async () => {
     const host = await show(data([row('d1'), design('r1')]));
     expect(fold(host, 'r1').open).toBe(false);
-    click(block(host).querySelector('[data-top-problem="r1"]') as HTMLElement);
-    expect(selected(host)).toMatch(new RegExp(`^${marked['page.feature.issues']}`));
+    click(fold(host, 'r1').querySelector('summary') as HTMLElement);
     expect(fold(host, 'r1').open).toBe(true);
     expect(fold(host, 'd1').open).toBe(false);
     expect(issues(host).contains(fold(host, 'r1'))).toBe(true);
@@ -145,7 +133,7 @@ describe('the block of a feature\'s problems', () => {
 
   it('shows only the fixed "none" text when every source is ok, the chapter is not unmatched and it has no rows', async () => {
     const host = await show(data([row('d1', { features: ['F1'] })]));
-    expect(squash(block(host).querySelector('p'))).toBe(marked['page.feature.problems.none']);
+    expect(squash(block(host).querySelector('[data-part="feature-problems-none"]'))).toBe(marked['page.feature.problems.none']);
     expect(block(host).querySelector('[data-source]')).toBeNull();
     expect(block(host).querySelector('a')).toBeNull();
     expect(block(host).querySelector('button')).toBeNull();
@@ -172,23 +160,25 @@ describe('the block of a feature\'s problems', () => {
     // Another chapter in the list does not mark this one.
     cleanup();
     const other = await show(data([], { sources: sourcesOf('ok', 'ok', 'ok', ['F1']) }));
-    expect(squash(block(other).querySelector('p'))).toBe(marked['page.feature.problems.none']);
+    expect(squash(block(other).querySelector('[data-part="feature-problems-none"]'))).toBe(marked['page.feature.problems.none']);
   });
 });
 
-describe('the issues tab', () => {
+describe('the problems block', () => {
   const ROWS = [row('d1', { level: 'P2' }), row('d2', { level: 'P0', features: ['F1', 'F2'] }), design('r1'), open('q1'), open('q2', { features: ['F1'] })];
 
-  it('is always there, labelled as before, with the number of rows of the feature as its count', async () => {
+  it('is always there, and the counts of the line equal the rows of the feature in the problems table', async () => {
     const host = await show(data(ROWS));
-    const tab = tabs(host).find((one) => one.textContent?.startsWith(marked['page.feature.issues'])) as HTMLElement;
-    expect(tab.querySelector('.n')?.textContent).toBe(String(rowsOfFeature(ROWS, 'F2').length));
+    const total = Array.from(block(host).querySelectorAll('button[data-count-type]')).reduce((sum, one) => sum + Number(one.textContent), 0);
+    expect(total).toBe(rowsOfFeature(ROWS, 'F2').length);
+    expect(issues(host).querySelector('h2')?.textContent).toBe(marked['page.feature.block.problems']);
     cleanup();
     const empty = await show(data([]));
-    expect(tabs(empty).some((one) => one.textContent === marked['page.feature.issues'])).toBe(true);
+    expect(issues(empty)).not.toBeNull();
+    expect(issues(empty).querySelectorAll('h3[data-problem-type]')).toHaveLength(3);
   });
 
-  it('has three sub-sections, in order, each with its rows in the default order', async () => {
+  it('has three sub-sections (h3 with their type), in order, each with its rows in the default order', async () => {
     const host = await show(data(ROWS));
     const panel = issues(host);
     expect(headings(panel)).toEqual([marked['page.problems.type.defect'], marked['page.problems.type.design'], marked['page.problems.type.open']]);
@@ -205,6 +195,7 @@ describe('the issues tab', () => {
     expect(one.querySelector('#problem-d1')?.textContent).toContain(d('product text d1'));
     expect(host.querySelectorAll('#problem-d1')).toHaveLength(1);
     expect(Array.from(issues(host).querySelectorAll('[id^="h-"]'))).toHaveLength(0);
+    expect(Array.from(issues(host).querySelectorAll('h3[data-problem-type]')).map((one) => one.id)).toEqual(['prob-defect', 'prob-design', 'prob-open']);
     expect(fold(host, 'r1').textContent).toContain(d('situation r1'));
   });
 
@@ -223,7 +214,7 @@ describe('the issues tab', () => {
     expect(none).toEqual([marked['chapter.none'], marked['chapter.none']]);
   });
 
-  it('shows a defect that names two features on the tab of each', async () => {
+  it('shows a defect that names two features in the block of each', async () => {
     const rows = [row('both', { features: ['F1', 'F2'] }), row('only1', { features: ['F1'] })];
     const second = await show(data(rows));
     expect(Array.from(issues(second).querySelectorAll('details[data-problem]')).map((one) => one.getAttribute('data-problem'))).toEqual(['both']);
@@ -239,12 +230,15 @@ describe('the issues tab', () => {
     expect(fold(host, 'r1')).toBeNull();
   });
 
-  it('writes the unmatched line when the chapter has no points-to-confirm heading, and the chapter section is on a tab of its own', async () => {
+  it('writes the unmatched line when the chapter has no points-to-confirm heading, and the chapter section is a block of its own', async () => {
     const body = text(`## ${marked['chapter.section.overview']}`, '', d('Lead words.'), '', `## ${d('Questions')}`, '', `- ${d('Nobody knows the limit.')}`, '');
     const host = await show(data([row('d1')], { sources: sourcesOf('ok', 'ok', 'ok', ['F2']) }, body));
     const line = issues(host).querySelector('[data-part="issues-open-unmatched"]') as HTMLElement;
     expect(line.textContent).toBe(S('page.feature.problems.openUnmatched', { heading: marked['chapter.openQuestions'] }));
-    expect(panelOf(host, d('Questions')).textContent).toContain(d('Nobody knows the limit.'));
+    const own = host.querySelector('section.fblock[data-block="other"]') as HTMLElement;
+    expect(own.querySelector('h2')?.textContent).toBe(d('Questions'));
+    expect(own.textContent).toContain(d('Nobody knows the limit.'));
+    expect(own.nextElementSibling).toBe(issues(host));
     expect(issues(host).textContent).not.toContain(d('Nobody knows the limit.'));
   });
 
@@ -262,7 +256,7 @@ describe('the issues tab', () => {
         const panel = issues(host);
         expect(panel.querySelector('[data-part="issues-unranked"]')?.textContent).toBe(S('page.feature.problems.unranked', { reason: marked[`page.problems.count.${state}`] }));
         expect(panel.textContent).toContain(d('Problem intro words.'));
-        const double = Array.from(panel.querySelectorAll('details.item h3')).find((one) => one.textContent === d('Double send')) as HTMLElement;
+        const double = Array.from(panel.querySelectorAll('details.item h4')).find((one) => one.textContent === d('Double send')) as HTMLElement;
         expect(double).toBeDefined();
         expect(double.id).toMatch(/^h-\d+$/);
         expect(panel.querySelector('details[data-problem="r1"]')).not.toBeNull();
@@ -270,10 +264,10 @@ describe('the issues tab', () => {
       }
     });
 
-    it('shows no count on the issues tab: the chapter\'s own items are not rows, so the number of rows would undercount the panel', async () => {
+    it('shows the state in words in place of the defect count, since the chapter\'s own items are not rows', async () => {
       const host = await show(fallback('failed'));
-      const tab = tabs(host).find((one) => one.textContent?.startsWith(marked['page.feature.issues'])) as HTMLElement;
-      expect(tab.querySelector('.n')).toBeNull();
+      expect(block(host).querySelector('[data-count-type="defect"]')).toBeNull();
+      expect(squash(block(host).querySelector('[data-source="defect"]'))).toBe(`${marked['page.problems.type.defect']} ${marked['page.problems.count.failed']}`);
     });
 
     it('writes "None." when the chapter has no problems section either', async () => {
@@ -282,7 +276,7 @@ describe('the issues tab', () => {
       expect((defects.nextElementSibling as HTMLElement).textContent).toBe(marked['chapter.none']);
     });
 
-    it('keeps the numbers of the headings: the heading of the problems section and of the open questions, once each, in the issues panel; the item is jumped to', async () => {
+    it('keeps the numbers of the headings: the heading of the problems section and of the open questions, once each, in the problems block; the item is jumped to', async () => {
       const host = await show(fallback('missing'));
       // overview 0, openQuestions 1, problems 2, item 3
       for (const n of [1, 2, 3]) expect(host.querySelectorAll(`#h-${n}`), `h-${n}`).toHaveLength(1);
@@ -290,10 +284,11 @@ describe('the issues tab', () => {
       expect(issues(host).contains(host.querySelector('#h-2'))).toBe(true);
       expect(host.querySelector('#h-1')?.textContent).toBe(marked['page.problems.type.open']);
       expect(host.querySelector('#h-2')?.textContent).toBe(marked['page.problems.type.defect']);
-      expect(host.querySelector('#h-3')?.tagName).toBe('H3');
+      expect(host.querySelector('#h-3')?.tagName).toBe('H4');
+      expect(host.querySelector('#h-1')?.getAttribute('data-problem-type')).toBe('open');
+      expect(host.querySelector('#h-2')?.getAttribute('data-problem-type')).toBe('defect');
       jumpToHeading('F2', 3);
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
-      expect(selected(host)).toMatch(new RegExp(`^${marked['page.feature.issues']}`));
       expect((host.querySelector('#h-3') as HTMLElement).closest('details')?.open).toBe(true);
     });
 
@@ -306,7 +301,7 @@ describe('the issues tab', () => {
       expect(host.textContent).not.toContain(d('Nobody can tell how long drafts live.'));
       jumpToHeading('F2', 2);
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
-      expect(selected(host)).toMatch(new RegExp(`^${marked['page.feature.issues']}`));
+      expect(document.activeElement).toBe(host.querySelector('#h-2'));
     });
   });
 });

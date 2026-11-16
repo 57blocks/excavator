@@ -18,26 +18,26 @@ interface Props {
   trail: Crumb[];
   /** The data, dictionaries and history pages hold wide tables: they use the full width and have no table of contents. */
   wide: boolean;
-  /** False for a page that has tabs of its own (a feature page): no table of contents. */
-  toc?: boolean;
+  /** 'scan' (default): the table of contents scans the article's headings; 'own': the page draws its own list at the right; 'none': no list. */
+  toc?: 'scan' | 'none' | 'own';
   children: ReactNode;
 }
 
 /** A reading page: the side list, the breadcrumbs, the page, previous and next, and (for prose) the table of contents. */
-export function Reading({ item, context, colour, trail, wide, toc: wantsToc = true, children }: Props) {
+export function Reading({ item, context, colour, trail, wide, toc: kind = 'scan', children }: Props) {
   const main = useRef<HTMLDivElement>(null);
   const [toc, setToc] = useState(true);
   const onPresent = useCallback((present: boolean) => setToc(present), []);
   const { previous, next } = stepsOf(context, item.key);
   return (
-    <div className="read" data-wide={wide ? 'true' : undefined} data-toc={wide || !wantsToc || !toc ? 'none' : 'yes'}>
+    <div className="read" data-wide={wide ? 'true' : undefined} data-toc={wide || kind === 'none' ? 'none' : kind === 'own' ? 'own' : toc ? 'yes' : 'none'}>
       <SideList context={context} current={item.key} colour={colour} />
       <div className="read-main" ref={main}>
         <Breadcrumbs trail={trail} />
         {children}
         <PrevNext previous={previous} next={next} />
       </div>
-      {!wide && wantsToc && <Toc root={main} onPresent={onPresent} />}
+      {!wide && kind === 'scan' && <Toc root={main} onPresent={onPresent} />}
     </div>
   );
 }

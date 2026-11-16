@@ -103,8 +103,9 @@ suite('page in a browser (O4)', () => {
         expect(await page.evaluate("document.querySelector('[data-column=\"in\"] .empty').textContent.length > 0")).toBe(true);
         await goTo(page, '#/chapter/F1', '[data-chapter=\"F1\"] [data-part=\"handover-strip\"]');
         expect(await page.evaluate("document.querySelectorAll('[data-part=\"handover-strip\"] li').length")).toBe(1);
-        // The block of the feature's problems comes first and has an unnumbered heading; the chapter's first section is h-0.
-        expect(await page.evaluate("document.querySelector('article h2[id]').id")).toBe('h-0');
+        // The problems line comes first and has no heading; the chapter's first section keeps its number h-0.
+        expect(await page.evaluate("document.querySelector('[data-part=\"feature-problems\"] h1, [data-part=\"feature-problems\"] h2, [data-part=\"feature-problems\"] h3')")).toBeNull();
+        expect(await page.evaluate("document.querySelector('article #h-0') !== null")).toBe(true);
         await fits(page, width, 'the feature page with its strip');
         await goTo(page, '#/technical/domain/d1', '[data-view="domain"]');
         expect(await page.evaluate("document.querySelector('[data-view-link=\"product\"]').getAttribute('href')")).toBe('#/product/domain/d1');
@@ -127,10 +128,12 @@ suite('page in a browser (O4)', () => {
         // The page's own rules for the domain map (`.node rect`) stay on the map: a drawn diagram's shapes keep their own fill.
         expect(await page.evaluate("document.querySelectorAll('[data-diagram=\"done\"] svg rect').length")).toBeGreaterThan(0);
         expect(await page.evaluate("Array.from(document.querySelectorAll('[data-diagram=\"done\"] svg rect')).filter((shape) => getComputedStyle(shape).fill === 'rgb(0, 0, 0)').length")).toBe(0);
-        // The page of a feature has tabs; the panels of the tabs not shown stay in the page, hidden until found.
-        expect(await page.evaluate("document.querySelectorAll('[role=\"tab\"]').length")).toBeGreaterThanOrEqual(2);
-        expect(await page.evaluate("document.querySelector('[role=\"tabpanel\"][hidden]').getAttribute('hidden')")).toBe('until-found');
-        expect(await page.evaluate("document.querySelector('.toc')")).toBeNull();
+        // The page of a feature is one page of blocks with no tabs, and its own list at the right (not the scanning contents), hidden on a narrow window.
+        expect(await page.evaluate("document.querySelectorAll('[role=\"tab\"], [role=\"tabpanel\"], article [hidden]').length")).toBe(0);
+        expect(await page.evaluate("document.querySelectorAll('article section.fblock').length")).toBeGreaterThanOrEqual(2);
+        expect(await page.evaluate("document.querySelectorAll('.toc').length")).toBe(1);
+        expect(await page.evaluate("document.querySelectorAll('.feature-nav button').length")).toBeGreaterThanOrEqual(2);
+        expect(await page.evaluate("getComputedStyle(document.querySelector('.feature-nav')).display === 'none'")).toBe(width <= 1180);
         await fits(page, width, 'the feature chapter');
         // The drawings are inside the window too.
         expect(await page.evaluate("Math.max(...Array.from(document.querySelectorAll('[data-diagram=\"done\"]')).map((box) => box.getBoundingClientRect().right))")).toBeLessThanOrEqual(width);

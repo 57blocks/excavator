@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 
 import { splitChapter, splitLede, splitServerSteps, previewOf, ROLE_KEYS } from '../lib/feature-split';
@@ -14,31 +14,26 @@ import type { ProblemRow, ProblemType } from '../lib/types';
 import { ChevronIcon } from './Icons';
 import { ChunkNotice } from './ChunkNotice';
 import { ProblemDetail } from './ProblemsPage';
-import { HandoverStrip } from './HandoverStrip';
+import { FeatureNav } from './FeatureNav';
+import type { NavEntry } from './FeatureNav';
+import { HandoverStrip, stripRows } from './HandoverStrip';
 import { InlineMarkdown } from './InlineMarkdown';
 import { Markdown } from './Markdown';
 
 const reducedMotion = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ROLES = Object.keys(ROLE_KEYS) as Role[];
-/** The roles whose sections are not tabs of their own: the overview and hand-overs sit on the overview tab, the last two on the issues tab. */
-const OWN_TAB = (role: Role | null): boolean => role !== 'overview' && role !== 'handovers' && role !== 'openQuestions' && role !== 'problems';
-/** How many problems the block of a feature lists at most. */
-const TOP = 3;
 const SOURCE_OF: Record<ProblemType, 'defects' | 'design' | 'open'> = { defect: 'defects', design: 'design', open: 'open' };
 const problemKey = (row: ProblemRow): string => `p-${row.id}`;
-
-interface Tab { key: string; label: string; count: number | null }
 
 const itemKey = (item: Item): string => `i${item.n}`;
 const innerKey = (item: Item): string => `i${item.n}-steps`;
 
-/** The page of a feature chapter: the head, then tabs; every piece of the chapter's text is in the page, folded or on a hidden tab. */
+/** The page of a feature chapter: the head, then five blocks (overview, pages and operations, rules and behavior, problems, upstream and downstream) with the sections the page cannot place in blocks of their own; one page, no tabs. */
 export function FeaturePage({ id, view, text }: { id: string; view: string; text: string }) {
   const t = useText();
   const nav = useLinks();
   const model = useModel();
   const root = useRef<HTMLElement>(null);
-  const [tab, setTab] = useState('overview');
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
 
   const titles = useMemo(() => Object.fromEntries(ROLES.map((role) => [role, t(ROLE_KEYS[role])])) as Record<Role, string>, [t]);
@@ -46,27 +41,20 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   const split = useMemo(() => splitChapter(text, titles), [text, titles]);
   // The head is what comes before the first `##`: the level-1 heading, its notices, and anything else written there.
   const { head, sections } = split;
-  const overview = sections.find((section) => section.role === 'overview');
-  const operations = sections.find((section) => section.role === 'operations');
-  const screens = sections.find((section) => section.role === 'screens');
-  const handovers = sections.find((section) => section.role === 'handovers');
-  // The issues tab is built from the problems table; the chapter's own problems section is shown only when the defects chapter cannot be used.
+  const byRole = (role: Role): Section | undefined => sections.find((section) => section.role === role);
+  const overview = byRole('overview');
+  const handovers = byRole('handovers');
+  // The problems block is built from the problems table; the chapter's own problems section is shown only when the defects chapter cannot be used.
   const ownProblems = sections.filter((section) => section.role === 'problems');
-  const ownOpen = sections.find((section) => section.role === 'openQuestions');
+  const ownOpen = byRole('openQuestions');
   const sources = model.problems.sources;
   const mine = useMemo(() => rowsOfFeature(model.problems.rows, id), [model.problems.rows, id]);
   const detail = useProblems(model.problems.rows);
   const full = useMemo(() => (detail.status === 'ready' ? new Map(detail.value.map((row) => [row.id, row])) : null), [detail]);
-  const own = sections.filter((section) => OWN_TAB(section.role));
+  // A type's heading keeps the number of the chapter's own section when there is one (search points at it), else a fixed id.
+  const typeIdOf: Record<ProblemType, string> = { defect: ownProblems[0] === undefined ? 'prob-defect' : `h-${ownProblems[0].n}`, design: 'prob-design', open: ownOpen === undefined ? 'prob-open' : `h-${ownOpen.n}` };
   const { lede, rest: overviewRest } = splitLede(overview?.intro ?? '');
-
-  const tabs: Tab[] = [
-    { key: 'overview', label: t('page.feature.overview'), count: null },
-    ...own.map((section) => ({ key: `s${section.n}`, label: section.title, count: section.items.length > 0 ? section.items.length : null })),
-    // No count when the defects chapter cannot be used: the panel then shows the chapter's own problems, which are not rows.
-    { key: 'issues', label: t('page.feature.issues'), count: sources.defects.state === 'ok' && mine.length > 0 ? mine.length : null },
-  ];
-  const tabOf = (section: Section): string => `s${section.n}`;
+  const links = stripRows(model, id);
 
   const setOpenKeys = useCallback((keys: readonly string[], on: boolean) => {
     setOpen((before) => {
@@ -76,78 +64,26 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     });
   }, []);
 
-  // React 19 cannot write `hidden="until-found"` (it turns any string into a plain `hidden`), so the attribute is set here:
-  // the panels of the other tabs stay in the page and the browser's find opens them (`beforematch`).
-  useLayoutEffect(() => {
-    root.current?.querySelectorAll<HTMLElement>('[data-panel]').forEach((panel) => {
-      if (panel.dataset.panel === tab) panel.removeAttribute('hidden');
-      else panel.setAttribute('hidden', 'until-found');
-    });
-  });
-
-  // A heading found by the jump of the page (search, links) or an item found by the browser's find: show its tab and open its folds.
+  // A heading found by the jump of the page (search, links) opens the folds that hold it. The browser's own find opens a closed
+  // `details` by itself and its toggle event keeps the state in step.
   useEffect(() => {
     const element = root.current;
     if (element === null) return undefined;
-    const reveal = (target: EventTarget | null): void => {
+    const onReveal = (event: Event): void => {
+      const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      const panel = target.closest<HTMLElement>('[data-panel]');
       const keys = Array.from(element.querySelectorAll<HTMLElement>('details[data-key]')).filter((details) => details.contains(target)).map((details) => details.dataset.key as string);
-      flushSync(() => {
-        if (panel !== null) setTab(panel.dataset.panel as string);
-        setOpenKeys(keys, true);
-      });
+      flushSync(() => setOpenKeys(keys, true));
     };
-    const onFound = (event: Event): void => {
-      // `beforematch` fires on the hidden panel itself.
-      const panel = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[data-panel]') : null;
-      if (panel !== null) setTab(panel.dataset.panel as string);
-    };
-    const onReveal = (event: Event): void => reveal(event.target);
-    element.addEventListener('beforematch', onFound, true);
     element.addEventListener(REVEAL_EVENT, onReveal);
-    return () => {
-      element.removeEventListener('beforematch', onFound, true);
-      element.removeEventListener(REVEAL_EVENT, onReveal);
-    };
+    return () => element.removeEventListener(REVEAL_EVENT, onReveal);
   }, [setOpenKeys]);
 
-  const goTo = (section: Section, item: Item): void => {
-    flushSync(() => {
-      setTab(tabOf(section));
-      setOpenKeys([itemKey(item)], true);
-    });
-    const heading = root.current?.querySelector<HTMLElement>(`#h-${item.n}`);
+  const goToType = (type: ProblemType): void => {
+    const heading = root.current?.querySelector<HTMLElement>(`[data-problem-type="${type}"]`);
     if (heading === null || heading === undefined) return;
     heading.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
     heading.focus({ preventScroll: true });
-  };
-
-  const goToProblem = (row: ProblemRow): void => {
-    flushSync(() => {
-      setTab('issues');
-      setOpenKeys([problemKey(row)], true);
-    });
-    const fold = root.current?.querySelector<HTMLElement>(`details[data-problem="${CSS.escape(row.id)}"]`);
-    if (fold === null || fold === undefined) return;
-    fold.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
-    fold.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
-  };
-
-  const choose = (key: string, focus = false): void => {
-    setTab(key);
-    const list = root.current?.querySelector<HTMLElement>('[role="tablist"]');
-    if (focus) root.current?.querySelector<HTMLElement>(`#${CSS.escape(`${id}-tab-${key}`)}`)?.focus();
-    if (list !== null && list !== undefined && list.getBoundingClientRect().top <= (document.querySelector('.topbar')?.getBoundingClientRect().height ?? 60) + 2) {
-      list.scrollIntoView({ block: 'start' });
-    }
-  };
-  const onTabKey = (event: KeyboardEvent<HTMLElement>, at: number): void => {
-    const last = tabs.length - 1;
-    const to = event.key === 'ArrowRight' ? (at === last ? 0 : at + 1) : event.key === 'ArrowLeft' ? (at === 0 ? last : at - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? last : -1;
-    if (to === -1) return;
-    event.preventDefault();
-    choose(tabs[to].key, true);
   };
 
   const piece = (source: string, name: string) => (source.trim() === '' ? null : <Markdown source={source} idPrefix={`${id}-${name}`} chapter={id} />);
@@ -171,7 +107,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     return (
       <details key={item.n} className="item" data-key={key} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
         <summary>
-          <h3 id={`h-${item.n}`} tabIndex={-1} className="t"><InlineMarkdown source={item.title} links={false} /></h3>
+          <h4 id={`h-${item.n}`} tabIndex={-1} className="t"><InlineMarkdown source={item.title} links={false} /></h4>
           <span className="p">{previewOf(item.body)}</span>
           <span className="chev"><ChevronIcon /></span>
         </summary>
@@ -202,14 +138,13 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     );
   };
 
-  /** The block under the head: the counts of this feature's problems, its worst three, and the way to the rest. */
-  const problemsBlock = () => {
+  /** The line under the head: the counts of this feature's problems (each a jump to its part of the problems block) and the way to the table. */
+  const problemsLine = () => {
     const unmatched = sources.open.unmatched.includes(id);
     const allOk = PROBLEM_TYPES.every((type) => sources[SOURCE_OF[type]].state === 'ok');
-    const top = sortRows(mine.filter((row) => row.type !== 'open')).slice(0, TOP);
     return (
       <section className="feature-problems" data-part="feature-problems">
-        <h2 className="sub">{t('page.feature.problems.title')}</h2>
+        <p className="fp-title">{t('page.feature.problems.title')}</p>
         {allOk && !unmatched && mine.length === 0 ? <p className="muted" data-part="feature-problems-none">{t('page.feature.problems.none')}</p> : (
           <>
             <ul className="fp-counts" role="list" data-part="feature-problem-counts">
@@ -221,7 +156,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
                     <span className="fp-type">{t(`page.problems.type.${type}`)}</span>{' '}
                     {source.state !== 'ok' ? <span className="muted">{t(`page.problems.count.${source.state}`)}</span> : (
                       <>
-                        <b>{count}</b>
+                        <button type="button" className="fp-count" data-count-type={type} onClick={() => goToType(type)}>{count}</button>
                         {type === 'open' && unmatched && <>{' '}<span className="muted">{t('page.problems.count.incomplete')}</span></>}
                       </>
                     )}
@@ -229,19 +164,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
                 );
               })}
             </ul>
-            {top.length > 0 && (
-              <ul className="fp-top" role="list" data-part="feature-problem-top">
-                {top.map((row) => (
-                  <li key={row.id}>
-                    <button type="button" data-top-problem={row.id} onClick={() => goToProblem(row)}>
-                      {row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}<span className="fp-summary">{row.summary}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
             <p className="fp-links">
-              <button type="button" className="linklike" data-part="feature-problems-tab" onClick={() => choose('issues')}>{t('page.feature.problems.openTab')}</button>
               <a href={nav.problems({ feature: id })} data-part="feature-problems-all">{t('page.feature.problems.viewAll')}</a>
             </p>
           </>
@@ -250,7 +173,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     );
   };
 
-  const issuesPanel = () => {
+  const problemsBody = () => {
     const defects = sources.defects;
     const design = sources.design;
     const open_ = sources.open;
@@ -259,11 +182,10 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     const none = <p className="muted">{t('chapter.none')}</p>;
     const unmatched = open_.unmatched.includes(id);
     const stateLine = (type: ProblemType, state: string) => <p className="muted" data-part="issues-state" data-source={type}>{t(`page.problems.state.${state}`, { source: t(`page.problems.type.${type}`) })}</p>;
-    const anchor = (section: Section | undefined) => (section === undefined ? {} : { id: `h-${section.n}`, tabIndex: -1 });
+    const anchor = (type: ProblemType) => ({ id: typeIdOf[type], tabIndex: -1, 'data-problem-type': type });
     return (
       <>
-        <div className="panel-head">{expandAll(defects.state === 'ok' ? [] : ownProblems, mine.map(problemKey))}</div>
-        <h2 className="sub" {...anchor(ownProblems[0])}>{t('page.problems.type.defect')}</h2>
+        <h3 className="sub" {...anchor('defect')}>{t('page.problems.type.defect')}</h3>
         {defects.state === 'ok' ? (of('defect').length === 0 ? none : of('defect').map(problemFold)) : (
           <>
             <p className="notice" role="note" data-part="issues-unranked">{t('page.feature.problems.unranked', { reason: t(`page.problems.count.${defects.state}`) })}</p>
@@ -275,9 +197,9 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
             ))}
           </>
         )}
-        <h2 className="sub">{t('page.problems.type.design')}</h2>
+        <h3 className="sub" {...anchor('design')}>{t('page.problems.type.design')}</h3>
         {design.state !== 'ok' ? stateLine('design', design.state) : of('design').length === 0 ? none : of('design').map(problemFold)}
-        <h2 className="sub" {...anchor(ownOpen)}>{t('page.problems.type.open')}</h2>
+        <h3 className="sub" {...anchor('open')}>{t('page.problems.type.open')}</h3>
         {open_.state !== 'ok' && stateLine('open', open_.state)}
         {unmatched && <p className="notice" role="note" data-part="issues-open-unmatched">{t('page.feature.problems.openUnmatched', { heading: t('chapter.openQuestions') })}</p>}
         {open_.state === 'ok' && (of('open').length > 0 ? of('open').map(problemFold) : unmatched ? null : none)}
@@ -286,89 +208,93 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     );
   };
 
-  const rows = (section: Section) => (
-    <ul className="tasks">
-      {section.items.map((item) => (
-        <li key={item.n}>
-          <button type="button" onClick={() => goTo(section, item)}>
-            <span className="t"><InlineMarkdown source={item.title} links={false} /></span>
-            <span className="p">{previewOf(item.body)}</span>
-            <span className="go"><ChevronIcon /></span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
+  const plain = (title: string): string => title.replace(/[`*_]/g, '');
+  const entries: NavEntry[] = [];
 
-  const heading = (section: Section, className: string) => <h2 id={`h-${section.n}`} tabIndex={-1} className={className}><InlineMarkdown source={section.title} links={false} /></h2>;
-
-  const panel = (key: string) => {
-    if (key === 'overview') {
-      return (
-        <>
-          {overview !== undefined && heading(overview, 'sr-only')}
-          {piece(overviewRest, 'overview')}
-          {operations !== undefined && operations.items.length > 0 && <><h2 className="sub">{t('page.feature.canDo')}</h2>{rows(operations)}</>}
-          {screens !== undefined && screens.items.length > 0 && <><h2 className="sub">{t('page.feature.screens')}</h2>{rows(screens)}</>}
-          {handovers !== undefined && (
-            <>
-              {heading(handovers, 'sub')}
-              {piece(handovers.intro, `h${handovers.n}`)}
-              {handovers.items.map((item) => itemRow(handovers, item))}
-            </>
-          )}
-          {overview !== undefined && overview.items.length > 0 && <><h2 className="sub">{t('page.feature.more')}</h2>{overview.items.map((item) => itemRow(overview, item))}</>}
-        </>
-      );
-    }
-    if (key === 'issues') {
-      return issuesPanel();
-    }
-    const section = own.find((candidate) => tabOf(candidate) === key) as Section;
+  /** A section inside a block: its own title as an `h3`, its intro, its items as folds. */
+  const sectionNode = (section: Section) => {
+    entries.push({ id: `h-${section.n}`, label: plain(section.title), level: 3 });
     return (
-      <>
-        <div className="panel-head">{heading(section, '')}{expandAll([section])}</div>
+      <div key={section.n} className="fsection">
+        <h3 id={`h-${section.n}`} tabIndex={-1}><InlineMarkdown source={section.title} links={false} /></h3>
         {piece(section.intro, `h${section.n}`)}
         {section.items.map((item) => itemRow(section, item))}
-      </>
+      </div>
     );
   };
 
+  const block = (name: string, titleKey: string, children: () => ReactNode, list: readonly Section[], extra: readonly string[] = []) => {
+    const title = t(titleKey);
+    entries.push({ id: `blk-${name}`, label: title, level: 2 });
+    const inside = children();
+    return (
+      <section key={name} className="fblock" data-block={name}>
+        <div className="panel-head"><h2 id={`blk-${name}`} tabIndex={-1}>{title}</h2>{expandAll(list, extra)}</div>
+        {inside}
+      </section>
+    );
+  };
+
+  const pick = (...roles: Role[]): Section[] => roles.flatMap((role) => sections.filter((section) => section.role === role));
+  const use = pick('screens', 'operations');
+  const behavior = pick('rules', 'states', 'notifications');
+  const others = sections.filter((section) => section.role === null);
+  const overviewHasContent = overview !== undefined && (overviewRest.trim() !== '' || overview.items.length > 0);
+  const blocks: ReactNode[] = [];
+  if (overview !== undefined && overviewHasContent) {
+    blocks.push(block('overview', 'page.feature.block.overview', () => (
+      <>
+        <h3 id={`h-${overview.n}`} tabIndex={-1} className="sr-only"><InlineMarkdown source={overview.title} links={false} /></h3>
+        {piece(overviewRest, 'overview')}
+        {overview.items.map((item) => itemRow(overview, item))}
+      </>
+    ), [overview]));
+  }
+  if (use.length > 0) blocks.push(block('use', 'page.feature.block.use', () => use.map(sectionNode), use));
+  if (behavior.length > 0) blocks.push(block('behavior', 'page.feature.block.behavior', () => behavior.map(sectionNode), behavior));
+  for (const section of others) {
+    entries.push({ id: `h-${section.n}`, label: plain(section.title), level: 2 });
+    blocks.push(
+      <section key={`other-${section.n}`} className="fblock" data-block="other">
+        <div className="panel-head"><h2 id={`h-${section.n}`} tabIndex={-1}><InlineMarkdown source={section.title} links={false} /></h2>{expandAll([section])}</div>
+        {piece(section.intro, `h${section.n}`)}
+        {section.items.map((item) => itemRow(section, item))}
+      </section>,
+    );
+  }
+  // The problems block always shows: counts, fallbacks and the state of each source are its content.
+  blocks.push(block('problems', 'page.feature.block.problems', problemsBody, sources.defects.state === 'ok' ? [] : ownProblems, mine.map(problemKey)));
+  if (handovers !== undefined || links.length > 0) {
+    const kept = handovers === undefined ? [] : [handovers];
+    blocks.push(block('links', 'page.feature.block.links', () => (
+      <>
+        {/* The block's title stands for the section's own heading, as in the overview block: kept for search, hidden, not in the nav. */}
+        {handovers !== undefined && (
+          <div className="fsection">
+            <h3 id={`h-${handovers.n}`} tabIndex={-1} className="sr-only"><InlineMarkdown source={handovers.title} links={false} /></h3>
+            {piece(handovers.intro, `h${handovers.n}`)}
+            {handovers.items.map((item) => itemRow(handovers, item))}
+          </div>
+        )}
+        {links.length > 0 && <p className="muted" data-part="links-hint">{t('page.feature.links.hint')}</p>}
+        <HandoverStrip chapter={id} />
+      </>
+    ), kept));
+  }
+  // The three types of the problems block and nothing else of it are entries of the page nav.
+  const at = entries.findIndex((entry) => entry.id === 'blk-problems');
+  entries.splice(at + 1, 0, ...PROBLEM_TYPES.map((type): NavEntry => ({ id: typeIdOf[type], label: t(`page.problems.type.${type}`), level: 3 })));
+
   return (
-    <article ref={root} className="page feature" data-view={view} data-chapter={id}>
-      {head !== '' && <Markdown source={head} idPrefix={`${id}-head`} chapter={id} />}
-      {lede !== '' && <div className="lede"><Markdown source={lede} idPrefix={`${id}-lede`} chapter={id} /></div>}
-      <HandoverStrip chapter={id} />
-      {problemsBlock()}
-      <div className="tabs" role="tablist" aria-label={t('page.feature.tabs')}>
-        {tabs.map((entry, at) => (
-          <button
-            key={entry.key}
-            type="button"
-            role="tab"
-            id={`${id}-tab-${entry.key}`}
-            aria-selected={entry.key === tab}
-            aria-controls={`${id}-panel-${entry.key}`}
-            tabIndex={entry.key === tab ? 0 : -1}
-            onClick={() => choose(entry.key)}
-            onKeyDown={(event) => onTabKey(event, at)}
-          >
-            {entry.label}{entry.count !== null && <span className="n">{entry.count}</span>}
-          </button>
-        ))}
-      </div>
-      {tabs.map((entry) => (
-        <section
-          key={entry.key}
-          className="panel"
-          role="tabpanel"
-          id={`${id}-panel-${entry.key}`}
-          aria-labelledby={`${id}-tab-${entry.key}`}
-          data-panel={entry.key}
-        >
-          {panel(entry.key)}
-        </section>
-      ))}
-    </article>
+    <div className="feature-layout">
+      <article ref={root} className="page feature" data-view={view} data-chapter={id}>
+        {head !== '' && <Markdown source={head} idPrefix={`${id}-head`} chapter={id} />}
+        {lede !== '' && <div className="lede"><Markdown source={lede} idPrefix={`${id}-lede`} chapter={id} /></div>}
+        {overview !== undefined && !overviewHasContent && <h3 id={`h-${overview.n}`} tabIndex={-1} className="sr-only"><InlineMarkdown source={overview.title} links={false} /></h3>}
+        {problemsLine()}
+        {blocks}
+      </article>
+      <FeatureNav entries={entries} />
+    </div>
   );
 }

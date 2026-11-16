@@ -133,19 +133,23 @@ describe('the strip on a feature page', () => {
     expect(Array.from(technical.querySelectorAll('[data-part="handover-strip"] .ho-cites code')).map((one) => one.textContent)).toEqual(['src/b.js:4-9']);
   });
 
-  it('is after the head (the heading and its notice) and before the rest, between rules, with no box', () => {
+  it('is in the links block, the last of the page, after the hint line, between rules, with no box and no heading of its own', () => {
     const article = page('#/product/chapter/F2').querySelector('article') as HTMLElement;
-    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'strip', 'feature-problems', 'tabs', 'panel', 'panel', 'panel']);
+    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'sr-only', 'feature-problems', 'fblock', 'fblock', 'fblock']);
+    const links = article.querySelector('section[data-block="links"]') as HTMLElement;
+    expect(links).toBe(article.lastElementChild);
+    expect(links.querySelector('[data-part="links-hint"]')).not.toBeNull();
+    expect(links.querySelector('[data-part="handover-strip"]')?.previousElementSibling).toBe(links.querySelector('[data-part="links-hint"]'));
     expect(article.children[0].querySelector('h1')).not.toBeNull();
     expect(article.children[0].querySelector('p.note')).not.toBeNull();
-    expect(article.children[5].querySelector('h2')).not.toBeNull();
-    expect(article.children[1].querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
+    expect(links.querySelector('[data-part="handover-strip"] h1, [data-part="handover-strip"] h2, [data-part="handover-strip"] h3, [data-part="handover-strip"] h4')).toBeNull();
   });
 
   it('keeps the heading numbers: the first level-2 heading of the chapter is still h-0, with the strip in the page', () => {
     const host = page('#/product/chapter/F2');
-    expect(Array.from(host.querySelectorAll('article h2[id]')).map((one) => [one.id, one.textContent])).toEqual([['h-0', d('Order entry first')], ['h-1', d('Order entry second')]]);
-    expect(host.querySelector('.toc')).toBeNull();
+    // The first section is the overview (an h3 for readers of the outline only); the second names no role and is a block with an h2.
+    expect(Array.from(host.querySelectorAll('article [id^="h-"]')).map((one) => [one.id, one.tagName, one.textContent])).toEqual([['h-0', 'H3', d('Order entry first')], ['h-1', 'H2', d('Order entry second')]]);
+    expect(host.querySelector('.toc')?.classList.contains('feature-nav')).toBe(true);
   });
 
   it('has none for a chapter no hand-over names, and none without a usable list', () => {

@@ -188,6 +188,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 /* Reading pages: the side list, the article, the table of contents */
 .read { display: grid; grid-template-columns: 240px minmax(0, var(--read)) 220px; gap: 48px; justify-content: center; padding: 0 28px; }
 .read[data-toc="none"] { grid-template-columns: 240px minmax(0, var(--read)); }
+.read[data-toc="own"] { grid-template-columns: 240px minmax(0, calc(var(--read) + 268px)); }
+.feature-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 48px; }
 .read[data-wide="true"] { grid-template-columns: 240px minmax(0, 1fr); justify-content: stretch; max-width: 1240px; margin: 0 auto; }
 .read[data-wide="true"] .page { max-width: none; }
 .read-main { min-width: 0; }
@@ -513,32 +515,22 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .strip li.dir-in .strip-dir { color: var(--ochre); }
 .strip-dir .dom-ref a { color: var(--text); text-decoration: none; }
 
-/* A feature page: the head, a lede, the hand-over strip, then tabs. Every piece of the chapter is on the page, folded or on a hidden tab. */
+/* A feature page: the head, a lede, the problems line, then the blocks, one page with no tabs; the list at the right comes from its blocks. */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .feature .lede .prose { font-size: 18px; line-height: 1.65; color: var(--text-2); }
 .feature .lede .prose p { margin: 0; }
-.feature .tabs { position: sticky; top: var(--topbar-h); z-index: 10; display: flex; gap: 4px; margin: 24px 0 0; padding: 10px 0; background: var(--bg); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
-.feature .tabs::-webkit-scrollbar { display: none; }
-.feature .tabs button { flex: none; padding: 6px 14px; border: 0; border-radius: 999px; background: none; color: var(--text-2); font-size: 14.5px; line-height: 1.6; white-space: nowrap; cursor: pointer; }
-.feature .tabs button:hover { background: var(--surface-2); color: var(--text); }
-.feature .tabs button[aria-selected="true"] { background: var(--text); color: var(--bg); }
-.feature .tabs .n { margin-left: 6px; font-size: 12px; opacity: 0.7; }
-.feature .panel { min-width: 0; padding-top: 26px; }
+.feature .fblock { min-width: 0; margin-top: 44px; padding-top: 28px; border-top: 1px solid var(--line); }
+.feature .fsection { min-width: 0; }
+.feature .fsection > h3 { margin: 28px 0 10px; font-size: 19px; line-height: 1.35; }
+.feature .fblock > .panel-head + .fsection > h3 { margin-top: 8px; }
 .feature .panel-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; }
-.feature .panel-head h2 { margin: 0; font-size: 22px; line-height: 1.3; }
+.feature .panel-head h2 { margin: 0; font-size: 24px; line-height: 1.3; }
 .feature .panel-head .all { margin-left: auto; padding: 0; border: 0; background: none; color: var(--accent-text); font-size: 14px; cursor: pointer; }
 .feature .sub { margin: 40px 0 12px; font-size: 20px; line-height: 1.3; }
-.feature .panel > .sub:first-child, .feature .panel > .sr-only:first-child + .sub { margin-top: 0; }
-.feature h2, .feature h3, .feature details[data-problem] { scroll-margin-top: calc(var(--topbar-h) + 72px); }
-.feature h2:focus, .feature h3:focus { outline: none; }
-.feature .panel > .prose { margin-bottom: 8px; }
-.feature .tasks { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-.feature .tasks li { border-bottom: 1px solid var(--line); }
-.feature .tasks button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; width: 100%; padding: 13px 4px; border: 0; background: none; text-align: left; cursor: pointer; }
-.feature .tasks button:hover .t { color: var(--accent-text); }
-.feature .tasks .t { font-weight: 600; font-size: 16px; line-height: 1.5; }
-.feature .tasks .p { grid-column: 1; color: var(--text-2); font-size: 14px; line-height: 1.55; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
-.feature .tasks .go { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: var(--text-3); }
+.feature .panel-head + .sub { margin-top: 8px; }
+.feature h2, .feature h3, .feature h4, .feature details[data-problem] { scroll-margin-top: calc(var(--topbar-h) + 72px); }
+.feature h2:focus, .feature h3:focus, .feature h4:focus { outline: none; }
+.feature .fblock > .prose, .feature .fsection > .prose { margin-bottom: 8px; }
 .feature details.item { border-bottom: 1px solid var(--line); }
 .feature details.item:first-of-type { border-top: 1px solid var(--line); }
 .feature details.item > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 14px 4px; list-style: none; cursor: pointer; }
@@ -552,23 +544,17 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .feature .item-body { min-width: 0; padding: 0 4px 22px; }
 /* The problems of a feature: the counts in a line, the worst three as buttons, two links; no box around the block. */
 .feature .feature-problems { margin: 20px 0 8px; }
-.feature .feature-problems > .sub { margin: 0 0 10px; font-size: 17px; }
+.feature .feature-problems > .fp-title { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: var(--text-2); }
+.fp-count { padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.fp-count:hover { color: var(--accent-text); }
 .fp-counts { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0 0 8px; font-size: 14px; color: var(--text-2); }
 .fp-counts b { color: var(--text); font-variant-numeric: tabular-nums; }
-.fp-top { list-style: none; margin: 0 0 8px; padding: 0; border-top: 1px solid var(--line); }
-.fp-top li { border-bottom: 1px solid var(--line); }
-.fp-top button { display: flex; gap: 10px; align-items: baseline; width: 100%; padding: 9px 4px; border: 0; background: none; text-align: left; font-size: 15px; line-height: 1.5; color: var(--text); cursor: pointer; }
-.fp-top button:hover .fp-summary { color: var(--accent-text); }
 .fp-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; font-size: 14px; }
-.fp-links .linklike { padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; cursor: pointer; }
 .lvl { flex: none; margin-right: 8px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--text); }
 .lvl[data-level="P0"], .lvl[data-level="high"] { color: var(--brick); }
 .feature details.inner { margin: 14px 0 4px; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-strong); }
 .feature details.inner > summary { cursor: pointer; color: var(--text-2); font-size: 14px; font-weight: 600; }
 .feature details.inner[open] > summary { margin-bottom: 4px; }
-@media (max-width: 900px) {
-  .feature .tabs { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
-}
 
 /* Search: a dialog over a scrim. */
 .search { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: var(--scrim); }
@@ -584,8 +570,9 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 
 /* Wide screens keep three columns; narrower ones drop the table of contents, then the side column. */
 @media (max-width: 1180px) {
-  .read { grid-template-columns: 220px minmax(0, var(--read)); gap: 40px; }
-  .toc { display: none; }
+  .read, .read[data-toc="own"] { grid-template-columns: 220px minmax(0, var(--read)); gap: 40px; }
+  .feature-layout { display: block; }
+  .toc, .feature-nav { display: none; }
 }
 
 /* Phone: the navigation moves into the menu, the side list folds into one heading, the map gives way to a list. */
@@ -598,7 +585,7 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
   .search-btn span { display: none; }
   .wrap { padding: 0 16px; }
   .home-title { font-size: 28px; }
-  .read, .read[data-toc="none"], .read[data-wide="true"] { display: block; padding: 0 16px; }
+  .read, .read[data-toc="none"], .read[data-toc="own"], .read[data-wide="true"] { display: block; padding: 0 16px; }
   .side { position: static; max-height: none; padding: 4px 0; border-bottom: 1px solid var(--line); }
   .side-name { display: none; }
   .side > details > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-weight: 600; font-size: 15px; }
