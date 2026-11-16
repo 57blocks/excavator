@@ -63,7 +63,8 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   const tabs: Tab[] = [
     { key: 'overview', label: t('page.feature.overview'), count: null },
     ...own.map((section) => ({ key: `s${section.n}`, label: section.title, count: section.items.length > 0 ? section.items.length : null })),
-    { key: 'issues', label: t('page.feature.issues'), count: mine.length > 0 ? mine.length : null },
+    // No count when the defects chapter cannot be used: the panel then shows the chapter's own problems, which are not rows.
+    { key: 'issues', label: t('page.feature.issues'), count: sources.defects.state === 'ok' && mine.length > 0 ? mine.length : null },
   ];
   const tabOf = (section: Section): string => `s${section.n}`;
 

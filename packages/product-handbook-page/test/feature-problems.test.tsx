@@ -270,6 +270,12 @@ describe('the issues tab', () => {
       }
     });
 
+    it('shows no count on the issues tab: the chapter\'s own items are not rows, so the number of rows would undercount the panel', async () => {
+      const host = await show(fallback('failed'));
+      const tab = tabs(host).find((one) => one.textContent?.startsWith(marked['page.feature.issues'])) as HTMLElement;
+      expect(tab.querySelector('.n')).toBeNull();
+    });
+
     it('writes "None." when the chapter has no problems section either', async () => {
       const host = await show(data([], { sources: sourcesOf('missing', 'ok', 'ok') }, text(`## ${marked['chapter.section.overview']}`, '', d('Lead words.'), '')));
       const defects = issues(host).querySelector('[data-part="issues-unranked"]') as HTMLElement;
