@@ -174,7 +174,16 @@ describe('the domain list at the left', () => {
     expect(phone).toMatch(/^\/\* Phone[^\n]*\n@media \(max-width: 900px\) \{/);
     expect(phone.slice(0, phone.indexOf('\n}\n'))).toMatch(/\.side \{ display: none; \}/);
     expect(phone).toMatch(/\.frame \{ display: block;/);
-    expect(css).toMatch(/\.frame \{ display: grid; grid-template-columns: 240px minmax\(0, 1fr\);/);
+    const frameRule = css.match(/\.frame \{([^}]*)\}/)?.[1] ?? '';
+    expect(frameRule).toMatch(/display: grid; grid-template-columns: var\(--side-w\) minmax\(0, 1fr\);/);
+    expect(frameRule).not.toContain('max-width');
+    expect(css).toMatch(/--side-w: 240px;/);
+    expect(css).toMatch(/--rail-w: 240px;/);
+    expect(css).toMatch(/\.read-main \{[^}]*max-width: var\(--read\);[^}]*justify-self: center;/);
+    expect(css).toMatch(/\.read \{ display: grid; grid-template-columns: minmax\(0, 1fr\) var\(--rail-w\);/);
+    const rail = css.slice(css.indexOf('@media (max-width: 1279px) {'));
+    expect(rail.slice(0, rail.indexOf('\n}\n'))).toMatch(/\.toc, \.feature-nav \{ display: none; \}/);
+    expect(css).not.toContain('max-width: 1180px');
     expect(css).toMatch(/\.side \{ position: sticky;/);
   });
 

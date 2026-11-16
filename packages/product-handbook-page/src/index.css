@@ -41,6 +41,9 @@
   --t-out: 120ms;
   --topbar-h: 60px;
   --read: 720px;
+  --side-w: 240px;
+  --rail-w: 240px;
+  --gutter: 48px;
   --radius: 10px;
   --control-h: 38px;
 }
@@ -141,7 +144,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .menu .ref-group-title { padding: 14px 0 4px; }
 
 /* Page frame, breadcrumbs, the home and domain placeholders */
-.frame { display: grid; grid-template-columns: 240px minmax(0, 1fr); column-gap: 48px; max-width: 1480px; margin: 0 auto; padding: 0 28px; }
+.frame { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); column-gap: var(--gutter); padding: 0 28px; }
 .frame > main { min-width: 0; }
 .wrap { max-width: 1240px; margin: 0 auto; padding: 0; }
 .crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 28px 0 14px; font-size: 14px; color: var(--text-2); }
@@ -170,18 +173,22 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .map-head .open-domains { margin-left: auto; flex: none; }
 
 /* Reading pages: the side list, the article, the table of contents */
-.read { display: grid; grid-template-columns: minmax(0, var(--read)) 220px; gap: 48px; justify-content: center; }
-.read[data-toc="none"] { grid-template-columns: minmax(0, var(--read)); }
-.read[data-toc="own"] { grid-template-columns: minmax(0, calc(var(--read) + 268px)); }
-/* A feature page brings its own list: the reading column becomes two columns, the breadcrumbs, the article and previous and
-   next on the left, the list on the right over all three rows, so it stays put from the top of the page to its end. */
-.read[data-toc="own"] .read-main { display: grid; grid-template-columns: minmax(0, 1fr) 220px; column-gap: 48px; align-content: start; }
-.read[data-toc="own"] .read-main > *, .read[data-toc="own"] .feature-layout > article { grid-column: 1; }
-.read[data-toc="own"] .read-main .feature-nav { grid-column: 2; grid-row: 1 / span 3; }
-.feature-layout { display: contents; }
-.read[data-wide="true"] { grid-template-columns: minmax(0, 1fr); justify-content: stretch; }
+/* The left list sits at the screen's left edge and the page list (when there is one) at its right edge; the reading column is
+   centred between them. Pages without a page list centre their content in the whole area right of the left list. */
+.read { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail-w); column-gap: var(--gutter); }
+.read-main { min-width: 0; width: 100%; max-width: var(--read); justify-self: center; grid-column: 1; }
+.read > .toc { grid-column: 2; }
+.read[data-toc="none"] { grid-template-columns: minmax(0, 1fr); }
+.read[data-wide="true"] .read-main { max-width: 1240px; }
 .read[data-wide="true"] .page { max-width: none; }
-.read-main { min-width: 0; }
+/* A feature page brings its own list: .read-main spans the area and is itself two columns, the breadcrumbs, the article and
+   previous and next centred in the first, the list in the second over all three rows, so it stays put from the top of the page
+   to its end. */
+.read[data-toc="own"] { grid-template-columns: minmax(0, 1fr); }
+.read[data-toc="own"] .read-main { display: grid; grid-template-columns: minmax(0, 1fr) var(--rail-w); column-gap: var(--gutter); align-content: start; max-width: none; justify-self: stretch; }
+.read[data-toc="own"] .read-main > *, .read[data-toc="own"] .feature-layout > article { grid-column: 1; width: 100%; max-width: var(--read); justify-self: center; }
+.read[data-toc="own"] .read-main .feature-nav { grid-column: 2; grid-row: 1 / span 3; width: auto; max-width: none; justify-self: stretch; }
+.feature-layout { display: contents; }
 .read-main > .crumbs { margin-top: 28px; }
 .side { position: sticky; top: calc(var(--topbar-h) + 24px); align-self: start; max-height: calc(100vh - var(--topbar-h) - 48px); overflow: auto; padding-bottom: 24px; padding-right: 12px; }
 .side-top { margin-top: 28px; }
@@ -552,10 +559,11 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .search-box li small { margin-left: auto; padding-left: 12px; color: var(--text-2); font-size: 13px; text-align: right; }
 .search-box .none { padding: 18px; color: var(--text-2); }
 
-/* Wide screens keep the reading column with its list at the right (the column narrows to make room); narrower ones drop the list (the left list stays down to 900px). */
-@media (max-width: 1180px) {
-  .read, .read[data-toc="own"] { grid-template-columns: minmax(0, var(--read)); }
-  .read[data-toc="own"] .read-main { display: block; }
+/* Wide screens (1280 and up) keep the page list at the screen's right edge; narrower ones drop the list (the left list stays down to 900px). */
+@media (max-width: 1279px) {
+  .read, .read[data-toc="own"] { grid-template-columns: minmax(0, 1fr); }
+  .read[data-toc="own"] .read-main { display: block; max-width: var(--read); justify-self: center; }
+  .read[data-toc="own"] .read-main > *, .read[data-toc="own"] .feature-layout > article { width: auto; max-width: none; }
   .toc, .feature-nav { display: none; }
 }
 
