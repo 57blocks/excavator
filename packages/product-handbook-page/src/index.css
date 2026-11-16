@@ -133,12 +133,12 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .ref-group-title { display: block; padding: 0 10px; color: var(--text-2); font-size: 13px; }
 .ref-group + .ref-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 .side-top + .ref-group { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
-.side-body .ref-group-title { padding: 10px 0 4px 12px; }
+.side-body .ref-group-title { padding: 10px 0 4px; font-weight: 600; color: var(--text); }
 /* The phone's menu holds the same list as the left list, with bigger targets. */
 .menu .side-body li a { padding: 13px 12px; font-size: 16px; }
 .menu .side-group > summary { min-height: 48px; }
 .menu .side-back { min-height: 48px; font-size: 16px; }
-.menu .ref-group-title { padding: 14px 0 4px 12px; }
+.menu .ref-group-title { padding: 14px 0 4px; }
 
 /* Page frame, breadcrumbs, the home and domain placeholders */
 .frame { display: grid; grid-template-columns: 240px minmax(0, 1fr); column-gap: 48px; max-width: 1480px; margin: 0 auto; padding: 0 28px; }
@@ -166,7 +166,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .home h1 { padding-top: 48px; }
 .home h2, .domain h2 { font-size: 21px; }
 .domain h2 { margin-top: 36px; }
-.open-domains { margin-top: 28px; }
+.map-head { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
+.map-head .open-domains { margin-left: auto; flex: none; }
 
 /* Reading pages: the side list, the article, the table of contents */
 .read { display: grid; grid-template-columns: minmax(0, var(--read)) 220px; gap: 48px; justify-content: center; }
@@ -183,14 +184,13 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .read-main { min-width: 0; }
 .read-main > .crumbs { margin-top: 28px; }
 .side { position: sticky; top: calc(var(--topbar-h) + 24px); align-self: start; max-height: calc(100vh - var(--topbar-h) - 48px); overflow: auto; padding-bottom: 24px; padding-right: 12px; }
-.side-body ul { border-left: 1px solid var(--line); }
 .side-top { margin-top: 28px; }
 .side-back { display: flex; gap: 8px; align-items: center; margin: 28px 0 8px; font-size: 14px; color: var(--text-2); text-decoration: none; }
 .side-back::before { content: ''; width: 7px; height: 7px; margin-left: 3px; border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
 .side-back:hover { color: var(--text); }
 .side-groups { margin-top: 4px; }
 .side-body li a {
-  display: block; padding: 6px 12px; margin-left: -1px; border-left: 2px solid transparent; color: var(--text-2); text-decoration: none; font-size: 14px; line-height: 1.45;
+  display: block; padding: 6px 12px; border-left: 2px solid transparent; color: var(--text-2); text-decoration: none; font-size: 14px; line-height: 1.45;
   transition: color var(--t-out) var(--ease), border-color var(--t-out) var(--ease);
 }
 /* The domains of the domain list: each a fold whose summary is the domain's mark and name; the counts sit at the right edge. */
@@ -205,8 +205,8 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .side-group li a { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; }
 .side-count { flex: none; color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
 .side-body li a[aria-current="page"] .side-count { color: var(--text-2); }
-.side-body li a:hover { color: var(--text); border-left-color: var(--line-strong); transition-duration: var(--t-in); }
-.side-body li a[aria-current="page"] { color: var(--text); font-weight: 600; border-left-color: var(--edge, var(--accent)); }
+.side-body li a:hover { color: var(--text); transition-duration: var(--t-in); }
+.side-body li a[aria-current="page"] { color: var(--text); font-weight: 600; border-left-color: var(--edge, var(--accent)); border-radius: 0 6px 6px 0; background: color-mix(in srgb, var(--edge, var(--accent)) 10%, transparent); }
 .toc { position: sticky; top: calc(var(--topbar-h) + 24px); align-self: start; max-height: calc(100vh - var(--topbar-h) - 48px); overflow: auto; padding-top: 28px; }
 .toc p { font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
 .toc button {

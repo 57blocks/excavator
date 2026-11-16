@@ -230,15 +230,17 @@ describe('the phone list and the stylesheet', () => {
 });
 
 describe('the open-domains button and what the home page does not have', () => {
-  it('has the title, the lead, the map and then one button that opens the first domain', () => {
+  it('has the title, the lead, then one button that opens the first domain at the top right of the map, above it', () => {
     const host = home();
     const button = host.querySelector('a[data-part="open-domains"]') as HTMLAnchorElement;
     expect(button.getAttribute('href')).toBe('#/product/domain/d1');
     expect(button.textContent).toBe(marked['page.home.openDomains']);
     expect(host.querySelectorAll('a[data-part="open-domains"]')).toHaveLength(1);
-    const parts = ['h1', '.home-lead', '.atlas-section', 'a[data-part="open-domains"]'].map((selector) => host.querySelector(selector) as Element);
+    const parts = ['h1', '.home-lead', 'a[data-part="open-domains"]', '[data-part="atlas"]'].map((selector) => host.querySelector(selector) as Element);
     parts.forEach((part, at) => { if (at > 0) expect(parts[at - 1].compareDocumentPosition(part) & Node.DOCUMENT_POSITION_FOLLOWING, parts[at].className).toBeTruthy(); });
-    expect(host.querySelector('.home')?.lastElementChild).toBe(button);
+    expect(button.parentElement?.className).toBe('map-head');
+    expect(button.parentElement?.parentElement?.className).toBe('atlas-section');
+    expect(readFileSync(join(__dirname, '../src/index.css'), 'utf-8')).toMatch(/\.map-head \.open-domains \{[^}]*margin-left: auto;/);
   });
 
   it('has no feature list, no counts, no domain navigation and no architecture section, in either view', () => {
@@ -277,12 +279,13 @@ describe('without a usable list', () => {
     }
   });
 
-  it('keeps the button, to the first group of the outline, after the no-map line', () => {
+  it('keeps the button, to the first group of the outline, at the right above the no-map line', () => {
     const host = home(without('failed'));
     const line = host.querySelector('[data-part="no-map"]') as Element;
     const button = host.querySelector('a[data-part="open-domains"]') as Element;
     expect(button.getAttribute('href')).toBe('#/product/domain/d1');
-    expect(line.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(button.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(button.parentElement?.className).toBe('map-head');
     expect((host.querySelector('.home-lead') as Element).compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(host.querySelector('[data-part="overview-grid"], [data-part="overview-counts"]')).toBeNull();
   });
