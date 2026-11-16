@@ -37,7 +37,7 @@ export function Reading({ item, context, colour, trail, wide, toc: kind = 'scan'
         {children}
         <PrevNext previous={previous} next={next} />
       </div>
-      {!wide && kind === 'scan' && <Toc root={main} onPresent={onPresent} />}
+      {!wide && kind === 'scan' && <Toc key={item.key} root={main} onPresent={onPresent} />}
     </div>
   );
 }

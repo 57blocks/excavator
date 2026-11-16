@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { useText } from '../lib/text';
+import { useSpyPin } from '../lib/spy-pin';
 import { activeIndex, spyLimit } from '../lib/toc';
 
 export interface NavEntry { id: string; label: string; level: 2 | 3 }
@@ -15,12 +16,14 @@ export function FeatureNav({ entries }: { entries: readonly NavEntry[] }) {
   const t = useText();
   const [active, setActive] = useState(0);
   const key = entries.map((entry) => entry.id).join('|');
+  const { pinned, pin } = useSpyPin(key);
 
   useEffect(() => {
     if (entries.length === 0) return undefined;
     let frame = 0;
     const update = () => {
       frame = 0;
+      if (pinned.current) return;
       const bar = document.querySelector('.topbar')?.getBoundingClientRect().height ?? 60;
       const tops = entries.map((entry) => document.getElementById(entry.id)?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY);
       setActive(activeIndex(tops, spyLimit(bar, window.innerHeight)));
@@ -43,6 +46,7 @@ export function FeatureNav({ entries }: { entries: readonly NavEntry[] }) {
     const target = document.getElementById(entries[at].id);
     if (target === null) return;
     target.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    pin();
     target.focus({ preventScroll: true });
     setActive(at);
   };

@@ -4,6 +4,7 @@
 // a closed item, the list at the right, both views, a chapter that is not a feature, and that no word of the chapter is lost.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 
 import { AppView } from '../src/App';
 import { REVEAL_EVENT, jumpToHeading } from '../src/lib/heading-jump';
@@ -281,6 +282,48 @@ describe('the list at the right', () => {
       proto.scrollIntoView = saved;
     }
     expect(Array.from(host.querySelectorAll('article [id]')).map((one) => one.id)).toEqual(before);
+  });
+
+  it('keeps the clicked entry marked while the page scrolls there, and follows the page again once the reader scrolls', async () => {
+    const host = await open('#/product/chapter/F2');
+    const frame = () => act(() => new Promise<void>((done) => { window.requestAnimationFrame(() => done()); }));
+    const current = () => host.querySelector('.feature-nav [aria-current="true"]')?.textContent;
+    const rules = Array.from(host.querySelectorAll('.feature-nav button')).find((one) => one.textContent === S('chapter.section.rules')) as HTMLElement;
+    // Without layout every heading is at the top, so the spy alone marks the last entry.
+    const last = Array.from(host.querySelectorAll('.feature-nav button')).at(-1)?.textContent;
+    expect(last).not.toBe(S('chapter.section.rules'));
+    rules.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    click(rules);
+    window.dispatchEvent(new Event('scroll'));
+    await frame();
+    expect(current()).toBe(S('chapter.section.rules'));
+    window.dispatchEvent(new Event('wheel'));
+    window.dispatchEvent(new Event('scroll'));
+    await frame();
+    expect(current()).toBe(last);
+  });
+
+  it('does not carry a pin over to another page whose list has the same ids', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const show = async (hash: string) => { act(() => root.render(<AppView data={withText(TEXT)} route={parseHash(hash)} />)); await settle(); await settle(); };
+    const frame = () => act(() => new Promise<void>((done) => { window.requestAnimationFrame(() => done()); }));
+    const current = () => host.querySelector('.feature-nav [aria-current="true"]')?.textContent;
+    try {
+      await show('#/product/chapter/F2');
+      const last = Array.from(host.querySelectorAll('.feature-nav button')).at(-1)?.textContent;
+      const rules = Array.from(host.querySelectorAll('.feature-nav button')).find((one) => one.textContent === S('chapter.section.rules')) as HTMLElement;
+      click(rules);
+      // The same chapter in the other view: the same ids, another page.
+      await show('#/technical/chapter/F2');
+      window.dispatchEvent(new Event('scroll'));
+      await frame();
+      expect(current()).toBe(last);
+    } finally {
+      act(() => root.unmount());
+      host.remove();
+    }
   });
 });
 

@@ -189,7 +189,12 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .read { display: grid; grid-template-columns: 240px minmax(0, var(--read)) 220px; gap: 48px; justify-content: center; padding: 0 28px; }
 .read[data-toc="none"] { grid-template-columns: 240px minmax(0, var(--read)); }
 .read[data-toc="own"] { grid-template-columns: 240px minmax(0, calc(var(--read) + 268px)); }
-.feature-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 48px; }
+/* A feature page brings its own list: the reading column becomes two columns, the breadcrumbs, the article and previous and
+   next on the left, the list on the right over all three rows, so it stays put from the top of the page to its end. */
+.read[data-toc="own"] .read-main { display: grid; grid-template-columns: minmax(0, 1fr) 220px; column-gap: 48px; align-content: start; }
+.read[data-toc="own"] .read-main > *, .read[data-toc="own"] .feature-layout > article { grid-column: 1; }
+.read[data-toc="own"] .read-main .feature-nav { grid-column: 2; grid-row: 1 / span 3; }
+.feature-layout { display: contents; }
 .read[data-wide="true"] { grid-template-columns: 240px minmax(0, 1fr); justify-content: stretch; max-width: 1240px; margin: 0 auto; }
 .read[data-wide="true"] .page { max-width: none; }
 .read-main { min-width: 0; }
@@ -571,7 +576,7 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 /* Wide screens keep three columns; narrower ones drop the table of contents, then the side column. */
 @media (max-width: 1180px) {
   .read, .read[data-toc="own"] { grid-template-columns: 220px minmax(0, var(--read)); gap: 40px; }
-  .feature-layout { display: block; }
+  .read[data-toc="own"] .read-main { display: block; }
   .toc, .feature-nav { display: none; }
 }
 

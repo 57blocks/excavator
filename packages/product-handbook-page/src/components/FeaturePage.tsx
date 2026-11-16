@@ -6,7 +6,7 @@ import { splitChapter, splitLede, splitServerSteps, previewOf, ROLE_KEYS } from 
 import type { Item, Role, Section } from '../lib/feature-split';
 import { useProblems } from '../lib/chunks';
 import { REVEAL_EVENT } from '../lib/heading-jump';
-import { useLinks } from '../lib/links';
+import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
 import { PROBLEM_TYPES, levelText, rowsOfFeature, sortRows } from '../lib/problems';
 import { useText } from '../lib/text';
@@ -32,6 +32,7 @@ const innerKey = (item: Item): string => `i${item.n}-steps`;
 export function FeaturePage({ id, view, text }: { id: string; view: string; text: string }) {
   const t = useText();
   const nav = useLinks();
+  const current = useView();
   const model = useModel();
   const root = useRef<HTMLElement>(null);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
@@ -294,7 +295,8 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
         {problemsLine()}
         {blocks}
       </article>
-      <FeatureNav entries={entries} />
+      {/* One list per chapter: two chapters can have the same ids (blk-*, h-<n>), and a pin or a mark must not carry over. */}
+      <FeatureNav key={`${current}:${id}`} entries={entries} />
     </div>
   );
 }
