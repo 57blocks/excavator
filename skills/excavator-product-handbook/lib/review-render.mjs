@@ -170,6 +170,14 @@ function cited(text, cites, wide) {
     : `${body} (${list}).`;
 }
 
+/** The items of `batches` (`[{ batch, items }]` in batch order) in the order the chapter lists them: dimension, impact, batch position, item position. */
+export function sortedReviewItems(batches) {
+  const flat = batches.flatMap(({ items }, position) => items.map((item, at) => ({ item, position, at })));
+  const rank = (list, value) => list.indexOf(value);
+  return flat.sort((x, y) => rank(DIMENSIONS, x.item.dimension) - rank(DIMENSIONS, y.item.dimension)
+    || rank(IMPACTS, x.item.impact) - rank(IMPACTS, y.item.impact) || x.position - y.position || x.at - y.at);
+}
+
 /** The text of chapters/review.md for `batches` (`[{ batch, items }]` in batch order). */
 export function reviewChapterText(ctx, batches) {
   const t = (key) => ctx.strings[`chapter.review.${key}`];
@@ -177,10 +185,7 @@ export function reviewChapterText(ctx, batches) {
   const wide = CJK.test(t('title'));
   const colon = wide ? String.fromCharCode(0xff1a) : ': ';
   const semicolon = wide ? String.fromCharCode(0xff1b) : '; ';
-  const flat = batches.flatMap(({ items }, position) => items.map((item, at) => ({ item, position, at })));
-  const rank = (list, value) => list.indexOf(value);
-  flat.sort((x, y) => rank(DIMENSIONS, x.item.dimension) - rank(DIMENSIONS, y.item.dimension)
-    || rank(IMPACTS, x.item.impact) - rank(IMPACTS, y.item.impact) || x.position - y.position || x.at - y.at);
+  const flat = sortedReviewItems(batches);
   const nameOf = (id) => `${ctx.map.features.find((feature) => feature.id === id)?.name ?? id} (${id})`;
   const out = [`# ${t('title')}`, '', `## ${t('counts')}`, ''];
   out.push(`| ${[t('field.dimension'), ...IMPACTS.map((impact) => t(`impact.${impact}`))].join(' | ')} |`);

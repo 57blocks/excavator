@@ -83,23 +83,55 @@ export function parseDefects(text, { none = '' } = {}) {
   return { items, problems };
 }
 
-/** The number of list items (the fixed none text excluded) in the section of `text` headed exactly `title`, level 2 or 3. */
-function sectionItemCount(text, title, none) {
+/**
+ * The list items (the fixed none text excluded) of the section of `text` headed exactly `title`, level 2 or 3, as `{ text, line }` (1-based line), or null when no heading equals `title`.
+ * A section ends at the next heading of the same or a higher level; an item continues on following lines like a defect item does.
+ */
+export function sectionItems(text, title, none) {
   let depth = 0;
-  let count = 0;
-  for (const { raw } of proseLines(text)) {
+  let found = false;
+  const items = [];
+  let current = null;
+  let blankSince = false;
+  const finish = () => {
+    if (current === null) return;
+    const body = current.parts.join(' ').trim();
+    if (body !== none) items.push({ text: body, line: current.line });
+    current = null;
+  };
+  for (const { raw, line } of proseLines(text)) {
     const heading = HEADING.exec(raw);
     if (heading !== null) {
+      finish();
+      blankSince = false;
       const own = heading[1].length;
       if (depth > 0 && own <= depth) depth = 0;
-      if (depth === 0 && (own === 2 || own === 3) && heading[2].trim() === title) depth = own;
+      if (depth === 0 && (own === 2 || own === 3) && heading[2].trim() === title) {
+        depth = own;
+        found = true;
+      }
     } else if (depth > 0) {
       const bullet = LIST_ITEM.exec(raw);
-      if (bullet !== null && bullet[1].trim() !== none) count += 1;
+      if (bullet !== null) {
+        finish();
+        current = { line, parts: [bullet[1]] };
+        blankSince = false;
+      } else if (raw.trim() === '') {
+        blankSince = current !== null;
+      } else if (current !== null && (!blankSince || /^\s{2,}/.test(raw))) {
+        current.parts.push(raw.trim());
+        blankSince = false;
+      } else {
+        finish();
+        blankSince = false;
+      }
     }
   }
-  return count;
+  finish();
+  return found ? items : null;
 }
+
+const sectionItemCount = (text, title, none) => (sectionItems(text, title, none) ?? []).length;
 
 function problemReason({ line, missing, category }) {
   const parts = missing.map((what) => {
