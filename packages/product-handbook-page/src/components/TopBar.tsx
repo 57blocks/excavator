@@ -1,23 +1,11 @@
 import { useLinks } from '../lib/links';
-import type { Group, ReferenceGroup } from '../lib/groups';
-import type { Pair } from '../lib/strata';
 import { useText } from '../lib/text';
 import type { View } from '../lib/types';
 import { CloseIcon, MenuIcon, SearchIcon } from './Icons';
-import { Mark } from './Mark';
-import { Popover } from './Popover';
-import { ReferenceGroups } from './ReferenceGroups';
 
 interface Props {
-  /** The first line of the brand and the title of the view the reader is in (the second line). */
+  /** The name of the system. */
   brand: string;
-  viewTitle: string;
-  groups: Group[];
-  colours: Record<string, Pair>;
-  references: ReferenceGroup[];
-  /** The route the page shows, to mark the overview and problems links. */
-  home: boolean;
-  problems: boolean;
   menuOpen: boolean;
   onMenu: () => void;
   onSearch: () => void;
@@ -34,8 +22,8 @@ function shortcutHint(): string {
   return mac ? `${String.fromCharCode(0x2318)}K` : 'Ctrl K';
 }
 
-/** The bar above everything: brand, the overview, the features, the problems and the references, the search button and, with two views, the view switch. On a phone the navigation is the menu button's. */
-export function TopBar({ brand, viewTitle, groups, colours, references, home, problems, menuOpen, onMenu, onSearch, views, current, switchTo }: Props) {
+/** The bar above everything: the menu button (narrow windows only), the name of the system, the search button and, with two views, the view switch. The navigation is the left list's (the menu's on a phone). */
+export function TopBar({ brand, menuOpen, onMenu, onSearch, views, current, switchTo }: Props) {
   const t = useText();
   const nav = useLinks();
   return (
@@ -43,19 +31,7 @@ export function TopBar({ brand, viewTitle, groups, colours, references, home, pr
       <button type="button" className="menu-btn" onClick={onMenu} aria-expanded={menuOpen} aria-controls="menu" aria-label={menuOpen ? t('page.nav.close') : t('page.nav.open')}>
         {menuOpen ? <CloseIcon /> : <MenuIcon />}
       </button>
-      <a className="brand" href={nav.home}><b>{brand}</b><span>{viewTitle}</span></a>
-      <nav className="nav" aria-label={t('page.nav.label')}>
-        <a href={nav.home} data-nav="overview" aria-current={home ? 'page' : undefined}>{t('page.nav.overview')}</a>
-        <Popover id="pop-features" label={t('page.nav.features')}>
-          {groups.map((group) => (
-            <a key={group.id} href={nav.domain(group.id)} data-group={group.id}><Mark colour={colours[group.id]} />{group.name}<small>{group.features.length}</small></a>
-          ))}
-        </Popover>
-        <a href={nav.problems()} data-nav="problems" aria-current={problems ? 'page' : undefined}>{t('page.nav.problems')}</a>
-        <Popover id="pop-refs" label={t('page.nav.references')}>
-          <ReferenceGroups groups={references} as="links" />
-        </Popover>
-      </nav>
+      <a className="brand" href={nav.home}><b>{brand}</b></a>
       <div className="bar-end">
         <button type="button" className="search-btn" onClick={onSearch} aria-label={t('page.search.open')}>
           <SearchIcon /><span>{t('page.search.open')}</span><kbd data-key={shortcutHint()} aria-hidden="true" />

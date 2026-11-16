@@ -102,10 +102,17 @@ describe('a domain page', () => {
     expect(page('#/product/domain/d4').querySelector('[data-side="next"]')).toBeNull();
   });
 
-  it('lists the features of the group as links and has no columns when there is no usable list', () => {
+  it('has the features section and no columns when there is no usable list', () => {
     const host = page('#/product/domain/d1', domainData({ domains: { state: 'failed', list: [], handovers: [] } }));
     expect(host.querySelector('[data-column]')).toBeNull();
-    expect(Array.from(host.querySelectorAll('.plain-list a')).map((one) => one.getAttribute('href'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2', '#/product/chapter/F3', '#/product/chapter/F4']);
+    expect(Array.from(host.querySelectorAll('[data-part="domain-features"] a')).map((one) => one.getAttribute('href'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2', '#/product/chapter/F3', '#/product/chapter/F4']);
+  });
+
+  it('is in the frame with the left list in its domain state, this domain marked', () => {
+    const host = page('#/product/domain/d3');
+    expect(host.querySelector('.frame')?.getAttribute('data-side')).toBe('domain');
+    expect(host.querySelector('nav.side')?.getAttribute('data-side')).toBe('domain');
+    expect(host.querySelector('nav.side a[aria-current="page"]')?.getAttribute('data-group-link')).toBe('d3');
   });
 });
 

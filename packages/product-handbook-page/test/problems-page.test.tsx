@@ -366,7 +366,7 @@ describe('the chapters that are not reference pages any more', () => {
       { kind: 'chapter' as const, title: 'Remedies', chapter: 'remedies', domain: null, heading: null, level: null },
       { kind: 'heading' as const, title: 'Duplication', chapter: 'remedies', domain: null, heading: 1, level: 2 as const },
     ];
-    const results = searchResults({ query: 'dup', groups: [], items, references: [], referencesLabel: 'r', domainsLabel: 'd', systemTitle: 's' });
+    const results = searchResults({ query: 'dup', groups: [], items, references: [], domainsLabel: 'd', systemTitle: 's' });
     expect(results.map((result) => result.target)).toEqual([{ kind: 'heading', chapter: 'remedies', heading: 1 }]);
   });
 });

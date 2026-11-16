@@ -11,9 +11,6 @@ import { DomainLink, Flows } from './Flows';
 import { HandoverText } from './HandoverText';
 import { Mark } from './Mark';
 
-/** What is picked on the map: a domain, a hand-over line, or nothing. */
-type Picked = { kind: 'domain'; id: string } | { kind: 'edge'; index: number } | null;
-
 const SPACE_OR_ENTER = (event: KeyboardEvent): boolean => event.key === 'Enter' || event.key === ' ';
 
 /** The default panel: the title, one line of hint and the four domains with the most hand-overs. */
@@ -68,19 +65,20 @@ function SideChannel({ index }: { index: number }) {
 }
 
 /**
- * The atlas: the map of the domains with its side panel. A domain shows on hover (when nothing is picked), on click and on
- * Enter or Space; its hand-overs are blue lines out and ochre lines in and everything else is dimmed; a click on a line shows
- * that one hand-over; a click on the empty map clears the pick.
+ * The atlas: the map of the domains with its side panel. A domain shows its panel on hover and on keyboard focus (when no line
+ * is picked); its hand-overs are blue lines out and ochre lines in and everything else is dimmed. A click on a domain, or Enter
+ * or Space on a focused one, opens its domain page. A click on a line shows that one hand-over; a click on the empty map clears it.
  */
 export function Atlas() {
   const t = useText();
+  const nav = useLinks();
   const { layout, handovers, domains, colours } = useModel();
-  const [picked, setPicked] = useState<Picked>(null);
+  const [picked, setPicked] = useState<number | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   if (layout === null) return null;
 
-  const domain = picked === null ? hover : picked.kind === 'domain' ? picked.id : null;
-  const channel = picked?.kind === 'edge' ? picked.index : null;
+  const domain = picked === null ? hover : null;
+  const channel = picked;
   const dimmed = domain !== null || channel !== null;
   const near = new Set<string>();
   for (const edge of layout.edges) {
@@ -88,7 +86,7 @@ export function Atlas() {
     if (domain !== null && edge.to === domain) near.add(edge.from);
     if (channel === edge.index) { near.add(edge.from); near.add(edge.to); }
   }
-  const pick = (id: string) => setPicked(picked?.kind === 'domain' && picked.id === id ? null : { kind: 'domain', id });
+  const open = (id: string) => { window.location.hash = nav.domain(id); };
   const stop = (event: MouseEvent) => event.stopPropagation();
 
   return (
@@ -110,7 +108,7 @@ export function Atlas() {
               return (
                 <g key={edge.index} data-edge={edge.index}>
                   <path className={className} d={edge.d} markerEnd={`url(#xv-ar-${kind})`} />
-                  <path className="edge-hit" d={edge.d} onClick={(event) => { stop(event); setPicked({ kind: 'edge', index: edge.index }); }}><title>{t('page.map.edge', { from: domains[edge.from].name, to: domains[edge.to].name })}</title></path>
+                  <path className="edge-hit" d={edge.d} onClick={(event) => { stop(event); setPicked(edge.index); }}><title>{t('page.map.edge', { from: domains[edge.from].name, to: domains[edge.to].name })}</title></path>
                 </g>
               );
             })}
@@ -129,11 +127,12 @@ export function Atlas() {
                   tabIndex={0}
                   role="button"
                   aria-label={t('page.map.node', { name, count })}
-                  aria-pressed={picked?.kind === 'domain' && picked.id === node.id}
                   onMouseEnter={() => { if (picked === null) setHover(node.id); }}
                   onMouseLeave={() => { if (picked === null) setHover(null); }}
-                  onClick={(event) => { stop(event); pick(node.id); }}
-                  onKeyDown={(event) => { if (SPACE_OR_ENTER(event)) { event.preventDefault(); pick(node.id); } }}
+                  onFocus={() => { if (picked === null) setHover(node.id); }}
+                  onBlur={() => { if (picked === null) setHover(null); }}
+                  onClick={(event) => { stop(event); open(node.id); }}
+                  onKeyDown={(event) => { if (SPACE_OR_ENTER(event)) { event.preventDefault(); open(node.id); } }}
                 >
                   {node.label !== name && <title>{name}</title>}
                   <rect x={(node.x - node.w / 2).toFixed(1)} y={(node.y - node.h / 2).toFixed(1)} width={node.w} height={node.h} rx={8} />

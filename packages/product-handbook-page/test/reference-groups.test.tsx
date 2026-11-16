@@ -43,27 +43,25 @@ describe('references in groups', () => {
     expect(referencesOf(data, 'product', COVERAGE, SYSTEM)).toEqual([{ title: null, items: [{ block: 'coverage', kind: 'coverage', title: COVERAGE, key: 'coverage' }] }]);
   });
 
-  it('shows the groups in the popover, the phone menu (inside its closed details) and the side list, and not on the home page: the title as a small text, no box', () => {
+  it('shows the groups in the left list and the phone menu (not on the page itself): the title as a small text, no box', () => {
     const host = show(domainData(), '#/technical/chapter/system');
-    const panel = host.querySelector('#pop-refs') as HTMLElement;
-    expect(Array.from(panel.querySelectorAll('.ref-group')).map((one) => one.getAttribute('data-ref-group'))).toEqual([d('System'), d('Data and health') , '']);
-    expect(Array.from(panel.querySelectorAll('.ref-group-title')).map((one) => one.textContent)).toEqual([d('System'), d('Data and health')]);
     const side = host.querySelector('.side') as HTMLElement;
+    expect(side.getAttribute('data-side')).toBe('global');
+    expect(Array.from(side.querySelectorAll('.ref-group')).map((one) => one.getAttribute('data-ref-group'))).toEqual([d('System'), d('Data and health'), '']);
     expect(Array.from(side.querySelectorAll('.ref-group-title')).map((one) => one.textContent)).toEqual([d('System'), d('Data and health')]);
     expect(side.querySelector('a[aria-current="page"]')?.getAttribute('data-page')).toBe('chapter:system');
+    expect(host.querySelector('main .ref-group')).toBeNull();
     act(() => (host.querySelector('.menu-btn') as HTMLElement).click());
     const menu = host.querySelector('#menu') as HTMLElement;
     expect(Array.from(menu.querySelectorAll('.ref-group-title')).map((one) => one.textContent)).toEqual([d('System'), d('Data and health')]);
-    const home = show(domainData(), '#/technical');
-    expect(home.querySelectorAll('.home .ref-group, .home .ref-list')).toHaveLength(0);
+    expect(host.querySelector('.crumbs')?.textContent).not.toContain(d('System'));
   });
 });
 
 describe('the system chapter is called the system overview in lists and links', () => {
-  it('in the popover, phone menu, side list, breadcrumbs and search results; its own heading stays', () => {
+  it('in the left list, phone menu, breadcrumbs and search results; its own heading stays', () => {
     const host = show(domainData(), '#/technical/chapter/system');
     const named = (root: ParentNode): (string | null)[] => Array.from(root.querySelectorAll('a[data-page="chapter:system"]')).map((one) => one.textContent);
-    expect(named(host.querySelector('#pop-refs') as HTMLElement)).toEqual([SYSTEM]);
     expect(named(host.querySelector('.side') as HTMLElement)).toEqual([SYSTEM]);
     expect(host.querySelector('.crumbs [aria-current="page"]')?.textContent).toBe(SYSTEM);
     expect(host.querySelector('.prose h1')?.textContent).toBe(d('System chapter'));
@@ -71,7 +69,7 @@ describe('the system chapter is called the system overview in lists and links', 
     expect(named(host.querySelector('#menu') as HTMLElement)).toEqual([SYSTEM]);
     expect(named(show(domainData(), '#/technical') as HTMLElement)).toContain(SYSTEM);
     const data = domainData();
-    const results = searchResults({ query: 'overview', groups: [], items: data.search, references: [], referencesLabel: 'r', domainsLabel: 'd', systemTitle: SYSTEM });
+    const results = searchResults({ query: 'overview', groups: [], items: data.search, references: [], domainsLabel: 'd', systemTitle: SYSTEM });
     expect(results.map((result) => [result.key, result.title])).toEqual([['chapter:system', SYSTEM]]);
   });
 

@@ -6,6 +6,9 @@ import { routeHash } from './route';
 import type { Route } from './route';
 import type { PageData, View } from './types';
 
+/** Whether the technical view has a system architecture page: the view exists and the page data holds the architecture text. */
+export const hasArchitecture = (data: PageData, view: View): boolean => view === 'technical' && (data.architecture.technical ?? '') !== '';
+
 /** The view a route is shown in, or null when the page does not have it (a view it was not built with, a page the view does not have, a domain that is not there). */
 export function viewOf(data: PageData, route: Route, coverageTitle: string): View | null {
   const view = route.view ?? data.views[0];
@@ -14,6 +17,7 @@ export function viewOf(data: PageData, route: Route, coverageTitle: string): Vie
   if (body.name === 'home') return view;
   if (body.name === 'domain') return groupsOf(data).some((group) => group.id === body.id) ? view : null;
   if (body.name === 'problems') return view;
+  if (body.name === 'architecture') return hasArchitecture(data, view) ? view : null;
   return pageOf(pagesOf(data, view, coverageTitle), route) === undefined ? null : view;
 }
 
@@ -21,6 +25,7 @@ export function viewOf(data: PageData, route: Route, coverageTitle: string): Vie
 export function switchTarget(data: PageData, route: Route, view: View, coverageTitle: string): string {
   const body = bodyOf(route);
   if (body.name === 'problems') return routeHash(body, view);
+  if (body.name === 'architecture') return routeHash(hasArchitecture(data, view) ? body : { name: 'home' }, view);
   if (body.name === 'domain') return routeHash(groupsOf(data).some((group) => group.id === body.id) ? body : { name: 'home' }, view);
   const key = routeKey(body);
   const keep = key !== null && pagesOf(data, view, coverageTitle).some((item) => item.key === key);

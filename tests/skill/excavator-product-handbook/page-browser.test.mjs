@@ -2,7 +2,7 @@
 // file:// in headless Chrome with no network request and no console error, shows a chapter's Markdown (a table is a
 // table, a list is a list, a flowchart and a state diagram are drawn by mermaid, a diagram that cannot be drawn shows
 // its source and a note), shows a citation chip in the technical view and none in the product view, keeps the chapter
-// when the view is switched, shows the home page as the overview (the domain map, and a list of domains in its place on a phone, then the counts line and the grid of domains and features) and a domain page with its columns, has no horizontal scroll at 375 px (tables scroll inside their own box), and with part
+// when the view is switched, shows the home page as the overview (the domain map, and a list of domains in its place on a phone, then the button that opens the first domain), a domain page with its features and its columns, the left list on every page, has no horizontal scroll at 375 px (tables scroll inside their own box), and with part
 // files loads only the parts of the page it opens. Needs the built template (`pnpm -r build`) and a Chrome
 // (CHROME_PATH, the macOS application, or google-chrome / chromium on PATH). Without a Chrome the suite is skipped with
 // a visible reason, except when CI is set: CI runners have Chrome, so there it fails.
@@ -86,15 +86,21 @@ suite('page in a browser (O4)', () => {
         const [atlas, list] = await page.evaluate("[getComputedStyle(document.querySelector('.atlas')).display, getComputedStyle(document.querySelector('.rel-list')).display]");
         if (width < 900) expect([atlas, list]).toEqual(['none', 'block']);
         else expect([atlas, list]).toEqual(['grid', 'none']);
-        // The overview grid: visible, one block per domain, and a link for every feature chapter of the page data.
+        // The overview has no grid, no counts and no feature list: the map, then one button to the first domain.
+        expect(await page.evaluate("document.querySelectorAll('[data-part=\"overview-grid\"], [data-part=\"overview-counts\"], .dom-table, [data-part=\"domain-table\"]').length")).toBe(0);
+        expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').getAttribute('href')")).toBe('#/product/domain/d1');
+        expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').textContent")).toBe('Browse the domains');
+        await fits(page, width, 'the home page with the map');
+        // The domain pages list every feature chapter of the page data between them, each with a problem count.
         const wanted = dataOf(html(run)).chapters.map((chapter) => chapter.id).filter((id) => /^F\d+$/.test(id));
         expect(wanted.length).toBeGreaterThan(0);
-        expect(await page.evaluate("(() => { const grid = document.querySelector('[data-part=\"overview-grid\"]'); const box = grid.getBoundingClientRect(); return getComputedStyle(grid).display !== 'none' && box.width > 0 && box.height > 0; })()")).toBe(true);
-        expect(await page.evaluate("document.querySelectorAll('[data-part=\"overview-grid\"] .ov-block').length")).toBe(3);
-        const linked = await page.evaluate("Array.from(document.querySelectorAll('[data-part=\"overview-grid\"] li a[data-feature]')).map((link) => link.getAttribute('data-feature'))");
+        const linked = [];
+        for (const id of ['d1', 'd2', 'd3']) {
+          await goTo(page, `#/domain/${id}`, `[data-view="domain"][data-domain="${id}"] [data-part="domain-features"]`);
+          linked.push(...await page.evaluate("Array.from(document.querySelectorAll('[data-part=\"domain-features\"] a[data-feature]')).map((link) => link.getAttribute('data-feature'))"));
+          expect(await page.evaluate("Array.from(document.querySelectorAll('[data-part=\"domain-features\"] a[data-feature] [data-part=\"problem-count\"]')).every((one) => /^\\d+$/.test(one.textContent))")).toBe(true);
+        }
         expect(linked.sort()).toEqual([...wanted].sort());
-        expect(await page.evaluate("document.querySelectorAll('.dom-table, [data-part=\"domain-table\"]').length")).toBe(0);
-        await fits(page, width, 'the home page with the map');
         await goTo(page, '#/domain/d1', '[data-view="domain"] [data-column="in"]');
         expect(await page.evaluate("document.querySelectorAll('[data-view=\"domain\"] [data-column]').length")).toBe(2);
         expect(await page.evaluate("document.querySelectorAll('[data-column=\"out\"] li[data-other]').length")).toBe(1);
@@ -181,27 +187,41 @@ suite('page in a browser (O4)', () => {
         expect(page.consoleErrors).toEqual([]);
       }, 60000);
 
-      it('navigates from the top bar on a wide window and from the menu on a phone, and the reading page has its side list', async () => {
+      it('has the left list on every page on a wide window and the menu with the same list on a phone, and the top bar holds only the brand, the search and the view switch', async () => {
         const page = await browser.openPage({ width, height });
         await page.goto(url);
         await page.waitFor('document.querySelector(\'[data-view="home"]\')', 'the home page');
+        expect(await page.evaluate("Array.from(document.querySelectorAll('.topbar a, .topbar button')).filter((one) => getComputedStyle(one).display !== 'none').map((one) => one.className || one.getAttribute('data-view-link') || '').join(',')")).toBe(width < 900 ? 'menu-btn,brand,search-btn,product,technical' : 'brand,search-btn,product,technical');
+        expect(await page.evaluate("document.querySelector('.brand').textContent")).toBe('System');
+        expect(await page.evaluate("document.querySelector('.search-btn').textContent.startsWith('Search')")).toBe(true);
+        const sideShown = () => page.evaluate("getComputedStyle(document.querySelector('.side')).display !== 'none' && document.querySelector('.side').getBoundingClientRect().width > 0");
+        expect(await sideShown()).toBe(width >= 900);
+        expect(await page.evaluate("document.querySelector('.side').getAttribute('data-side')")).toBe('global');
+        expect(await page.evaluate("Array.from(document.querySelectorAll('.side a')).map((link) => link.getAttribute('data-nav') || link.getAttribute('data-page')).join(',')")).toBe('overview,problems,chapter:system,chapter:domains,history,coverage');
         if (width < 900) {
           expect(await page.evaluate("document.querySelector('#menu')")).toBeNull();
           await page.evaluate("document.querySelector('.menu-btn').click()");
           await page.waitFor("document.querySelector('#menu')", 'the open menu');
+          expect(await page.evaluate("document.querySelector('#menu').getAttribute('data-side')")).toBe('global');
           await fits(page, width, 'the page with the menu open');
           await page.evaluate("document.querySelector('#menu a[data-page=\"chapter:system\"]').click()");
           await page.waitFor("!document.querySelector('#menu') && document.querySelector('[data-chapter=\"system\"]')", 'the chapter from the menu, the menu closed');
         } else {
-          expect(await page.evaluate("document.querySelector('#pop-refs').hidden")).toBe(true);
-          await page.evaluate("document.querySelector('[data-pop=\"pop-refs\"]').click()");
-          await page.waitFor("!document.querySelector('#pop-refs').hidden", 'the open references list');
-          await page.evaluate("document.querySelector('#pop-refs a[data-page=\"chapter:system\"]').click()");
-          await page.waitFor("document.querySelector('[data-chapter=\"system\"]')", 'the chapter from the references list');
+          await page.evaluate("document.querySelector('.side a[data-page=\"chapter:system\"]').click()");
+          await page.waitFor("document.querySelector('[data-chapter=\"system\"]')", 'the chapter from the left list');
+          expect(await page.evaluate("document.querySelector('.side a[aria-current=\"page\"]').getAttribute('data-page')")).toBe('chapter:system');
         }
         await goTo(page, '#/chapter/F1', '[data-chapter="F1"]');
+        expect(await page.evaluate("document.querySelector('.side').getAttribute('data-side')")).toBe('domain');
         expect(await page.evaluate("document.querySelector('.side a[aria-current=\"page\"]').getAttribute('data-page')")).toBe('chapter:F1');
-        expect(await page.evaluate("document.querySelector('.side').getAttribute('data-side')")).toBe('group');
+        expect(await page.evaluate("document.querySelectorAll('.side details.side-group').length")).toBe(3);
+        expect(await page.evaluate("Array.from(document.querySelectorAll('.side details.side-group')).every((one) => one.open)")).toBe(true);
+        expect(await page.evaluate("document.querySelector('.side a[data-part=\"side-back\"]').getAttribute('href')")).toBe('#/product');
+        await goTo(page, '#/domain/d2', '[data-view="domain"]');
+        expect(await page.evaluate("document.querySelector('.side a[aria-current=\"page\"]').getAttribute('data-group-link')")).toBe('d2');
+        expect(await sideShown()).toBe(width >= 900);
+        await fits(page, width, 'the domain page with its list');
+        expect(page.consoleErrors).toEqual([]);
       }, 60000);
 
       it('opens the search with the keyboard, finds the chapter and goes to it', async () => {
@@ -218,6 +238,25 @@ suite('page in a browser (O4)', () => {
       }, 60000);
     });
   }
+
+  // The frame with the left list and the content column never scrolls the window sideways, at any width.
+  it('has no horizontal scroll at 500, 1100 and 1440 px on the home, domain, problems, feature and data pages', async () => {
+    for (const width of [500, 1100, 1440]) {
+      const page = await browser.openPage({ width, height: 900 });
+      await page.goto(url);
+      await page.waitFor('document.querySelector(\'[data-view="home"]\')', 'the home page');
+      for (const hash of ['#/', '#/domain/d1', '#/problems', '#/technical/chapter/F1', '#/technical/data', '#/technical/history', '#/coverage']) {
+        await page.evaluate(`window.location.hash = ${JSON.stringify(hash)}`);
+        await page.waitFor('document.querySelector(\'main > *\')', `the page ${hash}`);
+        await fits(page, width, `${hash}`);
+        const inside = await page.evaluate("(() => { const frame = document.querySelector('.frame').getBoundingClientRect(); const main = document.querySelector('main').getBoundingClientRect(); const side = document.querySelector('.side').getBoundingClientRect(); return { frameRight: frame.right, mainRight: main.right, mainLeft: main.left, sideRight: side.right, sideWidth: side.width }; })()");
+        expect(inside.mainRight, `${hash} at ${width}`).toBeLessThanOrEqual(width);
+        if (width >= 900) expect(inside.sideRight, `${hash} at ${width}`).toBeLessThanOrEqual(inside.mainLeft);
+        else expect(inside.sideWidth).toBe(0);
+      }
+      expect(page.consoleErrors.filter((message) => !/mermaid|Parse error|Syntax error|diagram/i.test(message))).toEqual([]);
+    }
+  }, 120000);
 
   // A page with part files opens from file:// and shows the same chapter as the one-file form; the home page loads no part
   // (its data is in the core), a chapter loads its own, no request but the page and its part files, no console error; with a part

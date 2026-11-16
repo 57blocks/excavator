@@ -8,6 +8,7 @@ import type { View } from './types';
 export interface Links {
   home: string;
   coverage: string;
+  architecture: string;
   data: string;
   dictionaries: string;
   history: string;
@@ -21,6 +22,7 @@ export function makeLinks(prefix: View | null): Links {
   return {
     home: routeHash({ name: 'home' }, prefix),
     coverage: routeHash({ name: 'coverage' }, prefix),
+    architecture: routeHash({ name: 'architecture' }, prefix),
     data: routeHash({ name: 'data' }, prefix),
     dictionaries: routeHash({ name: 'dictionaries' }, prefix),
     history: routeHash({ name: 'history' }, prefix),

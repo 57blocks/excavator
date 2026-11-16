@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
-// Task 4.2 of openspec change handbook-page-structure: the side list of a feature page lists every group (all open), each feature with its problem count. Rows are written by hand.
+// Tasks 4.2 and 8.1 of openspec change handbook-page-structure: the left list in its domain state lists every domain (all open, its
+// name a link to its page), each feature with its problem count; it is not shown below 900px and has no fold of its own. Rows are written by hand.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -61,7 +64,7 @@ const topIds = (host: HTMLElement): string[] => Array.from(block(host).querySele
 const fold = (host: HTMLElement, id: string): HTMLDetailsElement => host.querySelector(`details[data-problem="${id}"]`) as HTMLDetailsElement;
 const headings = (panel: HTMLElement): string[] => Array.from(panel.querySelectorAll('h2.sub')).map((one) => one.textContent ?? '');
 
-describe('the side list of a feature page', () => {
+describe('the domain list at the left', () => {
   const ROWS = [row('a', { features: ['F2'] }), row('b', { features: ['F1', 'F2'] }), design('c', { features: ['F1'] }), open('q', { features: ['system'] })];
   const side = (host: HTMLElement): HTMLElement => host.querySelector('.side') as HTMLElement;
   const groups = (host: HTMLElement): HTMLDetailsElement[] => Array.from(side(host).querySelectorAll<HTMLDetailsElement>('details.side-group'));
@@ -70,11 +73,31 @@ describe('the side list of a feature page', () => {
     const host = await show(data(ROWS));
     expect(groups(host).map((one) => [one.getAttribute('data-group'), one.open])).toEqual([['d1', true], ['d2', true], ['d3', true], ['d4', true]]);
     expect(groups(host).map((one) => one.querySelector('summary')?.textContent)).toEqual([d('Platform'), d('Orders'), d('Billing'), d('Support')]);
-    expect(groups(host).map((one) => Array.from(one.querySelectorAll('a')).map((link) => link.getAttribute('data-page')))).toEqual([['chapter:F1'], ['chapter:F2'], ['chapter:F3'], ['chapter:F4']]);
+    expect(groups(host).map((one) => Array.from(one.querySelectorAll('ul a')).map((link) => link.getAttribute('data-page')))).toEqual([['chapter:F1'], ['chapter:F2'], ['chapter:F3'], ['chapter:F4']]);
     expect(side(host).getAttribute('aria-label')).toBe(marked['page.nav.domains']);
-    expect(side(host).querySelector('a[href*="/domain/"]')).toBeNull();
+    expect(Array.from(side(host).querySelectorAll('a[data-group-link]')).map((link) => [link.getAttribute('href'), link.textContent])).toEqual([['#/product/domain/d1', d('Platform')], ['#/product/domain/d2', d('Orders')], ['#/product/domain/d3', d('Billing')], ['#/product/domain/d4', d('Support')]]);
     expect(side(host).querySelector('[aria-current="page"]')?.getAttribute('data-page')).toBe('chapter:F2');
     expect(side(host).querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    expect(side(host).getAttribute('data-side')).toBe('domain');
+  });
+
+  it('starts with a link back to the overview, drawn with a chevron in the stylesheet, and has no heading of the old references list', async () => {
+    const host = await show(data(ROWS));
+    const back = side(host).firstElementChild?.firstElementChild as HTMLElement;
+    expect(back.getAttribute('data-part')).toBe('side-back');
+    expect(back.getAttribute('href')).toBe('#/product');
+    expect(back.textContent).toBe(marked['page.nav.overview']);
+    expect(side(host).querySelector('h2.side-name')).toBeNull();
+    expect(readFileSync(join(__dirname, '../src/index.css'), 'utf-8')).toMatch(/\.side-back::before \{[^}]*border-left: 1\.5px solid currentColor;/);
+  });
+
+  it('marks the domain itself on its page, with its link in the summary, and no feature', async () => {
+    const host = await show(data(ROWS), '#/product/domain/d2');
+    expect(side(host).querySelectorAll('[aria-current="page"]')).toHaveLength(1);
+    const current = side(host).querySelector('[aria-current="page"]') as HTMLElement;
+    expect(current.getAttribute('data-group-link')).toBe('d2');
+    expect(current.parentElement?.tagName).toBe('SUMMARY');
+    expect(groups(host).every((one) => one.open)).toBe(true);
   });
 
   it('lets the reader close a group, and a re-render does not reopen it', async () => {
@@ -88,7 +111,7 @@ describe('the side list of a feature page', () => {
     click(third.querySelector('summary') as HTMLElement);
     expect(third.open).toBe(false);
     expect(groups(host).map((one) => one.open)).toEqual([true, true, false, true]);
-    expect(third.querySelector('a')?.getAttribute('href')).toBe('#/product/chapter/F3');
+    expect(third.querySelector('ul a')?.getAttribute('href')).toBe('#/product/chapter/F3');
     act(() => root.render(<AppView data={page} route={parseHash('#/product/chapter/F1')} />));
     await settle();
     expect(groups(host).map((one) => one.open)).toEqual([true, true, false, true]);
@@ -112,27 +135,24 @@ describe('the side list of a feature page', () => {
     expect(Array.from(side(host).querySelectorAll('[data-part="problem-count"]')).map((one) => one.textContent)).toEqual(['2', '2', '0', '0']);
   });
 
-  it('keeps the phone behaviour: the whole list is behind a details whose summary is the current group, open on a wide screen only', () => {
-    const saved = window.matchMedia;
-    const media = (wide: boolean) => ((query: string) => ({ matches: wide && query.includes('min-width'), media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
-    try {
-      window.matchMedia = media(true);
-      const wide = renderToStaticMarkup(<AppView data={data(ROWS)} route={parseHash('#/product/chapter/F2')} />);
-      expect(wide).toMatch(/<nav class="side"[^>]*><details open=""><summary><span class="mark"[^>]*><\/span>d~Orders<\/summary>/);
-      window.matchMedia = media(false);
-      const narrow = renderToStaticMarkup(<AppView data={data(ROWS)} route={parseHash('#/product/chapter/F2')} />);
-      expect(narrow).toMatch(/<nav class="side"[^>]*><details><summary>/);
-    } finally {
-      window.matchMedia = saved;
-    }
+  it('has no fold of its own, and the stylesheet does not show it below 900px (the menu holds the same list)', async () => {
+    const host = await show(data(ROWS));
+    expect(Array.from(side(host).children).some((child) => child.tagName === 'DETAILS')).toBe(false);
+    const css = readFileSync(join(__dirname, '../src/index.css'), 'utf-8');
+    const phone = css.slice(css.indexOf('/* Phone:'));
+    expect(phone).toMatch(/^\/\* Phone[^\n]*\n@media \(max-width: 900px\) \{/);
+    expect(phone.slice(0, phone.indexOf('\n}\n'))).toMatch(/\.side \{ display: none; \}/);
+    expect(phone).toMatch(/\.frame \{ display: block;/);
+    expect(css).toMatch(/\.frame \{ display: grid; grid-template-columns: 240px minmax\(0, 1fr\);/);
+    expect(css).toMatch(/\.side \{ position: sticky;/);
   });
 
-  it('leaves the references side list as it was: no groups, no counts, the references named by the nav', async () => {
+  it('is not this list on a reference page: no domains, no counts, no old references heading', async () => {
     const host = await show(data(ROWS), '#/product/chapter/system');
-    expect(side(host).getAttribute('data-side')).toBe('references');
-    expect(side(host).getAttribute('aria-label')).toBe(marked['page.nav.references']);
+    expect(side(host).getAttribute('data-side')).toBe('global');
+    expect(side(host).getAttribute('aria-label')).toBe(marked['page.nav.label']);
     expect(side(host).querySelector('.side-group')).toBeNull();
     expect(side(host).querySelector('[data-part="problem-count"]')).toBeNull();
-    expect(side(host).querySelector('h2.side-name')?.textContent).toBe(marked['page.nav.references']);
+    expect(side(host).querySelector('h2.side-name')).toBeNull();
   });
 });

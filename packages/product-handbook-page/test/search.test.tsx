@@ -94,7 +94,7 @@ describe('the results', () => {
     expect(rows[0].querySelector('.mark')).not.toBeNull();
     expect(rows[4].querySelector('.mark')).toBeNull();
     expect(rows[0].querySelector('small')?.textContent).toBe(marked['page.nav.domains']);
-    expect(rows[4].querySelector('small')?.textContent).toBe(marked['page.nav.references']);
+    expect(rows[4].querySelector('small')).toBeNull();
   });
 
   it('match the title as a case-insensitive substring, with the domain name for a chapter and the chapter title for a heading', () => {
@@ -117,10 +117,10 @@ describe('the results', () => {
 
   it('cut at forty and keep the order of the index', () => {
     const items: SearchItem[] = Array.from({ length: 60 }, (_, at) => ({ kind: 'heading', title: `Item ${at}`, chapter: 'F1', domain: null, heading: at, level: 2 }));
-    const all = searchResults({ query: 'item', groups: [], items, references: [], referencesLabel: 'refs', domainsLabel: 'domains', systemTitle: 'sys' });
+    const all = searchResults({ query: 'item', groups: [], items, references: [], domainsLabel: 'domains', systemTitle: 'sys' });
     expect(all).toHaveLength(MAX_RESULTS);
     expect(all.map((one) => one.title)).toEqual(items.slice(0, 40).map((one) => one.title));
-    expect(searchResults({ query: '  ', groups: [], items, references: [], referencesLabel: '', domainsLabel: '', systemTitle: '' })).toEqual([]);
+    expect(searchResults({ query: '  ', groups: [], items, references: [], domainsLabel: '', systemTitle: '' })).toEqual([]);
   });
 });
 

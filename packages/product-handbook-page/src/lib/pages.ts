@@ -22,7 +22,7 @@ export function routeKey(route: RouteBody): string | null {
   switch (route.name) {
     case 'chapter': return `chapter:${route.id}`;
     case 'data': case 'dictionaries': case 'history': case 'coverage': return route.name;
-    case 'home': case 'domain': case 'problems': case 'not-found': return null;
+    case 'home': case 'domain': case 'problems': case 'architecture': case 'not-found': return null;
   }
 }
 

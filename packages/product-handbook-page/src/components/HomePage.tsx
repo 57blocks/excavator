@@ -4,15 +4,12 @@ import { useLinks } from '../lib/links';
 import { useModel } from '../lib/model';
 import { colourProps } from '../lib/strata';
 import { useText } from '../lib/text';
-import { Architecture } from './Architecture';
 import { Atlas } from './Atlas';
 import { Flows } from './Flows';
 import { InlineMarkdown } from './InlineMarkdown';
 import { Mark } from './Mark';
-import { OverviewCounts } from './OverviewCounts';
-import { OverviewGrid } from './OverviewGrid';
 
-interface Props { title: string; lead: string; groups: Group[]; /** The architecture text of the view (technical home page only; '' shows no section) and the sections of the system chapter. */ architecture?: string; sections?: { title: string; index: number }[] }
+interface Props { title: string; lead: string; groups: Group[] }
 
 /** The phone's replacement for the map: one details per domain with its counts, its two lists and the link to its page. */
 function PhoneList() {
@@ -36,12 +33,14 @@ function PhoneList() {
 }
 
 /**
- * The overview, the home page, in this order: the title and the lead, the map (the atlas; a list of domains on a phone), the
- * counts line, the grid of the domains and their features, and the system architecture (technical view only).
+ * The overview, the home page, in this order: the title and the lead, the map (the atlas; a list of domains on a phone), and
+ * the button that opens the first domain's page (none when the page has no domains). It has no feature list, no counts and no
+ * domain navigation: the domains and their features are the domain pages'.
  * Without a usable list of links between domains the page has no map and says why in one quiet line in the map's place.
  */
-export function HomePage({ title, lead, groups, architecture = '', sections = [] }: Props) {
+export function HomePage({ title, lead, groups }: Props) {
   const t = useText();
+  const nav = useLinks();
   const model = useModel();
   return (
     <div className="wrap home" data-view="home" data-map={model.map ? 'yes' : 'no'}>
@@ -54,9 +53,7 @@ export function HomePage({ title, lead, groups, architecture = '', sections = []
           <PhoneList />
         </section>
       ) : <p className="home-why" data-part="no-map">{t(`page.home.noMap.${model.state === 'ok' ? 'missing' : model.state}`)}</p>}
-      <OverviewCounts groups={groups} />
-      <OverviewGrid groups={groups} />
-      {architecture !== '' && <Architecture source={architecture} sections={sections} />}
+      {groups.length > 0 && <a className="button-link open-domains" data-part="open-domains" href={nav.domain(groups[0].id)}>{t('page.home.openDomains')}</a>}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 /**
  * The page's routes live in the URL fragment so the back button and shared links work: `#/` (the home page, the
  * map), `#/domain/<id>` (a domain page), `#/chapter/<block>` (a chapter written as Markdown), `#/data` and `#/dictionaries` (technical view only),
- * `#/history` and `#/coverage`, and `#/problems` with `#/problems/remedies` (the problems page and its remedies tab; a query after `?`
+ * `#/history`, `#/coverage` and `#/architecture` (technical view only), and `#/problems` with `#/problems/remedies` (the problems page and its remedies tab; a query after `?`
  * holds its filters: `?domain=d1&feature=F7&type=defect&level=P0&q=text`). A page that has both views puts the view in front of each (`#/technical/chapter/F1`);
  * a page with one view has no prefix, and a fragment without one is the first view. Parsing never throws: a fragment
  * that names no route is `not-found`.
@@ -25,6 +25,7 @@ export type RouteBody =
   | { name: 'dictionaries' }
   | { name: 'history' }
   | { name: 'coverage' }
+  | { name: 'architecture' }
   | { name: 'problems'; tab: ProblemsTab; filters: ProblemFilters }
   | { name: 'not-found'; hash: string };
 
@@ -44,6 +45,7 @@ const SINGLE: Record<string, RouteBody> = {
   dictionaries: { name: 'dictionaries' },
   history: { name: 'history' },
   coverage: { name: 'coverage' },
+  architecture: { name: 'architecture' },
 };
 
 /** The filters a query holds: the first value of each known key; an unknown key, an empty value and an undecodable one are ignored. */
@@ -102,6 +104,7 @@ function segments(route: RouteBody): string[] {
     case 'dictionaries': return ['dictionaries'];
     case 'history': return ['history'];
     case 'coverage': return ['coverage'];
+    case 'architecture': return ['architecture'];
     case 'problems': return route.tab === 'remedies' ? ['problems', 'remedies'] : ['problems'];
     case 'home': return [];
     case 'not-found': return [];

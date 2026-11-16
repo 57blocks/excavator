@@ -5,7 +5,7 @@ import { useText } from '../lib/text';
 /** One step of the trail: its text and, for a step that is a place, its address. */
 export interface Crumb { label: string; href?: string }
 
-/** The trail above a page: Overview, the group or the references, the page. The current page is the last step, not a link. */
+/** The trail above a page: Overview, the domain of a feature when it has one, the page. The current page is the last step, not a link. */
 export function Breadcrumbs({ trail }: { trail: Crumb[] }) {
   const t = useText();
   return (

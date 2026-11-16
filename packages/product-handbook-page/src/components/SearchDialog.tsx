@@ -35,7 +35,7 @@ export function SearchDialog({ groups, colours, items, references, onClose, onDo
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const results = useMemo(
-    () => searchResults({ query, groups, items, references, referencesLabel: t('page.nav.references'), domainsLabel: t('page.nav.domains'), systemTitle: t('page.nav.system') }),
+    () => searchResults({ query, groups, items, references, domainsLabel: t('page.nav.domains'), systemTitle: t('page.nav.system') }),
     [query, groups, items, references, t],
   );
   const at = Math.min(selected, Math.max(0, results.length - 1));
@@ -88,7 +88,7 @@ export function SearchDialog({ groups, colours, items, references, onClose, onDo
               <li key={result.key} id={`search-option-${index}`} role="option" aria-selected={index === at} data-result={result.key} onClick={() => go(result)} onMouseMove={() => { if (index !== at) setSelected(index); }}>
                 {result.domain !== null && colours[result.domain] !== undefined && <Mark colour={colours[result.domain]} />}
                 <span className="search-title">{result.title}</span>
-                <small>{result.context}</small>
+                {result.context !== '' && <small>{result.context}</small>}
               </li>
             ))}
           </ul>
