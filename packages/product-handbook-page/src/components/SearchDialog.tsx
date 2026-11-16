@@ -4,6 +4,7 @@ import type { KeyboardEvent } from 'react';
 import type { Group } from '../lib/groups';
 import { jumpToHeading } from '../lib/heading-jump';
 import { useLinks } from '../lib/links';
+import { useModel } from '../lib/model';
 import type { PageItem } from '../lib/pages';
 import { searchResults } from '../lib/search';
 import type { Result } from '../lib/search';
@@ -30,13 +31,14 @@ interface Props {
 export function SearchDialog({ groups, colours, items, references, onClose, onDone }: Props) {
   const t = useText();
   const nav = useLinks();
+  const { map: domainsIndex } = useModel();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const results = useMemo(
-    () => searchResults({ query, groups, items, references, domainsLabel: t('page.nav.domains'), systemTitle: t('page.nav.system') }),
-    [query, groups, items, references, t],
+    () => searchResults({ query, groups, items, references, domainsLabel: t('page.nav.domains'), domainsIndex, systemTitle: t('page.nav.system') }),
+    [query, groups, items, references, domainsIndex, t],
   );
   const at = Math.min(selected, Math.max(0, results.length - 1));
 

@@ -449,6 +449,12 @@ ol.steps li:not(:last-child)::after { content: ""; width: 18px; height: 1px; mar
 .link-row:hover, .link-row:focus-visible { background: var(--tint); }
 .link-row:hover .link-name, .link-row:focus-visible .link-name { text-decoration: underline; }
 .link-count { margin-left: auto; flex: none; color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.dom-index { margin: 16px 0 0; padding: 0; list-style: none; }
+.dom-index li { padding: 14px 0; border-top: 1px solid var(--line); }
+.dom-index li:last-child { border-bottom: 1px solid var(--line); }
+.dom-index-name { display: inline-flex; gap: 10px; align-items: center; font-weight: 600; color: var(--accent-text); text-decoration: none; }
+.dom-index-name:hover { text-decoration: underline; }
+.dom-index-intro { margin: 4px 0 0 20px; color: var(--text-2); font-size: 14px; line-height: 1.6; }
 .atlas-side h3 { display: flex; gap: 10px; align-items: center; font-size: 18px; }
 .side-hint { margin-top: 6px; color: var(--text-2); font-size: 14px; line-height: 1.6; }
 .side-go { display: inline-block; margin-top: 16px; font-size: 14px; font-weight: 500; }

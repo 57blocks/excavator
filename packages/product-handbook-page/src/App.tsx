@@ -15,6 +15,7 @@ import { Reading } from './components/Reading';
 import { SearchDialog } from './components/SearchDialog';
 import { SideList } from './components/SideList';
 import type { SideMode, SidePlace } from './components/SideList';
+import { DomainsIndex } from './components/DomainsIndex';
 import { TopBar } from './components/TopBar';
 import { LoaderContext, createLoader } from './lib/chunks';
 import { flatReferences, groupsOf, isFeatureId, named, referencesOf } from './lib/groups';
@@ -22,6 +23,7 @@ import { LinksContext, ViewContext, makeLinks } from './lib/links';
 import { ModelContext, buildModel } from './lib/model';
 import { contextOf, hasArchitecture, switchTarget, viewOf } from './lib/navigation';
 import { bodyOf, pageOf, pagesOf } from './lib/pages';
+import { DOMAINS_CHAPTER } from './lib/search';
 import type { PageItem } from './lib/pages';
 import type { Route } from './lib/route';
 import { TextContext, makeText } from './lib/text';
@@ -146,9 +148,11 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
         ];
         if (group !== undefined) mode = 'domain';
         place = { kind: 'page', key: item.key, group: group === undefined ? null : group.id };
+        // With a usable list of domains the domains chapter is an index of them: their sections are on the domain pages.
+        const index = model.map && item.kind === 'chapter' && item.block === DOMAINS_CHAPTER;
         main = (
-          <Reading item={item} context={context} trail={trail} wide={WIDE.has(item.kind)} toc={item.kind === 'chapter' && isFeatureId(item.block) ? 'own' : 'scan'}>
-            <PageContent data={data} item={item} view={view} />
+          <Reading item={item} context={context} trail={trail} wide={WIDE.has(item.kind)} toc={index ? 'none' : item.kind === 'chapter' && isFeatureId(item.block) ? 'own' : 'scan'}>
+            {index ? <DomainsIndex title={model.titles[DOMAINS_CHAPTER] ?? named(item, systemTitle).title} groups={groups} /> : <PageContent data={data} item={item} view={view} />}
           </Reading>
         );
       }
