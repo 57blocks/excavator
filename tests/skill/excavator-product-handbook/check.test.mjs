@@ -98,7 +98,7 @@ describe('B: fact lines must cite', () => {
   accepts('a lead-in line ending with a colon', (t) => t.replace('## Points to confirm', `Who can do what:\n\n| Role | Can do |\n| --- | --- |\n| Clerk | Creates an order ${c('1', 'src/roles.js')} |\n\n## Points to confirm`));
   accepts('a lead-in with a full-width colon', (t) => t.replace('## Points to confirm', `${wide(0x89d2, 0x8272)}${wide(0xff1a)}\n\n- Clerk ${c('1', 'src/roles.js')}\n\n## Points to confirm`));
   accepts('a fenced block without citations', (t) => t.replace('## Points to confirm', '```text\nplain words\nwithout citations\n```\n\n## Points to confirm'));
-  accepts('the open questions section holds uncited lines', (t) => t.replace('Nobody can tell how long drafts live.', 'Nobody can tell how long drafts live.\n\n- Is a draft kept?\n\n| Q | A |\n| --- | --- |\n| Who | Unknown |'));
+  accepts('the open questions section holds uncited lines', (t) => t.replace('Nobody can tell how long drafts live.', 'Nobody can tell how long drafts live.\n\n- **Draft lifetime** Is a draft kept?\n\n| Q | A |\n| --- | --- |\n| Who | Unknown |'));
   accepts('a fixed-text line (None.) under Known defects', (t) => t);
   accepts('the not-verified fixed line as a quote', (t) => t.replace('## Points to confirm', '> Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.\n\n## Points to confirm'));
   accepts('the not-passed fixed line with a count', (t) => t.replace('None.', 'This chapter did not pass the final check; 3 problems remain, and the chapter is kept as written.'));
@@ -192,6 +192,16 @@ describe('I: citation punctuation in Chinese or Japanese text', () => {
 describe('H: sections', () => {
   rejects('a missing Known defects section', (t) => t.replace(/## Known defects[\s\S]*$/, ''), /missing the section "Known defects"/);
   rejects('a missing Points to confirm section', (t) => t.replace(/## Points to confirm\n\nNobody can tell how long drafts live\.\n\n/, ''), /missing the section "Points to confirm"/);
+  const question = (item) => (t) => t.replace('Nobody can tell how long drafts live.', item);
+  accepts('an open question with a short bold title (design D21)', question('- **Draft lifetime** Nobody can tell how long drafts live.'));
+  rejects('an open question with no title', question('- Nobody can tell how long drafts live.'), /line 11: open question has no short bold title at its start/);
+  rejects('an open question whose title is the start of its sentence', question('- **Nobody can tell** Nobody can tell how long drafts live.'), /line 11: the title of the open question is the start of its sentence/);
+  rejects('an open question whose title is too long', question(`- **${'x'.repeat(41)}** Nobody can tell how long drafts live.`), /line 11: the title of the open question has 41 characters; at most 40/);
+  it('a system chapter holds its open questions to the same rule', () => {
+    const run = newRun();
+    run.write('system', GOOD.replace('# Orders', '# System').replace('Nobody can tell how long drafts live.', '- Nobody can tell how long drafts live.'));
+    expect(run.check('system').stdout).toMatch(/open question has no short bold title/);
+  });
   it('a cross chapter does not need them', () => {
     const run = newRun();
     run.write('roles', `# Roles\n\n- Orders (${c('5')})\n`);

@@ -50,7 +50,7 @@ const SYSTEM = `# System
 
 ## Points to confirm
 
-- Who owns the archive (\`${FORM}:5\`)?
+- **Archive owner** Who owns the archive (\`${FORM}:5\`)?
 - A question that is wrapped
   onto a second line.
 
@@ -165,6 +165,16 @@ describe('problemsData: rows', () => {
     expect(open[1].cites).toEqual([]);
     expect(open[2].source.chapter).toBe('F2');
     expect(open[0].source).toEqual({ chapter: 'system', line: 5 });
+  });
+
+  it('labels an open question with its short bold title and starts its text after the title (design D21)', () => {
+    const open = rowsOf(problemsData(full().load(), ['product', 'technical']), 'open');
+    expect(open[0].summary).toBe('Archive owner');
+    expect(open[0].texts.product).toBe('Who owns the archive?');
+    expect(open[0].texts.technical).not.toContain('Archive owner');
+    // An item without a title (an older output) keeps its whole text and a label cut from it.
+    expect(open[1].summary).toBe('A question that is wrapped onto a second line');
+    expect(open[1].texts.product).toBe('A question that is wrapped onto a second line.');
   });
 
   it('gives the product view no citation and no cites key, and the technical view the cites', () => {

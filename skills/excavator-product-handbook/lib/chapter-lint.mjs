@@ -10,6 +10,7 @@
 import { bannedFragments, outsideLabels } from './banned-words.mjs';
 import { quotedTexts } from './chapter-check.mjs';
 import { chapterBlocks, splitRow } from './chapter-blocks.mjs';
+import { openQuestionsReasons } from './defects-items.mjs';
 import { citationGroups, resolveSpec, specKey } from './chapter-cites.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { adviceWordsOf, wordsIn } from './word-lists.mjs';
@@ -183,6 +184,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       const wanted = strings[key];
       if (!seenHeadings.some((heading) => (heading.level === 2 || heading.level === 3) && heading.text === wanted)) reasons.push(`missing the section "${wanted}"`);
     }
+    if (typeof strings['chapter.openQuestions'] === 'string') reasons.push(...openQuestionsReasons(text, strings['chapter.openQuestions'], strings['chapter.none']));
   }
   return reasons;
 }

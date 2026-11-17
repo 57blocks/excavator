@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { citationGroups } from './chapter-cites.mjs';
-import { parseDefects, sectionItems } from './defects-items.mjs';
+import { afterOpenQuestionTitle, openQuestionTitle, parseDefects, sectionItems } from './defects-items.mjs';
 import { readJson } from './json-file.mjs';
 import { productText } from './md-views.mjs';
 import { pageHeadings, viewTexts } from './page-domains.mjs';
@@ -162,14 +162,17 @@ function openRows(run, views) {
     const items = sectionItems(chapter.text, run.ui['chapter.openQuestions'], none);
     if (items === null) unmatched.push(stem);
     for (const item of items ?? []) {
+      // A short bold title is the label and the text starts after it (design D21); an item without one keeps its whole text.
+      const title = openQuestionTitle(item.text);
+      const text = title === null ? item.text : afterOpenQuestionTitle(item.text);
       rows.push({
         id: `q${rows.length + 1}`,
         type: 'open',
         level: null,
         group: null,
         features: [stem],
-        summary: summaryOf(productText(item.text)),
-        texts: viewTexts(item.text, views),
+        summary: title ?? summaryOf(productText(item.text)),
+        texts: viewTexts(text, views),
         ...(technical ? { cites: specsOf(item.text) } : {}),
         source: { chapter: stem, line: item.line },
         remedy: null,

@@ -142,14 +142,37 @@ export function sectionItems(text, title, none) {
 const sectionItemCount = (text, title, none) => (sectionItems(text, title, none) ?? []).length;
 
 /** The reasons of an item's title: none, too long, or the start of the sentence after it (a title names the defect; it does not repeat the sentence). */
-function titleReasons({ line, title, text }) {
-  if (title === null) return [`line ${line}: defect item has no short bold title after its category, like **category** **title** text`];
+/**
+ * The reasons a short bold title fails (designs D20, D21): none, longer than `DEFECT_TITLE_LIMIT` code points, or the start of
+ * the text after it. `what` and `noun` name the item in the reasons; `missing` is the reason when there is no title.
+ */
+function shortTitleReasons({ line, title, after, what, noun, missing }) {
+  if (title === null) return [`line ${line}: ${missing}`];
   const reasons = [];
   const length = Array.from(title).length;
-  if (length > DEFECT_TITLE_LIMIT) reasons.push(`line ${line}: the title of the defect item has ${length} characters; at most ${DEFECT_TITLE_LIMIT}`);
-  const after = text.replace(TITLE, '').trim();
-  if (after.startsWith(title.replace(/[.\u3002]$/u, ''))) reasons.push(`line ${line}: the title of the defect item is the start of its sentence; a title names the defect in other words`);
+  if (length > DEFECT_TITLE_LIMIT) reasons.push(`line ${line}: the title of the ${what} has ${length} characters; at most ${DEFECT_TITLE_LIMIT}`);
+  if (after.startsWith(title.replace(/[.\u3002]$/u, ''))) reasons.push(`line ${line}: the title of the ${what} is the start of its sentence; a title names the ${noun} in other words`);
   return reasons;
+}
+
+const titleReasons = ({ line, title, text }) => shortTitleReasons({ line, title, after: text.replace(TITLE, '').trim(), what: 'defect item', noun: 'defect', missing: 'defect item has no short bold title after its category, like **category** **title** text' });
+
+const OPEN_TITLE = /^\*\*([^*]+)\*\*/;
+
+/** The short bold title an open question starts with, or null (design D21). */
+export const openQuestionTitle = (text) => OPEN_TITLE.exec(text)?.[1].trim() ?? null;
+
+/** The text of an open question after its short bold title. */
+export const afterOpenQuestionTitle = (text) => text.replace(OPEN_TITLE, '').trim();
+
+/**
+ * The reasons for the open questions of a feature or system chapter (design D21): every item under the heading `title`
+ * starts with a short bold title. The items are taken as the problems page takes them; no heading, no reasons.
+ */
+export function openQuestionsReasons(text, title, none) {
+  return (sectionItems(text, title, none) ?? []).flatMap((item) => shortTitleReasons({
+    line: item.line, title: openQuestionTitle(item.text), after: afterOpenQuestionTitle(item.text), what: 'open question', noun: 'question', missing: 'open question has no short bold title at its start, like **title** text',
+  }));
 }
 
 function problemReason({ line, missing, category }) {
