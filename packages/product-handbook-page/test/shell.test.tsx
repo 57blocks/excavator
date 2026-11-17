@@ -625,6 +625,10 @@ describe('the stylesheet', () => {
     expect(css).toContain('.feature details.fold[open] > summary .chev { transform: rotate(90deg);');
   });
 
+  it('stretches the reading column below 1280px, where its width is auto: a centred auto-width block shrinks to its content in browsers that align blocks', () => {
+    expect(css).toContain('.read[data-toc="own"] .feature-layout > article { width: auto; max-width: none; justify-self: stretch; }');
+  });
+
   it('has no all-caps label and no negative-spacing eyebrow', () => {
     expect(css).not.toContain('text-transform: uppercase');
   });

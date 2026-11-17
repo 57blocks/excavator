@@ -599,7 +599,8 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 @media (max-width: 1279px) {
   .read, .read[data-toc="own"] { grid-template-columns: minmax(0, 1fr); }
   .read[data-toc="own"] .read-main { display: block; max-width: var(--read); justify-self: center; }
-  .read[data-toc="own"] .read-main > *, .read[data-toc="own"] .feature-layout > article { width: auto; max-width: none; }
+  /* Browsers that align block boxes would shrink an auto-width child centred with justify-self to its content: stretch it. */
+  .read[data-toc="own"] .read-main > *, .read[data-toc="own"] .feature-layout > article { width: auto; max-width: none; justify-self: stretch; }
   .toc, .feature-nav { display: none; }
 }
 
