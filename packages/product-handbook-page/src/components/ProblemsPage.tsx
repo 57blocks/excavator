@@ -173,7 +173,7 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
               return (
                 <li className="prob" key={row.id} data-problem={row.id} data-type={row.type} data-level={row.level ?? undefined}>
                   <button type="button" className="prob-head" aria-expanded={expanded} aria-controls={`problem-${row.id}`} onClick={() => toggle(row.id)}>
-                    <span className="prob-summary">{row.summary}</span>
+                    <span className="prob-summary" title={row.summary}>{row.summary}</span>
                     <span className="prob-features" data-part="problem-features">{first}{row.features.length > 1 && <span className="prob-more">{t('page.problems.moreFeatures', { count: row.features.length - 1 })}</span>}</span>
                     <span className="prob-type">{t(`page.problems.type.${row.type}`)}{row.level !== null && <span className="prob-level" data-level={row.level}>{levelText(t, row.level)}</span>}</span>
                   </button>

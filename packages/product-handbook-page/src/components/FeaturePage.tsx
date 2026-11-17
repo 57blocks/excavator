@@ -132,7 +132,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
       <details key={row.id} className="fold" data-key={key} data-problem={row.id} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
         <summary>
           <span className="chev"><ChevronIcon /></span>
-          <span className="t">{row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}{row.summary}</span>
+          <span className="t" title={row.summary}>{row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}{row.summary}</span>
         </summary>
         <div className="item-body">{text !== undefined && <ProblemDetail row={text} />}</div>
       </details>

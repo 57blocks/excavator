@@ -566,6 +566,8 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .feature details.fold[open] > summary .chev { transform: rotate(90deg); color: var(--accent-text); }
 .feature details.fold > summary .t { grid-column: 2; margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
 .feature details.fold[data-problem] > summary .t { font-size: 15px; font-weight: 500; line-height: 1.6; }
+/* A problem's label is one line: a written short title fits; an older label cut from the first clause ends in an ellipsis. */
+.feature details.fold[data-problem] > summary .t, .prob-summary { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
 .feature details.fold > summary .p { grid-column: 2; color: var(--text-2); font-size: 14px; line-height: 1.55; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
 .feature details.fold[open] > summary .p { display: none; }
 .feature details.fold > summary:hover .t { color: var(--accent-text); }

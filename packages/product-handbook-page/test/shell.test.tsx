@@ -629,6 +629,10 @@ describe('the stylesheet', () => {
     expect(css).toContain('.read[data-toc="own"] .feature-layout > article { width: auto; max-width: none; justify-self: stretch; }');
   });
 
+  it('shows the label of a problem on one line, on the feature page and on the problems page', () => {
+    expect(css).toContain('.feature details.fold[data-problem] > summary .t, .prob-summary { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1;');
+  });
+
   it('has no all-caps label and no negative-spacing eyebrow', () => {
     expect(css).not.toContain('text-transform: uppercase');
   });
