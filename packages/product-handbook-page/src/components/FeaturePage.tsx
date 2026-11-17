@@ -11,7 +11,7 @@ import { useModel } from '../lib/model';
 import { PROBLEM_TYPES, levelText, rowsOfFeature, sortRows } from '../lib/problems';
 import { useText } from '../lib/text';
 import type { ProblemRow, ProblemType } from '../lib/types';
-import { ChevronIcon } from './Icons';
+import { ChevronIcon, FoldAllIcon } from './Icons';
 import { ChunkNotice } from './ChunkNotice';
 import { ProblemDetail } from './ProblemsPage';
 import { FeatureNav } from './FeatureNav';
@@ -96,7 +96,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
       <>
         {piece(split.before, `b${item.n}`)}
         <details className="inner" data-key={innerKey(item)} open={open.has(innerKey(item))} onToggle={(event) => setOpenKeys([innerKey(item)], event.currentTarget.open)}>
-          <summary>{split.title}</summary>
+          <summary><span className="chev"><ChevronIcon /></span>{split.title}</summary>
           {piece(split.after, `c${item.n}`)}
         </details>
       </>
@@ -106,11 +106,11 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   const itemRow = (section: Section, item: Item) => {
     const key = itemKey(item);
     return (
-      <details key={item.n} className="item" data-key={key} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
+      <details key={item.n} className="fold" data-key={key} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
         <summary>
+          <span className="chev"><ChevronIcon /></span>
           <h4 id={`h-${item.n}`} tabIndex={-1} className="t"><InlineMarkdown source={item.title} links={false} /></h4>
           <span className="p">{previewOf(item.body)}</span>
-          <span className="chev"><ChevronIcon /></span>
         </summary>
         <div className="item-body">{itemBody(section, item)}</div>
       </details>
@@ -122,17 +122,17 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     const keys = [...extra, ...keysOf(list)];
     if (keys.length < 2) return null;
     const all = keys.every((key) => open.has(key));
-    return <button type="button" className="all" onClick={() => setOpenKeys(keys, !all)}>{all ? t('page.feature.collapseAll') : t('page.feature.expandAll')}</button>;
+    return <button type="button" className="all" aria-expanded={all} onClick={() => setOpenKeys(keys, !all)}><FoldAllIcon open={all} /><span>{all ? t('page.feature.collapseAll') : t('page.feature.expandAll')}</span></button>;
   };
 
   const problemFold = (row: ProblemRow) => {
     const key = problemKey(row);
     const text = full?.get(row.id);
     return (
-      <details key={row.id} className="item" data-key={key} data-problem={row.id} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
+      <details key={row.id} className="fold" data-key={key} data-problem={row.id} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
         <summary>
-          <span className="t">{row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}{row.summary}</span>
           <span className="chev"><ChevronIcon /></span>
+          <span className="t">{row.level !== null && <span className="lvl" data-level={row.level}>{levelText(t, row.level)}</span>}{row.summary}</span>
         </summary>
         <div className="item-body">{text !== undefined && <ProblemDetail row={text} />}</div>
       </details>
@@ -212,12 +212,15 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   const plain = (title: string): string => title.replace(/[`*_]/g, '');
   const entries: NavEntry[] = [];
 
-  /** A section inside a block: its own title as an `h3`, its intro, its items as folds. */
+  /** A section inside a block: its own title as an `h3` with the number of its items, its intro, its items as folds. */
   const sectionNode = (section: Section) => {
     entries.push({ id: `h-${section.n}`, label: plain(section.title), level: 3 });
     return (
       <div key={section.n} className="fsection">
-        <h3 id={`h-${section.n}`} tabIndex={-1}><InlineMarkdown source={section.title} links={false} /></h3>
+        <div className="fsection-head">
+          <h3 id={`h-${section.n}`} tabIndex={-1}><InlineMarkdown source={section.title} links={false} /></h3>
+          {section.items.length > 0 && <span className="fcount" data-part="section-count" aria-hidden="true">{section.items.length}</span>}
+        </div>
         {piece(section.intro, `h${section.n}`)}
         {section.items.map((item) => itemRow(section, item))}
       </div>

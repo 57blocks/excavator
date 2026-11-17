@@ -256,7 +256,7 @@ describe('the problems block', () => {
         const panel = issues(host);
         expect(panel.querySelector('[data-part="issues-unranked"]')?.textContent).toBe(S('page.feature.problems.unranked', { reason: marked[`page.problems.count.${state}`] }));
         expect(panel.textContent).toContain(d('Problem intro words.'));
-        const double = Array.from(panel.querySelectorAll('details.item h4')).find((one) => one.textContent === d('Double send')) as HTMLElement;
+        const double = Array.from(panel.querySelectorAll('details.fold h4')).find((one) => one.textContent === d('Double send')) as HTMLElement;
         expect(double).toBeDefined();
         expect(double.id).toMatch(/^h-\d+$/);
         expect(panel.querySelector('details[data-problem="r1"]')).not.toBeNull();

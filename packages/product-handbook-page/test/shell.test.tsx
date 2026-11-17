@@ -617,6 +617,14 @@ describe('the stylesheet', () => {
     }
   });
 
+  it('gives the folds of a feature page their own class: one hairline between folds, none above the first, the chevron rotated when open', () => {
+    // The shared list item class adds a top rule and padding; a fold that used it got two lines between neighbours.
+    expect(css).not.toMatch(/\.feature details\.item/);
+    expect(css).toContain('.feature details.fold + details.fold { border-top: 1px solid var(--line); }');
+    expect(css).not.toMatch(/details\.fold:first-of-type/);
+    expect(css).toContain('.feature details.fold[open] > summary .chev { transform: rotate(90deg);');
+  });
+
   it('has no all-caps label and no negative-spacing eyebrow', () => {
     expect(css).not.toContain('text-transform: uppercase');
   });

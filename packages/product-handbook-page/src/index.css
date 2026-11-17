@@ -527,29 +527,42 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .feature .lede .prose { font-size: 18px; line-height: 1.65; color: var(--text-2); }
 .feature .lede .prose p { margin: 0; }
-.feature .fblock { min-width: 0; margin-top: 44px; padding-top: 28px; border-top: 1px solid var(--line); }
+.feature .fblock { min-width: 0; margin-top: 48px; padding-top: 28px; border-top: 1px solid var(--line); }
 .feature .fsection { min-width: 0; }
-.feature .fsection > h3 { margin: 28px 0 10px; font-size: 19px; line-height: 1.35; }
-.feature .fblock > .panel-head + .fsection > h3 { margin-top: 8px; }
-.feature .panel-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 14px; }
+.feature .fsection-head { display: flex; align-items: baseline; gap: 10px; margin: 32px 0 8px; }
+.feature .fsection-head h3 { margin: 0; font-size: 18px; line-height: 1.35; }
+.feature .fcount { padding: 0 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-3); font-size: 12.5px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.feature .fblock > .panel-head + .fsection > .fsection-head { margin-top: 4px; }
+.feature .panel-head { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; }
 .feature .panel-head h2 { margin: 0; font-size: 24px; line-height: 1.3; }
-.feature .panel-head .all { margin-left: auto; padding: 0; border: 0; background: none; color: var(--accent-text); font-size: 14px; cursor: pointer; }
-.feature .sub { margin: 40px 0 12px; font-size: 20px; line-height: 1.3; }
-.feature .panel-head + .sub { margin-top: 8px; }
+.feature .panel-head .all { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; transition: color var(--t-in) var(--ease), border-color var(--t-in) var(--ease); }
+.feature .panel-head .all:hover { color: var(--accent-text); border-color: var(--accent); }
+.feature .sub { margin: 36px 0 10px; font-size: 18px; line-height: 1.35; }
+.feature .panel-head + .sub { margin-top: 4px; }
 .feature h2, .feature h3, .feature h4, .feature details[data-problem] { scroll-margin-top: calc(var(--topbar-h) + 72px); }
 .feature h2:focus, .feature h3:focus, .feature h4:focus { outline: none; }
 .feature .fblock > .prose, .feature .fsection > .prose { margin-bottom: 8px; }
-.feature details.item { border-bottom: 1px solid var(--line); }
-.feature details.item:first-of-type { border-top: 1px solid var(--line); }
-.feature details.item > summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 14px 4px; list-style: none; cursor: pointer; }
-.feature details.item > summary::-webkit-details-marker { display: none; }
-.feature details.item > summary .t { margin: 0; font-size: 17px; font-weight: 600; line-height: 1.45; }
-.feature details.item > summary .p { grid-column: 1; color: var(--text-2); font-size: 14px; line-height: 1.55; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
-.feature details.item > summary .chev { grid-row: 1 / span 2; grid-column: 2; align-self: center; color: var(--text-3); transition: transform var(--t-in) var(--ease); }
-.feature details.item[open] > summary .chev { transform: rotate(90deg); }
-.feature details.item[open] > summary .p { display: none; }
-.feature details.item > summary:hover .t { color: var(--accent-text); }
-.feature .item-body { min-width: 0; padding: 0 4px 22px; }
+/*
+ * A fold: the chevron before the title (right when closed, down when open), the title and a one-line preview. Folds are
+ * separated by one hairline; an open fold drops its lines and becomes the page's one tinted area, its body aligned with the title.
+ */
+.feature details.fold + details.fold { border-top: 1px solid var(--line); }
+.feature details.fold[open], .feature details.fold[open] + details.fold { border-top-color: transparent; }
+.feature details.fold[open] { margin: 4px 0; border-radius: 10px; background: var(--surface-2); }
+.feature details.fold > summary { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 10px; padding: 10px 12px 10px 6px; border-radius: 10px; list-style: none; cursor: pointer; transition: background-color var(--t-in) var(--ease); }
+.feature details.fold > summary::-webkit-details-marker { display: none; }
+.feature details.fold:not([open]) > summary:hover { background: var(--surface-2); }
+.feature details.fold > summary .chev { grid-row: 1 / span 2; grid-column: 1; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 2px; border-radius: 5px; color: var(--text-2); transition: transform var(--t-in) var(--ease), color var(--t-in) var(--ease); }
+.feature details.fold[open] > summary .chev { transform: rotate(90deg); color: var(--accent-text); }
+.feature details.fold > summary .t { grid-column: 2; margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
+.feature details.fold[data-problem] > summary .t { font-size: 15px; font-weight: 500; line-height: 1.6; }
+.feature details.fold > summary .p { grid-column: 2; color: var(--text-2); font-size: 14px; line-height: 1.55; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+.feature details.fold[open] > summary .p { display: none; }
+.feature details.fold > summary:hover .t { color: var(--accent-text); }
+.feature details.fold > .item-body { min-width: 0; max-width: none; padding: 2px 16px 18px 36px; }
+.feature details.fold > .item-body .prose { font-size: 15.5px; line-height: 1.75; }
+.feature details.fold > .item-body > .prob-detail { padding: 0; }
+.feature details.fold[open] .lvl { background: var(--surface); }
 /* The problems of a feature: the counts in a line, the worst three as buttons, two links; no box around the block. */
 .feature .feature-problems { margin: 20px 0 8px; }
 .feature .feature-problems > .fp-title { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: var(--text-2); }
@@ -560,9 +573,15 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .fp-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; font-size: 14px; }
 .lvl { flex: none; margin-right: 8px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--text); }
 .lvl[data-level="P0"], .lvl[data-level="high"] { color: var(--brick); }
-.feature details.inner { margin: 14px 0 4px; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-strong); }
-.feature details.inner > summary { cursor: pointer; color: var(--text-2); font-size: 14px; font-weight: 600; }
+.feature details.inner { margin: 14px 0 4px; }
+.feature details.inner > summary { display: inline-flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; color: var(--text-2); font-size: 14px; font-weight: 600; }
+.feature details.inner > summary::-webkit-details-marker { display: none; }
+.feature details.inner > summary:hover { color: var(--accent-text); }
+.feature details.inner > summary .chev { display: grid; place-items: center; transition: transform var(--t-in) var(--ease); }
+.feature details.inner[open] > summary .chev { transform: rotate(90deg); }
 .feature details.inner[open] > summary { margin-bottom: 4px; }
+.feature details.inner > :not(summary) { padding-left: 22px; }
+.feature .strip { margin: 12px 0 0; padding: 0; border: 0; }
 
 /* Search: a dialog over a scrim. */
 .search { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: var(--scrim); }

@@ -29,3 +29,8 @@ export const ExpandIcon = () => (
 export const ChevronIcon = () => (
   <svg {...base} width={16} height={16}><path d="M9 6l6 6-6 6" /></svg>
 );
+
+/** Expand all (arrows apart) or collapse all (arrows together). */
+export const FoldAllIcon = ({ open }: { open: boolean }) => (
+  <svg {...base} width={14} height={14} strokeWidth={2}>{open ? <path d="M7 4l5 5 5-5M7 20l5-5 5 5" /> : <path d="M7 9l5-5 5 5M7 15l5 5 5-5" />}</svg>
+);

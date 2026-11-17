@@ -57,7 +57,7 @@ const open = async (hash: string, data: PageData = withText(TEXT)): Promise<HTML
   return host;
 };
 const click = (el: Element): void => { act(() => (el as HTMLElement).click()); };
-const item = (host: HTMLElement, title: string): HTMLDetailsElement => (Array.from(host.querySelectorAll('details.item')).find((one) => one.querySelector('summary h4')?.textContent === title) as HTMLDetailsElement);
+const item = (host: HTMLElement, title: string): HTMLDetailsElement => (Array.from(host.querySelectorAll('details.fold')).find((one) => one.querySelector('summary h4')?.textContent === title) as HTMLDetailsElement);
 const blocks = (host: HTMLElement): HTMLElement[] => Array.from(host.querySelectorAll<HTMLElement>('article > section.fblock'));
 const names = (host: HTMLElement): (string | null)[] => blocks(host).map((one) => one.getAttribute('data-block'));
 const block = (host: HTMLElement, name: string): HTMLElement => host.querySelector(`section.fblock[data-block="${name}"]`) as HTMLElement;
@@ -96,9 +96,15 @@ describe('the blocks', () => {
   it('holds the pages and operations in the use block and rules in the behavior block, each section with its own h3 and its items as h4 folds', async () => {
     const host = await open('#/product/chapter/F2');
     const use = block(host, 'use');
-    expect(Array.from(use.querySelectorAll('.fsection > h3')).map((one) => one.textContent)).toEqual([S('chapter.section.screens'), S('chapter.section.operations')]);
-    expect(Array.from(use.querySelectorAll('details.item summary h4')).map((one) => one.textContent)).toEqual([d('Order form'), d('Place an order'), d('Cancel an order')]);
-    expect(Array.from(block(host, 'behavior').querySelectorAll('.fsection > h3')).map((one) => one.textContent)).toEqual([S('chapter.section.rules')]);
+    expect(Array.from(use.querySelectorAll('.fsection-head > h3')).map((one) => one.textContent)).toEqual([S('chapter.section.screens'), S('chapter.section.operations')]);
+    expect(Array.from(use.querySelectorAll('details.fold summary h4')).map((one) => one.textContent)).toEqual([d('Order form'), d('Place an order'), d('Cancel an order')]);
+    expect(Array.from(block(host, 'behavior').querySelectorAll('.fsection-head > h3')).map((one) => one.textContent)).toEqual([S('chapter.section.rules')]);
+    // Each section's head carries the number of its items; each fold's chevron comes before its title.
+    for (const section of Array.from(host.querySelectorAll('.fblock .fsection')).filter((one) => one.querySelector('.fsection-head') !== null)) {
+      const count = section.querySelectorAll(':scope > details.fold').length;
+      expect(section.querySelector('[data-part="section-count"]')?.textContent).toBe(count === 0 ? undefined : String(count));
+    }
+    for (const fold of Array.from(host.querySelectorAll('details.fold'))) expect(fold.querySelector('summary')?.firstElementChild?.className).toBe('chev');
   });
 
   it('puts the overview section (an h3 for readers of the outline only) and its items in the overview block, and the handovers section then the hint then the strip in the links block', async () => {
@@ -152,7 +158,7 @@ describe('the head', () => {
 describe('the items', () => {
   it('fold to a title with a one-line preview, closed at the start, and show the text when opened; the title is an h4 carrying the heading id', async () => {
     const host = await open('#/product/chapter/F2');
-    expect(Array.from(host.querySelectorAll('details.item')).every((one) => !(one as HTMLDetailsElement).open)).toBe(true);
+    expect(Array.from(host.querySelectorAll('details.fold')).every((one) => !(one as HTMLDetailsElement).open)).toBe(true);
     const place = item(host, d('Place an order'));
     expect(place.querySelector('summary h4')?.id).toMatch(/^h-\d+$/);
     expect(place.querySelector('summary .p')?.textContent).toBe(d('The clerk fills the form.'));
@@ -166,10 +172,10 @@ describe('the items', () => {
     const all = use.querySelector('.panel-head button.all') as HTMLElement;
     expect(all.textContent).toBe(S('page.feature.expandAll'));
     click(all);
-    expect(Array.from(use.querySelectorAll('details.item')).every((one) => (one as HTMLDetailsElement).open)).toBe(true);
+    expect(Array.from(use.querySelectorAll('details.fold')).every((one) => (one as HTMLDetailsElement).open)).toBe(true);
     expect(use.querySelector('button.all')?.textContent).toBe(S('page.feature.collapseAll'));
     click(use.querySelector('button.all') as HTMLElement);
-    expect(Array.from(use.querySelectorAll('details.item')).some((one) => (one as HTMLDetailsElement).open)).toBe(false);
+    expect(Array.from(use.querySelectorAll('details.fold')).some((one) => (one as HTMLDetailsElement).open)).toBe(false);
     expect(block(host, 'behavior').querySelector('button.all')).toBeNull();
   });
 
@@ -228,7 +234,7 @@ describe('going to a heading', () => {
     act(() => { place.open = true; place.dispatchEvent(new Event('toggle')); });
     expect(place.open).toBe(true);
     click(block(host, 'use').querySelector('button.all') as HTMLElement);
-    expect(Array.from(block(host, 'use').querySelectorAll('details.item')).every((one) => (one as HTMLDetailsElement).open)).toBe(true);
+    expect(Array.from(block(host, 'use').querySelectorAll('details.fold')).every((one) => (one as HTMLDetailsElement).open)).toBe(true);
   });
 
   it('numbers its headings as the search does: the heading of each section and item is h-<n> in chapter order', async () => {
@@ -344,7 +350,7 @@ describe('the views and the other pages', () => {
     expect(host.querySelector('.toc')).not.toBeNull();
     expect(host.querySelector('.read')?.getAttribute('data-toc')).toBe('yes');
     expect(host.querySelectorAll('article > .prose')).toHaveLength(1);
-    expect(host.querySelectorAll('details.item')).toHaveLength(0);
+    expect(host.querySelectorAll('details.fold')).toHaveLength(0);
   });
 });
 
