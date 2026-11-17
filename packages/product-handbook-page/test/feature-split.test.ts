@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { pageHeadings } from '../../../skills/excavator-product-handbook/lib/page-domains.mjs';
-import { previewOf, splitChapter, splitLede, splitServerSteps } from '../src/lib/feature-split';
+import { previewOf, SERVER_STEPS_END, splitChapter, splitLede, splitServerSteps } from '../src/lib/feature-split';
 import type { Role } from '../src/lib/feature-split';
 
 const TITLES: Record<Role, string> = {
@@ -92,7 +92,7 @@ describe('previewOf', () => {
 describe('splitServerSteps', () => {
   const marker = 'Server-side steps:';
   it('cuts at the line equal to the marker, in either colon width, and drops the colon from the title', () => {
-    expect(splitServerSteps('1. a\n2. b\n\nServer-side steps:\n\n3. c', marker)).toEqual({ before: '1. a\n2. b', title: 'Server-side steps', after: '3. c' });
+    expect(splitServerSteps('1. a\n2. b\n\nServer-side steps:\n\n3. c', marker)).toEqual({ title: 'Server-side steps', parts: [{ server: false, text: '1. a\n2. b' }, { server: true, text: '3. c' }] });
     expect(splitServerSteps(`1. a\n\nServer-side steps${String.fromCharCode(0xff1a)}\n3. c`, marker)?.title).toBe('Server-side steps');
   });
   it('is null without the line, for a line that only contains it, and for one inside a fence', () => {
@@ -100,5 +100,14 @@ describe('splitServerSteps', () => {
     expect(splitServerSteps('The Server-side steps: are here', marker)).toBeNull();
     expect(splitServerSteps('```\nServer-side steps:\n```', marker)).toBeNull();
     expect(splitServerSteps('a', '')).toBeNull();
+  });
+
+  it('cuts each run the page build marked, up to its end line, and keeps the steps between them (design D22)', () => {
+    const body = `1. a\n\nServer-side steps:\n\n2. b\n3. c\n\n${SERVER_STEPS_END}\n\n4. d\n\nServer-side steps:\n\n5. e`;
+    expect(splitServerSteps(body, marker)?.parts).toEqual([
+      { server: false, text: '1. a' }, { server: true, text: '2. b\n3. c' }, { server: false, text: '4. d' }, { server: true, text: '5. e' },
+    ]);
+    // A run at the very start has no part before it; the end line is never part of any text.
+    expect(splitServerSteps(`Server-side steps:\n\n1. a\n\n${SERVER_STEPS_END}\n\n2. b`, marker)?.parts).toEqual([{ server: true, text: '1. a' }, { server: false, text: '2. b' }]);
   });
 });

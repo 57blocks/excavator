@@ -12,6 +12,7 @@ import { citationGroups, parseSpec, specKey } from './chapter-cites.mjs';
 import { writeJson } from './json-file.mjs';
 import { CROSS_BATCH, FACTS_FILE, FACTS_FORMAT, reviewBatches } from './review-batches.mjs';
 import { chapterCounts } from './review-structure.mjs';
+import { directorySides, markServerSteps } from './step-sides.mjs';
 import { loadUi } from './ui.mjs';
 
 /** The `{ file, a, b }` of every well-formed citation in `text`, each once. */
@@ -101,6 +102,9 @@ export function computeFacts(outDir) {
   const batchOf = new Map(batched.batches.flatMap((batch) => batch.features.map((id) => [id, batch.id])));
   const features = {};
   const ranges = new Map();
+  // Every run writes candidates.json first; without it no step has a side and none is counted as a server step.
+  const candidatesPath = join(outDir, 'candidates.json');
+  const sides = existsSync(candidatesPath) ? directorySides(JSON.parse(readFileSync(candidatesPath, 'utf-8'))) : new Map();
   for (const feature of batched.map.features) {
     const path = join(outDir, 'chapters', `${feature.id}.md`);
     if (!existsSync(path)) {
@@ -108,7 +112,9 @@ export function computeFacts(outDir) {
       continue;
     }
     const text = readFileSync(path, 'utf-8');
-    features[feature.id] = { name: feature.name, batch: batchOf.get(feature.id) ?? null, chapter: true, ...chapterCounts(text, ui.strings) };
+    // The server steps are counted as the page folds them: from the steps' citations (design D22).
+    const marked = markServerSteps(text, { sides, operations: ui.strings['chapter.section.operations'], marker: ui.strings['chapter.serverSteps'] });
+    features[feature.id] = { name: feature.name, batch: batchOf.get(feature.id) ?? null, chapter: true, ...chapterCounts(marked, ui.strings) };
     ranges.set(feature.id, citedRanges(text));
   }
   const found = sharedCodePairs(ranges, order);

@@ -7,6 +7,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { AppView } from '../src/App';
+import { SERVER_STEPS_END } from '../src/lib/feature-split';
 import { REVEAL_EVENT, jumpToHeading } from '../src/lib/heading-jump';
 import { parseHash } from '../src/lib/route';
 import type { PageData } from '../src/lib/types';
@@ -37,7 +38,7 @@ const TEXT = [
   `## ${S('chapter.section.screens')}`, '', `${d('Screen intro words.')}`, '',
   `### ${d('Order form')}`, '', `${d('The form holds the fields.')}`, '',
   `## ${S('chapter.section.operations')}`, '', `${d('Operation intro words.')}`, '',
-  `### ${d('Place an order')}`, '', `1. ${d('The clerk fills the form.')}`, `2. ${d('The clerk sends it.')}`, '', STEPS, '', `3. ${d('The server stores the order.')}`, '',
+  `### ${d('Place an order')}`, '', `1. ${d('The clerk fills the form.')}`, `2. ${d('The clerk sends it.')}`, '', STEPS, '', `3. ${d('The server stores the order.')}`, '', SERVER_STEPS_END, '', `4. ${d('The page shows the order.')}`, '', STEPS, '', `5. ${d('The server emails the clerk.')}`, '',
   `### ${d('Cancel an order')}`, '', `${d('Cancelling frees the stock.')}`, '', '```mermaid\nstateDiagram-v2\n  Draft\n  [*] --> Draft\n```', '',
   `## ${S('chapter.section.rules')}`, '', `- ${d('A draft is kept for a week.')}`, '',
   `## ${d('Shipping zones')}`, '', `${d('Zones are looked up by country.')}`, '',
@@ -190,6 +191,24 @@ describe('the items', () => {
     expect(inner.open).toBe(false);
     expect(item(host, d('Cancel an order')).querySelector('details.inner')).toBeNull();
     expect(host.querySelectorAll('.diagram, [data-diagram]').length).toBeGreaterThan(0);
+  });
+
+  it('fold each run of server steps the page build marked on its own, keep the steps between them shown and the numbers as written (design D22)', async () => {
+    const host = await open('#/product/chapter/F2');
+    const place = item(host, d('Place an order'));
+    const inner = Array.from(place.querySelectorAll('details.inner')) as HTMLDetailsElement[];
+    const first = inner[0].dataset.key ?? '';
+    expect(first).toMatch(/^i\d+-steps$/);
+    expect(inner.map((one) => one.dataset.key)).toEqual([first, `${first}-1`]);
+    expect(inner[0].textContent).toContain(d('The server stores the order.'));
+    expect(inner[1].textContent).toContain(d('The server emails the clerk.'));
+    const shown = d('The page shows the order.');
+    expect(inner.some((one) => one.textContent?.includes(shown))).toBe(false);
+    expect(place.textContent).toContain(shown);
+    expect(place.textContent).not.toContain('server-steps-end');
+    // The lists keep the numbers the writer gave them.
+    expect(Array.from(place.querySelectorAll('ol')).map((list) => list.getAttribute('start') ?? '1')).toEqual(['1', '3', '4', '5']);
+    expect(inner.every((one) => !one.open)).toBe(true);
   });
 
   it('put the three kinds of problems in the problems block as h3 with their type, and the chapter\'s own problems section there when the defects chapter is not usable', async () => {
@@ -366,7 +385,8 @@ describe('the text of the chapter', () => {
   };
 
   it('is all in the feature page: every word of the chapter shown as one block is in the page, as often as it is written', async () => {
-    const plain = await open('#/product/chapter/system', withText(TEXT, 'system'));
+    // The end line of a run of server steps is written by the page build into feature chapters only, and the feature page never shows it.
+    const plain = await open('#/product/chapter/system', withText(TEXT.split(`\n${SERVER_STEPS_END}\n`).join('\n'), 'system'));
     const reference = plain.querySelector('article') as HTMLElement;
     const expected = words(reference);
     cleanup();

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 
@@ -26,7 +26,8 @@ const SOURCE_OF: Record<ProblemType, 'defects' | 'design' | 'open'> = { defect: 
 const problemKey = (row: ProblemRow): string => `p-${row.id}`;
 
 const itemKey = (item: Item): string => `i${item.n}`;
-const innerKey = (item: Item): string => `i${item.n}-steps`;
+/** The key of the `k`-th fold of server steps of an operation (the first keeps the key it had when there was one fold). */
+const innerKey = (item: Item, k = 0): string => (k === 0 ? `i${item.n}-steps` : `i${item.n}-steps-${k}`);
 
 /** The page of a feature chapter: the head, then five blocks (overview, pages and operations, rules and behavior, problems, upstream and downstream) with the sections the page cannot place in blocks of their own; one page, no tabs. */
 export function FeaturePage({ id, view, text }: { id: string; view: string; text: string }) {
@@ -92,13 +93,20 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   const itemBody = (section: Section, item: Item) => {
     const split = section.role === 'operations' ? splitServerSteps(item.body, serverSteps) : null;
     if (split === null) return piece(item.body, `b${item.n}`);
+    let folds = 0;
     return (
       <>
-        {piece(split.before, `b${item.n}`)}
-        <details className="inner" data-key={innerKey(item)} open={open.has(innerKey(item))} onToggle={(event) => setOpenKeys([innerKey(item)], event.currentTarget.open)}>
-          <summary><span className="chev"><ChevronIcon /></span>{split.title}</summary>
-          {piece(split.after, `c${item.n}`)}
-        </details>
+        {split.parts.map((part, at) => {
+          if (!part.server) return <Fragment key={at}>{piece(part.text, at === 0 ? `b${item.n}` : `b${item.n}-${at}`)}</Fragment>;
+          const key = innerKey(item, folds);
+          folds += 1;
+          return (
+            <details key={at} className="inner" data-key={key} open={open.has(key)} onToggle={(event) => setOpenKeys([key], event.currentTarget.open)}>
+              <summary><span className="chev"><ChevronIcon /></span>{split.title}</summary>
+              {piece(part.text, at === 1 ? `c${item.n}` : `c${item.n}-${at}`)}
+            </details>
+          );
+        })}
       </>
     );
   };
@@ -117,7 +125,11 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     );
   };
 
-  const keysOf = (list: readonly Section[]): string[] => list.flatMap((section) => section.items.flatMap((item) => [itemKey(item), ...(section.role === 'operations' && splitServerSteps(item.body, serverSteps) !== null ? [innerKey(item)] : [])]));
+  const innerKeysOf = (section: Section, item: Item): string[] => {
+    const split = section.role === 'operations' ? splitServerSteps(item.body, serverSteps) : null;
+    return split === null ? [] : split.parts.filter((part) => part.server).map((_, k) => innerKey(item, k));
+  };
+  const keysOf = (list: readonly Section[]): string[] => list.flatMap((section) => section.items.flatMap((item) => [itemKey(item), ...innerKeysOf(section, item)]));
   const expandAll = (list: readonly Section[], extra: readonly string[] = []) => {
     const keys = [...extra, ...keysOf(list)];
     if (keys.length < 2) return null;

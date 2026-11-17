@@ -18,6 +18,7 @@ import { languageTag } from './language-tag.mjs';
 import { coverageLines } from './md-coverage.mjs';
 import { TECHNICAL_ONLY_BLOCKS, historyOf, scriptBlockNames } from './md-blocks.mjs';
 import { chapterMarkdown, chapterTitle } from './md-views.mjs';
+import { directorySides, markServerSteps } from './step-sides.mjs';
 import { resolveOutlineV2 } from './outline-v2.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
@@ -64,9 +65,16 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       ? { block, kind: 'chapter', title: chapterTitle(run.chapters.get(block).text, block) }
       : { block, kind: block, title: t(SCRIPT_TITLES[block]) })),
   }));
+  // The server steps of each feature's operations are marked from their citations, for the page to fold (design D22).
+  const featureIds = new Set(run.map.features.map((feature) => feature.id));
+  const marks = { sides: directorySides(run.candidates), operations: t('chapter.section.operations'), marker: t('chapter.serverSteps') };
+  const forPage = (block) => {
+    const chapter = run.chapters.get(block);
+    return featureIds.has(block) ? { ...chapter, text: markServerSteps(chapter.text, marks) } : chapter;
+  };
   const chapters = parts.flatMap((part) => part.blocks).filter((item) => item.kind === 'chapter').map((item) => ({
     id: item.block,
-    texts: Object.fromEntries(views.map((view) => [view, chapterMarkdown(run.chapters.get(item.block), view, run.ui)])),
+    texts: Object.fromEntries(views.map((view) => [view, chapterMarkdown(forPage(item.block), view, run.ui)])),
   }));
   // The page shows one chapter at a time, so the section's own title is its level-1 heading, like a chapter's.
   const coverage = trimmed(coverageLines({ map: run.map, candidates: run.candidates, chapters: run.chapters, outline, t }).map((line) => (/^#{2,6} /.test(line) ? line.slice(1) : line)));

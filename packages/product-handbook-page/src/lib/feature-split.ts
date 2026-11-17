@@ -116,21 +116,43 @@ export function previewOf(body: string): string {
   return '';
 }
 
+/** The line the page build writes after a run of server steps when the operation goes on (design D22); never shown. */
+export const SERVER_STEPS_END = '<!-- server-steps-end -->';
+
+/** One part of an operation's body: steps shown as they are, or a run of server steps folded under `title`. */
+export interface StepPart { server: boolean; text: string }
+
 /**
- * An operation's body cut at the line equal to the fixed `marker` (a colon in either width): the steps before it, the title of
- * the fold (the line without its colon) and the server-side steps from the line after it to the end. Null without the line.
+ * An operation's body cut at each line equal to the fixed `marker` (a colon in either width) into parts, in order: the steps
+ * shown as they are, and each run of server steps (from the line after the marker to the end line `SERVER_STEPS_END`, or to the
+ * end of the body when there is none, as a writer who wrote the marker leaves it). The page build writes the marker and the end
+ * line from the steps' citations (design D22). `title` is the marker without its colon. Null when the body has no marker.
  */
-export function splitServerSteps(body: string, marker: string): { before: string; title: string; after: string } | null {
+export function splitServerSteps(body: string, marker: string): { title: string; parts: StepPart[] } | null {
   const bare = (text: string): string => (endsWithColon(text.trim()) ? text.trim().slice(0, -1).trim() : text.trim());
   if (marker.trim() === '') return null;
   const wanted = bare(marker);
-  const lines = body.split('\n');
+  const parts: StepPart[] = [];
+  let current: { server: boolean; lines: string[] } = { server: false, lines: [] };
+  let found = false;
+  const close = () => {
+    const text = trimBlank(current.lines);
+    if (current.server || text !== '') parts.push({ server: current.server, text });
+  };
   let fenced = false;
-  for (let at = 0; at < lines.length; at += 1) {
-    if (FENCE.test(lines[at])) { fenced = !fenced; continue; }
-    if (!fenced && endsWithColon(lines[at].trim()) && bare(lines[at]) === wanted) {
-      return { before: trimBlank(lines.slice(0, at)), title: wanted, after: trimBlank(lines.slice(at + 1)) };
+  for (const line of body.split('\n')) {
+    if (FENCE.test(line)) fenced = !fenced;
+    else if (!fenced && endsWithColon(line.trim()) && bare(line) === wanted) {
+      close();
+      current = { server: true, lines: [] };
+      found = true;
+      continue;
+    } else if (!fenced && line.trim() === SERVER_STEPS_END) {
+      if (current.server) { close(); current = { server: false, lines: [] }; }
+      continue;
     }
+    current.lines.push(line);
   }
-  return null;
+  close();
+  return found ? { title: wanted, parts } : null;
 }
