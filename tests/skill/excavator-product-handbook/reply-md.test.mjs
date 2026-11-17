@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { CROSS, chapterText, cite, newMdRun } from './md-run-fixture.mjs';
+import { CROSS, chapterText, cite, newMdRun, textOf } from './md-run-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -21,21 +21,21 @@ const CANDIDATES = 'Candidates: 7 listed, 6 in features, 1 unassigned; none miss
 describe('reply: the optional review chapter', () => {
   const all = ['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS];
   it('says how to get the design problems when the chapter is absent, and the kept and removed counts when present', () => {
-    const run = make(Object.fromEntries([...all, 'review'].map((name) => [name, name === 'review' ? `${chapterText('Design problems')}\n### One\n\nA fact (${cite('5')}).\n\n### Two\n\nA fact (${cite('6')}).\n` : chapterText(name)])));
+    const run = make(Object.fromEntries([...all, 'review'].map((name) => [name, name === 'review' ? `${chapterText('Design problems')}\n### One\n\nA fact (${cite('5')}).\n\n### Two\n\nA fact (${cite('6')}).\n` : textOf(name)])));
     mkdirSync(join(run.out, 'entries'), { recursive: true });
     writeFileSync(join(run.out, 'entries', 'review-removed.json'), JSON.stringify({ removed: [{ batch: 'b1', title: 'x', dimension: 'other', features: ['F1'], reason: 'r' }, { batch: 'b2', title: 'y', dimension: 'other', features: ['F2'], reason: 'r' }, { batch: 'b2', title: 'z', dimension: 'other', features: ['F3'], reason: 'r' }] }));
     run.assemble();
     expect(run.reply().lines).toContain('Design problems: kept 2, removed 3');
-    const bare = make(Object.fromEntries(all.map((name) => [name, chapterText(name)])));
+    const bare = make(Object.fromEntries(all.map((name) => [name, textOf(name)])));
     bare.assemble();
     expect(bare.reply().lines).toContain('Design problems: not written; add --review to write them');
   });
 
   it('counts review only when its chapter exists', () => {
-    const without = make(Object.fromEntries(all.map((name) => [name, chapterText(name)])));
+    const without = make(Object.fromEntries(all.map((name) => [name, textOf(name)])));
     without.assemble();
     expect(without.reply().lines).toContain('Chapters: 12 (passed 12, failed 0, not written 0)');
-    const withReview = make(Object.fromEntries([...all, 'review'].map((name) => [name, chapterText(name)])));
+    const withReview = make(Object.fromEntries([...all, 'review'].map((name) => [name, textOf(name)])));
     withReview.assemble();
     const result = withReview.reply();
     expect(result.lines).toContain('Chapters: 13 (passed 13, failed 0, not written 0)');
@@ -63,7 +63,7 @@ describe('reply', () => {
   });
 
   it('with everything written: no Failed and no Not written line; the page line when the page exists', () => {
-    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, chapterText(name)]));
+    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, textOf(name)]));
     const run = make(chapters);
     run.assemble();
     writeFileSync(join(run.out, 'handbook.html'), '<html></html>');
@@ -78,14 +78,14 @@ describe('reply', () => {
   });
 
   it('a missing feature chapter makes the run incomplete, with the counts', () => {
-    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', ...CROSS].map((name) => [name, chapterText(name)]));
+    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', ...CROSS].map((name) => [name, textOf(name)]));
     const run = make(chapters);
     run.assemble();
     expect(run.reply().lines.slice(-4)).toEqual(['Not written: F5', 'Design problems: not written; add --review to write them', CANDIDATES, 'Run: incomplete (1 not written, 0 failed once); the same command on the same --out resumes']);
   });
 
   it('a chapter that failed once makes the run incomplete', () => {
-    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, chapterText(name)]));
+    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, textOf(name)]));
     chapters.F2 = chapterText('Archive').replace(cite('10'), cite('99'));
     const run = make(chapters);
     run.assemble();
@@ -93,7 +93,7 @@ describe('reply', () => {
   });
 
   it('a chapter that failed twice does not hold the run back', () => {
-    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, chapterText(name)]));
+    const chapters = Object.fromEntries(['system', 'F1', 'F2', 'F3', 'F4', 'F5', ...CROSS].map((name) => [name, textOf(name)]));
     chapters.F2 = chapterText('Archive').replace(cite('10'), cite('99'));
     const run = make(chapters);
     run.write('F2', chapterText('Archive').replace(cite('10'), cite('98')));

@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { memberDirectories } from './banned-words.mjs';
 import { CROSS_CHAPTERS, lintChapter } from './chapter-lint.mjs';
 import { defectsReasons } from './defects-items.mjs';
-import { domainsListReasons } from './domains-list.mjs';
+import { domainSubheadingReasons, domainsListReasons } from './domains-list.mjs';
 import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
 import { withStateLock } from './lock.mjs';
@@ -86,7 +86,7 @@ function checkChapters(outDir, names, root, record) {
       reasons = lintChapter(chapterText, { kind, name, files, strings: ui.strings, memberDirs, cache });
       if (name === 'domains') {
         const list = domainsListReasons(outDir, chapterText, ids);
-        reasons = [...reasons, ...list.reasons];
+        reasons = [...reasons, ...domainSubheadingReasons(chapterText, ui.strings), ...list.reasons];
         listHash = list.hash;
       }
       if (name === 'defects') reasons = [...reasons, ...defectsReasons(outDir, chapterText, ids, ui.strings)];

@@ -41,6 +41,43 @@ export function domainSection(text, name) {
   return lines.slice(headings[at].line + 1, end).join('\n').trim();
 }
 
+/** The fixed level-3 headings of a domain's section of the domains chapter, in order (design D23); the last may be left out. */
+export const DOMAIN_SUBHEADING_KEYS = Object.freeze(['chapter.domain.features', 'chapter.domain.handovers', 'chapter.domain.mainLine']);
+
+/**
+ * Reasons for the level-3 headings of each domain (each level-2 section) of the domains chapter `text`: each is one of the
+ * fixed three, they come in the fixed order, and the features and hand-overs headings are there. Skipped when the run's
+ * text lacks the keys.
+ */
+export function domainSubheadingReasons(text, strings) {
+  const fixed = DOMAIN_SUBHEADING_KEYS.map((key) => strings[key]);
+  if (fixed.some((value) => typeof value !== 'string' || value.trim() === '')) return [];
+  const reasons = [];
+  const sections = [];
+  let fenced = false;
+  text.split('\n').forEach((line, index) => {
+    if (FENCE.test(line)) { fenced = !fenced; return; }
+    if (fenced) return;
+    const two = /^##\s+(.*?)\s*#*\s*$/.exec(line);
+    if (two !== null && !line.startsWith('###')) { sections.push({ name: two[1].trim(), subs: [] }); return; }
+    const three = /^###\s+(.*?)\s*#*\s*$/.exec(line);
+    if (three !== null && !line.startsWith('####') && sections.length > 0) sections[sections.length - 1].subs.push({ text: three[1].trim(), line: index + 1 });
+  });
+  for (const section of sections) {
+    let last = -1;
+    for (const sub of section.subs) {
+      const at = fixed.indexOf(sub.text);
+      if (at === -1) reasons.push(`line ${sub.line}: a level-3 heading of the domain "${section.name}" that is not one of the fixed headings: ${sub.text}; use only ${fixed.join(', ')}`);
+      else if (at <= last) reasons.push(`line ${sub.line}: the level-3 heading "${sub.text}" of the domain "${section.name}" is out of order or repeated; the order is: ${fixed.join(', ')}`);
+      else last = at;
+    }
+    for (const wanted of fixed.slice(0, 2)) {
+      if (!section.subs.some((sub) => sub.text === wanted)) reasons.push(`the domain "${section.name}" has no level-3 heading "${wanted}"`);
+    }
+  }
+  return reasons;
+}
+
 const isStrings = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string');
 const sameKeys = (value, keys) => Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 

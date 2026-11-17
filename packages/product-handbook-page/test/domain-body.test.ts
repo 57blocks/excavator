@@ -8,6 +8,17 @@ const LIST = '- hands x over\n- receives y';
 const MAIN = '```mermaid\nflowchart TD\n  A --> B\n```\n\n1. first\n2. second';
 
 describe('withoutHandoverList', () => {
+  it('drops the section under the fixed hand-overs heading, whatever its form, and keeps the others (design D23)', () => {
+    const text = `### Features\n\n${TABLE}\n\n### Hand-overs\n\n${TABLE}\n\n### Main line\n\n${MAIN}\n\n- a bullet in the main line\n`;
+    const out = withoutHandoverList(text, 'Hand-overs');
+    expect(out).not.toContain('### Hand-overs');
+    expect(out).toContain('### Features');
+    expect(out).toContain('### Main line');
+    expect(out).toContain('- a bullet in the main line');
+    // No section under the fixed heading (an older output): the form decides, as before.
+    expect(withoutHandoverList(`### Anything\n\n${LIST}\n\n### Next\n\ntext\n`, 'Hand-overs')).toBe('### Next\n\ntext\n');
+  });
+
   it('keeps the features table and the main line and drops the section that is only a bullet list', () => {
     const text = `### One\n\n${TABLE}\n\n### Two\n\n${LIST}\n\n### Three\n\n${MAIN}\n`;
     const out = withoutHandoverList(text);

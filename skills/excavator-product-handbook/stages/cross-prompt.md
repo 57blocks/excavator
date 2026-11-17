@@ -1,6 +1,6 @@
 ## The prompt every cross chapter starts with
 
-The cross chapters (`domains`, `roles`, `notifications`, `topics`, `defects`, `remedies`) are each written by one `excavator-handbook-writer` subagent. The prompt of each is the block below followed by the block of that chapter, which the phase file of the chapter holds. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OPEN_QUESTIONS`, `$PROBLEMS` and `$NONE` as their values; never give a writer of these chapters the project's path in any other way.
+The cross chapters (`domains`, `roles`, `notifications`, `topics`, `defects`, `remedies`) are each written by one `excavator-handbook-writer` subagent. The prompt of each is the block below followed by the block of that chapter, which the phase file of the chapter holds. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OPEN_QUESTIONS`, `$PROBLEMS`, `$NONE`, `$D_FEATURES`, `$D_HANDOVERS` and `$D_MAIN_LINE` as their values; never give a writer of these chapters the project's path in any other way.
 
 **Every cross chapter.**
 

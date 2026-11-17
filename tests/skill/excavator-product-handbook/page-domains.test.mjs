@@ -31,6 +31,12 @@ Orders and the archive live here (${cite('5')}).
 
 A second paragraph about orders (${cite('10')}).
 
+### Features
+
+- Orders (F1) takes orders (${cite('5')}).
+
+### Hand-overs
+
 - Orders (F1) hands work to Reminders (F3) (\`${C1}\`).
 
 \`\`\`mermaid
@@ -40,13 +46,27 @@ flowchart LR
 
 ## Automatic work
 
+### Features
+
 | Feature | Use |
 | --- | --- |
 | Reminders (F3) | Sends mail (\`${C2}\`) |
 
+### Hand-overs
+
+- Reminders (F3) hand nothing over (${cite('10')}).
+
 ## Last words
 
 Closing line (${cite('10')}).
+
+### Features
+
+- Nothing is kept here (${cite('10')}).
+
+### Hand-overs
+
+None.
 `;
 
 const goodList = () => ({
@@ -149,7 +169,8 @@ describe('page data /21: domains.list', () => {
   it('the last domain runs to the end of the chapter', () => {
     const last = page(make()).domains.list[2];
     expect(last.intro.product).toBe('Closing line.');
-    expect(last.body).toEqual({ product: '', technical: '' });
+    expect(last.body.product.startsWith('### Features')).toBe(true);
+    expect(last.body.product.endsWith('None.')).toBe(true);
   });
 
   it('a product-only page has only the product text and no citation anywhere in the domains', () => {

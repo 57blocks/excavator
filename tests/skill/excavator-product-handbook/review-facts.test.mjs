@@ -104,7 +104,8 @@ describe('review facts', () => {
   });
 
   it('batches follow domains.json when the domains chapter passed', () => {
-    const text = `${chapterText('Domains')}\n## Archive\n\n- Archived orders stay readable (${cite('9')}).\n`;
+    const section = (name, line) => `## ${name}\n\n### Features\n\n- ${line}\n\n### Hand-overs\n\nNone.\n`;
+    const text = `# Domains\n\n${section('Operations', `Orders are taken here (${cite('5')}).`)}\n${section('Archive', `Archived orders stay readable (${cite('9')}).`)}`;
     const run = reviewRun(cleanups, { extra: { domains: text } });
     run.writeJson(join(run.out, 'domains.json'), { domains: [{ name: 'Operations', features: ['F1', 'F3'] }, { name: 'Archive', features: ['F2', 'F4', 'F5'] }], handovers: [] });
     run.check('domains');

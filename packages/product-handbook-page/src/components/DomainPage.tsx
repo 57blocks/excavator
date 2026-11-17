@@ -81,7 +81,7 @@ export function DomainPage({ group, colour, mapLabel, previous, next }: Props) {
   const model = useModel();
   const domain = model.domains[group.id];
   const intro = domain?.intro[view] ?? '';
-  const shown = withoutHandoverList(domain?.body[view] ?? '').trim();
+  const shown = withoutHandoverList(domain?.body[view] ?? '', t('chapter.domain.handovers')).trim();
   return (
     <div className="wrap domain" data-view="domain" data-domain={group.id} {...colourProps(colour)}>
       <Breadcrumbs trail={[{ label: mapLabel, href: nav.home }, { label: group.name }]} />

@@ -144,10 +144,10 @@ Then print the texts every writer's prompt uses:
 
 ```bash
 UI="$OUT/ui.json"; [ -f "$UI" ] || UI="$PLUGIN_ROOT/skills/excavator-product-handbook/ui-strings.json"
-jq -r '.strings | "OPEN_QUESTIONS=\(.["chapter.openQuestions"])", "PROBLEMS=\(.["chapter.problems"])", "NONE=\(.["chapter.none"])", "S_OVERVIEW=\(.["chapter.section.overview"])", "S_SCREENS=\(.["chapter.section.screens"])", "S_OPERATIONS=\(.["chapter.section.operations"])", "S_RULES=\(.["chapter.section.rules"])", "S_STATES=\(.["chapter.section.states"])", "S_NOTIFICATIONS=\(.["chapter.section.notifications"])", "S_HANDOVERS=\(.["chapter.section.handovers"])"' "$UI"
+jq -r '.strings | "OPEN_QUESTIONS=\(.["chapter.openQuestions"])", "PROBLEMS=\(.["chapter.problems"])", "NONE=\(.["chapter.none"])", "S_OVERVIEW=\(.["chapter.section.overview"])", "S_SCREENS=\(.["chapter.section.screens"])", "S_OPERATIONS=\(.["chapter.section.operations"])", "S_RULES=\(.["chapter.section.rules"])", "S_STATES=\(.["chapter.section.states"])", "S_NOTIFICATIONS=\(.["chapter.section.notifications"])", "S_HANDOVERS=\(.["chapter.section.handovers"])", "D_FEATURES=\(.["chapter.domain.features"])", "D_HANDOVERS=\(.["chapter.domain.handovers"])", "D_MAIN_LINE=\(.["chapter.domain.mainLine"])"' "$UI"
 ```
 
-In every prompt of this run, write `$OPEN_QUESTIONS`, `$PROBLEMS`, `$NONE`, `$S_OVERVIEW`, `$S_SCREENS`, `$S_OPERATIONS`, `$S_RULES`, `$S_STATES`, `$S_NOTIFICATIONS` and `$S_HANDOVERS` as the values it printed, exactly as printed.
+In every prompt of this run, write `$OPEN_QUESTIONS`, `$PROBLEMS`, `$NONE`, `$S_OVERVIEW`, `$S_SCREENS`, `$S_OPERATIONS`, `$S_RULES`, `$S_STATES`, `$S_NOTIFICATIONS`, `$S_HANDOVERS`, `$D_FEATURES`, `$D_HANDOVERS` and `$D_MAIN_LINE` as the values it printed, exactly as printed.
 
 The translation prompt:
 

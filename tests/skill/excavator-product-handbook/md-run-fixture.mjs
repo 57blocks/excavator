@@ -31,6 +31,27 @@ Nobody can tell how long drafts live.
 None.
 `;
 
+/** A domains chapter that passes `check domains`: one domain under the fixed level-3 headings (design D23). */
+export const DOMAINS_TEXT = `# Domains
+
+## Orders
+
+The orders domain (${cite('5')}).
+
+### Features
+
+| Feature | Purpose |
+| --- | --- |
+| Orders (F1) | Takes orders (${cite('5')}) |
+
+### Hand-overs
+
+None.
+`;
+
+/** The text of a chapter called `name` for a run with every chapter: the domains chapter above, any other `chapterText`. */
+export const textOf = (name) => (name === 'domains' ? DOMAINS_TEXT : chapterText(name));
+
 /** A run with a good map; `chapters` is `{ name: text }`; every written chapter is checked once. */
 export function newMdRun(chapters = {}, { check = true } = {}) {
   const run = makeRun();
