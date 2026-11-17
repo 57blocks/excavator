@@ -26,10 +26,10 @@ export interface Split { head: string; sections: Section[] }
 const FENCE = /^\s*```/;
 const HEADING = /^#{2,3}\s+(.*?)\s*#*\s*$/;
 
-interface Mark { at: number; level: 2 | 3; title: string; n: number }
+export interface Mark { at: number; level: 2 | 3; title: string; n: number }
 
 /** The `##` and `###` lines of `lines` outside fences, numbered; the same rule as the search index. */
-function marksOf(lines: readonly string[]): Mark[] {
+export function marksOf(lines: readonly string[]): Mark[] {
   const marks: Mark[] = [];
   let fenced = false;
   lines.forEach((line, at) => {

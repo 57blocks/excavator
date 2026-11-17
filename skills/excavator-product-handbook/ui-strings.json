@@ -265,6 +265,8 @@
     "page.search.placeholder": "Search",
     "page.search.results": "Results",
     "page.search.none": "No chapter or section matches.",
+    "page.search.more": "Showing the first {shown} of {total} results; type more to narrow them.",
+    "page.search.partial": "The text of {count} chapters is not searched: it is still loading, or its data file is missing.",
     "page.view.label": "View",
     "page.view.product": "Product",
     "page.view.technical": "Technical",

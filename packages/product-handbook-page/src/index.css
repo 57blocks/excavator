@@ -612,6 +612,10 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .search-box li .mark { align-self: center; }
 .search-box li small { margin-left: auto; padding-left: 12px; color: var(--text-2); font-size: 13px; text-align: right; }
 .search-box .none { padding: 18px; color: var(--text-2); }
+.search-box li .search-text { min-width: 0; overflow-wrap: anywhere; }
+.search-box li mark { background: color-mix(in srgb, var(--accent) 24%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; font-weight: 600; }
+.search-box li small { flex: none; max-width: 45%; }
+.search-note { padding: 8px 18px 12px; margin: 0; border-top: 1px solid var(--line); color: var(--text-2); font-size: 13px; }
 
 /* Wide screens (1280 and up) keep the page list at the screen's right edge; narrower ones drop the list (the left list stays down to 900px). */
 @media (max-width: 1279px) {

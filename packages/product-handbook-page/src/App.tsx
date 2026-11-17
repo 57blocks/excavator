@@ -182,7 +182,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
               <SideList {...list} />
               <main id="main" tabIndex={-1}>{main}</main>
             </div>
-            {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} references={flatReferences(references)} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
+            {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} chapters={data.chapters} references={flatReferences(references)} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
           </div>
           </ModelContext.Provider>
         </LinksContext.Provider>
