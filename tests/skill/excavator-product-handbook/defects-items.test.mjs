@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { DEFECT_CATEGORIES, DEFECT_LEVELS, defectsReasons, parseDefects } from '../../../skills/excavator-product-handbook/lib/defects-items.mjs';
+import { DEFECT_CATEGORIES, DEFECT_LEVELS, DEFECT_TITLE_LIMIT, defectsReasons, parseDefects } from '../../../skills/excavator-product-handbook/lib/defects-items.mjs';
 
 const NONE = 'None.';
 const STRINGS = { 'chapter.none': NONE, 'chapter.problems': 'Known defects' };
@@ -118,7 +118,7 @@ A paragraph after a blank line is not part of it, (F3).
 
 describe('defectsReasons', () => {
   const ids = ['F1', 'F2'];
-  const good = `## P0\n\n- **security** Secret, Orders (F1).\n`;
+  const good = `## P0\n\n- **security** **Secret in code** Secret, Orders (F1).\n`;
 
   it('turns a problem into a line-numbered reason naming what is missing', () => {
     const reasons = defectsReasons(newOut(), `## P0\n\n- **colour** x (F1).\n- **time** y.\n`, ids, STRINGS);
@@ -128,7 +128,7 @@ describe('defectsReasons', () => {
   });
 
   it('rejects an id that is not on the map and accepts system', () => {
-    const reasons = defectsReasons(newOut(), `## P0\n\n- **time** a (F9).\n- **time** b (system).\n`, ids, STRINGS);
+    const reasons = defectsReasons(newOut(), `## P0\n\n- **time** **Late** a (F9).\n- **time** **Early** b (system).\n`, ids, STRINGS);
     expect(reasons).toEqual(['line 3: feature id F9 is not a feature of map.json']);
   });
 
@@ -136,13 +136,37 @@ describe('defectsReasons', () => {
     const out = newOut({ F2: problemsSection(3) });
     const reasons = defectsReasons(out, good, ids, STRINGS);
     expect(reasons).toEqual(['F2: its "Known defects" section has 3 items but no defect item names F2']);
-    const covered = `${good}\n## P1\n\n- **display** Hidden, Archive (F2).\n`;
+    const covered = `${good}\n## P1\n\n- **display** **Hidden button** Hidden, Archive (F2).\n`;
     expect(defectsReasons(out, covered, ids, STRINGS)).toEqual([]);
   });
 
   it('counts the system chapter, ignores a none-only section and a missing chapter', () => {
     const out = newOut({ system: problemsSection(1), F1: problemsSection(0) });
     expect(defectsReasons(out, good, ids, STRINGS)).toEqual(['system: its "Known defects" section has 1 item but no defect item names system']);
+  });
+});
+
+describe('the short title of a defect (design D20)', () => {
+  const ids = ['F1'];
+  const reasons = (item) => defectsReasons(newOut(), `## P0\n\n- ${item}\n`, ids, STRINGS);
+
+  it('parses the bold title after the category, and null when there is none; an item without one still splits', () => {
+    const { items, problems } = parse('## P1\n\n- **display** **Button hidden** The list hides a button, Orders (F1).\n- **display** No title here, Orders (F1).\n');
+    expect(problems).toEqual([]);
+    expect(items.map((item) => item.title)).toEqual(['Button hidden', null]);
+  });
+
+  it('gives a reason for an item with no title, a title over the limit, and a title that is the start of its sentence', () => {
+    expect(reasons('**time** **Late reminders** The job runs late, Orders (F1).')).toEqual([]);
+    expect(reasons('**time** The job runs late, Orders (F1).')).toEqual(['line 3: defect item has no short bold title after its category, like **category** **title** text']);
+    const long = 'x'.repeat(DEFECT_TITLE_LIMIT + 1);
+    expect(reasons(`**time** **${long}** The job runs late, Orders (F1).`)).toEqual([`line 3: the title of the defect item has ${DEFECT_TITLE_LIMIT + 1} characters; at most ${DEFECT_TITLE_LIMIT}`]);
+    expect(reasons('**time** **The job runs late** The job runs late for Orders (F1).')).toEqual(['line 3: the title of the defect item is the start of its sentence; a title names the defect in other words']);
+  });
+
+  it('counts the length in characters, so a CJK title is measured by its characters and not its bytes', () => {
+    const cjk = String.fromCharCode(0x5bfc).repeat(DEFECT_TITLE_LIMIT);
+    expect(reasons(`**time** **${cjk}** The job runs late, Orders (F1).`)).toEqual([]);
   });
 });
 

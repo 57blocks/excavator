@@ -29,7 +29,7 @@ const DEFECTS = `# Defects
 
 ## P1
 
-- **display** The list hides a button, Orders (F1). A second sentence follows (\`${FORM}:6\`).
+- **display** **Hidden button** The list hides a button, Orders (F1). A second sentence follows (\`${FORM}:6\`).
 
 ## P2
 
@@ -130,7 +130,10 @@ describe('problemsData: rows', () => {
     expect(d1.texts.product).not.toContain('**');
     expect(d1.cites).toEqual([`${FORM}:5`]);
     expect(d1.summary).toBe('A secret is stored in the code, Orders (F1) and Archive (F2)');
-    expect(d2.summary).toBe('The list hides a button, Orders (F1)');
+    // An item with a short title (design D20) is labelled by it, and its text starts after it; one without falls back to its first clause.
+    expect(d2.summary).toBe('Hidden button');
+    expect(d2.texts.product.startsWith('The list hides a button')).toBe(true);
+    expect(d2.texts.technical).not.toContain('Hidden button');
     expect(d3.summary).toHaveLength(121);
     expect(d3.summary.endsWith(ELLIPSIS)).toBe(true);
   });

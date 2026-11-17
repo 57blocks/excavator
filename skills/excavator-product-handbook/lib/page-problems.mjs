@@ -21,7 +21,9 @@ const WIDE_SEMICOLON = String.fromCharCode(0xff1b);
 const WIDE_STOP = String.fromCharCode(0x3002);
 const ELLIPSIS = String.fromCharCode(0x2026);
 const SUMMARY_LIMIT = 120;
+/** The bold category at the start of a defect item, and the bold short title after it when the item has one (design D20). */
 const LEADING_CATEGORY = /^\*\*[^*]+\*\*\s*/;
+const LEADING_TITLE = /^\*\*[^*]+\*\*\s*/;
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const specsOf = (text) => citationGroups(text).flatMap((group) => group.specs);
@@ -64,7 +66,8 @@ function defectRows(run, views, headings) {
   if (problems.length > 0) return { state: 'failed', rows: [] };
   const technical = views.includes('technical');
   const rows = items.map((item, at) => {
-    const body = item.text.replace(LEADING_CATEGORY, '');
+    const rest = item.text.replace(LEADING_CATEGORY, '');
+    const body = item.title === null ? rest : rest.replace(LEADING_TITLE, '');
     const word = new RegExp(`\\b${escapeRegExp(item.category)}\\b`);
     return {
       id: `d${at + 1}`,
@@ -72,7 +75,8 @@ function defectRows(run, views, headings) {
       level: item.level,
       group: item.category,
       features: [...item.features],
-      summary: summaryOf(productText(body)),
+      // The writer's short title when the item has one; an older chapter without titles falls back to the first clause.
+      summary: item.title ?? summaryOf(productText(body)),
       texts: viewTexts(body, views),
       ...(technical ? { cites: specsOf(item.text) } : {}),
       source: { chapter: 'defects', line: item.line },

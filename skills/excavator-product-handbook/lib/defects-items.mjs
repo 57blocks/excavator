@@ -18,6 +18,10 @@ const LIST_ITEM = /^ {0,3}[-*+]\s+(.*)$/;
 /** An item of a section list: a bullet or a numbered item (`1.` or `1)`); writers number open questions as often as they bullet them. */
 const SECTION_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])\s+(.*)$/;
 const CATEGORY = /^\*\*([^*]+)\*\*/;
+/** The bold short title right after the bold category (design D20): `- **category** **title** text`. */
+const TITLE = /^\*\*[^*]+\*\*\s*\*\*([^*]+)\*\*/;
+/** The longest title `check defects` accepts, in characters (code points): 20 CJK characters or 8 words fit with room to spare. */
+export const DEFECT_TITLE_LIMIT = 40;
 const OPEN = `[(${String.fromCharCode(0xff08)}]`;
 const CLOSE = `[)${String.fromCharCode(0xff09)}]`;
 const FEATURE_ID = new RegExp(`${OPEN}\\s*(F\\d+|system)\\s*${CLOSE}`, 'g');
@@ -57,7 +61,9 @@ export function parseDefects(text, { none = '' } = {}) {
     if (level === null) missing.push('level');
     if (!known) missing.push('category');
     if (features.length === 0) missing.push('feature');
-    if (missing.length === 0) items.push({ level, category: word, features, text: body, line });
+    const titled = TITLE.exec(body);
+    const title = titled === null ? null : titled[1].trim();
+    if (missing.length === 0) items.push({ level, category: word, title: title === '' ? null : title, features, text: body, line });
     else problems.push({ line, missing, ...(word !== null && !known ? { category: word } : {}) });
   };
   for (const { raw, line } of proseLines(text)) {
@@ -135,6 +141,17 @@ export function sectionItems(text, title, none) {
 
 const sectionItemCount = (text, title, none) => (sectionItems(text, title, none) ?? []).length;
 
+/** The reasons of an item's title: none, too long, or the start of the sentence after it (a title names the defect; it does not repeat the sentence). */
+function titleReasons({ line, title, text }) {
+  if (title === null) return [`line ${line}: defect item has no short bold title after its category, like **category** **title** text`];
+  const reasons = [];
+  const length = Array.from(title).length;
+  if (length > DEFECT_TITLE_LIMIT) reasons.push(`line ${line}: the title of the defect item has ${length} characters; at most ${DEFECT_TITLE_LIMIT}`);
+  const after = text.replace(TITLE, '').trim();
+  if (after.startsWith(title.replace(/[.\u3002]$/u, ''))) reasons.push(`line ${line}: the title of the defect item is the start of its sentence; a title names the defect in other words`);
+  return reasons;
+}
+
 function problemReason({ line, missing, category }) {
   const parts = missing.map((what) => {
     if (what === 'level') return 'it is not under a P0, P1 or P2 heading';
@@ -152,6 +169,7 @@ export function defectsReasons(outDir, text, ids, strings) {
   const { items, problems } = parseDefects(text, { none });
   const reasons = problems.map(problemReason);
   for (const item of items) {
+    reasons.push(...titleReasons(item));
     for (const id of item.features) {
       if (id !== 'system' && !ids.includes(id)) reasons.push(`line ${item.line}: feature id ${id} is not a feature of map.json`);
     }

@@ -385,7 +385,7 @@ describe('defects chapter (openspec change handbook-page-structure, task 1.2)', 
   it('passes a well-formed chapter', () => {
     const run = newRun();
     run.write('F1', GOOD.replace('None.', `- A draft never expires (${c('10')}).`));
-    run.write('defects', defects(`**display** A draft never expires, Orders (F1) (${c('10')}).`));
+    run.write('defects', defects(`**display** **Drafts kept forever** A draft never expires, Orders (F1) (${c('10')}).`));
     const result = run.check('defects');
     expect(result.status, result.stdout).toBe(0);
   });
