@@ -61,6 +61,8 @@ const issues = (host: HTMLElement): HTMLElement => host.querySelector('section.f
 const block = (host: HTMLElement): HTMLElement => host.querySelector('[data-part="feature-problems"]') as HTMLElement;
 const squash = (el: Element | null): string => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
 const fold = (host: HTMLElement, id: string): HTMLDetailsElement => host.querySelector(`details[data-problem="${id}"]`) as HTMLDetailsElement;
+// The parts of a count line in order; a level tag as its level in brackets.
+const parts = (li: Element | null): string => Array.from(li?.children ?? []).map((one) => (one.classList.contains('lvl') ? `[${one.getAttribute('data-level')}]` : one.textContent ?? '')).join(' ');
 const headings = (panel: HTMLElement): string[] => Array.from(panel.querySelectorAll('h3.sub')).map((one) => one.textContent ?? '');
 
 describe('the block of a feature\'s problems', () => {
@@ -77,11 +79,12 @@ describe('the block of a feature\'s problems', () => {
 
   it('counts the rows of this feature per type, and leaves out the rows of other features', async () => {
     const host = await show(data([row('d1'), row('d2', { level: 'P0' }), row('d3', { features: ['F1'] }), design('r1'), open('q1'), open('q2'), open('q3', { features: ['F1'] })]));
-    const lines = Array.from(block(host).querySelectorAll('[data-source]')).map((li) => [li.getAttribute('data-source'), squash(li)]);
+    const lines = Array.from(block(host).querySelectorAll('[data-source]')).map((li) => [li.getAttribute('data-source'), parts(li)]);
+    // The number first, then the type, then the highest level of the type (none for the points to confirm).
     expect(lines).toEqual([
-      ['defect', `${marked['page.problems.type.defect']} 2`],
-      ['design', `${marked['page.problems.type.design']} 1`],
-      ['open', `${marked['page.problems.type.open']} 2`],
+      ['defect', `2 ${marked['page.problems.type.defect']} [P0]`],
+      ['design', `1 ${marked['page.problems.type.design']} [high]`],
+      ['open', `2 ${marked['page.problems.type.open']}`],
     ]);
   });
 
@@ -143,8 +146,8 @@ describe('the block of a feature\'s problems', () => {
     const host = await show(data([], { sources: sourcesOf('ok', 'missing', 'failed') }));
     expect(block(host).querySelector('[data-part="feature-problems-none"]')).toBeNull();
     const lines = Array.from(block(host).querySelectorAll('[data-source]')).map((li) => squash(li));
-    expect(lines).toEqual([
-      `${marked['page.problems.type.defect']} 0`,
+    expect(parts(block(host).querySelector('[data-source="defect"]'))).toBe(`0 ${marked['page.problems.type.defect']}`);
+    expect(lines.slice(1)).toEqual([
       `${marked['page.problems.type.design']} ${marked['page.problems.count.missing']}`,
       `${marked['page.problems.type.open']} ${marked['page.problems.count.failed']}`,
     ]);
@@ -156,7 +159,7 @@ describe('the block of a feature\'s problems', () => {
   it('marks the count of the points to confirm incomplete when the chapter has no such heading, and does not say "none"', async () => {
     const host = await show(data([], { sources: sourcesOf('ok', 'ok', 'ok', ['F2']) }));
     expect(block(host).querySelector('[data-part="feature-problems-none"]')).toBeNull();
-    expect(squash(block(host).querySelector('[data-source="open"]'))).toBe(`${marked['page.problems.type.open']} 0 ${marked['page.problems.count.incomplete']}`);
+    expect(parts(block(host).querySelector('[data-source="open"]'))).toBe(`0 ${marked['page.problems.type.open']} ${marked['page.problems.count.incomplete']}`);
     // Another chapter in the list does not mark this one.
     cleanup();
     const other = await show(data([], { sources: sourcesOf('ok', 'ok', 'ok', ['F1']) }));

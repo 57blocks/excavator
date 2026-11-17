@@ -107,7 +107,7 @@ describe('the blocks', () => {
     for (const fold of Array.from(host.querySelectorAll('details.fold'))) expect(fold.querySelector('summary')?.firstElementChild?.className).toBe('chev');
   });
 
-  it('puts the overview section (an h3 for readers of the outline only) and its items in the overview block, and the handovers section then the hint then the strip in the links block', async () => {
+  it('puts the overview section (an h3 for readers of the outline only) and its items in the overview block, and the hint then the handovers section then the strip in the links block', async () => {
     const host = await open('#/product/chapter/F2');
     const overview = block(host, 'overview');
     expect(overview.querySelector('h3.sr-only')?.textContent).toBe(S('chapter.section.overview'));
@@ -115,7 +115,7 @@ describe('the blocks', () => {
     expect(overview.textContent).not.toContain(d('Clerks place orders.'));
     expect(overview.contains(item(host, d('Background')))).toBe(true);
     const links = block(host, 'links');
-    expect(Array.from(links.children).map((one) => one.getAttribute('data-part') ?? one.className)).toEqual(['panel-head', 'fsection', 'links-hint', 'handover-strip']);
+    expect(Array.from(links.children).map((one) => one.getAttribute('data-part') ?? one.className)).toEqual(['panel-head', 'links-hint', 'fsection', 'handover-strip']);
     // The block's title stands for the section's own heading: kept for search, hidden, not in the nav.
     expect(links.querySelector('.fsection h3.sr-only')?.textContent).toBe(S('chapter.section.handovers'));
     expect(links.querySelector('[data-part="links-hint"]')?.textContent).toBe(S('page.feature.links.hint'));

@@ -515,17 +515,27 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .dom-body .prose .table-scroll { max-width: none; }
 .domain .chap-nav { max-width: var(--read); }
 
-/* The hand-overs that name a feature, under its chapter's head: a strip between two rules. */
-.strip { margin: 8px 0 20px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 15px; line-height: 1.65; }
-.strip-title { font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
-.strip li { display: grid; grid-template-columns: minmax(9em, 14em) minmax(0, 1fr); gap: 4px 20px; padding: 6px 0; }
-.strip li.dir-out .strip-dir { color: var(--accent-text); }
-.strip li.dir-in .strip-dir { color: var(--ochre); }
+/* The hand-overs with other domains that name a feature: upstream and downstream in two columns, rows apart by space, no rules. */
+.strip { font-size: 15px; line-height: 1.65; }
+.strip-title { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.strip-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 32px; }
+.strip-col { min-width: 0; }
+.strip-col-title { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.strip-col.dir-in .strip-col-name { color: var(--ochre); }
+.strip-col.dir-out .strip-col-name { color: var(--accent-text); }
+.strip-n { padding: 0 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-3); font-size: 12.5px; font-weight: 400; line-height: 20px; font-variant-numeric: tabular-nums; }
+.strip-col > .muted { margin: 0; font-size: 14px; }
+.strip ul { display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.strip li { display: grid; gap: 4px; min-width: 0; }
+.strip-dir { font-weight: 600; }
 .strip-dir .dom-ref a { color: var(--text); text-decoration: none; }
+.strip-dir .dom-ref a:hover { color: var(--accent-text); }
+.strip-text { color: var(--text-2); font-size: 14px; }
+.strip-between { margin-top: 16px !important; }
 
 /* A feature page: the head, a lede, the problems line, then the blocks, one page with no tabs; the list at the right comes from its blocks. */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.feature .lede .prose { font-size: 18px; line-height: 1.65; color: var(--text-2); }
+.feature .lede .prose { font-size: 17px; line-height: 1.75; color: var(--text); }
 .feature .lede .prose p { margin: 0; }
 .feature .fblock { min-width: 0; margin-top: 48px; padding-top: 28px; border-top: 1px solid var(--line); }
 .feature .fsection { min-width: 0; }
@@ -564,13 +574,17 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .feature details.fold > .item-body > .prob-detail { padding: 0; }
 .feature details.fold[open] .lvl { background: var(--surface); }
 /* The problems of a feature: the counts in a line, the worst three as buttons, two links; no box around the block. */
-.feature .feature-problems { margin: 20px 0 8px; }
-.feature .feature-problems > .fp-title { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: var(--text-2); }
-.fp-count { padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: 700; font-variant-numeric: tabular-nums; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
+.feature .feature-problems { margin: 24px 0 8px; }
+.feature .fp-head { display: flex; align-items: baseline; gap: 16px; margin: 0 0 8px; }
+.feature .fp-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-2); }
+.feature .fp-all { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; font-size: 14px; text-decoration: none; }
+.feature .fp-all:hover { text-decoration: underline; }
+.fp-count { padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 24px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; cursor: pointer; }
 .fp-count:hover { color: var(--accent-text); }
-.fp-counts { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0 0 8px; font-size: 14px; color: var(--text-2); }
+.fp-counts { display: flex; flex-wrap: wrap; gap: 8px 32px; margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--text-2); }
+.fp-counts > li { display: inline-flex; align-items: baseline; gap: 6px; }
+.fp-counts .lvl { margin: 0 0 0 2px; align-self: center; }
 .fp-counts b { color: var(--text); font-variant-numeric: tabular-nums; }
-.fp-links { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; font-size: 14px; }
 .lvl { flex: none; margin-right: 8px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--text); }
 .lvl[data-level="P0"], .lvl[data-level="high"] { color: var(--brick); }
 .feature details.inner { margin: 14px 0 4px; }
@@ -581,7 +595,9 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .feature details.inner[open] > summary .chev { transform: rotate(90deg); }
 .feature details.inner[open] > summary { margin-bottom: 4px; }
 .feature details.inner > :not(summary) { padding-left: 22px; }
-.feature .strip { margin: 12px 0 0; padding: 0; border: 0; }
+.feature .strip { margin: 24px 0 0; }
+.feature .links-hint { margin: -6px 0 16px; font-size: 13.5px; line-height: 1.6; color: var(--text-3); }
+.feature [data-block="links"] .fsection > .prose { font-size: 15px; line-height: 1.75; }
 
 /* Search: a dialog over a scrim. */
 .search { position: fixed; inset: 0; z-index: 80; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: var(--scrim); }
@@ -631,7 +647,7 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
   .rel-list details[open] summary::after { transform: rotate(225deg) translateY(-1px); }
   .rel-list .flows { margin-bottom: 12px; }
   .dom-cols { grid-template-columns: minmax(0, 1fr); gap: 32px; }
-  .strip li { grid-template-columns: minmax(0, 1fr); }
+  .strip-cols { grid-template-columns: minmax(0, 1fr); }
   .search { padding-top: 8vh; }
 }
 @media (max-width: 640px) { .dom-features ul { column-width: auto; column-count: 1; } }

@@ -8,7 +8,7 @@ import { useProblems } from '../lib/chunks';
 import { REVEAL_EVENT } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
-import { PROBLEM_TYPES, levelText, rowsOfFeature, sortRows } from '../lib/problems';
+import { PROBLEM_TYPES, highestLevels, levelText, rowsOfFeature, sortRows } from '../lib/problems';
 import { useText } from '../lib/text';
 import type { ProblemRow, ProblemType } from '../lib/types';
 import { ChevronIcon, FoldAllIcon } from './Icons';
@@ -139,36 +139,41 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     );
   };
 
-  /** The line under the head: the counts of this feature's problems (each a jump to its part of the problems block) and the way to the table. */
+  /**
+   * The problems of the feature under the head: its title with the way to the table at the right, then the three counts as large
+   * numbers (each a jump to its part of the problems block), defects and design problems followed by the highest level of their type.
+   */
   const problemsLine = () => {
     const unmatched = sources.open.unmatched.includes(id);
     const allOk = PROBLEM_TYPES.every((type) => sources[SOURCE_OF[type]].state === 'ok');
+    const top = highestLevels(model.problems.rows, id);
+    const none = allOk && !unmatched && mine.length === 0;
     return (
       <section className="feature-problems" data-part="feature-problems">
-        <p className="fp-title">{t('page.feature.problems.title')}</p>
-        {allOk && !unmatched && mine.length === 0 ? <p className="muted" data-part="feature-problems-none">{t('page.feature.problems.none')}</p> : (
-          <>
-            <ul className="fp-counts" role="list" data-part="feature-problem-counts">
-              {PROBLEM_TYPES.map((type) => {
-                const source = sources[SOURCE_OF[type]];
-                const count = mine.filter((row) => row.type === type).length;
-                return (
-                  <li key={type} data-source={type} data-state={source.state !== 'ok' ? source.state : undefined}>
-                    <span className="fp-type">{t(`page.problems.type.${type}`)}</span>{' '}
-                    {source.state !== 'ok' ? <span className="muted">{t(`page.problems.count.${source.state}`)}</span> : (
-                      <>
-                        <button type="button" className="fp-count" data-count-type={type} onClick={() => goToType(type)}>{count}</button>
-                        {type === 'open' && unmatched && <>{' '}<span className="muted">{t('page.problems.count.incomplete')}</span></>}
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="fp-links">
-              <a href={nav.problems({ feature: id })} data-part="feature-problems-all">{t('page.feature.problems.viewAll')}</a>
-            </p>
-          </>
+        <div className="fp-head">
+          <p className="fp-title">{t('page.feature.problems.title')}</p>
+          {!none && <a className="fp-all" href={nav.problems({ feature: id })} data-part="feature-problems-all">{t('page.feature.problems.viewAll')}<ChevronIcon /></a>}
+        </div>
+        {none ? <p className="muted" data-part="feature-problems-none">{t('page.feature.problems.none')}</p> : (
+          <ul className="fp-counts" role="list" data-part="feature-problem-counts">
+            {PROBLEM_TYPES.map((type) => {
+              const source = sources[SOURCE_OF[type]];
+              const count = mine.filter((row) => row.type === type).length;
+              const level = type === 'open' ? null : top[type];
+              return (
+                <li key={type} data-source={type} data-state={source.state !== 'ok' ? source.state : undefined}>
+                  {source.state !== 'ok' ? <><span className="fp-type">{t(`page.problems.type.${type}`)}</span>{' '}<span className="muted">{t(`page.problems.count.${source.state}`)}</span></> : (
+                    <>
+                      <button type="button" className="fp-count" data-count-type={type} onClick={() => goToType(type)}>{count}</button>
+                      <span className="fp-type">{t(`page.problems.type.${type}`)}</span>
+                      {level !== null && <span className="lvl" data-level={level} data-part="feature-top-level">{levelText(t, level)}</span>}
+                      {type === 'open' && unmatched && <span className="muted">{t('page.problems.count.incomplete')}</span>}
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
     );
@@ -272,6 +277,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
     const kept = handovers === undefined ? [] : [handovers];
     blocks.push(block('links', 'page.feature.block.links', () => (
       <>
+        {links.length > 0 && <p className="links-hint" data-part="links-hint">{t('page.feature.links.hint')}</p>}
         {/* The block's title stands for the section's own heading, as in the overview block: kept for search, hidden, not in the nav. */}
         {handovers !== undefined && (
           <div className="fsection">
@@ -280,7 +286,6 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
             {handovers.items.map((item) => itemRow(handovers, item))}
           </div>
         )}
-        {links.length > 0 && <p className="muted" data-part="links-hint">{t('page.feature.links.hint')}</p>}
         <HandoverStrip chapter={id} />
       </>
     ), kept));

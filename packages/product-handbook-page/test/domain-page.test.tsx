@@ -134,18 +134,40 @@ describe('the strip on a feature page', () => {
   const strip = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-part="handover-strip"]');
   const rows = (host: HTMLElement): [string | null, string | undefined][] => Array.from(strip(host)?.querySelectorAll('li') ?? []).map((li) => [li.getAttribute('data-direction'), li.querySelector('.strip-dir')?.textContent?.replace(/\s+/g, ' ')]);
 
-  it('lists the hand-overs that name the chapter, handed over or received from the point of view of its domain, and "from to" when it is neither end', () => {
+  it('lists the hand-overs that name the chapter in two columns from the point of view of its domain, received then handed over, and "from to" under them when it is neither end', () => {
     const host = page('#/product/chapter/F2');
     expect(rows(host)).toEqual([
-      ['in', `${marked['page.handover.in']} ${d('Platform')}`],
-      ['out', `${marked['page.handover.out']} ${d('Billing')}`],
+      ['in', d('Platform')],
+      ['out', d('Billing')],
       ['between', `${d('Billing')} ${marked['page.handover.between']} ${d('Support')}`],
     ]);
+    const column = (dir: string): HTMLElement => strip(host)?.querySelector(`[data-column="${dir}"]`) as HTMLElement;
+    expect(column('in').querySelector('.strip-col-name')?.textContent).toBe(marked['page.handover.in']);
+    expect(column('out').querySelector('.strip-col-name')?.textContent).toBe(marked['page.handover.out']);
+    expect(column('in').querySelector('.strip-n')?.textContent).toBe('1');
+    expect(column('in').querySelectorAll('li[data-direction="in"]')).toHaveLength(1);
+    expect(column('out').querySelectorAll('li[data-direction="out"]')).toHaveLength(1);
+    expect(strip(host)?.querySelector('.strip-between li[data-direction="between"]')).not.toBeNull();
     expect(strip(host)?.getAttribute('aria-label')).toBe(marked['page.strip.heading']);
     expect(strip(host)?.querySelector('li[data-direction="in"] a[href="#/product/domain/d1"]')).not.toBeNull();
     expect(strip(host)?.querySelector('li[data-direction="between"] a[href="#/product/domain/d4"]')).not.toBeNull();
-    expect(rows(page('#/product/chapter/F1'))).toEqual([['out', `${marked['page.handover.out']} ${d('Orders')}`]]);
-    expect(rows(page('#/product/chapter/F4'))).toEqual([['in', `${marked['page.handover.in']} ${d('Billing')}`]]);
+    // A column with no rows says so with the fixed text of the domain page, and has no count.
+    const one = page('#/product/chapter/F1');
+    expect(rows(one)).toEqual([['out', d('Orders')]]);
+    expect(one.querySelector('[data-column="in"] .muted')?.textContent).toBe(marked['page.domain.noneIn']);
+    expect(one.querySelector('[data-column="in"] .strip-n')).toBeNull();
+    expect(rows(page('#/product/chapter/F4'))).toEqual([['in', d('Billing')]]);
+    expect(page('#/product/chapter/F4').querySelector('[data-column="out"] .muted')?.textContent).toBe(marked['page.domain.noneOut']);
+  });
+
+  it('lists a domain once in its column, with the words of each of its hand-overs, and counts the hand-overs', () => {
+    const data = domainData();
+    data.domains = { ...data.domains, handovers: [...data.domains.handovers, { from: 'd1', to: 'd2', what: `${d('Limits reach')} (F2) too.`, features: ['F2'], cites: ['src/f.js:1-1'] }] };
+    const host = page('#/product/chapter/F2', data);
+    const column = host.querySelector('[data-part="handover-strip"] [data-column="in"]') as HTMLElement;
+    expect(column.querySelectorAll('li')).toHaveLength(1);
+    expect(column.querySelectorAll('li .strip-text')).toHaveLength(2);
+    expect(column.querySelector('.strip-n')?.textContent).toBe('2');
   });
 
   it('shows the cites in the technical view only', () => {
@@ -154,13 +176,16 @@ describe('the strip on a feature page', () => {
     expect(Array.from(technical.querySelectorAll('[data-part="handover-strip"] .ho-cites code')).map((one) => one.textContent)).toEqual(['src/b.js:4-9']);
   });
 
-  it('is in the links block, the last of the page, after the hint line, between rules, with no box and no heading of its own', () => {
+  it('is in the links block, the last of the page, under the hint line and the own section of the chapter, with no box and no heading of its own', () => {
     const article = page('#/product/chapter/F2').querySelector('article') as HTMLElement;
     expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'sr-only', 'feature-problems', 'fblock', 'fblock', 'fblock']);
     const links = article.querySelector('section[data-block="links"]') as HTMLElement;
     expect(links).toBe(article.lastElementChild);
     expect(links.querySelector('[data-part="links-hint"]')).not.toBeNull();
-    expect(links.querySelector('[data-part="handover-strip"]')?.previousElementSibling).toBe(links.querySelector('[data-part="links-hint"]'));
+    // The hint is right under the block's title; the chapter's own section comes before the strip.
+    const order = Array.from(links.children).map((one) => one.getAttribute('data-part') ?? one.className);
+    expect(order.filter((one) => one !== 'fsection')).toEqual(['panel-head', 'links-hint', 'handover-strip']);
+    expect(order.lastIndexOf('fsection')).toBeLessThan(order.indexOf('handover-strip'));
     expect(article.children[0].querySelector('h1')).not.toBeNull();
     expect(article.children[0].querySelector('p.note')).not.toBeNull();
     expect(links.querySelector('[data-part="handover-strip"] h1, [data-part="handover-strip"] h2, [data-part="handover-strip"] h3, [data-part="handover-strip"] h4')).toBeNull();
