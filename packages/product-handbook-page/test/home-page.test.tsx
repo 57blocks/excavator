@@ -319,6 +319,16 @@ describe('the open-domains button and what the home page does not have', () => {
     expect(readFileSync(join(__dirname, '../src/index.css'), 'utf-8')).toMatch(/\.map-head \.open-domains \{ flex: none; \}/);
   });
 
+  it('leaves the domains page out of the left list: the button above the map is the way to it', () => {
+    const outline = outlineWithFeatures();
+    const indexed = domainData({ outline: { ...outline, parts: [{ title: d('Domains'), blocks: [{ block: 'domains', kind: 'chapter', title: d('Domains') }] }, ...outline.parts] } });
+    const host = home(indexed);
+    expect(host.querySelector('.side [data-page="chapter:domains"]')).toBeNull();
+    expect(host.querySelector('.side [data-ref-group="d~Domains"]')).toBeNull();
+    expect(host.querySelector('a[data-part="open-domains"]')?.getAttribute('href')).toBe('#/product/chapter/domains');
+    expect(host.querySelector('.side [data-page="chapter:system"]')).not.toBeNull();
+  });
+
   it('opens the index of all the domains when the outline places the domains chapter, and the first domain without it', () => {
     const outline = outlineWithFeatures();
     const indexed = domainData({ outline: { ...outline, parts: [{ title: d('Domains'), blocks: [{ block: 'domains', kind: 'chapter', title: d('Domains') }] }, ...outline.parts] } });

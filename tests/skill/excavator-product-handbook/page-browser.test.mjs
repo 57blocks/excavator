@@ -194,7 +194,7 @@ suite('page in a browser (O4)', () => {
         const sideShown = () => page.evaluate("getComputedStyle(document.querySelector('.side')).display !== 'none' && document.querySelector('.side').getBoundingClientRect().width > 0");
         expect(await sideShown()).toBe(width >= 900);
         expect(await page.evaluate("document.querySelector('.side').getAttribute('data-side')")).toBe('global');
-        expect(await page.evaluate("Array.from(document.querySelectorAll('.side a')).map((link) => link.getAttribute('data-nav') || link.getAttribute('data-page')).join(',')")).toBe('overview,problems,remedies,chapter:system,chapter:domains,history,coverage');
+        expect(await page.evaluate("Array.from(document.querySelectorAll('.side a')).map((link) => link.getAttribute('data-nav') || link.getAttribute('data-page')).join(',')")).toBe('overview,problems,remedies,chapter:system,history,coverage');
         if (width < 900) {
           expect(await page.evaluate("document.querySelector('#menu')")).toBeNull();
           await page.evaluate("document.querySelector('.menu-btn').click()");

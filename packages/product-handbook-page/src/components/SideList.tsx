@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Group, ReferenceGroup } from '../lib/groups';
 import { useLinks } from '../lib/links';
+import { DOMAINS_CHAPTER } from '../lib/search';
 import { useModel } from '../lib/model';
 import { hrefOf } from '../lib/pages';
 import { colourProps } from '../lib/strata';
@@ -44,10 +45,16 @@ function revealIn(box: HTMLElement, target: HTMLElement, top: boolean): void {
 
 const here = (on: boolean): 'page' | undefined => (on ? 'page' : undefined);
 
-/** The global state: the overview, the problems, the improvement suggestions, the system architecture (when the view has it), then the pages of the reference groups. */
-function GlobalList({ place, references, architecture }: Pick<BodyProps, 'place' | 'references' | 'architecture'>) {
+/**
+ * The global state: the overview, the problems, the improvement suggestions, the system architecture (when the view has it), then the
+ * pages of the reference groups. With domains the page of all the domains is not among them: the button above the map opens it.
+ */
+function GlobalList({ place, references: all, architecture, domains }: Pick<BodyProps, 'place' | 'references' | 'architecture'> & { domains: boolean }) {
   const t = useText();
   const nav = useLinks();
+  const references = domains
+    ? all.map((group) => ({ ...group, items: group.items.filter((item) => !(item.kind === 'chapter' && item.block === DOMAINS_CHAPTER)) })).filter((group) => group.items.length > 0)
+    : all;
   return (
     <>
       <ul className="side-top">
@@ -100,7 +107,7 @@ function DomainList({ place, groups }: Pick<BodyProps, 'place' | 'groups'>) {
 
 /** The body of the list in its mode: the left list and the phone's menu show this same content. */
 export function SideBody(props: BodyProps) {
-  return <div className="side-body">{props.mode === 'domain' ? <DomainList place={props.place} groups={props.groups} /> : <GlobalList place={props.place} references={props.references} architecture={props.architecture} />}</div>;
+  return <div className="side-body">{props.mode === 'domain' ? <DomainList place={props.place} groups={props.groups} /> : <GlobalList place={props.place} references={props.references} architecture={props.architecture} domains={props.groups.length > 0} />}</div>;
 }
 
 /**
