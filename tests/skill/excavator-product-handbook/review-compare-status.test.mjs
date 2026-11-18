@@ -32,10 +32,10 @@ function ready({ withFile = true, sources } = {}) {
       ],
       candidates: [
         candidate('X1', 'dual', ['F1', 'F2'], 'b1'),
-        candidate('X2', 'dict', ['F3'], 'c-data'),
+        candidate('X2', 'dict', ['F3'], 'b2'),
         candidate('X3', 'table', [], null),
-        candidate('X4', 'code', ['F1', 'F3'], 'c-code'),
-        candidate('X5', 'dual', ['F3', 'F4'], 'b2'),
+        candidate('X4', 'code', ['F1', 'F3'], 'b1'),
+        candidate('X5', 'dual', ['F3', 'F4'], 'b3'),
       ],
     });
   }
@@ -68,9 +68,9 @@ describe('compare buckets', () => {
       'COMPARE table candidates 1 item 0 dismissed 0 unjudged 1',
       'COMPARE topic not computed: chapters/topics.md is missing',
       'COMPARE code candidates 1 item 0 dismissed 0 unjudged 1',
-      'UNJUDGED X5 dual F3,F4 b2',
+      'UNJUDGED X5 dual F3,F4 b3',
       'UNJUDGED X3 table - -',
-      'UNJUDGED X4 code F1,F3 c-code',
+      'UNJUDGED X4 code F1,F3 b1',
     ]);
     for (const line of result.lines.filter((entry) => / candidates \d+ item /.test(entry))) {
       const n = line.match(/candidates (\d+) item (\d+) dismissed (\d+) unjudged (\d+)/).slice(1).map(Number);

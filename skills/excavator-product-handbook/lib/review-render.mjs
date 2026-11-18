@@ -15,6 +15,7 @@ import { readerTextReasons } from './chapter-lint.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { isObject, readJson, writeTextAtomic } from './json-file.mjs';
 import { CROSS_BATCH, FACTS_FILE } from './review-batches.mjs';
+import { candidateReasons } from './review-candidate-check.mjs';
 import { compareSection } from './review-compare-status.mjs';
 import { loadUi } from './ui.mjs';
 import { adviceWordsOf } from './word-lists.mjs';
@@ -181,6 +182,7 @@ export function validateBatch(ctx, batch) {
   read.value.items.forEach((item, at) => {
     for (const reason of itemReasons(ctx, batch, item)) reasons.push(`${batch.id} item ${at}: ${reason}`);
   });
+  reasons.push(...candidateReasons(ctx.outDir, batch.id, read.value, `entries/review/${batch.id}.unpruned.json`));
   return { reasons, items: read.value.items };
 }
 
