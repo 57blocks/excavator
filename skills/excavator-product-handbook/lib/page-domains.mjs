@@ -143,7 +143,7 @@ export function foldProcessSections(headings, processIds, title) {
 /**
  * The headings of the remedies chapter as the page shows it when its items are under the business domains: the headings above the first
  * level-2 heading, then for each domain its name (level 2), the names of its processes and the headings of its fixed sections (level 3),
- * the section of the items tied to no domain, and the generated section at the end with its own headings.
+ * the section of the defect fixes, the section of the items tied to no domain, and the generated section at the end with its own headings.
  */
 export function remedyPageHeadings(headings, remedyDomains, domains, processes, ui) {
   const firstSection = headings.findIndex((heading) => heading.level === 2);
@@ -156,6 +156,7 @@ export function remedyPageHeadings(headings, remedyDomains, domains, processes, 
     for (const process of domain.processes) out.push({ title: processName.get(process.id), level: 3 });
     for (const section of domain.sections) out.push({ title: section.heading, level: 3 });
   }
+  if (remedyDomains.defectFixes !== null) out.push({ title: remedyDomains.defectFixes.heading, level: 2 });
   if (remedyDomains.untied.length > 0) out.push({ title: ui['page.remedies.untied'], level: 2 });
   if (generated !== -1) out.push(...headings.slice(generated));
   return out;
