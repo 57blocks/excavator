@@ -17,6 +17,7 @@ import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { languageTag } from './language-tag.mjs';
 import { coverageLines } from './md-coverage.mjs';
 import { TECHNICAL_ONLY_BLOCKS, historyOf, scriptBlockNames } from './md-blocks.mjs';
+import { renderedChapter } from './chapter-render.mjs';
 import { chapterMarkdown, chapterTitle } from './md-views.mjs';
 import { directorySides, markServerSteps } from './step-sides.mjs';
 import { resolveOutlineV2 } from './outline-v2.mjs';
@@ -69,7 +70,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const featureIds = new Set(run.map.features.map((feature) => feature.id));
   const marks = { sides: directorySides(run.candidates), operations: t('chapter.section.operations'), marker: t('chapter.serverSteps') };
   const forPage = (block) => {
-    const chapter = run.chapters.get(block);
+    const chapter = renderedChapter(run, block);
     return featureIds.has(block) ? { ...chapter, text: markServerSteps(chapter.text, marks) } : chapter;
   };
   const chapters = parts.flatMap((part) => part.blocks).filter((item) => item.kind === 'chapter').map((item) => ({

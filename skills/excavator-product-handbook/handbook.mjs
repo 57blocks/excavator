@@ -29,7 +29,7 @@ import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
-import { remediesState } from './lib/remedies-inputs.mjs';
+import { remediesInputsLines, remediesState } from './lib/remedies-inputs.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
 import { renderReview } from './lib/review-render.mjs';
@@ -138,6 +138,11 @@ Commands:
       records; review skip <out> <batch> does the same and leaves an empty batch. review titles <out> --project <root>
       lists the items of the non-cross batches (batch, item, dimension, impact, features, title). review summary <out>
       prints "<batch> <name> kept=<n> removed=<m>" for each pruned batch.
+  remedies-inputs <out>
+      Print the items the remedies chapter may name, one line each and an indented "cites:" line after it: "DEFECT D<n> <level>
+      <category> <feature ids> <short title>" for each defect and "DESIGN R<n> <impact> <dimension> <feature ids> <title>" for each
+      design problem, numbered the way check, assemble and the page number them. A source that is not available prints one line
+      saying so ("DESIGN none: review.md is missing").
   remedies-state <out> --project <root>
       Print STATUS (the recorded status of the remedies chapter or none), ATTEMPTS, FILE (yes or no) and STALE (yes
       when it passed and the digest of defects.md and review.md differs from the one recorded with it, or none was
@@ -305,6 +310,11 @@ const COMMANDS = {
       return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
     }
     return report(renderReview(resolve(out), projectRootOption(options.project), rest));
+  },
+  'remedies-inputs'(args) {
+    const { positionals } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('remedies-inputs takes exactly one <out> directory');
+    return report(remediesInputsLines(resolve(positionals[0])));
   },
   'remedies-state'(args) {
     const { positionals } = parseArgs(args, ['project']);

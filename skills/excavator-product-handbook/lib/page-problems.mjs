@@ -3,138 +3,78 @@
  * of problems, built once here so the overview, the feature pages and the problems page show the same rows (D1).
  * Defects come from the shared parser (D2), design problems from the checked batch files, open questions from the
  * fixed section of each chapter (D3). Each source has its own state and a source that is not `ok` gives no rows (D5);
- * a row's remedy anchor is the one remedies heading that names its category or dimension, else none (D4).
+ * a row's remedy anchor is the level-2 heading of the remedies item that names the row's number (D4, handbook-process-review D11),
+ * or, for a remedies chapter that names no number, the one heading that names its category or dimension.
  */
 
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { citationGroups } from './chapter-cites.mjs';
-import { afterOpenQuestionTitle, openQuestionTitle, parseDefects, sectionItems } from './defects-items.mjs';
-import { readJson } from './json-file.mjs';
+import { afterOpenQuestionTitle, openQuestionTitle, sectionItems } from './defects-items.mjs';
+import { runNumbers, summaryOf } from './item-numbers.mjs';
 import { productText } from './md-views.mjs';
 import { pageHeadings, viewTexts } from './page-domains.mjs';
-import { FACTS_FILE, reviewBatches } from './review-batches.mjs';
-import { batchFile, reviewChapterText, sortedReviewItems } from './review-render.mjs';
+import { namedIds, parseRemedies } from './remedies-parse.mjs';
 
-const WIDE_SEMICOLON = String.fromCharCode(0xff1b);
-const WIDE_STOP = String.fromCharCode(0x3002);
-const ELLIPSIS = String.fromCharCode(0x2026);
-const SUMMARY_LIMIT = 120;
-/** The bold category at the start of a defect item, and the bold short title after it when the item has one (design D20). */
-const LEADING_CATEGORY = /^\*\*[^*]+\*\*\s*/;
-const LEADING_TITLE = /^\*\*[^*]+\*\*\s*/;
+export { summaryOf };
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const specsOf = (text) => citationGroups(text).flatMap((group) => group.specs);
 
-/** One line of product text: cut at the first sentence end within the limit, else the first 120 characters and an ellipsis. */
-export function summaryOf(text) {
-  const flat = text.replace(/\s+/g, ' ').trim();
-  const ends = [WIDE_SEMICOLON, WIDE_STOP, '; ', '. '].map((end) => flat.indexOf(end)).filter((at) => at !== -1);
-  if (/\.$/.test(flat)) ends.push(flat.length - 1);
-  const cut = ends.length === 0 ? -1 : Math.min(...ends);
-  if (cut !== -1 && cut <= SUMMARY_LIMIT) return flat.slice(0, cut).trim();
-  return flat.length > SUMMARY_LIMIT ? `${flat.slice(0, SUMMARY_LIMIT)}${ELLIPSIS}` : flat;
-}
-
-/** The source description for a chapter that is not usable: `missing` without the file, `failed` without a passed record. */
-function chapterState(run, name) {
-  const chapter = run.chapters.get(name);
-  if (chapter === undefined) return 'missing';
-  return chapter.record.status === 'passed' ? 'ok' : 'failed';
-}
-
+/** The remedies chapter as the rows read it: its level-2 headings (page index) and its list items, or null without the chapter. */
 function remedyIndex(run) {
   const chapter = run.chapters.get('remedies');
   if (chapter === undefined) return null;
-  return pageHeadings(productText(chapter.text)).map((heading, index) => ({ ...heading, index })).filter((heading) => heading.level === 2);
+  const headings = pageHeadings(productText(chapter.text)).map((heading, index) => ({ ...heading, index })).filter((heading) => heading.level === 2);
+  const parsed = parseRemedies(chapter.text);
+  return { headings, parsed, numbered: namedIds(parsed).size > 0 };
 }
 
-/** `{ chapter: 'remedies', heading }` when exactly one level-2 heading of the remedies chapter matches, else null. */
-function remedyOf(headings, matches) {
-  if (headings === null) return null;
-  const found = headings.filter((heading) => matches(heading.title));
+/**
+ * `{ chapter: 'remedies', heading }` for a row. When the remedies chapter names ids, the level-2 heading of the first list
+ * item whose id group names `id` (null when no item does); an older chapter that names none keeps the match by name: exactly
+ * one level-2 heading that `matches`.
+ */
+function remedyOf(index, id, matches) {
+  if (index === null) return null;
+  if (index.numbered) {
+    const item = index.parsed.items.find((entry) => entry.ids.includes(id) && entry.section !== null);
+    return item === undefined ? null : { chapter: 'remedies', heading: item.section.page };
+  }
+  const found = index.headings.filter((heading) => matches(heading.title));
   return found.length === 1 ? { chapter: 'remedies', heading: found[0].index } : null;
 }
 
-function defectRows(run, views, headings) {
-  const state = chapterState(run, 'defects');
+/** The defect rows; a source that is not `ok` (item-numbers.mjs) gives none. */
+function defectRows(run, views, index) {
+  const { state, items } = runNumbers(run).defects;
   if (state !== 'ok') return { state, rows: [] };
-  const chapter = run.chapters.get('defects');
-  const { items, problems } = parseDefects(chapter.text, { none: run.ui['chapter.none'] });
-  if (problems.length > 0) return { state: 'failed', rows: [] };
   const technical = views.includes('technical');
-  const rows = items.map((item, at) => {
-    const rest = item.text.replace(LEADING_CATEGORY, '');
-    const body = item.title === null ? rest : rest.replace(LEADING_TITLE, '');
-    const word = new RegExp(`\\b${escapeRegExp(item.category)}\\b`);
+  const rows = items.map((entry) => {
+    const word = new RegExp(`\\b${escapeRegExp(entry.category)}\\b`);
     return {
-      id: `d${at + 1}`,
+      id: `d${entry.n}`,
       type: 'defect',
-      level: item.level,
-      group: item.category,
-      features: [...item.features],
-      // The writer's short title when the item has one; an older chapter without titles falls back to the first clause.
-      summary: item.title ?? summaryOf(productText(body)),
-      texts: viewTexts(body, views),
-      ...(technical ? { cites: specsOf(item.text) } : {}),
-      source: { chapter: 'defects', line: item.line },
-      remedy: remedyOf(headings, (title) => word.test(title)),
+      level: entry.level,
+      group: entry.category,
+      features: [...entry.features],
+      summary: entry.title,
+      texts: viewTexts(entry.body, views),
+      ...(technical ? { cites: specsOf(entry.item.text) } : {}),
+      source: { chapter: 'defects', line: entry.line },
+      remedy: remedyOf(index, entry.id, (title) => word.test(title)),
     };
   });
   return { state: 'ok', rows };
 }
 
-/** The batches the review chapter was rendered from, in order: the facts file's, else the ones the run's map and domains give. */
-function batchIds(outDir) {
-  const facts = readJson(join(outDir, FACTS_FILE));
-  if (facts.ok && Array.isArray(facts.value?.batches) && facts.value.batches.every((batch) => typeof batch?.id === 'string')) {
-    return facts.value.batches.map((batch) => batch.id);
-  }
-  const listed = reviewBatches(outDir);
-  return listed.ok ? listed.batches.map((batch) => batch.id) : null;
-}
-
-/** The `[{ batch, items }]` the chapter was rendered from, or null when a batch file is missing or unreadable. */
-function loadBatches(outDir) {
-  const ids = batchIds(outDir);
-  if (ids === null) return null;
-  const batches = [];
-  for (const id of ids) {
-    if (!existsSync(join(outDir, batchFile(id)))) return null;
-    const read = readJson(join(outDir, batchFile(id)));
-    if (!read.ok || !Array.isArray(read.value?.items)) return null;
-    batches.push({ batch: { id }, items: read.value.items });
-  }
-  return batches;
-}
-
-/** The 1-based line of each item's `### title` heading, in the order the chapter lists them. */
-function itemLines(text, sorted) {
-  const lines = text.split('\n');
-  let from = 0;
-  return sorted.map(({ item }) => {
-    const at = lines.indexOf(`### ${item.title.trim()}`, from);
-    if (at === -1) return 1;
-    from = at + 1;
-    return at + 1;
-  });
-}
-
-function designRows(run, views, headings) {
-  const state = chapterState(run, 'review');
+function designRows(run, views, index) {
+  const { state, items } = runNumbers(run).design;
   if (state !== 'ok') return { state, rows: [] };
-  const batches = loadBatches(run.outDir);
-  const text = run.chapters.get('review').text;
-  if (batches === null || reviewChapterText({ strings: run.ui, map: run.map }, batches) !== text) return { state: 'changed', rows: [] };
   const technical = views.includes('technical');
-  const sorted = sortedReviewItems(batches);
-  const lines = itemLines(text, sorted);
-  const rows = sorted.map(({ item }, at) => {
+  const rows = items.map((entry) => {
+    const { item } = entry;
     const label = run.ui[`chapter.review.dimension.${item.dimension}`];
     return {
-      id: `r${at + 1}`,
+      id: `r${entry.n}`,
       type: 'design',
       level: item.impact,
       group: item.dimension,
@@ -144,8 +84,8 @@ function designRows(run, views, headings) {
         ? { situation: productText(item.situation), consequence: productText(item.consequence) }
         : { situation: item.situation, consequence: item.consequence }])),
       ...(technical ? { cites: [...item.cites] } : {}),
-      source: { chapter: 'review', line: lines[at] },
-      remedy: remedyOf(headings, (title) => title.includes(label)),
+      source: { chapter: 'review', line: entry.line },
+      remedy: remedyOf(index, entry.id, (title) => title.includes(label)),
     };
   });
   return { state: 'ok', rows };
@@ -184,15 +124,15 @@ function openRows(run, views) {
 
 /** The `problems` key: the state and count of each source, the rows (defects, design problems, open questions) and the remedies chapter id. */
 export function problemsData(run, views) {
-  const headings = remedyIndex(run);
-  const defects = defectRows(run, views, headings);
-  const design = designRows(run, views, headings);
+  const index = remedyIndex(run);
+  const defects = defectRows(run, views, index);
+  const design = designRows(run, views, index);
   const open = openRows(run, views);
   const source = ({ state, rows }) => ({ state, count: state === 'ok' ? rows.length : null });
   // `unmatched`: the chapters with no heading equal to the fixed text, so no question was taken from them.
   return {
     sources: { defects: source(defects), design: source(design), open: { ...source(open), unmatched: open.unmatched } },
     rows: [...defects.rows, ...design.rows, ...open.rows],
-    remedies: headings === null ? null : 'remedies',
+    remedies: index === null ? null : 'remedies',
   };
 }

@@ -16,7 +16,9 @@ import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
 import { withStateLock } from './lock.mjs';
 import { projectFiles } from './project-files.mjs';
+import { diskChapters, itemNumbers, readMapOrNull } from './item-numbers.mjs';
 import { remediesInputs } from './remedies-inputs.mjs';
+import { remediesReasons } from './remedies-check.mjs';
 import { loadStateV2, saveStateV2 } from './state-v2.mjs';
 import { loadUi } from './ui.mjs';
 
@@ -59,7 +61,9 @@ function beforeGate(outDir, target) {
 function checkChapters(outDir, names, root, record) {
   const dir = join(outDir, 'chapters');
   const available = existsSync(dir) ? readdirSync(dir).filter((file) => file.endsWith('.md')).map(stem).sort() : [];
-  const wanted = names.length > 0 ? [...new Set(names.map(stem))] : available;
+  // The remedies chapter is checked last: its ids are read from the defects and design-problems chapters, which a call that checks them too has just recorded.
+  const asked = names.length > 0 ? [...new Set(names.map(stem))] : available;
+  const wanted = [...asked.filter((name) => name !== 'remedies'), ...asked.filter((name) => name === 'remedies')];
   const ui = loadUi(outDir);
   if (!ui.ok) return { status: 1, lines: ui.lines };
   const ids = featureIds(outDir) ?? [];
@@ -90,6 +94,10 @@ function checkChapters(outDir, names, root, record) {
         listHash = list.hash;
       }
       if (name === 'defects') reasons = [...reasons, ...defectsReasons(outDir, chapterText, ids, ui.strings)];
+      if (name === 'remedies') {
+        const numbers = itemNumbers({ outDir, map: readMapOrNull(outDir), chapters: diskChapters(outDir, ['defects', 'review'], state), strings: ui.strings });
+        reasons = [...reasons, ...remediesReasons(chapterText, { numbers, strings: ui.strings })];
+      }
     }
     const status = reasons.length === 0 ? 'passed' : 'failed';
     if (status === 'failed') failed = true;

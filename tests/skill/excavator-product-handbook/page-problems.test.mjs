@@ -227,6 +227,35 @@ describe('problemsData: remedies', () => {
     expect(design.find((row) => row.group === 'duplication').remedy).toBeNull();
   });
 
+  it('links a row to the level-2 heading of the first item whose id group names its number; a row no item names gets none', () => {
+    const numbered = `# Remedies
+
+## Measures across processes
+
+- **Merge entrances** Close orders in one place [R1, D1] (\`${FORM}:7\`).
+
+## Defect fixes
+
+- **display** Show the button [D2] (\`${FORM}:6\`).
+
+## To simplify and unify
+
+1. **Unify the rule** One duplication rule [R2] (\`${FORM}:7\`).
+
+## To fix
+
+1. **Fix** Move the secret [D1] (\`${FORM}:5\`).
+`;
+    const data = problemsData(full({ remedies: numbered }).load(), ['product']);
+    const heading = (id) => data.rows.find((row) => row.id === id).remedy;
+    expect(heading('d1')).toEqual({ chapter: 'remedies', heading: 0 });
+    expect(heading('d2')).toEqual({ chapter: 'remedies', heading: 1 });
+    expect(heading('d3')).toBeNull();
+    expect(heading('r1')).toEqual({ chapter: 'remedies', heading: 0 });
+    expect(heading('r2')).toEqual({ chapter: 'remedies', heading: 2 });
+    expect(heading('r3')).toBeNull();
+  });
+
   it('has no remedies chapter id and no links without a remedies chapter', () => {
     const run = setup({ chapters: { defects: DEFECTS, system: SYSTEM }, batches: { b1: B1, b2: B2 } });
     const data = problemsData(run.load(), ['product']);

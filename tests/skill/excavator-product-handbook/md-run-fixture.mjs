@@ -31,6 +31,42 @@ Nobody can tell how long drafts live.
 None.
 `;
 
+/** A defects chapter with one P0 defect (D1, display, F1) that passes `check defects`. */
+export const DEFECTS_ONE = `# Defects
+
+## P0
+
+- **display** **Hidden button** The list hides a button, Orders (F1) (${cite('5')}).
+
+## P1
+
+None.
+
+## P2
+
+None.
+`;
+
+/** A remedies chapter that passes `check remedies` beside DEFECTS_ONE and no design problems chapter; \`extra\` is added to the end of the last list item's text. */
+export const remediesText = (extra = '') => `# Remedies
+
+## Measures across processes
+
+None.
+
+## Defect fixes
+
+- **display** Show the hidden button again [D1] (${cite('5')}).
+
+## To simplify and unify
+
+None.
+
+## To fix
+
+1. **Fix** Show the button on the list [D1] (${cite('5')}).${extra}
+`;
+
 /** A domains chapter that passes `check domains`: one domain under the fixed level-3 headings (design D23). */
 export const DOMAINS_TEXT = `# Domains
 
@@ -49,8 +85,28 @@ The orders domain (${cite('5')}).
 None.
 `;
 
-/** The text of a chapter called `name` for a run with every chapter: the domains chapter above, any other `chapterText`. */
-export const textOf = (name) => (name === 'domains' ? DOMAINS_TEXT : chapterText(name));
+/** A remedies chapter that passes `check remedies` beside a defects chapter with no defect and no design problems: every section holds the none text. */
+export const REMEDIES_NONE = `# Remedies
+
+## Measures across processes
+
+None.
+
+## Defect fixes
+
+None.
+
+## To simplify and unify
+
+None.
+
+## To fix
+
+None.
+`;
+
+/** The text of a chapter called `name` for a run with every chapter: the domains and remedies chapters above, any other `chapterText`. */
+export const textOf = (name) => (name === 'domains' ? DOMAINS_TEXT : name === 'remedies' ? REMEDIES_NONE : chapterText(name));
 
 /** A run with a good map; `chapters` is `{ name: text }`; every written chapter is checked once. */
 export function newMdRun(chapters = {}, { check = true } = {}) {

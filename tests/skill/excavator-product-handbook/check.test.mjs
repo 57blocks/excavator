@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 
 import { makeRun } from './helpers.mjs';
+import { DEFECTS_ONE, remediesText } from './md-run-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -154,8 +155,9 @@ describe('G: advice words', () => {
   rejects('an advice word in a feature chapter', (t) => t.replace('Nobody can tell', 'Nobody can say whether to improve'), /"improve" is a word of advice; only the remedies chapter gives advice/);
   it('the remedies chapter may use advice words', () => {
     const run = newRun();
-    run.write('remedies', `# Remedies\n\nWe recommend a change (${c('5')}).\n`);
-    const result = run.check('remedies');
+    run.write('defects', DEFECTS_ONE);
+    run.write('remedies', remediesText(' We recommend a change.'));
+    const result = run.check('defects', 'remedies');
     expect(result.status, result.stdout).toBe(0);
   });
   it('another cross chapter may not', () => {

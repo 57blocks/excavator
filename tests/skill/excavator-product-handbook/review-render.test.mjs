@@ -138,7 +138,7 @@ describe('review render: the chapter', () => {
     expect(text).toContain('| Dead end | 0 | 0 | 1 |');
     const dims = [...text.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
     expect(dims).toEqual(['Counts by dimension and impact', 'Duplication', 'Complexity', 'Redundancy', 'Dead end']);
-    expect(text).toContain('### Two places end an order\n\nImpact: Medium; Features: Orders (F1), Archive (F2) (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
+    expect(text).toContain('### R1 Two places end an order\n\nImpact: Medium; Features: Orders (F1), Archive (F2) (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
     expect(text).toContain('Situation: Both features let the clerk close an order (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
     expect(text).toContain('Consequence: A clerk has to know which screen to use (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
   });

@@ -117,7 +117,7 @@ describe('review prune: the result', () => {
     expect(run.readJson('entries/review-removed.json')).toEqual({ removed: [{ batch: 'b1', title: 'Sending takes many steps', dimension: 'complexity', features: ['F1'], reason: 'The line does not say it takes 4 steps.' }] });
     const text = readFileSync(join(run.out, 'chapters', 'review.md'), 'utf-8');
     expect(text).not.toContain('Sending takes many steps');
-    expect(text).toContain('### Archiving is slow');
+    expect(text).toContain('### R2 Archiving is slow');
     const checked = run.check('review');
     expect(checked.status, checked.stdout).toBe(0);
   });

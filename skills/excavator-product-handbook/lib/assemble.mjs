@@ -18,6 +18,7 @@ import { writeTextAtomic } from './json-file.mjs';
 import { coverageLines } from './md-coverage.mjs';
 import { TECHNICAL_ONLY_BLOCKS, historyOf, scriptBlockNames } from './md-blocks.mjs';
 import { loadMdRun } from './md-run.mjs';
+import { renderedChapter } from './chapter-render.mjs';
 import { chapterMarkdown } from './md-views.mjs';
 import { dataBlock } from './render-data.mjs';
 import { dictionaryBlock } from './render-dict.mjs';
@@ -44,7 +45,7 @@ function scriptBlocks(run, root) {
 
 /** One chapter in a view, its headings one level down so the handbook title is the only level-1 heading. */
 function chapterText(run, name, view) {
-  const text = chapterMarkdown(run.chapters.get(name), view, run.ui);
+  const text = chapterMarkdown(renderedChapter(run, name), view, run.ui);
   return shiftHeadings(text.split('\n'), 1).join('\n').replace(/\s+$/, '');
 }
 

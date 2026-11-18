@@ -197,13 +197,13 @@ export function reviewChapterText(ctx, batches) {
   out.push('');
   if (flat.length === 0) out.push(ctx.strings['chapter.none'], '');
   let current = null;
-  for (const { item } of flat) {
+  for (const [at, { item }] of flat.entries()) {
     if (item.dimension !== current) {
       current = item.dimension;
       out.push(`## ${t(`dimension.${current}`)}`, '');
     }
     const features = item.features.map(nameOf).join(wide ? String.fromCharCode(0x3001) : ', ');
-    out.push(`### ${item.title.trim()}`, '');
+    out.push(`### R${at + 1} ${item.title.trim()}`, '');
     out.push(cited(`${t('field.impact')}${colon}${t(`impact.${item.impact}`)}${semicolon}${t('field.features')}${colon}${features}`, item.cites, wide), '');
     out.push(cited(`${t('field.situation')}${colon}${item.situation}`, item.cites, wide), '');
     out.push(cited(`${t('field.consequence')}${colon}${item.consequence}`, item.cites, wide), '');
