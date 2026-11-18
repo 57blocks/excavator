@@ -31,6 +31,7 @@ import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { remediesInputsLines, remediesState } from './lib/remedies-inputs.mjs';
 import { processesFacts } from './lib/processes-facts.mjs';
+import { checkPart, joinParts, processesParts, resetPart } from './lib/processes-parts.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { reviewCandidateLines, reviewCandidates, reviewCompare } from './lib/review-compare.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
@@ -171,13 +172,28 @@ Commands:
       Print STATUS (the recorded status of the remedies chapter or none), ATTEMPTS, FILE (yes or no) and STALE (yes
       when it passed and the digest of defects.md and review.md differs from the one recorded with it, or none was
       recorded and review.md exists).
-  processes facts <out>
+  processes facts <out> [<part>]
       The reading list of the writer of the business processes, in map order, from map.json, the run's fixed text, the
       feature chapters and domains.json: "OP<TAB><F><TAB><F>.md:<line><TAB><title>" for each level-3 heading of a feature
       chapter's operations section, "UNREAD<TAB><F><TAB><reason>" for a feature with no chapter or no operations section,
       "EDGE<TAB><F><TAB><G><TAB><F>.md:<line>" for each other map feature named in a list item of its hand-overs section,
       "HANDOVER<TAB><from> -> <to>: <what>" for each hand-over of domains.json, and a last "Counts:" line. Exits 1 when
-      map.json is missing. Writes no file.
+      map.json is missing. Writes no file. With a part id (b1...bn, the groups of the design-problems domain batches) only the
+      OP and UNREAD lines of the part's features and of the features linked to them by an EDGE in either direction, the
+      EDGE lines with an end in the part, the HANDOVER lines from or to the part's name, and a Counts line of what was printed
+      ending in ", in part <id>".
+  processes check-part <out> <part> --project <root>
+      The reasons the part file entries/processes/<part>.md is refused, one line each (exit 1), or "<part>: passed": the
+      chapter checks of "check processes" run on the part as it will sit in the joined chapter (line numbers are the part's),
+      no level-1 heading, a process whose first step's feature is not a feature of the part, and "the part was not written".
+      An empty file passes. Records nothing.
+  processes parts <out> --project <root>
+      "<part><TAB><write|done><TAB><name><TAB><feature ids>" per part, the reasons of a write part indented below it.
+  processes reset <out> <part>  /  processes skip <out> <part>
+      Delete the part file ("cleared") / write an empty one ("emptied").
+  processes join <out> --project <root>
+      When every part is done, writes chapters/processes.md (the fixed title and the parts in order) and prints
+      "processes.md: joined <k> parts, <p> processes"; otherwise writes nothing, exits 1 and lists "<part><TAB><state><TAB><name>".
   check <out> [<chapter>...] [--before cross|review|processes] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
@@ -366,10 +382,28 @@ const COMMANDS = {
     return report(remediesInputsLines(resolve(positionals[0])));
   },
   processes(args) {
-    const { positionals } = parseArgs(args, []);
-    if (positionals[0] !== 'facts') throw new UsageError('processes takes facts, then <out>');
-    if (positionals.length !== 2) throw new UsageError('processes facts takes exactly one <out> directory');
-    return report(processesFacts(positionals[1]));
+    const { positionals, options } = parseArgs(args, ['project']);
+    const [sub, out, part] = positionals;
+    const takes = (count, usage) => {
+      if (positionals.length !== count + 1) throw new UsageError(`processes ${sub} takes ${usage}`);
+    };
+    if (sub === 'facts') {
+      if (positionals.length < 2 || positionals.length > 3) throw new UsageError('processes facts takes <out> and, optionally, one part');
+      return report(processesFacts(out, part ?? null));
+    }
+    if (sub === 'check-part') {
+      takes(2, '<out>, one part and --project <root>');
+      return report(checkPart(out, part, projectRootOption(options.project)));
+    }
+    if (sub === 'parts' || sub === 'join') {
+      takes(1, '<out> and --project <root>');
+      return report((sub === 'parts' ? processesParts : joinParts)(out, projectRootOption(options.project)));
+    }
+    if (sub === 'reset' || sub === 'skip') {
+      takes(2, '<out> and one part');
+      return report(resetPart(out, part, { empty: sub === 'skip' }));
+    }
+    throw new UsageError('processes takes facts, check-part, parts, reset, skip or join, then <out>');
   },
   'remedies-state'(args) {
     const { positionals } = parseArgs(args, ['project']);

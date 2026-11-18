@@ -35,6 +35,17 @@ function featureIds(outDir) {
   return read.value.features.map((feature) => feature.id);
 }
 
+/**
+ * The reasons of a business-processes chapter `text`: the general chapter lint, then the process checks. Shared with
+ * `processes check-part`, which runs it on a part as it will sit in the joined chapter. `ctx`: `files`, `memberDirs`, `cache`.
+ */
+export function processesChapterReasons(outDir, text, { ids, strings, files, memberDirs = [], cache = new Map() }) {
+  return [
+    ...lintChapter(text, { kind: 'cross', name: 'processes', files, strings, memberDirs, cache }),
+    ...processesReasons(outDir, text, { featureIds: ids, strings }),
+  ];
+}
+
 function kindOf(name, ids) {
   if (name === 'system') return 'system';
   if (CROSS_CHAPTERS.includes(name)) return 'cross';
@@ -101,14 +112,15 @@ function checkChapters(outDir, names, root, record) {
     else {
       bytes = readFileSync(path);
       const chapterText = bytes.toString('utf-8');
-      reasons = lintChapter(chapterText, { kind, name, files, strings: ui.strings, memberDirs, cache });
+      reasons = name === 'processes'
+        ? processesChapterReasons(outDir, chapterText, { ids, strings: ui.strings, files, memberDirs, cache })
+        : lintChapter(chapterText, { kind, name, files, strings: ui.strings, memberDirs, cache });
       if (name === 'domains') {
         const list = domainsListReasons(outDir, chapterText, ids);
         reasons = [...reasons, ...domainSubheadingReasons(chapterText, ui.strings), ...list.reasons];
         listHash = list.hash;
       }
       if (name === 'defects') reasons = [...reasons, ...defectsReasons(outDir, chapterText, ids, ui.strings)];
-      if (name === 'processes') reasons = [...reasons, ...processesReasons(outDir, chapterText, { featureIds: ids, strings: ui.strings })];
       if (name === 'remedies') {
         const numbers = itemNumbers({ outDir, map: readMapOrNull(outDir), chapters: diskChapters(outDir, ['defects', 'processes', 'review'], state), strings: ui.strings });
         reasons = [...reasons, ...remediesReasons(chapterText, { numbers, strings: ui.strings })];
