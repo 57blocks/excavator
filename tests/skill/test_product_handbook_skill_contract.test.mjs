@@ -165,11 +165,16 @@ describe('the design-problems phase', () => {
     expect(review()).toMatch(/Never make a third attempt/);
   });
 
-  it('remedies read the design problems when present and say what each recommendation addresses', () => {
+  it('remedies read the numbered tables, write the fixed structure and name the items each measure rests on', () => {
     const text = TEXT['sections/remedies.md'];
     expect(text).toContain('remedies-state "$OUT"');
-    expect(text).toContain('`$OUT/chapters/review.md` when that file exists');
-    expect(text).toMatch(/which defects or design problems it addresses/);
+    expect(text).toContain('handbook.mjs" remedies-inputs "$OUT"');
+    expect(text).toContain('`$OUT/chapters/review.md` only where an item sends you');
+    for (const key of ['crossProcess', 'defectFixes', 'simplify', 'fix']) expect(text).toContain(`<chapter.remedies.${key}>`);
+    for (const type of ['merge-entrance', 'unify-rule', 'remove-step', 'automate', 'retire-old', 'fix']) expect(text).toContain(`<chapter.remedies.type.${type}>`);
+    expect(text).toContain('startswith("chapter.remedies.")');
+    expect(text).toMatch(/exactly one group per item/);
+    expect(text).toMatch(/never write an id that is not printed/);
     expect(text).toContain('STALE=yes');
   });
 });
