@@ -13,7 +13,7 @@ export const DOMAINS_CHAPTER = 'domains';
 export type Target =
   | { kind: 'domain'; id: string }
   | { kind: 'chapter'; id: string }
-  | { kind: 'heading'; chapter: string; heading: number }
+  | { kind: 'heading'; chapter: string; heading: number; tab?: string }
   | { kind: 'process'; id: string }
   | { kind: 'problem'; id: string };
 
@@ -92,7 +92,7 @@ function titleResults({ query, groups, items, references, domainsLabel, systemTi
     const group = groupOfFeature(groups, item.chapter);
     if (item.kind === 'chapter') return { key: `chapter:${item.chapter}`, title: titleOfChapter.get(item.chapter) ?? item.title, context: group?.name ?? '', domain: group?.id ?? null, target: { kind: 'chapter', id: item.chapter } };
     if (item.kind === 'heading' && item.heading !== null) {
-      return { key: `heading:${item.chapter}:${item.heading}`, title: item.title, context: titleOfChapter.get(item.chapter) ?? item.chapter, domain: group?.id ?? null, target: { kind: 'heading', chapter: item.chapter, heading: item.heading } };
+      return { key: `heading:${item.chapter}:${item.tab === undefined ? '' : `${item.tab}:`}${item.heading}`, title: item.title, context: titleOfChapter.get(item.chapter) ?? item.chapter, domain: group?.id ?? null, target: { kind: 'heading', chapter: item.chapter, heading: item.heading, ...(item.tab === undefined ? {} : { tab: item.tab }) } };
     }
     return null;
   };

@@ -2,7 +2,7 @@
  * The page's routes live in the URL fragment so the back button and shared links work: `#/` (the home page, the
  * map), `#/domain/<id>` (a domain page), `#/chapter/<block>` (a chapter written as Markdown), `#/data` and `#/dictionaries` (technical view only),
  * `#/history`, `#/coverage` and `#/architecture` (technical view only), and `#/problems` (the problems page; a query after `?`
- * holds its filters: `?domain=d1&feature=F7&type=defect&level=P0&q=text`, and `row=r12` opens that row) `#/processes` and `#/processes/P4` (the business processes and one of them), and `#/remedies` (the improvement suggestions page; the
+ * holds its filters: `?domain=d1&feature=F7&type=defect&level=P0&q=text`, and `row=r12` opens that row) `#/processes` and `#/processes/P4` (the business processes and one of them), and `#/remedies` (the improvement suggestions page, `?tab=<group>` for the tab; the
  * old address `#/problems/remedies` still parses to it, its query ignored). A page that has both views puts the view in front of each (`#/technical/chapter/F1`);
  * a page with one view has no prefix, and a fragment without one is the first view. Parsing never throws: a fragment
  * that names no route is `not-found`.
@@ -27,7 +27,7 @@ export type RouteBody =
   | { name: 'coverage' }
   | { name: 'architecture' }
   | { name: 'problems'; filters: ProblemFilters }
-  | { name: 'remedies' }
+  | { name: 'remedies'; tab?: string }
   | { name: 'processes' }
   | { name: 'process'; id: string }
   | { name: 'not-found'; hash: string };
@@ -75,7 +75,13 @@ function parseBody(rest: string[], hash: string, query: string | null): RouteBod
     if (rest.length === 2 && rest[1] === 'remedies') return { name: 'remedies' };
     return { name: 'not-found', hash };
   }
-  if (rest.length === 1 && rest[0] === 'remedies') return query === null ? { name: 'remedies' } : { name: 'not-found', hash };
+  if (rest.length === 1 && rest[0] === 'remedies') {
+    // The tab of the page is the one query key it has; any other query is no address of it.
+    if (query === null) return { name: 'remedies' };
+    const pairs = query.split('&').map((pair) => pair.split('='));
+    const tab = pairs.length === 1 && pairs[0][0] === 'tab' && pairs[0].length === 2 ? decode(pairs[0][1]) : null;
+    return tab === null || tab === '' ? { name: 'not-found', hash } : { name: 'remedies', tab };
+  }
   if (query !== null) return { name: 'not-found', hash };
   if (rest.length >= 1 && rest[0] === 'processes') {
     if (rest.length === 1) return { name: 'processes' };
@@ -137,5 +143,6 @@ function queryOf(filters: ProblemFilters): string {
 export function routeHash(route: RouteBody, prefix: View | null): string {
   const parts = prefix === null ? segments(route) : [prefix, ...segments(route)];
   const base = parts.length === 0 ? '#/' : `#/${parts.join('/')}`;
+  if (route.name === 'remedies' && route.tab !== undefined) return `${base}?tab=${encodeURIComponent(route.tab)}`;
   return route.name === 'problems' ? `${base}${queryOf(route.filters)}` : base;
 }

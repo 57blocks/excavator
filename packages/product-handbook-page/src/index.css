@@ -715,6 +715,12 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .remedy-row-label { color: var(--text-3); font-size: 13px; }
 .remedy-row-content { min-width: 0; overflow-wrap: anywhere; }
 .remedy-row-content > p { margin: 0; }
+.remedy-tabs { display: flex; flex-wrap: wrap; gap: 0 24px; margin-top: 20px; border-bottom: 1px solid var(--line); }
+.remedy-tabs a { padding: 8px 0; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--text-2); text-decoration: none; }
+.remedy-tabs a:hover { color: var(--text); }
+.remedy-tabs a[aria-selected="true"] { font-weight: 500; color: var(--text); border-bottom-color: var(--text); }
+.remedy-tab-count { margin-left: 6px; color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.remedy-note { margin: 12px 0 0; font-size: 14px; }
 .remedy-covered { margin: 12px 0 0; font-size: 14px; color: var(--text-2); }
 .remedy-problem-title { color: var(--text); }
 .remedy-more { justify-self: start; padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; font-size: 13.5px; cursor: pointer; }

@@ -89,7 +89,8 @@ export function SearchDialog({ groups, colours, items, chapters, references, onC
     else {
       // The remedies chapter is the improvement suggestions page, not a chapter page.
       const chapter = target.kind === 'chapter' ? target.id : target.chapter;
-      window.location.hash = chapter === 'remedies' ? nav.remedies : nav.chapter(chapter);
+      const tab = target.kind === 'heading' ? target.tab : undefined;
+      window.location.hash = chapter === 'remedies' ? (tab === undefined ? nav.remedies : nav.remedyTab(tab)) : nav.chapter(chapter);
     }
     if (target.kind === 'heading') jumpToHeading(target.chapter, target.heading);
   };

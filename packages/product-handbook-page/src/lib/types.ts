@@ -222,25 +222,40 @@ export interface SearchItem {
   heading: number | null;
   /** 2 or 3 for a heading, null for the other kinds. */
   level: 2 | 3 | null;
+  /** The tab of the remedies page a heading of the remedies chapter is in (its `heading` counts the headings of that tab). */
+  tab?: string;
   /** The id of the problem row (`d3`, `r12`) of a `problem` item, the process (`P4`) of a `process` item. */
   id?: string;
 }
 
-/** An item of the remedies chapter placed under a domain or a process: its line in the chapter and the rows (`d3`, `r12`) its problem lines are for. */
-export interface RemedyRef { line: number; problems: string[] }
+/**
+ * An item of the remedies chapter placed in a group: its line in the chapter, the rows (`d3`, `r12`) its problem row is for, `process`
+ * (`P<n>`) when it was written under that process, and `bare` when its bold type word is left out of its text.
+ */
+export interface RemedyRef { line: number; problems: string[]; process?: string; bare?: boolean }
+
+/** The groups of the remedies page by measure type, the tab of each. */
+export type RemedyGroupId = 'simplify' | 'unify' | 'automate' | 'defects' | 'other';
+
+/** One tab of the remedies page: the items of a measure type, `count` distinct ones, under the domains they involve; the category items of the defect fixes are in `across`. */
+export interface RemedyGroup {
+  id: RemedyGroupId;
+  count: number;
+  across: RemedyRef[];
+  /** `covered`: the number of the domain's problems that the category items name, and those items (their line and bold label). */
+  domains: { id: string; items: RemedyRef[]; covered?: { count: number; items: { line: number; label: string }[] } }[];
+  untied: RemedyRef[];
+}
 
 /**
- * The items of a remedies chapter that names ids, under the business domains they involve (page-remedies.mjs): `items` holds the text of
- * each by view, `domains` (in the page's order, only those with items) the items under each process of the domain and under each fixed
- * section of the chapter, `defectFixes` the section of the defect fixes (not repeated under the domains), `untied` the items that involve no domain. Null for a chapter that names no id or a page without usable domains.
+ * The items of a remedies chapter that names ids, in groups by measure type and under the business domains they involve
+ * (page-remedies.mjs): `items` holds the text of each by view, `groups` the tabs in order (only those with items), `generated` the
+ * number of problems the generated section lists (null for none). Null for a chapter that names no id or a page without usable domains.
  */
 export interface RemedyDomains {
   items: ProcessRemedy[];
-  /** `covered`: the number of the domain's problems that the defect fixes name, and the fixes that name some (their line and bold label), for the line at the end of the domain's section. */
-  domains: { id: string; processes: { id: string; items: RemedyRef[] }[]; sections: { heading: string; items: RemedyRef[] }[]; covered?: { count: number; items: { line: number; label: string }[] } }[];
-  /** The items of the section of the defect fixes, each once with every problem it names, under the chapter's own heading; null without any. */
-  defectFixes: { heading: string; items: RemedyRef[] } | null;
-  untied: RemedyRef[];
+  groups: RemedyGroup[];
+  generated: number | null;
 }
 
 /** The three kinds of problem rows: defects (parser), design problems (checked batches), open questions (fixed section of a chapter). */
@@ -276,7 +291,7 @@ export interface ProblemRow {
 }
 
 /** One item of the remedies chapter that names a problem row: the title of its section and the id of its element, on the remedies page or, with `process` (`P<n>`), on the page of that process. */
-export interface RemedyLink { heading: string; anchor: string; process?: string; domain?: string }
+export interface RemedyLink { heading: string; anchor: string; process?: string; domain?: string; tab?: string }
 
 /** One step of a process: who does it, the operation (the title of an operation of the feature), the feature id, the sentence and, in the technical view, its citations. */
 export interface ProcessStep { role: string; operation: string; feature: string; text: string; cites?: string[] }

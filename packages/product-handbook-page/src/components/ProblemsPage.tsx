@@ -103,7 +103,7 @@ export function ProblemDetail({ row }: { row: ProblemRow }) {
               <ul className="prob-remedies" role="list">
                 {row.remedies.map((link, at) => (
                   <li key={link.anchor}>
-                    <a href={link.process === undefined ? nav.remedies : nav.process(link.process)} data-part="remedy-link" data-anchor={link.anchor} onClick={() => { jumpToAnchor(link.process === undefined ? 'remedies' : 'processes', link.anchor); }}>{remedyLabel(t, row.remedies.length, at, link.heading)}</a>
+                    <a href={link.process !== undefined ? nav.process(link.process) : link.tab !== undefined ? nav.remedyTab(link.tab) : nav.remedies} data-part="remedy-link" data-anchor={link.anchor} onClick={() => { jumpToAnchor(link.process === undefined ? 'remedies' : 'processes', link.anchor); }}>{remedyLabel(t, row.remedies.length, at, link.tab !== undefined ? t(`page.remedies.group.${link.tab}`) : link.heading)}</a>
                   </li>
                 ))}
               </ul>

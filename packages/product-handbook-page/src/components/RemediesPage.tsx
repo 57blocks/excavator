@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 
 import { jumpToAnchor } from '../lib/heading-jump';
 import { useLinks } from '../lib/links';
@@ -8,7 +8,7 @@ import { onlyBeforeSections, onlyGeneratedSection, withoutProcessSections } from
 import { useModel } from '../lib/model';
 import { useText } from '../lib/text';
 import { numberHeadings } from '../lib/toc';
-import type { PageData, RemedyDomains, RemedyRef } from '../lib/types';
+import type { PageData, RemedyDomains, RemedyGroup, RemedyRef } from '../lib/types';
 import { useView } from '../lib/links';
 import { Breadcrumbs } from './Breadcrumbs';
 import { ChapterPage } from './ChapterPage';
@@ -54,16 +54,28 @@ function ProcessSuggestions({ data }: { data: PageData }) {
   );
 }
 
-/** The items of one place of the page: each in plain text with the problem lines of this place, its id made from `prefix` and its line. */
+/** The text of an item without its leading bold type word, for an item whose group has the one type. */
+const withoutType = (text: string): string => text.replace(/^\*\*[^*]+\*\*\s*/, '');
+
+/** The items of one place of a tab: each in plain text with the problem row of this place, its id made from `prefix` and its line; one written under a process has a first row with the process as a link to its page. */
 function Items({ refs, prefix }: { refs: RemedyRef[]; prefix: string }) {
+  const t = useText();
+  const nav = useLinks();
   const view = useView();
-  const { remedyDomains } = useModel();
+  const { remedyDomains, processes } = useModel();
   const texts = new Map((remedyDomains?.items ?? []).map((item) => [item.line, item.texts[view]]));
-  const shown = refs.flatMap((ref) => { const text = texts.get(ref.line); return text === undefined ? [] : [{ ref, text }]; });
+  const processName = new Map((processes?.items ?? []).map((item) => [item.id, item.name]));
+  const shown = refs.flatMap((ref) => { const text = texts.get(ref.line); return text === undefined ? [] : [{ ref, text: ref.bare === true ? withoutType(text) : text }]; });
   return (
     <ul className="proc-rows">
       {shown.map(({ ref, text }) => (
         <li key={ref.line} data-remedy-line={ref.line}>
+          {ref.process !== undefined && (
+            <div className="remedy-row" data-part="remedy-process">
+              <span className="remedy-row-label">{t('page.remedies.process')}</span>
+              <div className="remedy-row-content"><a href={nav.process(ref.process)}>{processName.get(ref.process) ?? ref.process}</a></div>
+            </div>
+          )}
           <RemedyItem text={text} line={ref.line} anchorPrefix={prefix} problems={ref.problems} idPrefix={`${prefix}${ref.line}`} />
         </li>
       ))}
@@ -71,76 +83,96 @@ function Items({ refs, prefix }: { refs: RemedyRef[]; prefix: string }) {
   );
 }
 
-/** The line at the end of a domain's section: how many more of its problems the defect fixes cover, then the category of each fix as a link to it. */
-function Covered({ covered }: { covered: NonNullable<RemedyDomains['domains'][number]['covered']> }) {
+/** The line at the end of a domain's subsection of the defect fixes: how many more of its problems the category items cover, then the category of each as a link to it, in its tab. */
+function Covered({ covered }: { covered: NonNullable<RemedyGroup['domains'][number]['covered']> }) {
   const t = useText();
   const nav = useLinks();
   return (
     <p className="remedy-covered" data-part="remedy-covered">
       {t('page.remedies.covered', { count: covered.count })}{' '}
-      {covered.items.map((item, at) => (
-        <span key={item.line}>
-          {at > 0 && t('page.remedies.problemSeparator')}
-          <a href={nav.remedies} data-anchor={`remedy-f-${item.line}`} onClick={() => { jumpToAnchor('remedies', `remedy-f-${item.line}`); }}>{categoryText(t, item.label)}</a>
-        </span>
-      ))}
+      {covered.items.map((item, at) => {
+        const anchor = `remedy-defects-a-${item.line}`;
+        return (
+          <span key={item.line}>
+            {at > 0 && t('page.remedies.problemSeparator')}
+            <a href={nav.remedyTab('defects')} data-anchor={anchor} onClick={() => { jumpToAnchor('remedies', anchor); }}>{categoryText(t, item.label)}</a>
+          </span>
+        );
+      })}
     </p>
   );
 }
 
 /**
- * The items of the chapter under the business domains (page-remedies.mjs): for each domain its name, then its processes (the process's
- * name as a link to its page) with their items, then its fixed sections of the chapter, each under its own heading, then a line for the
- * defect fixes that cover some of its problems; then the section of the defect fixes (each fix once); last the items tied to no domain.
+ * The items of one tab (page-remedies.mjs): for the defect fixes first a subsection of the category items, each once; then a
+ * subsection (level 3) per business domain in the page's order, with the items of the group that involve it (the defect fixes end
+ * each with the line that links to the category items); last a subsection of the items tied to no domain.
  */
-function DomainSections() {
+function GroupTab({ group }: { group: RemedyGroup }) {
   const t = useText();
-  const nav = useLinks();
-  const { remedyDomains, domains, processes } = useModel();
-  if (remedyDomains === null) return null;
-  const processName = new Map((processes?.items ?? []).map((item) => [item.id, item.name]));
+  const { domains } = useModel();
   return (
-    <article className="page remedy-domains" data-view="chapter" data-chapter="remedies">
-      {remedyDomains.domains.map((domain) => (
+    <article className="page remedy-domains" data-view="chapter" data-chapter="remedies" data-tab={group.id}>
+      {group.across.length > 0 && (
+        <section className="remedy-domain" data-part="remedy-across">
+          <div className="prose"><h3>{t('page.remedies.across')}</h3></div>
+          <Items refs={group.across} prefix={`remedy-${group.id}-a-`} />
+        </section>
+      )}
+      {group.domains.map((domain) => (
         <section className="remedy-domain" data-part="remedy-domain" data-domain={domain.id} key={domain.id}>
-          <div className="prose"><h2>{domains[domain.id]?.name ?? domain.id}</h2></div>
-          {domain.processes.map((process) => (
-            <div className="remedy-place" data-process={process.id} key={process.id}>
-              <div className="prose"><h3><a href={nav.process(process.id)}>{processName.get(process.id) ?? process.id}</a></h3></div>
-              <Items refs={process.items} prefix={`remedy-${domain.id}-`} />
-            </div>
-          ))}
-          {domain.sections.map((section) => (
-            <div className="remedy-place" data-section={section.heading} key={section.heading}>
-              <div className="prose"><h3>{section.heading}</h3></div>
-              <Items refs={section.items} prefix={`remedy-${domain.id}-`} />
-            </div>
-          ))}
+          <div className="prose"><h3>{domains[domain.id]?.name ?? domain.id}</h3></div>
+          <Items refs={domain.items} prefix={`remedy-${group.id}-${domain.id}-`} />
           {domain.covered !== undefined && <Covered covered={domain.covered} />}
         </section>
       ))}
-      {remedyDomains.defectFixes !== null && (
-        <section className="remedy-domain" data-part="remedy-defect-fixes">
-          <div className="prose"><h2>{remedyDomains.defectFixes.heading}</h2></div>
-          <Items refs={remedyDomains.defectFixes.items} prefix="remedy-f-" />
-        </section>
-      )}
-      {remedyDomains.untied.length > 0 && (
+      {group.untied.length > 0 && (
         <section className="remedy-domain" data-part="remedy-untied">
-          <div className="prose"><h2>{t('page.remedies.untied')}</h2></div>
-          <Items refs={remedyDomains.untied} prefix="remedy-u-" />
+          <div className="prose"><h3>{t('page.remedies.untied')}</h3></div>
+          <Items refs={group.untied} prefix={`remedy-${group.id}-u-`} />
         </section>
       )}
     </article>
   );
 }
 
+/** The tabs of the page: the groups, then the generated section when it lists problems. The one the address names, else the first. */
+function tabsOf(remedy: RemedyDomains): string[] {
+  return [...remedy.groups.map((group) => group.id as string), ...(remedy.generated === null ? [] : [UNCOVERED_TAB])];
+}
+
+const UNCOVERED_TAB = 'uncovered';
+
+/** The tab bar, a sentence about the selected group, and the selected tab only. */
+function Tabs({ tab, generatedPart }: { tab: string | undefined; generatedPart: ReactNode }) {
+  const t = useText();
+  const nav = useLinks();
+  const { remedyDomains } = useModel();
+  if (remedyDomains === null) return null;
+  const ids = tabsOf(remedyDomains);
+  const selected = tab !== undefined && ids.includes(tab) ? tab : ids[0];
+  const group = remedyDomains.groups.find((entry) => entry.id === selected);
+  const label = (id: string): string => (id === UNCOVERED_TAB ? t('chapter.remedies.uncovered') : t(`page.remedies.group.${id}`));
+  const count = (id: string): number => (id === UNCOVERED_TAB ? remedyDomains.generated ?? 0 : remedyDomains.groups.find((entry) => entry.id === id)?.count ?? 0);
+  return (
+    <>
+      <nav className="remedy-tabs" role="tablist" aria-label={t('page.nav.remedies')} data-part="remedy-tabs">
+        {ids.map((id) => (
+          <a key={id} role="tab" href={nav.remedyTab(id)} aria-selected={id === selected} data-tab={id}>{label(id)}<span className="remedy-tab-count">{count(id)}</span></a>
+        ))}
+      </nav>
+      {group !== undefined && group.id !== 'other' && <p className="muted remedy-note" data-part="remedy-note">{t(`page.remedies.groupNote.${group.id}`)}</p>}
+      {group !== undefined ? <GroupTab group={group} /> : generatedPart}
+    </>
+  );
+}
+
 /**
  * The improvement suggestions page: the remedies chapter under a title of the page's own (the chapter's level-1 heading is
  * left out), with the scanning table of contents at the right like any reading page. No previous and next: it is a place
- * of its own, not a step of the reading order. With the items placed under the business domains the chapter's own text is only its notices and the generated section, and the items are laid out by domain; else the sections of the processes are folded into one list of links to the process pages.
+ * of its own, not a step of the reading order. With the items in groups the chapter's own text is only its notices and the generated section; the groups are tabs by measure type (the selected one in the address), one at a time, and the items are laid out by domain inside; else the sections of the processes are folded into one list of links to the process pages.
  */
-export function RemediesPage({ data }: { data: PageData }) {
+export function RemediesPage({ data, tab }: { data: PageData; tab?: string }) {
   const t = useText();
   const nav = useLinks();
   const main = useRef<HTMLDivElement>(null);
@@ -166,8 +198,7 @@ export function RemediesPage({ data }: { data: PageData }) {
               {byDomain ? (
                 <>
                   <ChapterPage chapter={chapter} omitTitle rework={before} />
-                  <DomainSections />
-                  <ChapterPage chapter={chapter} omitTitle rework={last} />
+                  <Tabs tab={tab} generatedPart={<ChapterPage chapter={chapter} omitTitle rework={last} />} />
                 </>
               ) : (
                 <>

@@ -142,7 +142,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
       main = <ProblemsPage data={data} filters={body.filters} />;
     } else if (body.name === 'remedies') {
       place = { kind: 'remedies' };
-      main = <RemediesPage data={data} />;
+      main = <RemediesPage data={data} tab={body.tab} />;
     } else if (body.name === 'processes') {
       // There is no list of all the processes: the old address opens the index of the domains, where each domain lists its own.
       const indexed = data.outline.parts.some((part) => part.blocks.some((block) => block.kind === 'chapter' && block.block === DOMAINS_CHAPTER));
