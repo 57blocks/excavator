@@ -16,7 +16,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { sortRows } from '../src/lib/problems';
 import { searchResults } from '../src/lib/search';
 import type { Outline, PageData, ProblemRow, ProblemsData } from '../src/lib/types';
-import { cleanup, mount, choose, typeInto } from './dom';
+import { cleanup, mount, choose, moveAndConfirm, openWithKeyboard, optionTexts, selectByLabel, typeInto } from './dom';
 import { domainData } from './domains-fixture';
 import { BOTH, MARK, NO_PROBLEMS, chapter, d, marked, outlineOf, pageData } from './page-fixture';
 
@@ -309,6 +309,18 @@ describe('the expanded rows', () => {
 });
 
 describe('the filter controls write the address', () => {
+  it('the system level is the first choice of the domain filter, right after all, and choosing it writes the address', async () => {
+    window.history.replaceState(null, '', '#/product/problems');
+    const page = pageData({ domains: domainData().domains, problems: problems(), outline: domainData().outline, chapters: domainData().chapters });
+    const host = mount(<AppView data={page} route={parseHash('#/product/problems')} />);
+    await openWithKeyboard(selectByLabel(host, t('page.problems.filter.domain')));
+    const options = optionTexts();
+    expect(options.slice(0, 2)).toEqual([t('page.problems.filter.all'), t('page.problems.filter.systemLevel')]);
+    expect(options.filter((option) => option === t('page.problems.filter.systemLevel'))).toHaveLength(1);
+    await moveAndConfirm(1);
+    expect(window.location.hash).toBe('#/product/problems?domain=system');
+  });
+
   it('a text and a select change the rows and the fragment, and a level of another type clears the type', async () => {
     window.history.replaceState(null, '', '#/product/problems?type=design');
     const host = mount(<AppView data={data()} route={parseHash('#/product/problems?type=design')} />);

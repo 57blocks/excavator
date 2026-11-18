@@ -169,9 +169,9 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
     value === undefined || known.some((entry) => entry.value === value) ? known : [...known, { value, label: value }]
   );
   const all = { value: ALL, label: t('page.problems.filter.all') };
-  // The problems of the whole system (the rows that name the system chapter) are in no domain: they are the last choice.
+  // The problems of the whole system (the rows that name the system chapter) are in no domain: they are the first choice after all.
   const systemLevel = data.problems.rows.some((row) => row.features.includes(SYSTEM_BLOCK)) ? [{ value: SYSTEM_LEVEL, label: t('page.problems.filter.systemLevel') }] : [];
-  const domains = option(filters.domain, [...groups.map((group) => ({ value: group.id, label: group.name })), ...systemLevel]);
+  const domains = option(filters.domain, [...systemLevel, ...groups.map((group) => ({ value: group.id, label: group.name }))]);
   const features = option(filters.feature, featureIds.map((id) => ({ value: id, label: featureTitle(id) })));
   const types = option(filters.type, PROBLEM_TYPES.map((type) => ({ value: type, label: t(`page.problems.type.${type}`) })));
   const levels = option(filters.level, ALL_LEVELS.map((level) => ({ value: level, label: levelText(t, level) })));
