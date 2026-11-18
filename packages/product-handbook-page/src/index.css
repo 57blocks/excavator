@@ -22,6 +22,13 @@
   --accent-bg: rgba(31, 79, 163, 0.08);
   --ochre: #A8661A;
   --brick: #B3261E;
+  /* The three levels of a problem, strongest first (P0 and high, P1 and medium, P2 and low): text and the tint behind it. */
+  --lv1: #B3261E;
+  --lv1-bg: rgba(179, 38, 30, 0.10);
+  --lv2: #8F5410;
+  --lv2-bg: rgba(168, 102, 26, 0.13);
+  --lv3: #3F6185;
+  --lv3-bg: rgba(63, 97, 133, 0.11);
   --tint: rgba(31, 79, 163, 0.08);
   --shadow: 0 12px 32px rgba(16, 24, 32, 0.14);
   --scrim: rgba(12, 16, 22, 0.36);
@@ -63,6 +70,12 @@
     --accent-bg: rgba(143, 177, 242, 0.12);
     --ochre: #E3A85F;
     --brick: #F08A80;
+    --lv1: #F08A80;
+    --lv1-bg: rgba(240, 138, 128, 0.15);
+    --lv2: #E3A85F;
+    --lv2-bg: rgba(227, 168, 95, 0.15);
+    --lv3: #9DB8D6;
+    --lv3-bg: rgba(157, 184, 214, 0.15);
     --tint: rgba(143, 177, 242, 0.12);
     --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     --scrim: rgba(0, 0, 0, 0.6);
@@ -588,7 +601,6 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .fp-counts .lvl { margin: 0 0 0 2px; align-self: center; }
 .fp-counts b { color: var(--text); font-variant-numeric: tabular-nums; }
 .lvl { flex: none; margin-right: 8px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--text); }
-.lvl[data-level="P0"], .lvl[data-level="high"] { color: var(--brick); }
 .feature details.inner { margin: 14px 0 4px; }
 .feature details.inner > summary { display: inline-flex; align-items: center; gap: 6px; list-style: none; cursor: pointer; color: var(--text-2); font-size: 14px; font-weight: 600; }
 .feature details.inner > summary::-webkit-details-marker { display: none; }
@@ -678,7 +690,10 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .prob-features, .prob-type { min-width: 0; font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
 .prob-more { margin-left: 6px; font-size: 12.5px; color: var(--text-3); }
 .prob-level { margin-left: 8px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--text); }
-.prob-level[data-level="P0"], .prob-level[data-level="high"] { color: var(--brick); }
+:is(.lvl, .prob-level, .stat-chip):is([data-level="P0"], [data-level="high"]) { color: var(--lv1); background: var(--lv1-bg); }
+:is(.lvl, .prob-level, .stat-chip):is([data-level="P1"], [data-level="medium"]) { color: var(--lv2); background: var(--lv2-bg); }
+:is(.lvl, .prob-level, .stat-chip):is([data-level="P2"], [data-level="low"]) { color: var(--lv3); background: var(--lv3-bg); }
+.stat-chip[data-level] b { color: inherit; }
 .prob-detail { padding: 4px 8px 16px; display: grid; gap: 8px; max-width: 78ch; min-width: 0; overflow-wrap: anywhere; }
 .prob-body > * + * { margin-top: 6px; }
 .prob-cites { display: flex; flex-wrap: wrap; gap: 4px 8px; }

@@ -482,3 +482,20 @@ describe('the NO_PROBLEMS page', () => {
   });
 });
 
+
+describe('the colours of the levels', () => {
+  it('gives each of the three levels its own text colour and tint, the same for a defect level and a design impact, on badges and count chips, in both themes', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const css = readFileSync(join(__dirname, '../src/index.css'), 'utf-8');
+    const tiers: [string, string][] = [['P0', 'high'], ['P1', 'medium'], ['P2', 'low']];
+    tiers.forEach(([defect, impact], at) => {
+      const n = at + 1;
+      expect(css).toContain(`:is(.lvl, .prob-level, .stat-chip):is([data-level="${defect}"], [data-level="${impact}"]) { color: var(--lv${n}); background: var(--lv${n}-bg); }`);
+      expect(css.match(new RegExp(`--lv${n}: #[0-9A-F]{6};`, 'g'))).toHaveLength(2);
+      expect(css.match(new RegExp(`--lv${n}-bg: rgba\\(`, 'g'))).toHaveLength(2);
+    });
+    const values = [1, 2, 3].map((n) => css.match(new RegExp(`--lv${n}: (#[0-9A-F]{6});`))?.[1]);
+    expect(new Set(values).size).toBe(3);
+  });
+});
