@@ -5,12 +5,12 @@
  * overlapping lines of the same file) and prints them. Reads no project code.
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { citationGroups, parseSpec, specKey } from './chapter-cites.mjs';
 import { writeJson } from './json-file.mjs';
-import { CROSS_BATCH, FACTS_FILE, FACTS_FORMAT, reviewBatches } from './review-batches.mjs';
+import { FACTS_FILE, FACTS_FORMAT, reviewBatches } from './review-batches.mjs';
 import { chapterCounts } from './review-structure.mjs';
 import { directorySides, markServerSteps } from './step-sides.mjs';
 import { loadUi } from './ui.mjs';
@@ -131,7 +131,7 @@ const rangeText = (ranges) => ranges.map(([a, b]) => (a === b ? `${a}` : `${a}-$
 
 /** The printed lines of `facts`; with `onlyBatch`, the pairs are those that touch that batch (the table of features is always whole). */
 export function factLines(facts, onlyBatch = null) {
-  const lines = [`Batches: ${facts.batches.length - 1} (source: ${facts.source}), then ${CROSS_BATCH}`];
+  const lines = [`Batches: ${facts.batches.length} (source: ${facts.source})`];
   for (const batch of facts.batches) lines.push(['BATCH', batch.id, batch.name, batch.features.join(',')].join('\t'));
   for (const [id, entry] of Object.entries(facts.features)) {
     if (!entry.chapter) {
@@ -143,8 +143,7 @@ export function factLines(facts, onlyBatch = null) {
     lines.push(cells.join('\t'));
   }
   for (const pair of facts.pairs) {
-    // The cross batch reads the pairs that span batches; any other batch reads the pairs that touch it.
-    if (onlyBatch === CROSS_BATCH ? pair.scope !== 'across' : onlyBatch !== null && !pair.batches.includes(onlyBatch)) continue;
+    if (onlyBatch !== null && !pair.batches.includes(onlyBatch)) continue;
     lines.push(['PAIR', pair.scope, pair.features.join(','), pair.files.map((entry) => `${entry.file}:${rangeText(entry.ranges)}`).join('; ')].join('\t'));
   }
   lines.push(`Shared files (cited by more than ${facts.shared.limit} features, left out of the pairs): ${facts.shared.files}`);
@@ -160,5 +159,9 @@ export function reviewFacts(outDir, onlyBatch) {
   }
   mkdirSync(join(outDir, 'entries'), { recursive: true });
   writeJson(join(outDir, FACTS_FILE), computed.facts);
-  return { status: 0, lines: [...factLines(computed.facts, onlyBatch ?? null), `Facts: ${join(outDir, FACTS_FILE)}`] };
+  // The cross batch of earlier runs is gone; its removal records (entries/review-removed.json) stay.
+  const old = ['cross.json', 'cross.unpruned.json', 'cross.verdicts.json'].filter((name) => existsSync(join(outDir, 'entries', 'review', name)));
+  for (const name of old) rmSync(join(outDir, 'entries', 'review', name), { force: true });
+  const removed = old.length > 0 ? [`Removed the old cross batch: ${old.join(', ')}`] : [];
+  return { status: 0, lines: [...factLines(computed.facts, onlyBatch ?? null), ...removed, `Facts: ${join(outDir, FACTS_FILE)}`] };
 }

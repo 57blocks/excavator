@@ -31,7 +31,7 @@ import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { remediesInputsLines, remediesState } from './lib/remedies-inputs.mjs';
 import { replyLines } from './lib/reply.mjs';
-import { reviewCandidates, reviewCompare } from './lib/review-compare.mjs';
+import { reviewCandidateLines, reviewCandidates, reviewCompare } from './lib/review-compare.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
 import { renderReview } from './lib/review-render.mjs';
 import { compareStatusReport, resetBatch, reviewStatus, reviewSummary, reviewTitles } from './lib/review-status.mjs';
@@ -110,28 +110,36 @@ Commands:
       with the reason and counts the test files all the same.
   review facts <out> [<batch>]
       The whole-table facts the design-problems writers read: the batches (one per business domain when the domains
-      chapter passed, else one per area of the map, b1..bn, then cross), for every feature its operations, the steps of
+      chapter passed, else one per area of the map, b1..bn), for every feature its operations, the steps of
       each operation, its states and transitions, its server-side steps and its hand-overs counted from its chapter
       with the headings of <out>/ui.json (a section that is not recognized is not counted and is named), and the pairs
       of features whose chapters cite overlapping lines of one file (one pair for two features, with every such file;
       a file cited by more than 3 features is shared code and makes no pair), within a batch and across batches. Writes
-      <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it.
+      <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it. It also removes the entries/review/cross*.json files
+      of an older run and says so.
   review compare-facts <out> --project <root>
       The comparison candidates (X1, X2, ...) from the artifacts in <out>, five sources in order: two implementations (a
       feature whose route candidates lie in 2 or more application roots), dictionary mismatches, tables mentioned by 2 or
       more applications, cross-cutting topic rows naming 2 or more features (rows resting only on problems lines are
       counted and skipped) and code shared across batches. A source whose artifact is missing is printed as not computed
-      with its reason. Writes <out>/entries/review-compare.json and prints SOURCE, SKIPPED and CANDIDATE lines.
+      with its reason. Each candidate records its batch (two implementations: the domain batch of its feature; the others:
+      c-data-<n>, c-topics-<n> or c-code-<n>, at most 25 candidates each) and its places (file and line range). Writes
+      <out>/entries/review-compare.json, deletes the c-* batch files whose batch no longer exists, and prints SOURCE,
+      SKIPPED and CANDIDATE lines.
   review candidates <out> <batch>
       The CANDIDATE lines of one batch, read from <out>/entries/review-compare.json alone, in the format of compare-facts;
       one line "none" when the batch has none, or "none: <reason>" when the file is missing or does not parse.
+  review candidate-lines <out> <id>
+      One comparison candidate, read from <out>/entries/review-compare.json and the chapters: its CANDIDATE line, FACTS (its
+      facts as one JSON line), for a topic its TOPIC row, then for each feature of the candidate every chapter line
+      (<id>.md:<line>: <text>) that cites a place of the candidate. Exit 1 for an id that is not a candidate.
   review compare-status <out> --project <root>
       Where each comparison candidate of <out>/entries/review-compare.json stands: one COMPARE line per source (its
       candidates and how many became items of a pruned batch, were dismissed in a batch file, or are not judged; or why
       it was not computed), then one UNJUDGED line per candidate not judged (id, source, features, batch). Writes nothing.
   review render <out> [<batch>...] --project <root>
       Check the items of <out>/entries/review/<batch>.json against the chapters: fields and values, the features of
-      the batch (a cross item: features of 2 or more batches), each citation copied from a chapter of a listed feature,
+      the batch (any feature in a comparison batch, whose items must each list candidates), each citation copied from a chapter of a listed feature,
       two different chapter lines for duplication, contradiction, inconsistency and access, every number in a cited line
       or a fact of a listed feature, and the reader-text rules of the chapters. One line per refusal, exit 1. With
       batches named, only those are checked and nothing is written; with none named, every batch is checked and, when
@@ -149,9 +157,9 @@ Commands:
   review status <out> --project <root>
       One line per batch: "<batch>", a state and the batch name, the state being write (no file, or a file that does
       not pass render; the reasons follow), verify (items to judge), prune (verdicts to apply, or a batch with no
-      item) or done (pruned). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
+      item), done (pruned) or wait (a comparison batch while a domain batch is not done). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
       records; review skip <out> <batch> does the same and leaves an empty batch. review titles <out> --project <root>
-      lists the items of the non-cross batches (batch, item, dimension, impact, features, title). review summary <out>
+      lists the items of the domain batches (batch, item, dimension, impact, features, title). review summary <out>
       prints "<batch> <name> kept=<n> removed=<m>" for each pruned batch.
   remedies-inputs <out>
       Print the items the remedies chapter may name, one line each and an indented "cites:" line after it: "DEFECT D<n> <level>
@@ -307,7 +315,7 @@ const COMMANDS = {
   review(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     const [sub, out, ...rest] = positionals;
-    if (!['facts', 'compare-facts', 'candidates', 'compare-status', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, compare-facts, candidates, compare-status, render, claims, prune, status, reset, skip, titles or summary, then <out>');
+    if (!['facts', 'compare-facts', 'candidates', 'candidate-lines', 'compare-status', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, compare-facts, candidates, candidate-lines, compare-status, render, claims, prune, status, reset, skip, titles or summary, then <out>');
     if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
     if (sub === 'facts') {
       if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
@@ -320,6 +328,10 @@ const COMMANDS = {
     if (sub === 'candidates') {
       if (rest.length !== 1) throw new UsageError('review candidates takes <out> and one batch');
       return report(reviewCandidates(resolve(out), rest[0]));
+    }
+    if (sub === 'candidate-lines') {
+      if (rest.length !== 1) throw new UsageError('review candidate-lines takes <out> and one candidate id');
+      return report(reviewCandidateLines(resolve(out), rest[0]));
     }
     if (sub === 'compare-status') {
       if (rest.length > 0) throw new UsageError('review compare-status takes <out> and --project <root>');

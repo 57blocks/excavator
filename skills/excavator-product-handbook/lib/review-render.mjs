@@ -2,7 +2,7 @@
  * `review render <out> [<batch>...]` (openspec change handbook-design-review, D3): the items a writer wrote
  * to entries/review/<batch>.json are checked against the chapters they cite, and the chapter
  * chapters/review.md is generated from them. A writer names its own batch to validate it and nothing else is
- * written; with no batch named every batch of the facts file is validated and, when all pass, the chapter is
+ * written; with no batch named every batch (the domain batches of the facts file, then the comparison batches of the candidates file) is validated and, when all pass, the chapter is
  * written. Every refusal is one line naming the batch, the item (counted from 0) and the rule.
  */
 
@@ -14,8 +14,9 @@ import { citationGroups, specKey } from './chapter-cites.mjs';
 import { readerTextReasons } from './chapter-lint.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { isObject, readJson, writeTextAtomic } from './json-file.mjs';
-import { CROSS_BATCH, FACTS_FILE } from './review-batches.mjs';
+import { FACTS_FILE } from './review-batches.mjs';
 import { candidateReasons } from './review-candidate-check.mjs';
+import { compareBatches } from './review-compare.mjs';
 import { compareSection } from './review-compare-status.mjs';
 import { loadUi } from './ui.mjs';
 import { adviceWordsOf } from './word-lists.mjs';
@@ -26,7 +27,7 @@ export const IMPACTS = Object.freeze(['high', 'medium', 'low']);
 const TWO_PLACE = new Set(['duplication', 'contradiction', 'inconsistency', 'access']);
 const ITEM_KEYS = ['dimension', 'impact', 'features', 'title', 'situation', 'consequence', 'cites'];
 const CANDIDATE_ID = /^X[1-9][0-9]*$/;
-export const DISMISS_REASONS = Object.freeze(['same', 'different-subject', 'not-in-chapters']);
+export const DISMISS_REASONS = Object.freeze(['same', 'different-subject', 'not-in-chapters', 'already-kept']);
 const WIDE_STOPS = String.fromCharCode(0x3002, 0xff01, 0xff1f);
 const LIST_MARKER = /^\s*(?:[-*]|\d+\.)\s+/;
 const STOP_END = new RegExp(`[.!?${WIDE_STOPS}]+$`);
@@ -71,6 +72,8 @@ export function reviewContext(outDir, root) {
     ok: true,
     outDir,
     facts,
+    // The domain batches of the facts file, then the comparison batches of the candidates file.
+    batches: [...facts.batches, ...compareBatches(outDir)],
     map: mapRead.value,
     strings: ui.strings,
     advice: adviceWordsOf(ui.strings),
@@ -112,13 +115,11 @@ function itemReasons(ctx, batch, item) {
   if (unknown.length > 0) add(`features ${unknown.join(', ')} are not in the map`);
   if (new Set(item.features).size !== item.features.length) add('features lists a feature more than once');
   const known = item.features.filter((id) => ctx.ids.includes(id));
-  const batchOf = (id) => ctx.facts.features[id]?.batch ?? null;
-  if (batch.id === CROSS_BATCH) {
-    const spanned = new Set(known.map(batchOf));
-    if (spanned.size < 2) add(`a cross item lists features of ${spanned.size} batch${spanned.size === 1 ? ` (${[...spanned][0]})` : 'es'}; it needs features of 2 or more batches`);
+  if (batch.compare === true) {
+    if (!Array.isArray(item.candidates) || item.candidates.length === 0) add('a comparison batch item must list the candidates it handles');
   } else {
     const outside = known.filter((id) => !batch.features.includes(id));
-    if (outside.length > 0) add(`features ${outside.join(', ')} are not in batch ${batch.id}; an item across batches belongs to the ${CROSS_BATCH} batch`);
+    if (outside.length > 0) add(`features ${outside.join(', ')} are not in batch ${batch.id}`);
   }
 
   // Where each cite occurs: a chapter line of one of the listed features.
@@ -241,7 +242,7 @@ export function reviewChapterText(ctx, batches) {
 export function renderReview(outDir, root, named) {
   const ctx = reviewContext(outDir, root);
   if (!ctx.ok) return { status: 1, lines: ctx.lines };
-  const all = ctx.facts.batches;
+  const all = ctx.batches;
   const unknown = named.filter((id) => !all.some((batch) => batch.id === id));
   if (unknown.length > 0) return { status: 1, lines: [`${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not a batch; the batches are ${all.map((batch) => batch.id).join(', ')}`] };
   const wanted = named.length > 0 ? all.filter((batch) => named.includes(batch.id)) : all;

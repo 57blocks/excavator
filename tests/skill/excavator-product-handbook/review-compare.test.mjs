@@ -2,10 +2,11 @@
 // from the artifacts of an output directory, in five sources, and records a source whose artifact is missing as not
 // computed instead of as empty.
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { compareBatches } from '../../../skills/excavator-product-handbook/lib/review-compare.mjs';
 import { runHandbook } from './helpers.mjs';
 
 const bases = [];
@@ -106,7 +107,7 @@ describe('review compare-facts', () => {
     const run = make();
     run.result();
     const dual = run.read().candidates.filter((entry) => entry.source === 'dual');
-    expect(dual).toEqual([{ id: 'X1', source: 'dual', features: ['F1'], batch: 'b1', facts: { applications: [{ application: 'apps/new', routes: 2 }, { application: 'apps/old', routes: 1 }] } }]);
+    expect(dual).toEqual([{ id: 'X1', source: 'dual', features: ['F1'], batch: 'b1', facts: { applications: [{ application: 'apps/new', routes: 2 }, { application: 'apps/old', routes: 1 }] }, places: [{ file: 'apps/old/a.js', a: 1, b: 1 }, { file: 'apps/new/a.js', a: 1, b: 1 }] }]);
   });
 
   it('dict and table candidates find their features through chapter citations; none cited gives an empty list', () => {
@@ -114,7 +115,9 @@ describe('review compare-facts', () => {
     const result = run.result();
     const by = Object.fromEntries(run.read().candidates.filter((entry) => ['dict', 'table'].includes(entry.source)).map((entry) => [entry.facts.key ?? entry.facts.table, entry]));
     expect(by.status.features).toEqual(['F1']);
-    expect(by.status.batch).toBe('c-data');
+    expect(by.status.batch).toBe('c-data-1');
+    expect(by.status.places).toEqual([{ file: 'apps/old/a.js', a: 1, b: 1 }, { file: 'apps/old/a.js', a: 2, b: 2 }, { file: 'apps/new/zzz.js', a: 1, b: 1 }, { file: 'apps/new/zzz.js', a: 2, b: 2 }]);
+    expect(by.orders.places).toEqual([{ file: 'apps/old/a.js', a: 1, b: 1 }, { file: 'apps/new/b.js', a: 2, b: 2 }, { file: 'apps/new/b.js', a: 3, b: 3 }]);
     expect(by.status.facts).toEqual({ key: 'status', left: { application: 'apps/old', name: 'Status' }, right: { application: 'apps/new', name: 'Status' }, onlyLeft: { count: 2, values: ['a', 'b'] }, onlyRight: { count: 1, values: ['c'] } });
     // apps/old/a.js is cited by F1, but not at lines 15-16
     expect(by.kind.features).toEqual([]);
@@ -122,7 +125,7 @@ describe('review compare-facts', () => {
     expect(by.orders.facts.applications).toEqual([{ application: 'apps/old', mentions: 1 }, { application: 'apps/new', mentions: 2 }]);
     expect(by.solo).toBeUndefined();
     expect(by.noapp).toBeUndefined();
-    expect(result.lines.some((line) => /^CANDIDATE X\d+ dict - c-data /.test(line))).toBe(true);
+    expect(result.lines.some((line) => /^CANDIDATE X\d+ dict - c-data-1 /.test(line))).toBe(true);
   });
 
   it('topic rows with 2 or more features are candidates, one feature is not, and rows resting only on problems lines are skipped and counted', () => {
@@ -130,7 +133,8 @@ describe('review compare-facts', () => {
     run.result();
     const topics = run.read().candidates.filter((entry) => entry.source === 'topic');
     expect(topics.map((entry) => entry.features)).toEqual([['F1', 'F2'], ['F3', 'F4']]);
-    expect(topics[0].batch).toBe('c-topics');
+    expect(topics[0].batch).toBe('c-topics-1');
+    expect(topics[0].places).toEqual([{ file: 'apps/old/a.js', a: 1, b: 3 }]);
     expect(topics[0].facts).toMatchObject({ line: 9, h2: 'Shared rules', h3: 'Approvals' });
     expect(topics[1].facts.text).toBe('- Free list item naming (F3) and (F4)');
     expect(run.read().sources.find((entry) => entry.source === 'topic')).toMatchObject({ computed: true, count: 2, skipped: 1 });
@@ -150,7 +154,8 @@ describe('review compare-facts', () => {
     run.result();
     const code = run.read().candidates.filter((entry) => entry.source === 'code');
     expect(code).toHaveLength(1);
-    expect(code[0]).toMatchObject({ features: ['F2', 'F3'], batch: 'c-code', facts: { files: ['apps/new/c.js'], batches: ['b1', 'b2'] } });
+    expect(code[0]).toMatchObject({ features: ['F2', 'F3'], batch: 'c-code-1', facts: { files: ['apps/new/c.js'], batches: ['b1', 'b2'] } });
+    expect(code[0].places).toEqual([{ file: 'apps/new/c.js', a: 2, b: 2 }]);
   });
 
   it('a missing data.json leaves table not computed with its reason and the other sources as they are', () => {
@@ -179,6 +184,103 @@ describe('review compare-facts', () => {
     const run = make();
     const result = runHandbook(['review', 'compare-facts', run.out]);
     expect(result.status).toBe(2);
+  });
+});
+
+describe('comparison batches', () => {
+  const batchesOf = (run) => run.read().candidates.map((entry) => entry.batch);
+  const manyMismatches = (run, count) => {
+    const file = JSON.parse(readFileSync(join(run.out, 'dictionaries.json'), 'utf-8'));
+    const template = file.mismatches[0];
+    file.mismatches = Array.from({ length: count }, (_, at) => ({ ...template, key: `k${at}` }));
+    put(join(run.out, 'dictionaries.json'), file);
+  };
+
+  it('cuts a group into chunks of 25 in candidate order, with the suffix also for one chunk; dict and table share the c-data chunks', () => {
+    const run = make();
+    manyMismatches(run, 27);
+    run.result();
+    const candidates = run.read().candidates;
+    const data = candidates.filter((entry) => entry.source === 'dict' || entry.source === 'table');
+    expect(data).toHaveLength(29);
+    expect(data.map((entry) => entry.batch)).toEqual([...Array(25).fill('c-data-1'), ...Array(4).fill('c-data-2')]);
+    expect(data.slice(25).map((entry) => entry.source)).toEqual(['dict', 'dict', 'table', 'table']);
+    expect(candidates.find((entry) => entry.source === 'topic').batch).toBe('c-topics-1');
+    expect(candidates.find((entry) => entry.source === 'code').batch).toBe('c-code-1');
+    expect(candidates.find((entry) => entry.source === 'dual').batch).toBe('b1');
+    expect(compareBatches(run.out).map((batch) => batch.id)).toEqual(['c-data-1', 'c-data-2', 'c-topics-1', 'c-code-1']);
+    expect(compareBatches(run.out)[0]).toEqual({ id: 'c-data-1', name: 'c-data-1', features: [], compare: true });
+  });
+
+  it('a group with no candidate has no batch, and a missing or unreadable file has no comparison batches', () => {
+    const run = make();
+    rmSync(join(run.out, 'data.json'));
+    rmSync(join(run.out, 'dictionaries.json'));
+    run.result();
+    expect(batchesOf(run).some((id) => String(id).startsWith('c-data'))).toBe(false);
+    expect(compareBatches(run.out).map((batch) => batch.id)).toEqual(['c-topics-1', 'c-code-1']);
+    put(join(run.out, 'entries', 'review-compare.json'), '{ nope');
+    expect(compareBatches(run.out)).toEqual([]);
+    rmSync(join(run.out, 'entries', 'review-compare.json'));
+    expect(compareBatches(run.out)).toEqual([]);
+  });
+
+  it('removes the c-* batch files of batches that no longer exist, keeps the others and the removal records', () => {
+    const run = make();
+    manyMismatches(run, 27);
+    run.result();
+    const dir = join(run.out, 'entries', 'review');
+    for (const name of ['c-data-1.json', 'c-data-2.json', 'c-data-2.verdicts.json', 'c-data-3.json', 'c-data-3.unpruned.json', 'c-data-3.verdicts.json', 'b1.json', 'b9.json']) put(join(dir, name), { items: [] });
+    put(join(run.out, 'entries', 'review-removed.json'), { removed: [{ batch: 'cross' }] });
+    manyMismatches(run, 1);
+    const result = run.result();
+    expect(existsSync(join(dir, 'c-data-2.json'))).toBe(false);
+    expect(existsSync(join(dir, 'c-data-2.verdicts.json'))).toBe(false);
+    expect(existsSync(join(dir, 'c-data-3.unpruned.json'))).toBe(false);
+    for (const name of ['c-data-1.json', 'b1.json', 'b9.json']) expect(existsSync(join(dir, name)), name).toBe(true);
+    expect(result.lines).toContain('Removed stale comparison batch files: c-data-2.json, c-data-2.verdicts.json, c-data-3.json, c-data-3.unpruned.json, c-data-3.verdicts.json');
+    expect(existsSync(join(run.out, 'entries', 'review-removed.json'))).toBe(true);
+  });
+});
+
+describe('review candidate-lines', () => {
+  const lines = (run, id) => runHandbook(['review', 'candidate-lines', run.out, id]);
+
+  it('prints the candidate, its facts and only the chapter lines whose citation meets a place', () => {
+    const run = make();
+    run.result();
+    const id = run.read().candidates.find((entry) => entry.source === 'dict' && entry.facts.key === 'status').id;
+    // F1 cites apps/old/a.js:1-3 (meets the definition line 1); add a line citing the same file elsewhere.
+    const path = join(run.out, 'chapters', 'F1.md');
+    writeFileSync(path, `${readFileSync(path, 'utf-8')}\n- Elsewhere ${c('apps/old/a.js:5-8')}\n`);
+    const result = lines(run, id);
+    expect(result.status).toBe(0);
+    expect(result.lines[0]).toMatch(new RegExp(`^CANDIDATE ${id} dict F1 c-data-1 `));
+    expect(result.lines[1]).toBe(`FACTS ${JSON.stringify(run.read().candidates.find((entry) => entry.id === id).facts)}`);
+    expect(result.lines.slice(2)).toEqual(['FEATURE F1', 'F1.md:5: - New approval `apps/old/a.js:1-3`']);
+    expect(result.stdout).not.toContain('Elsewhere');
+  });
+
+  it('prints the TOPIC row of a topic candidate, and a feature with no citing line says so', () => {
+    const run = make();
+    run.result();
+    const id = run.read().candidates.find((entry) => entry.source === 'topic').id;
+    const result = lines(run, id);
+    expect(result.lines[2]).toMatch(/^TOPIC topics\.md:9 \| Approval rule /);
+    expect(result.lines).toContain('FEATURE F2');
+    expect(result.lines[result.lines.indexOf('FEATURE F2') + 1]).toBe('  no chapter line cites these places');
+  });
+
+  it('exits 1 for an unknown id, and says so for a candidate without places', () => {
+    const run = make();
+    run.result();
+    const missing = lines(run, 'X99');
+    expect(missing.status).toBe(1);
+    expect(missing.stdout + missing.stderr).toContain('entries/review-compare.json');
+    const file = run.read();
+    delete file.candidates[1].places;
+    put(join(run.out, 'entries', 'review-compare.json'), file);
+    expect(lines(run, 'X2').lines).toContain('no places recorded; run review compare-facts again');
   });
 });
 

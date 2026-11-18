@@ -5,7 +5,7 @@
  * computed with its reason and is never read as having no candidates. No model writes any of it.
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isUnder, scanProject } from './applications.mjs';
@@ -19,6 +19,10 @@ import { loadUi } from './ui.mjs';
 export const COMPARE_FILE = 'entries/review-compare.json';
 export const COMPARE_FORMAT = 'excavator-product-handbook-review-compare/1';
 export const COMPARE_SOURCES = Object.freeze(['dual', 'dict', 'table', 'topic', 'code']);
+/** The comparison batch groups in their fixed order, the source each takes, and how many candidates one batch holds. */
+export const COMPARE_GROUPS = Object.freeze([['c-data', ['dict', 'table']], ['c-topics', ['topic']], ['c-code', ['code']]]);
+export const COMPARE_BATCH_SIZE = 25;
+const COMPARE_BATCH_ID = /^(c-data|c-topics|c-code)-([1-9][0-9]*)$/;
 
 const byteOrder = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const FEATURE_REF = new RegExp(`[(${String.fromCharCode(0xff08)}]\\s*(F\\d+)\\s*[)${String.fromCharCode(0xff09)}]`, 'g');
@@ -46,6 +50,12 @@ function chapterIndex(outDir, map) {
   return { texts, files };
 }
 
+/** `[{ file, line }]` as distinct `[{ file, a, b }]` with a = b = line. */
+function linePlaces(places) {
+  const seen = new Set();
+  return places.filter(({ file, line }) => !seen.has(`${file}:${line}`) && seen.add(`${file}:${line}`)).map(({ file, line }) => ({ file, a: line, b: line }));
+}
+
 /** The features (in map order) with a citation that names a file and a range containing one of its `places` ({ file, line }). */
 function citing(index, order, places) {
   const found = new Set();
@@ -64,14 +74,16 @@ function dualSource({ outDir, map, project, batchOf }) {
   const out = [];
   for (const feature of map.features) {
     const counts = new Map();
+    const places = [];
     for (const id of feature.candidates ?? []) {
       const item = routes.get(id);
       const root = item === undefined ? undefined : roots.find((dir) => isUnder(dirOf(item.file), dir));
       if (root !== undefined) counts.set(root, (counts.get(root) ?? 0) + 1);
+      if (root !== undefined && Number.isInteger(item.line) && !places.some((place) => place.file === item.file && place.a === item.line)) places.push({ file: item.file, a: item.line, b: item.line });
     }
     if (counts.size < 2) continue;
     const applications = [...counts].sort(([a], [b]) => byteOrder(a, b)).map(([application, routeCount]) => ({ application, routes: routeCount }));
-    out.push({ features: [feature.id], batch: batchOf(feature.id), facts: { applications } });
+    out.push({ features: [feature.id], batch: batchOf(feature.id), facts: { applications }, places });
   }
   return { candidates: out };
 }
@@ -91,6 +103,7 @@ function dictSource({ outDir, order, index }) {
     out.push({
       features: citing(index, order, places),
       batch: 'c-data',
+      places: linePlaces(places),
       facts: { key: row.key, left: side(row.left), right: side(row.right), onlyLeft: { count: row.onlyLeft.length, values: values(row.onlyLeft) }, onlyRight: { count: row.onlyRight.length, values: values(row.onlyRight) } },
     });
   }
@@ -108,6 +121,7 @@ function tableSource({ outDir, order, index }) {
     out.push({
       features: citing(index, order, places),
       batch: 'c-data',
+      places: linePlaces(places),
       facts: { table: table.name, applications: Object.entries(mentions).map(([application, list]) => ({ application, mentions: list.length })) },
     });
   }
@@ -154,7 +168,7 @@ function topicSource({ outDir, order, index }) {
       skipped += 1;
       return;
     }
-    out.push({ features: order.filter((id) => ids.includes(id)), batch: 'c-topics', facts: { line: at + 1, h2, h3, text: raw.trim() } });
+    out.push({ features: order.filter((id) => ids.includes(id)), batch: 'c-topics', places: cited, facts: { line: at + 1, h2, h3, text: raw.trim() } });
   });
   return { candidates: out, skipped };
 }
@@ -171,16 +185,17 @@ function codeSource({ outDir }) {
   const out = (facts.pairs ?? []).filter((pair) => pair.scope === 'across').map((pair) => ({
     features: pair.features,
     batch: 'c-code',
+    places: pair.files.flatMap((entry) => entry.ranges.map(([a, b]) => ({ file: entry.file, a, b }))),
     facts: { files: pair.files.map((entry) => entry.file), batches: pair.batches },
   }));
   return { candidates: out };
 }
 
-/** The domain batch (never cross) that holds `id`, from the facts file or a fresh computation; null when none. */
+/** The domain batch that holds `id`, from the facts file or a fresh computation; null when none. */
 function batchLookup(outDir) {
   const read = artifact(outDir, FACTS_FILE);
   const facts = read.ok ? read.value : (() => { const computed = computeFacts(outDir); return computed.ok ? computed.facts : null; })();
-  const batches = (facts?.batches ?? []).filter((batch) => batch.id !== 'cross');
+  const batches = facts?.batches ?? [];
   return (id) => batches.find((batch) => (batch.features ?? []).includes(id))?.id ?? null;
 }
 
@@ -222,12 +237,47 @@ export function reviewCompare(outDir, projectRoot) {
     sources.push(entry);
     lines.push(`SOURCE ${source} ${entry.count}`);
     if (result.skipped > 0) lines.push(`SKIPPED ${source} ${result.skipped} lines rest only on problems lines`);
-    for (const found of result.candidates) candidates.push({ id: `X${candidates.length + 1}`, source, features: found.features, batch: found.batch, facts: found.facts });
+    for (const found of result.candidates) candidates.push({ id: `X${candidates.length + 1}`, source, features: found.features, batch: found.batch, facts: found.facts, places: found.places });
   }
+  assignCompareBatches(candidates);
   mkdirSync(join(outDir, 'entries'), { recursive: true });
   writeJson(join(outDir, COMPARE_FILE), { format: COMPARE_FORMAT, sources, candidates });
+  const stale = removeStaleBatchFiles(outDir, new Set(compareBatches(outDir).map((batch) => batch.id)));
+  if (stale.length > 0) lines.push(`Removed stale comparison batch files: ${stale.join(', ')}`);
   for (const candidate of candidates) lines.push(candidateLine(candidate));
   return { status: 0, lines };
+}
+
+/** Gives each dict, table, topic and code candidate its comparison batch: its group, cut in candidate order into chunks of COMPARE_BATCH_SIZE. */
+function assignCompareBatches(candidates) {
+  for (const [group, sources] of COMPARE_GROUPS) {
+    candidates.filter((candidate) => sources.includes(candidate.source)).forEach((candidate, at) => {
+      candidate.batch = `${group}-${Math.floor(at / COMPARE_BATCH_SIZE) + 1}`;
+    });
+  }
+}
+
+/** The comparison batches `[{ id, name, features: [], compare: true }]` of the candidates file, group order then chunk number; empty when it is missing or unreadable. */
+export function compareBatches(outDir) {
+  const read = readJson(join(outDir, COMPARE_FILE));
+  if (!read.ok || !isObject(read.value) || !Array.isArray(read.value.candidates)) return [];
+  const ids = new Set(read.value.candidates.filter((candidate) => isObject(candidate) && typeof candidate.batch === 'string' && COMPARE_BATCH_ID.test(candidate.batch)).map((candidate) => candidate.batch));
+  const rank = (id) => { const [, group, number] = COMPARE_BATCH_ID.exec(id); return [COMPARE_GROUPS.findIndex(([name]) => name === group), Number(number)]; };
+  return [...ids].sort((x, y) => rank(x)[0] - rank(y)[0] || rank(x)[1] - rank(y)[1]).map((id) => ({ id, name: id, features: [], compare: true }));
+}
+
+/** Deletes entries/review/c-*.json files (batch, unpruned, verdicts) whose batch id is not in `keep`; returns their names. */
+function removeStaleBatchFiles(outDir, keep) {
+  const dir = join(outDir, 'entries', 'review');
+  if (!existsSync(dir)) return [];
+  const removed = [];
+  for (const name of readdirSync(dir).sort()) {
+    const found = /^(c-[^.]+)(?:\.unpruned|\.verdicts)?\.json$/.exec(name);
+    if (found === null || keep.has(found[1])) continue;
+    rmSync(join(dir, name), { force: true });
+    removed.push(name);
+  }
+  return removed;
 }
 
 const candidateLine = (candidate) => `CANDIDATE ${candidate.id} ${candidate.source} ${candidate.features.join(',') || '-'} ${candidate.batch ?? '-'} ${summary(candidate)}`;
@@ -239,4 +289,37 @@ export function reviewCandidates(outDir, batch) {
   if (!isObject(read.value) || !Array.isArray(read.value.candidates)) return { status: 0, lines: [`none: ${COMPARE_FILE} is not a comparison candidates file`] };
   const mine = read.value.candidates.filter((candidate) => isObject(candidate) && candidate.batch === batch && isObject(candidate.facts) && Array.isArray(candidate.features));
   return { status: 0, lines: mine.length === 0 ? ['none'] : mine.map(candidateLine) };
+}
+
+const FACTS_NONE = 'no feature chapter cites these places';
+
+/** The lines of chapter `id` that hold a citation of `file` whose range meets [a, b], as `<id>.md:<line>: <text>`. */
+function citingLines(outDir, id, places) {
+  const path = join(outDir, 'chapters', `${id}.md`);
+  if (!existsSync(path)) return [];
+  const out = [];
+  readFileSync(path, 'utf-8').replace(/\r\n?/g, '\n').split('\n').forEach((text, at) => {
+    const hit = citedRanges(text).some((cite) => places.some((place) => place.file === cite.file && cite.a <= place.b && place.a <= cite.b));
+    if (hit) out.push(`${id}.md:${at + 1}: ${text}`);
+  });
+  return out;
+}
+
+/** `review candidate-lines <out> <id>`: one candidate, its facts and, for each feature, the chapter lines citing its places. */
+export function reviewCandidateLines(outDir, id) {
+  const read = readJson(join(outDir, COMPARE_FILE));
+  if (!read.ok) return { status: 1, lines: [`${COMPARE_FILE} ${read.reason}; run review compare-facts first`] };
+  const candidates = isObject(read.value) && Array.isArray(read.value.candidates) ? read.value.candidates : [];
+  const candidate = candidates.find((entry) => isObject(entry) && entry.id === id && isObject(entry.facts) && Array.isArray(entry.features));
+  if (candidate === undefined) return { status: 1, lines: [`${id} is not a candidate of ${COMPARE_FILE}`] };
+  const lines = [candidateLine(candidate), `FACTS ${JSON.stringify(candidate.facts)}`];
+  if (candidate.source === 'topic') lines.push(`TOPIC topics.md:${candidate.facts.line} ${candidate.facts.text}`);
+  if (!Array.isArray(candidate.places)) return { status: 0, lines: [...lines, 'no places recorded; run review compare-facts again'] };
+  if (candidate.features.length === 0) return { status: 0, lines: [...lines, FACTS_NONE] };
+  for (const feature of candidate.features) {
+    lines.push(`FEATURE ${feature}`);
+    const found = citingLines(outDir, feature, candidate.places);
+    lines.push(...(found.length > 0 ? found : ['  no chapter line cites these places']));
+  }
+  return { status: 0, lines };
 }

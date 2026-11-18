@@ -1,8 +1,8 @@
 /**
  * The batches of the design-problems section (openspec change handbook-design-review, D4): one batch per
  * business domain when the domains chapter passed and domains.json exists, else one per area of the map,
- * numbered b1..bn in that order, then the cross batch for what spans batches. Pure over map.json,
- * domains.json and state.json.
+ * numbered b1..bn in that order. The comparison batches (c-data-1, ...) are not here: they are defined by
+ * entries/review-compare.json (see compareBatches). Pure over map.json, domains.json and state.json.
  */
 
 import { join } from 'node:path';
@@ -10,11 +10,10 @@ import { join } from 'node:path';
 import { readJson } from './json-file.mjs';
 import { loadStateV2 } from './state-v2.mjs';
 
-export const CROSS_BATCH = 'cross';
 export const FACTS_FILE = 'entries/review-facts.json';
 export const FACTS_FORMAT = 'excavator-product-handbook-review-facts/1';
 
-/** `{ ok: true, source, batches: [{ id, name, features }] }` (the cross batch last, with no features of its own) or `{ ok: false, lines }`. */
+/** `{ ok: true, source, batches: [{ id, name, features }] }` or `{ ok: false, lines }`. */
 export function reviewBatches(outDir) {
   const map = readJson(join(outDir, 'map.json'));
   if (!map.ok || !Array.isArray(map.value?.features)) return { ok: false, lines: ['map.json is missing or has no features; write and check the map first'] };
@@ -38,6 +37,5 @@ export function reviewBatches(outDir) {
     groups = areas.map((area) => ({ name: String(area.name), features: map.value.features.filter((feature) => feature.area === area.id).map((feature) => feature.id) }));
   }
   const batches = groups.filter((group) => group.features.length > 0).map((group, at) => ({ id: `b${at + 1}`, name: group.name, features: group.features }));
-  batches.push({ id: CROSS_BATCH, name: CROSS_BATCH, features: [] });
   return { ok: true, source, batches, map: map.value };
 }

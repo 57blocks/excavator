@@ -90,7 +90,7 @@ describe('review facts', () => {
     expect(run.facts('b9').status).toBe(1);
   });
 
-  it('batches follow the areas of the map, then cross, and are written to the facts file', () => {
+  it('batches follow the areas of the map and are written to the facts file', () => {
     const run = reviewRun(cleanups);
     const result = run.facts();
     const { batches, source } = run.readFacts();
@@ -98,9 +98,8 @@ describe('review facts', () => {
     expect(batches).toEqual([
       { id: 'b1', name: 'Order handling', features: ['F1', 'F2'] },
       { id: 'b2', name: 'Automatic work', features: ['F3', 'F4', 'F5'] },
-      { id: 'cross', name: 'cross', features: [] },
     ]);
-    expect(result.lines.slice(0, 4)).toEqual(['Batches: 2 (source: areas), then cross', 'BATCH\tb1\tOrder handling\tF1,F2', 'BATCH\tb2\tAutomatic work\tF3,F4,F5', 'BATCH\tcross\tcross\t']);
+    expect(result.lines.slice(0, 3)).toEqual(['Batches: 2 (source: areas)', 'BATCH\tb1\tOrder handling\tF1,F2', 'BATCH\tb2\tAutomatic work\tF3,F4,F5']);
   });
 
   it('batches follow domains.json when the domains chapter passed', () => {
@@ -112,7 +111,7 @@ describe('review facts', () => {
     run.facts();
     const { batches, source } = run.readFacts();
     expect(source).toBe('domains');
-    expect(batches.map((batch) => [batch.id, batch.name, batch.features])).toEqual([['b1', 'Operations', ['F1', 'F3']], ['b2', 'Archive', ['F2', 'F4', 'F5']], ['cross', 'cross', []]]);
+    expect(batches.map((batch) => [batch.id, batch.name, batch.features])).toEqual([['b1', 'Operations', ['F1', 'F3']], ['b2', 'Archive', ['F2', 'F4', 'F5']]]);
   });
 
   it('a domains chapter that did not pass is not used', () => {

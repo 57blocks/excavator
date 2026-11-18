@@ -27,8 +27,8 @@ const VERDICTS = ['supported', 'unsupported'];
 function openBatch(outDir, root, id, file = batchFile(id)) {
   const ctx = reviewContext(outDir, root);
   if (!ctx.ok) return ctx;
-  const batch = ctx.facts.batches.find((entry) => entry.id === id);
-  if (batch === undefined) return { ok: false, lines: [`${id} is not a batch; the batches are ${ctx.facts.batches.map((entry) => entry.id).join(', ')}`] };
+  const batch = ctx.batches.find((entry) => entry.id === id);
+  if (batch === undefined) return { ok: false, lines: [`${id} is not a batch; the batches are ${ctx.batches.map((entry) => entry.id).join(', ')}`] };
   const read = readJson(join(outDir, file));
   if (!read.ok) return { ok: false, lines: [`${id}: ${file} ${read.reason}`] };
   if (!isObject(read.value) || !Array.isArray(read.value.items)) return { ok: false, lines: [`${id}: ${file} must be an object with a list "items"`] };
@@ -123,7 +123,7 @@ export function pruneReview(outDir, root, id) {
   writeJson(join(outDir, REMOVED_FILE), { removed: [...earlier, ...removed] });
 
   const lines = [`${id}: kept ${kept.length}, removed ${removed.length}`];
-  const missing = opened.ctx.facts.batches.filter((batch) => !existsSync(join(outDir, batchFile(batch.id)))).map((batch) => batch.id);
+  const missing = opened.ctx.batches.filter((batch) => !existsSync(join(outDir, batchFile(batch.id)))).map((batch) => batch.id);
   if (missing.length > 0) return { status: 0, lines: [...lines, `chapters/review.md waits for the batches without a file: ${missing.join(', ')}`] };
   const rendered = renderReview(outDir, root, []);
   if (rendered.status !== 0) return { status: 0, lines: [...lines, 'chapters/review.md waits for the batches that do not pass yet:', ...rendered.lines.filter((line) => !line.startsWith('Next:'))] };

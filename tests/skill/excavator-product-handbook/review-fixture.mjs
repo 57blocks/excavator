@@ -99,6 +99,15 @@ export function reviewRun(cleanups, { extra = {} } = {}) {
   return run;
 }
 
+/** Writes entries/review-compare.json with `candidates` (`{ id, source, features, batch }`); the comparison batches follow from their `batch`. */
+export function writeCompare(run, candidates) {
+  run.writeJson(join(run.out, 'entries', 'review-compare.json'), {
+    format: 'x',
+    sources: ['dual', 'dict', 'table', 'topic', 'code'].map((source) => ({ source, computed: true, count: candidates.filter((entry) => entry.source === source).length })),
+    candidates: candidates.map((entry) => ({ facts: {}, places: [], ...entry })),
+  });
+}
+
 /** A batch-b1 item that holds: a duplication between F1 and F2, citing one line of each chapter. */
 export const goodItem = (over = {}) => ({
   dimension: 'duplication',

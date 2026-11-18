@@ -22,7 +22,6 @@ function ready() {
   run.facts();
   run.writeBatch('b1', [goodItem(), second(), third()]);
   run.writeBatch('b2', []);
-  run.writeBatch('cross', []);
   run.claims = (batch) => runHandbook(['review', 'claims', run.out, batch]);
   run.prune = (batch) => runHandbook(['review', 'prune', run.out, batch, '--project', run.root]);
   run.writeVerdicts = (batch, verdicts) => run.writeJson(join(run.out, 'entries', 'review', `${batch}.verdicts.json`), { verdicts });
@@ -82,9 +81,9 @@ describe('review claims', () => {
 
   it('refuses a batch that does not exist or has no file', () => {
     const run = ready();
-    expect(run.claims('b9').lines[0]).toBe('b9 is not a batch; the batches are b1, b2, cross');
-    rmSync(join(run.out, 'entries', 'review', 'cross.json'));
-    expect(run.claims('cross').lines[0]).toMatch(/^cross: entries\/review\/cross.json is missing/);
+    expect(run.claims('b9').lines[0]).toBe('b9 is not a batch; the batches are b1, b2');
+    rmSync(join(run.out, 'entries', 'review', 'b2.json'));
+    expect(run.claims('b2').lines[0]).toMatch(/^b2: entries\/review\/b2.json is missing/);
   });
 });
 

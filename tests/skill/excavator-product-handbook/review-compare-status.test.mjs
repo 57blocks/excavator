@@ -41,7 +41,6 @@ function ready({ withFile = true, sources } = {}) {
   }
   run.writeBatch('b1', [goodItem({ candidates: ['X1'] }), second()]);
   run.writeJson(join(run.out, 'entries', 'review', 'b2.json'), { items: [], dismissed: [{ candidate: 'X2', reason: 'same' }] });
-  run.writeBatch('cross', []);
   run.prune = (batch) => runHandbook(['review', 'prune', run.out, batch, '--project', run.root]);
   run.status = () => runHandbook(['review', 'compare-status', run.out, '--project', run.root]);
   run.chapter = () => readFileSync(join(run.out, 'chapters', 'review.md'), 'utf-8');
@@ -53,7 +52,7 @@ function pruned(run) {
     { index: 0, verdict: 'supported', reason: 'The lines say it.' },
     { index: 1, verdict: 'unsupported', reason: 'The lines do not say it.' },
   ] });
-  for (const batch of ['b1', 'b2', 'cross']) expect(run.prune(batch).status).toBe(0);
+  for (const batch of ['b1', 'b2']) expect(run.prune(batch).status).toBe(0);
 }
 
 describe('compare buckets', () => {
@@ -167,7 +166,13 @@ describe('candidates and dismissed shape', () => {
   refused('dismissed that is not a list', withDismissed({}), /b2: dismissed must be a list/);
   refused('a dismissed entry with another key', withDismissed([{ candidate: 'X1', reason: 'same', note: 'x' }]), /b2 dismissed 0: must be an object with exactly candidate and reason/);
   refused('a dismissed candidate of the wrong form', withDismissed([{ candidate: 'F1', reason: 'same' }]), /b2 dismissed 0: candidate "F1" is not a comparison candidate id/);
-  refused('a dismissed reason out of the list', withDismissed([{ candidate: 'X1', reason: 'boring' }]), /b2 dismissed 0: reason "boring" is not one of same, different-subject, not-in-chapters/);
+  refused('a dismissed reason out of the list', withDismissed([{ candidate: 'X1', reason: 'boring' }]), /b2 dismissed 0: reason "boring" is not one of same, different-subject, not-in-chapters, already-kept/);
+
+  it('accepts the already-kept reason', () => {
+    const run = ready();
+    run.writeJson(join(run.out, 'entries', 'review', 'b2.json'), { items: [], dismissed: [{ candidate: 'X2', reason: 'already-kept' }] });
+    expect(run.render('b1', 'b2').status).toBe(0);
+  });
 
   it('accepts a right shape, and prune keeps the dismissed list', () => {
     const run = ready();

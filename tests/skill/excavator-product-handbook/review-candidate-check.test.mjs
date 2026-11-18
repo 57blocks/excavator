@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { join } from 'node:path';
 
 import { runHandbook } from './helpers.mjs';
-import { goodItem, reviewRun } from './review-fixture.mjs';
+import { FORM } from './md-run-fixture.mjs';
+import { goodItem, reviewRun, writeCompare } from './review-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -95,12 +96,85 @@ describe('candidate conclusions', () => {
     const run = ready();
     run.write('b1', { items: [goodItem({ candidates: ['X1'] })] });
     run.write('b2', { items: [], dismissed: [dismissX2] });
-    run.write('cross', { items: [] });
     run.writeJson(join(run.out, 'entries', 'review', 'b1.verdicts.json'), { verdicts: [{ index: 0, verdict: 'unsupported', reason: 'The lines do not say it.' }] });
-    for (const batch of ['b1', 'b2', 'cross']) expect(runHandbook(['review', 'prune', run.out, batch, '--project', run.root]).status).toBe(0);
+    for (const batch of ['b1', 'b2']) expect(runHandbook(['review', 'prune', run.out, batch, '--project', run.root]).status).toBe(0);
     const result = run.render();
     expect(result.status, result.stdout).toBe(0);
     const text = runHandbook(['review', 'compare-status', run.out, '--project', run.root]).stdout;
     expect(text).toContain('UNJUDGED X1 dual F1,F2 b1');
+  });
+});
+
+describe('comparison batch rules', () => {
+  /** c-data-1 holds X3 (F1, F3) and X6 (F5); X1 is a dual candidate of b1 and X5 belongs to c-data-2. */
+  function compareRun() {
+    const run = reviewRun(cleanups);
+    run.facts();
+    writeCompare(run, [
+      candidate('X1', 'dual', ['F1', 'F2'], 'b1'),
+      candidate('X3', 'dict', ['F1', 'F3'], 'c-data-1'),
+      candidate('X5', 'dict', ['F4'], 'c-data-2'),
+      candidate('X6', 'dict', ['F5'], 'c-data-1'),
+    ]);
+    run.write = (batch, value) => run.writeJson(join(run.out, 'entries', 'review', `${batch}.json`), value);
+    return run;
+  }
+  const across = (over = {}) => goodItem({ features: ['F1', 'F3'], cites: [`${FORM}:7`, `${FORM}:11`], candidates: ['X3'], ...over });
+  const dismissX6 = [{ candidate: 'X6', reason: 'already-kept' }];
+
+  it('an item with features of two domain batches holds, and so does a dismissal with already-kept', () => {
+    const run = compareRun();
+    run.write('c-data-1', { items: [across()], dismissed: dismissX6 });
+    const result = run.render('c-data-1');
+    expect(result.status, result.stdout).toBe(0);
+  });
+
+  it('refuses an item that lists no candidate, while the same item with one passes', () => {
+    const run = compareRun();
+    run.write('c-data-1', { items: [across()], dismissed: dismissX6 });
+    expect(run.render('c-data-1').status).toBe(0);
+    for (const bare of [across({ candidates: undefined }), across({ candidates: [] })]) {
+      const item = { ...bare };
+      if (item.candidates === undefined) delete item.candidates;
+      run.write('c-data-1', { items: [item], dismissed: dismissX6 });
+      const result = run.render('c-data-1');
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain('c-data-1 item 0: a comparison batch item must list the candidates it handles');
+    }
+  });
+
+  it('refuses a batch that leaves one of its candidates without a conclusion and names it', () => {
+    const run = compareRun();
+    run.write('c-data-1', { items: [across()], dismissed: dismissX6 });
+    expect(run.render('c-data-1').status).toBe(0);
+    run.write('c-data-1', { items: [across()] });
+    const result = run.render('c-data-1');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('c-data-1: candidate X6 (dict, F5) has no conclusion');
+  });
+
+  it('refuses a candidate of a domain batch or of another chunk', () => {
+    const run = compareRun();
+    run.write('c-data-1', { items: [across()], dismissed: dismissX6 });
+    expect(run.render('c-data-1').status).toBe(0);
+    run.write('c-data-1', { items: [across({ candidates: ['X3', 'X1'] })], dismissed: dismissX6 });
+    expect(run.render('c-data-1').stdout).toContain('c-data-1: item 0 names X1, which is not a candidate of this batch');
+    run.write('c-data-1', { items: [across()], dismissed: [...dismissX6, { candidate: 'X5', reason: 'same' }] });
+    expect(run.render('c-data-1').stdout).toContain('c-data-1: dismissed names X5, which is not a candidate of this batch');
+    run.write('c-data-1', { items: [across({ candidates: ['X3', 'X5'] })], dismissed: dismissX6 });
+    expect(run.render('c-data-1').stdout).toContain('names X5, which is not a candidate of this batch');
+  });
+
+  it('the status of a comparison batch whose file is refused is write with the reason', () => {
+    const run = compareRun();
+    run.writeBatch('b1', [goodItem({ candidates: ['X1'] })]);
+    run.writeBatch('b2', []);
+    run.writeJson(join(run.out, 'entries', 'review', 'b1.verdicts.json'), { verdicts: [{ index: 0, verdict: 'supported', reason: 'ok' }] });
+    for (const batch of ['b1', 'b2']) expect(runHandbook(['review', 'prune', run.out, batch, '--project', run.root]).status).toBe(0);
+    run.write('c-data-1', { items: [across()] });
+    const lines = runHandbook(['review', 'status', run.out, '--project', run.root]).stdout.split('\n');
+    const at = lines.findIndex((line) => line.startsWith('c-data-1\twrite'));
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(lines[at + 1]).toContain('c-data-1: candidate X6');
   });
 });
