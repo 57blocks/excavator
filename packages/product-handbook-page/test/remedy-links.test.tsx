@@ -69,6 +69,8 @@ const data = (over: Partial<PageData> = {}, remedies = REMEDIES): PageData => {
 const render = (page: PageData, hash: string): string => renderToStaticMarkup(<AppView data={page} route={parseHash(hash)} />);
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 const expand = (host: HTMLElement, id: string): HTMLElement => {
+  // A row past the first rows of its group is behind the row that unfolds the group.
+  for (const more of Array.from(host.querySelectorAll<HTMLButtonElement>('[data-part="problem-group-more"]'))) act(() => more.click());
   act(() => (host.querySelector(`[data-problem="${id}"] button`) as HTMLElement).click());
   return host.querySelector(`[data-problem="${id}"]`) as HTMLElement;
 };

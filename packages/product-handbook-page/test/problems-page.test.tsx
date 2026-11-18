@@ -13,7 +13,7 @@ import { switchTarget, viewOf } from '../src/lib/navigation';
 import { pagesOf } from '../src/lib/pages';
 import { parseHash, routeHash } from '../src/lib/route';
 
-import { sortRows } from '../src/lib/problems';
+import { groupRows, sortRows } from '../src/lib/problems';
 import { searchResults } from '../src/lib/search';
 import type { Outline, PageData, ProblemRow, ProblemsData } from '../src/lib/types';
 import { cleanup, mount, choose, moveAndConfirm, openWithKeyboard, optionTexts, selectByLabel, typeInto } from './dom';
@@ -141,21 +141,24 @@ describe('the route', () => {
 });
 
 describe('the table and its order', () => {
-  it('lists defects, then design problems, then open questions, each by level and then by original order', () => {
-    expect(ids(render(data(), '#/product/problems'))).toEqual(['d2', 'd3', 'd1', 'r2', 'r1', 'q1', 'q2']);
+  it('lists defects, then design problems, then open questions, each by level and then by original order, within each group', () => {
+    // The features of these rows are in no domain of the page: one group, every row shown.
+    expect(ids(render(data(), '#/product/problems?feature=F2'))).toEqual(['d2', 'd3', 'r2', 'q2']);
+    expect(ids(render(data(), '#/product/problems'))).toEqual(['q1', 'd2', 'd3', 'd1']);
     expect(sortRows([row('a', { level: 'P1' }), design('b', { level: 'high' }), row('c', { level: 'P1' }), row('e', { level: 'P0' })]).map((one) => one.id)).toEqual(['e', 'a', 'c', 'b']);
   });
 
   it('shows the summary, the first feature with a count of the others, and the type with its level', () => {
-    const html = decode(render(data(), '#/product/problems'));
-    const first = html.slice(html.indexOf('data-problem="d2"'), html.indexOf('data-problem="d3"'));
+    const html = decode(render(data(), '#/product/problems?row=r1'));
+    const rowOf = (id: string): string => { const start = html.indexOf(`data-problem="${id}"`); return html.slice(start, html.indexOf('</button>', start)); };
+    const first = rowOf('d2');
     expect(first).toContain(d('summary d2'));
     expect(first).toContain(`${d('Orders')}<span class="prob-more">${t('page.problems.moreFeatures', { count: 1 })}</span>`);
     expect(first).toContain(`${t('page.problems.type.defect')}<span class="prob-level" data-level="P0">P0</span>`);
     expect(first).toContain('aria-expanded="false"');
-    const impact = html.slice(html.indexOf('data-problem="r2"'), html.indexOf('data-problem="r1"'));
+    const impact = rowOf('r2');
     expect(impact).toContain(`data-level="high">${t('chapter.review.impact.high')}</span>`);
-    const system = html.slice(html.indexOf('data-problem="q1"'), html.indexOf('data-problem="q2"'));
+    const system = rowOf('q1');
     expect(system).toContain(t('page.nav.system'));
     expect(system).not.toContain('prob-level');
   });
@@ -196,8 +199,9 @@ describe('the filters opened from the address', () => {
     const html = render(page, '#/product/problems?domain=system');
     expect(ids(html)).toEqual(['q1']);
     // The select shows the chosen value by its label, not by the value written in the address.
-    expect(html).toContain(marked['page.problems.filter.systemLevel']);
-    expect(render(page, '#/product/problems')).not.toContain(marked['page.problems.filter.systemLevel']);
+    const domainField = (text: string): string => text.slice(text.indexOf('data-filter="domain"'), text.indexOf('data-filter="feature"'));
+    expect(domainField(html)).toContain(marked['page.problems.filter.systemLevel']);
+    expect(domainField(render(page, '#/product/problems'))).not.toContain(marked['page.problems.filter.systemLevel']);
   });
 
   it('a defect of two features is visible under either one', () => {
@@ -256,6 +260,8 @@ describe('the expanded rows', () => {
   const expanded = async (page: PageData, hash: string, id: string): Promise<HTMLElement> => {
     window.history.replaceState(null, '', hash);
     const host = mount(<AppView data={page} route={parseHash(hash)} />);
+    // A row past the first rows of its group is behind the row that unfolds the group.
+    for (const more of Array.from(host.querySelectorAll<HTMLButtonElement>('[data-part="problem-group-more"]'))) act(() => more.click());
     const button = host.querySelector(`[data-problem="${id}"] button`) as HTMLElement;
     act(() => button.click());
     return host.querySelector(`[data-problem="${id}"]`) as HTMLElement;
@@ -518,5 +524,59 @@ describe('the colours of the levels', () => {
     });
     const values = [1, 2, 3].map((n) => css.match(new RegExp(`--lv${n}: (#[0-9A-F]{6});`))?.[1]);
     expect(new Set(values).size).toBe(3);
+  });
+});
+
+describe('the list in groups', () => {
+  const GROUPED: ProblemRow[] = [
+    row('x1', { level: 'P0' }), row('x2', { level: 'P0' }), row('x3', { level: 'P1' }), row('x4', { level: 'P2' }), design('x5', { level: 'low' }),
+    row('a1', { level: 'P1', features: ['F1', 'F2'] }),
+    row('s1', { level: 'P2', features: ['system'] }), row('s2', { level: 'P2', features: ['system', 'F1'] }), open('s3'), open('s4'),
+    row('o1', { level: 'P2', features: ['F9'] }),
+    row('b1', { level: 'P1', features: ['F2'] }),
+  ];
+  const page = (): PageData => pageData({ domains: domainData().domains, outline: domainData().outline, chapters: domainData().chapters, problems: problems({ rows: GROUPED }) });
+  const groupsIn = (host: HTMLElement): string[] => Array.from(host.querySelectorAll('[data-part="problem-group"]')).map((one) => one.getAttribute('data-group') ?? '');
+  const rowsOf = (host: HTMLElement, key: string): string[] => Array.from(host.querySelectorAll(`[data-group="${key}"] [data-problem]`)).map((one) => one.getAttribute('data-problem') ?? '');
+  const more = (host: HTMLElement, key: string): HTMLButtonElement | null => host.querySelector(`[data-group="${key}"] [data-part="problem-group-more"]`);
+
+  it('puts each row in exactly one group: the system level, across domains, each domain in its order, then outside every domain', () => {
+    const grouped = groupRows(sortRows(GROUPED), groupsOf(page()));
+    expect(grouped.map((group) => group.key)).toEqual(['system', 'across', 'd1', 'd2', 'outside']);
+    expect(grouped.flatMap((group) => group.rows.map((one) => one.id)).sort()).toEqual(GROUPED.map((one) => one.id).sort());
+    expect(grouped.find((group) => group.key === 'system')?.rows.map((one) => one.id)).toEqual(['s1', 's2', 's3', 's4']);
+    expect(grouped.find((group) => group.key === 'd1')?.name).toBe(domainData().domains.list[0].name);
+  });
+
+  it('heads each group with its name, its count, its P0 count and a note for the groups that are not a domain, and shows its first three rows', () => {
+    const host = mount(<AppView data={page()} route={parseHash('#/product/problems')} />);
+    expect(groupsIn(host)).toEqual(['system', 'across', 'd1', 'd2', 'outside']);
+    const head = (key: string): HTMLElement => host.querySelector(`[data-group="${key}"] [data-part="problem-group-head"]`) as HTMLElement;
+    expect(head('system').textContent).toContain(t('page.problems.filter.systemLevel'));
+    expect(head('system').textContent).toContain(t('page.problems.groupNote.system'));
+    expect(head('across').textContent).toContain(t('page.problems.group.across'));
+    expect(head('outside').textContent).toContain(t('page.problems.group.outside'));
+    expect(head('d1').textContent).toContain(domainData().domains.list[0].name);
+    expect(head('d1').textContent).toContain(t('page.processes.problemCount', { count: 5 }));
+    expect(head('d1').querySelector('[data-level="P0"]')?.textContent).toBe(`P0 2`);
+    expect(head('system').querySelector('[data-level="P0"]')).toBeNull();
+    expect(rowsOf(host, 'd1')).toEqual(['x1', 'x2', 'x3']);
+    expect(more(host, 'd1')?.textContent).toBe(t('page.problems.moreRows', { count: 2 }));
+    expect(more(host, 'across')).toBeNull();
+    act(() => more(host, 'd1')?.click());
+    expect(rowsOf(host, 'd1')).toEqual(['x1', 'x2', 'x3', 'x4', 'x5']);
+    expect(more(host, 'd1')).toBeNull();
+  });
+
+  it('shows every row when the filters leave one group, and unfolds the group of the row the address names', () => {
+    const one = mount(<AppView data={page()} route={parseHash('#/product/problems?domain=system')} />);
+    expect(groupsIn(one)).toEqual(['system']);
+    expect(rowsOf(one, 'system')).toEqual(['s1', 's2', 's3', 's4']);
+    expect(more(one, 'system')).toBeNull();
+    cleanup();
+    const named = mount(<AppView data={page()} route={parseHash('#/product/problems?row=x5')} />);
+    expect(rowsOf(named, 'd1')).toEqual(['x1', 'x2', 'x3', 'x4', 'x5']);
+    expect(named.querySelector('[data-problem="x5"] .prob-head')?.getAttribute('aria-expanded')).toBe('true');
+    expect(rowsOf(named, 'd2')).toEqual(['b1']);
   });
 });

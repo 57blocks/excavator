@@ -5,7 +5,7 @@ import { groupsOf, isFeature, SYSTEM_BLOCK } from '../lib/groups';
 import { jumpToAnchor } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
-import { ALL_LEVELS, PROBLEM_TYPES, categoryText, countRows, filterRows, levelText, sortRows, SYSTEM_LEVEL, typeOfLevel } from '../lib/problems';
+import { ALL_LEVELS, FIRST_ROWS, PROBLEM_TYPES, categoryText, countRows, filterRows, groupRows, levelText, sortRows, SYSTEM_LEVEL, typeOfLevel } from '../lib/problems';
 import { routeHash } from '../lib/route';
 import type { ProblemFilters } from '../lib/route';
 import { useText } from '../lib/text';
@@ -148,6 +148,9 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
   const groups = useMemo(() => groupsOf(data), [data]);
   const rows = detail.status === 'ready' ? detail.value : null;
   const shown = useMemo(() => (rows === null ? [] : sortRows(filterRows(rows, filters, groups, view))), [rows, filters, groups, view]);
+  // The rows in groups (the system level, across domains, each domain, outside every domain); a group the reader unfolded shows all its rows.
+  const grouped = useMemo(() => groupRows(shown, groups), [shown, groups]);
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const named = filters.row;
   useEffect(() => {
     if (named === undefined || rows === null) return;
@@ -205,22 +208,45 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
           <div className="prob-cols" aria-hidden="true">
             <span>{t('page.problems.col.problem')}</span><span>{t('page.problems.col.features')}</span><span>{t('page.problems.col.type')}</span>
           </div>
-          <ul className="prob-list" role="list" aria-label={t('page.problems.title')}>
-            {shown.map((row) => {
-              const expanded = open.has(row.id);
-              const first = row.features.length > 0 ? featureTitle(row.features[0]) : '';
-              return (
-                <li className="prob" key={row.id} data-problem={row.id} data-type={row.type} data-level={row.level ?? undefined}>
-                  <button type="button" className="prob-head" aria-expanded={expanded} aria-controls={`problem-${row.id}`} onClick={() => toggle(row.id)}>
-                    <span className="prob-summary" title={row.summary}>{row.summary}</span>
-                    <span className="prob-features" data-part="problem-features">{first}{row.features.length > 1 && <span className="prob-more">{t('page.problems.moreFeatures', { count: row.features.length - 1 })}</span>}</span>
-                    <span className="prob-type">{t(`page.problems.type.${row.type}`)}{row.level !== null && <span className="prob-level" data-level={row.level}>{levelText(t, row.level)}</span>}</span>
+          {grouped.map((group) => {
+            // A group shows its first rows and a row that unfolds the rest, unless the filters leave it alone, it was unfolded or it
+            // holds the row the address names (which may be past its first rows).
+            const all = grouped.length === 1 || unfolded.has(group.key) || group.rows.length <= FIRST_ROWS || group.rows.some((row) => row.id === named);
+            const visible = all ? group.rows : group.rows.slice(0, FIRST_ROWS);
+            const name = group.name ?? t(group.key === SYSTEM_LEVEL ? 'page.problems.filter.systemLevel' : `page.problems.group.${group.key}`);
+            const p0 = group.rows.filter((row) => row.level === 'P0').length;
+            return (
+              <section className="prob-group" key={group.key} data-part="problem-group" data-group={group.key}>
+                <h2 className="prob-group-head" data-part="problem-group-head">
+                  <span className="prob-group-name">{name}</span>
+                  <span className="prob-group-count">{t('page.processes.problemCount', { count: group.rows.length })}</span>
+                  {p0 > 0 && <span className="prob-level" data-level="P0">{levelText(t, 'P0')} {p0}</span>}
+                  {group.name === null && <span className="prob-group-note">{t(`page.problems.groupNote.${group.key}`)}</span>}
+                </h2>
+                <ul className="prob-list" role="list" aria-label={name}>
+                  {visible.map((row) => {
+                    const expanded = open.has(row.id);
+                    const first = row.features.length > 0 ? featureTitle(row.features[0]) : '';
+                    return (
+                      <li className="prob" key={row.id} data-problem={row.id} data-type={row.type} data-level={row.level ?? undefined}>
+                        <button type="button" className="prob-head" aria-expanded={expanded} aria-controls={`problem-${row.id}`} onClick={() => toggle(row.id)}>
+                          <span className="prob-summary" title={row.summary}>{row.summary}</span>
+                          <span className="prob-features" data-part="problem-features">{first}{row.features.length > 1 && <span className="prob-more">{t('page.problems.moreFeatures', { count: row.features.length - 1 })}</span>}</span>
+                          <span className="prob-type">{t(`page.problems.type.${row.type}`)}{row.level !== null && <span className="prob-level" data-level={row.level}>{levelText(t, row.level)}</span>}</span>
+                        </button>
+                        {expanded && <ProblemDetail row={row} />}
+                      </li>
+                    );
+                  })}
+                </ul>
+                {!all && (
+                  <button type="button" className="prob-group-more" data-part="problem-group-more" onClick={() => setUnfolded((before) => new Set(before).add(group.key))}>
+                    {t('page.problems.moreRows', { count: group.rows.length - FIRST_ROWS })}
                   </button>
-                  {expanded && <ProblemDetail row={row} />}
-                </li>
-              );
-            })}
-          </ul>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </>

@@ -24,6 +24,44 @@ export function sortRows(rows: readonly ProblemRow[]): ProblemRow[] {
     .map((entry) => entry.row);
 }
 
+/** The value of the domain filter for the problems of the whole system: the rows that name the system chapter (domain ids are `d<n>`). */
+export const SYSTEM_LEVEL = SYSTEM_BLOCK;
+
+/** The key of the group of the rows that name no feature of any domain and not the system chapter. */
+export const OUTSIDE_DOMAINS = 'outside';
+/** The key of the group of the rows whose features are in two or more domains. */
+export const ACROSS_DOMAINS = 'across';
+/** How many rows of a group the list shows before the row that unfolds the rest. */
+export const FIRST_ROWS = 3;
+
+/** One group of the list: its key (`SYSTEM_LEVEL`, `ACROSS_DOMAINS`, a domain id or `OUTSIDE_DOMAINS`), the domain's name for a domain, and its rows in the order given. */
+export interface RowGroup { key: string; name: string | null; rows: ProblemRow[] }
+
+/** The key of the one group a row belongs to: the system level when it names the system chapter, else the one domain of its features, else across or outside the domains. */
+export function groupKeyOf(row: ProblemRow, groups: readonly Group[]): string {
+  if (row.features.includes(SYSTEM_BLOCK)) return SYSTEM_LEVEL;
+  const domains = groups.filter((group) => group.features.some((item) => row.features.includes(item.block)));
+  if (domains.length === 1) return domains[0].id;
+  return domains.length === 0 ? OUTSIDE_DOMAINS : ACROSS_DOMAINS;
+}
+
+/**
+ * The rows in groups, each row in exactly one: the system level, then the rows across domains, then each domain in the page's order,
+ * then the rows outside every domain. A group with no row is left out; the rows keep their order within a group.
+ */
+export function groupRows(rows: readonly ProblemRow[], groups: readonly Group[]): RowGroup[] {
+  const by = new Map<string, ProblemRow[]>();
+  for (const row of rows) {
+    const key = groupKeyOf(row, groups);
+    by.set(key, [...(by.get(key) ?? []), row]);
+  }
+  const order: { key: string; name: string | null }[] = [
+    { key: SYSTEM_LEVEL, name: null }, { key: ACROSS_DOMAINS, name: null },
+    ...groups.map((group) => ({ key: group.id, name: group.name })), { key: OUTSIDE_DOMAINS, name: null },
+  ];
+  return order.flatMap(({ key, name }) => { const found = by.get(key); return found === undefined ? [] : [{ key, name, rows: found }]; });
+}
+
 /** The text of a row in `view` as one string: a design row's situation and consequence joined. */
 export function textOfRow(row: ProblemRow, view: View): string {
   const text = row.texts[view];
@@ -31,9 +69,6 @@ export function textOfRow(row: ProblemRow, view: View): string {
   return typeof text === 'string' ? text : `${(text as DesignText).situation}\n${(text as DesignText).consequence}`;
 }
 
-
-/** The value of the domain filter for the problems of the whole system: the rows that name the system chapter (domain ids are `d<n>`). */
-export const SYSTEM_LEVEL = SYSTEM_BLOCK;
 /**
  * The rows that pass the filters. `domain`: any of the row's features is in that group, or with `SYSTEM_LEVEL` the row names the
  * system chapter (a problem of the whole system, in no domain); `feature`: the row names it;
