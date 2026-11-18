@@ -125,7 +125,7 @@ describe('the design-problems phase', () => {
 
   it('runs the precondition, the facts, the status, the writers, the verifiers, the prune and the render in that order', () => {
     const text = review();
-    const order = ['--before review', 'review facts "$OUT"', 'review status', 'review reset', 'review render "$OUT" <batch>', 'review claims', 'review prune', 'review render "$OUT" --project', 'review summary'].map((needle) => text.indexOf(needle));
+    const order = ['--before review', 'review facts "$OUT"', 'review status', 'review reset', 'review render "$OUT" <batch>', 'The batch has <n> items', 'review prune', 'review render "$OUT" --project', 'review summary'].map((needle) => text.indexOf(needle));
     expect(order.every((at) => at > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text).toContain('go back to Phase 5');
@@ -178,6 +178,13 @@ describe('the design-problems phase', () => {
     expect(verifier).toContain('a line found by the search never supports a claim that something exists');
     expect(verifier).toContain('`$OUT/entries/review/<batch>.verdicts.json`');
     expect(verifier).toMatch(/Do not rewrite/);
+    expect(verifier).toContain('handbook.mjs" review claims "$OUT" <batch> <index>');
+    expect(verifier).toMatch(/one at a time, from index 0 to the last/);
+    expect(review()).toContain("jq '.items | length' \"$OUT/entries/review/<batch>.json\"");
+    expect(review()).toContain('The batch has <n> items, index 0 to <n-1>.');
+    expect(review()).toMatch(/Write `\$OUT`, `\$LANGUAGE`, `\$PLUGIN_ROOT` and `<batch>` as their values in its prompt/);
+    expect(review()).not.toContain('pasted unchanged');
+    expect(review()).not.toContain('The items:');
     expect(review()).toContain('never dispatch in the background');
     expect(review()).toMatch(/Never make a third attempt/);
   });

@@ -136,9 +136,10 @@ Commands:
       or a fact of a listed feature, and the reader-text rules of the chapters. One line per refusal, exit 1. With
       batches named, only those are checked and nothing is written; with none named, every batch is checked and, when
       all pass, <out>/chapters/review.md is written.
-  review claims <out> <batch>
+  review claims <out> <batch> [<index>]
       Print each item of entries/review/<batch>.json (its index from 0, its fields) and, for each citation, the
-      chapter lines of the listed features that hold it: the whole input of the verifier of the batch.
+      chapter lines of the listed features that hold it; with an index, only that item. The verifier reads the
+      items one index at a time.
   review prune <out> <batch> --project <root>
       Read entries/review/<batch>.verdicts.json ({"verdicts": [{"index", "verdict": supported|unsupported, "reason"}]},
       one verdict for each item, exactly once), remove the unsupported items from the batch file, record them in
@@ -332,8 +333,8 @@ const COMMANDS = {
       return report(resetBatch(resolve(out), rest[0], { empty: sub === 'skip' }));
     }
     if (sub === 'claims' || sub === 'prune') {
-      if (rest.length !== 1) throw new UsageError(`review ${sub} takes <out> and one batch`);
-      return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
+      if (rest.length !== 1 && !(sub === 'claims' && rest.length === 2)) throw new UsageError(`review ${sub} takes <out> and one batch${sub === 'claims' ? ' and, optionally, an item index' : ''}`);
+      return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0], rest[1]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
     }
     return report(renderReview(resolve(out), projectRootOption(options.project), rest));
   },

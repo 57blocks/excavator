@@ -53,11 +53,7 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review titles "$OUT" --project "$PROJECT_ROOT"
    ```
 
-6. Verify. Run `review status` again. For each batch in the state `verify`, dispatch one `excavator-handbook-writer` subagent per batch in the foreground, at most `$CONCURRENCY` in one message, with the prompt **The verifier** followed by the line `The items:` and the output of this command pasted unchanged, and nothing else:
-   ```bash
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review claims "$OUT" <batch>
-   ```
-   The verifier writes `$OUT/entries/review/<batch>.verdicts.json`. Write `$OUT`, `$LANGUAGE` and `<batch>` as their values in its prompt; it reads nothing else, except that it searches the chapters of an item's listed features for a thing the item claims does not exist. As each returns, tell the user `Design problems <batch name>: judged`, in `$LANGUAGE`.
+6. Verify. Run `review status` again. For each batch in the state `verify`, count its items with `jq '.items | length' "$OUT/entries/review/<batch>.json"`, then dispatch one `excavator-handbook-writer` subagent per batch in the foreground, at most `$CONCURRENCY` in one message, with the prompt **The verifier** followed by the line `The batch has <n> items, index 0 to <n-1>.` with `<n>` and `<n-1>` written as numbers, and nothing else. Do not paste the items: the verifier prints them itself, one at a time. The verifier writes `$OUT/entries/review/<batch>.verdicts.json`. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT` and `<batch>` as their values in its prompt; it reads nothing else, except that it searches the chapters of an item's listed features for a thing the item claims does not exist. As each returns, tell the user `Design problems <batch name>: judged`, in `$LANGUAGE`.
 
 7. Apply the verdicts of every batch in the state `verify` or `prune`, one at a time:
    ```bash
@@ -160,7 +156,7 @@ Reply with one line: `<batch>: written`.
 **The verifier.**
 
 ````text
-You judge the items of one batch of design problems of a product handbook against the chapter lines they cite. Your whole input is the list of items at the end of this prompt: each item with its fields, and under each citation the chapter lines that hold it. Read no other file and run no other command than the search below and the one that writes your answer; never open the project. You write only `$OUT/entries/review/<batch>.verdicts.json` and nothing else anywhere.
+You judge the items of one batch of design problems of a product handbook against the chapter lines they cite. The last line of this prompt says how many items the batch has. Print the items one at a time, from index 0 to the last, with `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review claims "$OUT" <batch> <index>`: each prints one item with its fields and, under each citation, the chapter lines that hold it. Judge every item. Read no other file and run no other command than this one, the search below and the one that writes your answer; never open the project. You write only `$OUT/entries/review/<batch>.verdicts.json` and nothing else anywhere.
 
 For each item, decide `supported` or `unsupported`:
 - `supported` only when all three hold: the cited chapter lines say what the situation says; the consequence follows from the situation (nothing in it is added from outside the lines); and the item describes a design problem, not only a defect of the code restated in other words (a check that is missing, a failure that answers success, a value that is wrong);
@@ -170,7 +166,7 @@ A claim that something does not exist (no record, no other way in, nobody else c
 
 Judge only what the lines show, and for a claim that something does not exist, what the search finds. Do not rewrite, correct or improve an item, and do not judge whether the problem is important. When you cannot tell, the verdict is `unsupported`.
 
-Write the file in this exact shape, one verdict for each item of the list, once each, `index` being the number after `ITEM`, and a reason of one line in $LANGUAGE for every verdict, supported ones too:
+Write the file in this exact shape, one verdict for each item of the batch, once each, `index` being the number after `ITEM`, and a reason of one line in $LANGUAGE for every verdict, supported ones too:
 
 ```json
 { "verdicts": [{ "index": 0, "verdict": "supported", "reason": "<one line>" }] }

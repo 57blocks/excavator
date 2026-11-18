@@ -55,6 +55,23 @@ describe('review claims', () => {
     expect(result.stdout).not.toContain(run.out);
   });
 
+  it('with an index prints only that item exactly as the full output prints it, and refuses an index outside the items', () => {
+    const run = ready();
+    const full = run.claims('b1').lines;
+    const starts = full.map((line, at) => (line.startsWith('ITEM ') ? at : -1)).filter((at) => at >= 0);
+    for (const [n, start] of starts.entries()) {
+      const end = n + 1 < starts.length ? starts[n + 1] : full.length;
+      const one = runHandbook(['review', 'claims', run.out, 'b1', String(n)]);
+      expect(one.status).toBe(0);
+      expect(one.lines).toEqual(full.slice(start, end));
+    }
+    for (const bad of ['3', '-1', 'x', '1.5', '']) {
+      const refused = runHandbook(['review', 'claims', run.out, 'b1', bad]);
+      expect(refused.status, bad).toBe(2);
+      expect(refused.stderr).toContain('0 to 2');
+    }
+  });
+
   it('says so when a citation is on no line of the listed features, and a cite found in several lines lists all', () => {
     const run = ready();
     run.writeBatch('b1', [goodItem({ cites: [`${FORM}:5`, `${FORM}:99`] })]);

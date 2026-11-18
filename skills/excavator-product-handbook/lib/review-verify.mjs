@@ -1,6 +1,6 @@
 /**
  * The semantic check of the design problems (openspec change handbook-design-review, D5).
- * `review claims <out> <batch>` prints, for each item of a batch, its fields and the chapter lines that hold
+ * `review claims <out> <batch> [<index>]` prints, for each item of a batch, its fields and the chapter lines that hold
  * each of its citations: the whole input of the verifier. `review prune <out> <batch>` reads the verifier's
  * entries/review/<batch>.verdicts.json, removes the unsupported items from the batch file, records them in
  * entries/review-removed.json and, when every batch is ready, writes the chapter again.
@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { isObject, readJson, writeJson } from './json-file.mjs';
 import { batchFile, renderReview, reviewContext } from './review-render.mjs';
 import { specKey } from './chapter-cites.mjs';
+import { UsageError } from './errors.mjs';
 
 export const REMOVED_FILE = 'entries/review-removed.json';
 export const verdictsFile = (batch) => `entries/review/${batch}.verdicts.json`;
@@ -34,14 +35,21 @@ function openBatch(outDir, root, id, file = batchFile(id)) {
   return { ok: true, ctx, batch, items: read.value.items };
 }
 
-/** `review claims <out> <batch>`. Returns { status, lines }. */
-export function reviewClaims(outDir, id) {
+/** `review claims <out> <batch> [<index>]`: every item, or only the item at `index`, printed as the full output prints it. Returns { status, lines }. */
+export function reviewClaims(outDir, id, index) {
   const opened = openBatch(outDir, undefined, id);
   if (!opened.ok) return { status: 1, lines: opened.lines };
   const { ctx, items } = opened;
   const nameOf = (feature) => `${ctx.map.features.find((entry) => entry.id === feature)?.name ?? feature} (${feature})`;
-  const lines = [`Batch ${id}: ${items.length} items`];
+  let only;
+  if (index !== undefined) {
+    const at = /^\d+$/.test(String(index)) ? Number(index) : -1;
+    if (at < 0 || at >= items.length) throw new UsageError(`review claims: index ${JSON.stringify(index)} is not an item of ${id}; the items are 0 to ${items.length - 1}`);
+    only = at;
+  }
+  const lines = only === undefined ? [`Batch ${id}: ${items.length} items`] : [];
   items.forEach((item, at) => {
+    if (only !== undefined && at !== only) return;
     lines.push('', `ITEM ${at}`, `dimension: ${item.dimension}`, `impact: ${item.impact}`, `features: ${(item.features ?? []).map(nameOf).join(', ')}`);
     lines.push(`title: ${item.title}`, `situation: ${item.situation}`, `consequence: ${item.consequence}`);
     for (const cite of item.cites ?? []) {
