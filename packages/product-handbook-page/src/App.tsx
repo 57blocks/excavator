@@ -8,6 +8,7 @@ import { HistoryPage } from './components/HistoryPage';
 import { Architecture, systemSections } from './components/Architecture';
 import { HomePage } from './components/HomePage';
 import { ProblemsPage } from './components/ProblemsPage';
+import { ProcessesPage } from './components/ProcessesPage';
 import { RemediesPage } from './components/RemediesPage';
 import { Menu } from './components/Menu';
 import { NotFound } from './components/NotFound';
@@ -45,6 +46,8 @@ function PageContent({ data, item, view }: { data: PageData; item: PageItem; vie
     case 'dictionaries': return technical === undefined ? <NotFound /> : <DictionariesPage technical={technical} />;
     case 'history': return <HistoryPage data={data} technical={technical} />;
     case 'coverage': return <CoveragePage data={data} />;
+    // The processes page is drawn by its own route, not as a page of the list.
+    case 'processes': return <NotFound />;
   }
 }
 
@@ -136,6 +139,10 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
     } else if (body.name === 'remedies') {
       place = { kind: 'remedies' };
       main = <RemediesPage data={data} />;
+    } else if (body.name === 'processes' || body.name === 'process') {
+      // The list entry of the business processes is marked in the left list on the detail page too.
+      place = { kind: 'page', key: 'processes', group: null };
+      main = <ProcessesPage id={body.name === 'process' ? body.id : null} />;
     } else {
       const item = pageOf(pagesOf(data, view, coverageTitle), route);
       if (item !== undefined) {
@@ -203,6 +210,8 @@ export function documentTitle(data: PageData, route: Route): string {
   else if (body.name === 'domain') page = groupsOf(data).find((group) => group.id === body.id)?.name ?? t('page.notFound.heading');
   else if (body.name === 'problems') page = t('page.problems.title');
   else if (body.name === 'remedies') page = t('page.nav.remedies');
+  else if (body.name === 'processes') page = t('page.nav.processes');
+  else if (body.name === 'process') page = `${body.id} ${data.processes?.items.find((item) => item.id === body.id)?.name ?? ''}`.trim();
   else if (body.name === 'architecture') page = t('page.nav.architecture');
   else page = pageOf(pagesOf(data, view, coverageTitle), route)?.title ?? t('page.notFound.heading');
   const title = data.titles[view];

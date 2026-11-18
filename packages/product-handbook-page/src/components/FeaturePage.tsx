@@ -285,6 +285,20 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
   }
   // The problems block always shows: counts, fallbacks and the state of each source are its content.
   blocks.push(block('problems', 'page.feature.block.problems', problemsBody, sources.defects.state === 'ok' ? [] : ownProblems, mine.map(problemKey)));
+  // The processes whose steps pass through this feature; no block without processes data or when the feature is in none.
+  const through = (model.processes?.items ?? []).filter((process) => process.features.includes(id));
+  if (through.length > 0) {
+    blocks.push(block('processes', 'page.feature.block.processes', () => (
+      <ul className="feature-processes" data-part="feature-processes">
+        {through.map((process) => (
+          <li key={process.id} data-process={process.id}>
+            <a href={nav.process(process.id)}><span className="proc-no">{process.id}</span> {process.name}</a>
+            <span className="muted"> {t('page.processes.stepCount', { count: process.steps.length })}</span>
+          </li>
+        ))}
+      </ul>
+    ), []));
+  }
   if (handovers !== undefined || links.length > 0) {
     const kept = handovers === undefined ? [] : [handovers];
     blocks.push(block('links', 'page.feature.block.links', () => (

@@ -7,7 +7,7 @@ import { jumpToHeading } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
 import type { PageItem } from '../lib/pages';
-import { MAX_RESULTS, MIN_TEXT_QUERY, searchAll } from '../lib/search';
+import { MAX_RESULTS, MIN_TEXT_QUERY, PROCESSES_CHAPTER, searchAll } from '../lib/search';
 import type { Result, TextSource } from '../lib/search';
 import type { Pair } from '../lib/strata';
 import { useText } from '../lib/text';
@@ -38,7 +38,7 @@ export function SearchDialog({ groups, colours, items, chapters, references, onC
   const nav = useLinks();
   const view = useView();
   const loader = useContext(LoaderContext);
-  const { map: domainsIndex } = useModel();
+  const { map: domainsIndex, processes } = useModel();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -83,10 +83,12 @@ export function SearchDialog({ groups, colours, items, chapters, references, onC
     const { target } = result;
     onDone();
     if (target.kind === 'domain') window.location.hash = nav.domain(target.id);
+    else if (target.kind === 'process') window.location.hash = nav.process(target.id);
+    else if (target.kind === 'problem') window.location.hash = nav.problems({ row: target.id });
     else {
-      // The remedies chapter is the improvement suggestions page, not a chapter page.
+      // The remedies chapter is the improvement suggestions page, and the business-processes chapter (with processes data) the processes page, not chapter pages.
       const chapter = target.kind === 'chapter' ? target.id : target.chapter;
-      window.location.hash = chapter === 'remedies' ? nav.remedies : nav.chapter(chapter);
+      window.location.hash = chapter === 'remedies' ? nav.remedies : chapter === PROCESSES_CHAPTER && processes !== null ? nav.processes : nav.chapter(chapter);
     }
     if (target.kind === 'heading') jumpToHeading(target.chapter, target.heading);
   };

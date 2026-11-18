@@ -25,7 +25,7 @@ const S = (key: string, values: Record<string, string | number> = {}): string =>
 const row = (id: string, over: Partial<ProblemRow> = {}): ProblemRow => ({
   id, type: 'defect', level: 'P1', group: 'security', features: ['F2'], summary: d(`summary ${id}`),
   texts: { product: d(`product text ${id}`), technical: d(`technical text ${id}`) },
-  source: { chapter: 'defects', line: 4 }, remedy: null, ...over,
+  source: { chapter: 'defects', line: 4 }, remedies: [], ...over,
 });
 const design = (id: string, over: Partial<ProblemRow> = {}): ProblemRow => row(id, {
   type: 'design', level: 'high', group: 'duplication', summary: d(`design ${id}`),

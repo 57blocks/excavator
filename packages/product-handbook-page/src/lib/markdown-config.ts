@@ -3,6 +3,8 @@ import remarkGfm from 'remark-gfm';
 
 import { remarkFeatureLinks } from './remark-feature-links';
 import type { FeatureLinkOptions } from './remark-feature-links';
+import { remarkItemLinks } from './remark-item-links';
+import type { ItemLinkOptions } from './remark-item-links';
 
 /**
  * The plugins of every Markdown text on the page: GitHub tables, task lists and strikethrough. There is no rehype
@@ -13,4 +15,9 @@ export const remarkPlugins: NonNullable<MarkdownOptions['remarkPlugins']> = [rem
 /** The plugins with the feature links: the page's chapter titles and addresses, and the chapter the text belongs to (not linked from itself). */
 export function pluginsWithFeatureLinks(options: FeatureLinkOptions): typeof remarkPlugins {
   return [remarkGfm, [remarkFeatureLinks, options]];
+}
+
+/** The plugins of the improvement suggestions chapter: the feature links, and the links from the item ids to their rows and processes with the anchors of the items. */
+export function pluginsWithItemLinks(features: FeatureLinkOptions, items: ItemLinkOptions): typeof remarkPlugins {
+  return [remarkGfm, [remarkFeatureLinks, features], [remarkItemLinks, items]];
 }

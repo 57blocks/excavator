@@ -1,6 +1,6 @@
-/** The page data `handbook.mjs page` writes into the template: format /22 (openspec changes handbook-skill-first, design D7, handbook-page-domain-map, design D3, and handbook-page-structure, design D1); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
+/** The page data `handbook.mjs page` writes into the template: format /23 (openspec changes handbook-skill-first, design D7, handbook-page-domain-map, design D3, handbook-page-structure, design D1, and handbook-process-review, design D10); skills/excavator-product-handbook/lib/page-data.mjs builds it. */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/22';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/23';
 
 /** The views a page can hold: the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -213,8 +213,18 @@ export interface DomainData { id: string; name: string; features: string[]; intr
 /** A hand-over between two domains (by id); `features` are the feature ids its `what` names; `cites` only with the technical view. */
 export interface HandoverData { from: string; to: string; what: string; features: string[]; cites?: string[] }
 
-/** One entry of the search index: a domain, a chapter, or a `##` or `###` heading of a chapter (`heading` counts them from 0 in the chapter). */
-export interface SearchItem { kind: 'domain' | 'chapter' | 'heading'; title: string; chapter: string | null; domain: string | null; heading: number | null; /** 2 or 3 for a heading, null for a domain or a chapter. */ level: 2 | 3 | null }
+/** One entry of the search index: a domain, a chapter, a `##` or `###` heading of a chapter (`heading` counts them from 0 in the chapter), or a defect or design problem by its number (`D3 title`). */
+export interface SearchItem {
+  kind: 'domain' | 'chapter' | 'heading' | 'problem';
+  title: string;
+  chapter: string | null;
+  domain: string | null;
+  heading: number | null;
+  /** 2 or 3 for a heading, null for the other kinds. */
+  level: 2 | 3 | null;
+  /** The id of the problem row (`d3`, `r12`) of a `problem` item. */
+  id?: string;
+}
 
 /** The three kinds of problem rows: defects (parser), design problems (checked batches), open questions (fixed section of a chapter). */
 export type ProblemType = 'defect' | 'design' | 'open';
@@ -230,7 +240,9 @@ export interface DesignText { situation: string; consequence: string }
 /**
  * One row of the problems table. `features` are feature ids or `system`. `texts` is the full text by view (a design row's is a
  * situation and a consequence); it is empty in the core of a page whose problems are in a part file, like `cites` (the technical view's only).
- * `remedy.heading` counts the `##` and `###` headings of the remedies chapter from 0.
+ * `process` (`P<n>`) is on a design row whose item names a process. `remedies` are the items of the remedies chapter that name the row, in chapter
+ * order: `heading` is the title of the item's level-2 section and `anchor` the id the remedies page puts on the item (an older chapter that names
+ * no id gives the one heading that names the category or dimension, its anchor the page heading id `h-<n>`); `[]` for none and for an open question.
  */
 export interface ProblemRow {
   id: string;
@@ -241,9 +253,22 @@ export interface ProblemRow {
   summary: string;
   texts: Partial<Record<View, string | DesignText>>;
   cites?: string[];
+  process?: string;
   source: { chapter: string; line: number };
-  remedy: { chapter: 'remedies'; heading: number } | null;
+  remedies: RemedyLink[];
 }
+
+/** One item of the remedies chapter that names a problem row: the title of its section and the id of its element on the remedies page. */
+export interface RemedyLink { heading: string; anchor: string }
+
+/** One step of a process: who does it, the operation (the title of an operation of the feature), the feature id, the sentence and, in the technical view, its citations. */
+export interface ProcessStep { role: string; operation: string; feature: string; text: string; cites?: string[] }
+
+/** A business process: its number `P<n>`, its name, its steps, its end state when it has one, and the feature ids of its steps in step order, each once. */
+export interface ProcessItem { id: string; name: string; steps: ProcessStep[]; end?: { text: string; cites?: string[] }; features: string[] }
+
+/** The business processes of the page (null without a usable chapter): the processes and, by feature, the operations that no step names. */
+export interface ProcessesData { items: ProcessItem[]; coverage: { feature: string; operations: string[] }[] }
 
 /** The problems of the page: the state and count of each source, the rows (defects, then design problems, then open questions) and the remedies chapter id (null without one). */
 export interface ProblemsData {
@@ -273,6 +298,8 @@ export interface PageData {
   domains: { state: DomainsState; list: DomainData[]; handovers: HandoverData[] };
   /** The table of problems; its rows' full texts are in the `problems` unit of a chunked page. */
   problems: ProblemsData;
+  /** The business processes; null when the run has no usable business-processes chapter, so the page has no processes page. */
+  processes: ProcessesData | null;
   /** The first paragraph of the system chapter (product view text); empty without a system chapter. */
   lead: string;
   /** The section of the system chapter that holds its first diagram, by view; '' without one. */

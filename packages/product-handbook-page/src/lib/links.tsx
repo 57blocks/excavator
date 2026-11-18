@@ -18,6 +18,9 @@ export interface Links {
   problems: (filters?: ProblemFilters) => string;
   /** The improvement suggestions page (the remedies chapter). */
   remedies: string;
+  /** The business processes page, and one process of it (`P<n>`). */
+  processes: string;
+  process: (id: string) => string;
 }
 
 export function makeLinks(prefix: View | null): Links {
@@ -32,6 +35,8 @@ export function makeLinks(prefix: View | null): Links {
     domain: (id) => routeHash({ name: 'domain', id }, prefix),
     problems: (filters = {}) => routeHash({ name: 'problems', filters }, prefix),
     remedies: routeHash({ name: 'remedies' }, prefix),
+    processes: routeHash({ name: 'processes' }, prefix),
+    process: (id) => routeHash({ name: 'process', id }, prefix),
   };
 }
 

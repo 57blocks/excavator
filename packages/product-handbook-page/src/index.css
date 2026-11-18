@@ -383,9 +383,9 @@ td[data-kind="string"]::before, td[data-kind="string"]::after, .item-code[data-k
 .prose td { padding: 10px 14px 10px 0; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: break-word; word-break: normal; }
 .prose .img-alt { color: var(--text-3); }
 /* A citation: the file, then the lines, as quiet monospace text. */
-.prose code.cite { display: inline-flex; flex-wrap: wrap; align-items: baseline; max-width: 100%; padding: 0; background: none; color: var(--text-2); font-size: 12px; overflow-wrap: anywhere; }
+.prose code.cite, .processes code.cite { display: inline-flex; flex-wrap: wrap; align-items: baseline; max-width: 100%; padding: 0; background: none; color: var(--text-2); font-size: 12px; overflow-wrap: anywhere; }
 /* On a phone a long path breaks anywhere rather than widening the page. */
-.prose code.cite > * { min-width: 0; }
+.prose code.cite > *, .processes code.cite > * { min-width: 0; }
 .cite-lines { color: var(--text-3); }
 /* The fixed notice paragraphs of a chapter: small secondary text with an info icon; the not-passed one in brick. */
 .prose .note { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 18px; font-size: 14px; line-height: 1.6; color: var(--text-2); }
@@ -669,7 +669,7 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .prob-cols, .prob-head { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1.2fr) minmax(0, 1.4fr); gap: 4px 20px; }
 .prob-cols { padding: 8px 8px; font-size: 12.5px; font-weight: 600; color: var(--text-2); border-bottom: 1px solid var(--line-strong); }
 .prob-list { display: grid; margin: 0; }
-.prob { min-width: 0; border-bottom: 1px solid var(--line); }
+.prob { scroll-margin-top: calc(var(--topbar-h) + 20px); min-width: 0; border-bottom: 1px solid var(--line); }
 .prob-head { width: 100%; padding: 10px 8px; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; align-items: baseline; }
 .prob-head:hover { background: var(--surface-2); }
 .prob-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -682,6 +682,32 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .prob-detail { padding: 4px 8px 16px; display: grid; gap: 8px; max-width: 78ch; min-width: 0; overflow-wrap: anywhere; }
 .prob-body > * + * { margin-top: 6px; }
 .prob-cites { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+[id^="remedy-"] { scroll-margin-top: calc(var(--topbar-h) + 72px); }
+.prob-remedies { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+/* The business processes page: a list ruled like the domains index, the steps of one process in order. */
+.processes { max-width: 78ch; }
+.proc-no { font-weight: 650; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.proc-list { margin: 16px 0 0; padding: 0; list-style: none; }
+.proc-list li { border-top: 1px solid var(--line); }
+.proc-list li:last-child { border-bottom: 1px solid var(--line); }
+.proc-list a { display: grid; grid-template-columns: 4rem minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 10px 0; color: var(--accent-text); text-decoration: none; }
+.proc-list a:hover .proc-name { text-decoration: underline; }
+.proc-name { overflow-wrap: anywhere; }
+.proc-count { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.proc-coverage, .proc-features, .proc-problems { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
+.proc-coverage ul, .proc-features ul, .proc-problems ul, .feature-processes { margin: 8px 0 0; padding: 0 0 0 18px; }
+.proc-steps { margin: 16px 0 0; padding: 0; list-style: none; counter-reset: pstep; }
+.proc-steps > li { counter-increment: pstep; position: relative; padding: 12px 0 12px 36px; border-top: 1px solid var(--line); }
+.proc-steps > li:last-child { border-bottom: 1px solid var(--line); }
+.proc-steps > li::before { content: counter(pstep); position: absolute; left: 0; top: 12px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-bg); color: var(--accent-text); font-size: 12px; font-weight: 650; }
+.proc-step-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.proc-role { color: var(--text-2); font-size: 13.5px; }
+.proc-steps > li, .proc-end { min-width: 0; }
+.proc-steps .prob-cites, .proc-end .prob-cites { margin-top: 4px; }
+.proc-text { margin: 4px 0 0; color: var(--text); line-height: 1.6; overflow-wrap: anywhere; }
+.proc-end { margin: 16px 0 0; overflow-wrap: anywhere; }
+.feature-processes { list-style: none; padding: 0; }
+.feature-processes li { padding: 6px 0; }
 @media (max-width: 900px) {
   .problems-page { padding: 0 0 40px; }
 }

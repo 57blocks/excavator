@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useProblems } from '../lib/chunks';
 import { groupsOf, isFeature, SYSTEM_BLOCK } from '../lib/groups';
-import { jumpToHeading } from '../lib/heading-jump';
+import { jumpToAnchor } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
 import { ALL_LEVELS, PROBLEM_TYPES, countRows, filterRows, levelText, sortRows, typeOfLevel } from '../lib/problems';
@@ -33,7 +33,7 @@ function writeAddress(prefix: View | null, filters: ProblemFilters): void {
 }
 
 /** The citations of a row, each as the chip chapters show. */
-function Cites({ cites }: { cites: string[] }) {
+export function Cites({ cites }: { cites: string[] }) {
   return (
     <ul className="prob-cites" role="list" data-part="problem-cites">
       {cites.map((text, at) => {
@@ -44,14 +44,21 @@ function Cites({ cites }: { cites: string[] }) {
   );
 }
 
-/** The body of a problem: its text in the reader's view, group, features and remedy link. Needs a row with its texts. */
+/** The text of the `at`-th link of `count` to the remedies: the plain link text for one, else a numbered one with the title of the section. */
+function remedyLabel(t: ReturnType<typeof useText>, count: number, at: number, heading: string): string {
+  if (count === 1) return t('page.problems.remedyLink');
+  return heading === '' ? t('page.problems.remedyItemPlain', { n: at + 1 }) : t('page.problems.remedyItem', { n: at + 1, heading });
+}
+
+/** The body of a problem: its text in the reader's view, group, features, the process of a design problem and a link to each remedy that names it. Needs a row with its texts. */
 export function ProblemDetail({ row }: { row: ProblemRow }) {
   const t = useText();
   const view = useView();
   const nav = useLinks();
-  const { titles } = useModel();
+  const { titles, processes } = useModel();
   const text = row.texts[view];
   const featureTitle = (id: string): string => (id === SYSTEM_BLOCK ? t('page.nav.system') : titles[id] ?? id);
+  const process = row.process === undefined ? undefined : processes?.items.find((item) => item.id === row.process);
   let body = null;
   if (text !== undefined) {
     if (row.type === 'design') {
@@ -78,11 +85,25 @@ export function ProblemDetail({ row }: { row: ProblemRow }) {
         <span className="inline-label">{t('chapter.review.field.features')}</span>{' '}
         {row.features.map((id, at) => <span key={id}>{at > 0 && ', '}<a href={nav.chapter(id)}>{featureTitle(id)}</a></span>)}
       </div>
+      {row.type === 'design' && process !== undefined && (
+        <div className="item-field" data-field="process">
+          <span className="inline-label">{t('chapter.review.field.process')}</span>{' '}
+          <a href={nav.process(process.id)} data-part="process-link">{`${process.id} ${process.name}`}</a>
+        </div>
+      )}
       {row.type !== 'open' && (
         <div className="item-field" data-field="remedy">
-          {row.remedy === null
+          {row.remedies.length === 0
             ? <span className="muted">{t('page.problems.noRemedy')}</span>
-            : <a href={nav.remedies} data-part="remedy-link" onClick={() => { jumpToHeading('remedies', (row.remedy as { heading: number }).heading); }}>{t('page.problems.remedyLink')}</a>}
+            : (
+              <ul className="prob-remedies" role="list">
+                {row.remedies.map((link, at) => (
+                  <li key={link.anchor}>
+                    <a href={nav.remedies} data-part="remedy-link" data-anchor={link.anchor} onClick={() => { jumpToAnchor('remedies', link.anchor); }}>{remedyLabel(t, row.remedies.length, at, link.heading)}</a>
+                  </li>
+                ))}
+              </ul>
+            )}
         </div>
       )}
     </div>
@@ -118,10 +139,21 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
   const view = useView();
   const model = useModel();
   const detail = useProblems(data.problems.rows);
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  // The address can name one row (`row=r12`, a link from the improvement suggestions): it starts open and is scrolled to.
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(filters.row === undefined ? [] : [filters.row]));
   const groups = useMemo(() => groupsOf(data), [data]);
   const rows = detail.status === 'ready' ? detail.value : null;
   const shown = useMemo(() => (rows === null ? [] : sortRows(filterRows(rows, filters, groups, view))), [rows, filters, groups, view]);
+  const named = filters.row;
+  useEffect(() => {
+    if (named === undefined || rows === null) return;
+    setOpen((before) => (before.has(named) ? before : new Set(before).add(named)));
+    // The app scrolls to the top when the place changes, after the effects of its children; scroll in the frame after that.
+    const frame = window.requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`[data-problem=${JSON.stringify(named)}]`)?.scrollIntoView?.({ block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [named, rows]);
   if (rows === null) return <ChunkNotice state={detail as Exclude<typeof detail, { status: 'ready' }>} />;
 
   const featureTitle = (id: string): string => (id === SYSTEM_BLOCK ? t('page.nav.system') : model.titles[id] ?? id);
@@ -145,6 +177,7 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
   };
   const choose = (key: keyof ProblemFilters) => (value: string): void => {
     const next = set(key, value);
+    delete next.row;
     // A level belongs to one type: choosing it drops a different type.
     if (key === 'level' && next.level !== undefined && next.type !== undefined && typeOfLevel(next.level) !== next.type) delete next.type;
     onFilters(next);

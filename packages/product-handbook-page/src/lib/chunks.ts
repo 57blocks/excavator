@@ -146,8 +146,15 @@ export function assembleProblems(rows: ProblemRow[], pieces: Piece[]): ProblemRo
   return rows.map((row) => {
     const piece = byId.get(row.id);
     if (piece === undefined) return row;
-    const { id, type, level, group, features, summary, source, remedy } = row;
-    return { id, type, level, group, features, summary, texts: piece.texts, ...(has(piece, 'cites') ? { cites: piece.cites } : {}), source, remedy };
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+      out[key] = value;
+      if (key === 'summary') {
+        out.texts = piece.texts;
+        if (has(piece, 'cites')) out.cites = piece.cites;
+      }
+    }
+    return out as unknown as ProblemRow;
   });
 }
 

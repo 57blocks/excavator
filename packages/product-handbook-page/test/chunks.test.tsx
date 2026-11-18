@@ -320,8 +320,8 @@ describe('paging', () => {
 
 describe('the problems unit', () => {
   const rows = (): ProblemRow[] => [
-    { id: 'd1', type: 'defect', level: 'P0', group: 'security', features: ['F1'], summary: d('summary'), texts: { product: d('product words'), technical: `${d('technical words')} \`src/a.js:3\`` }, cites: ['src/a.js:3'], source: { chapter: 'defects', line: 3 }, remedy: null },
-    { id: 'q1', type: 'open', level: null, group: null, features: ['system'], summary: d('question'), texts: { product: d('open words') }, source: { chapter: 'system', line: 5 }, remedy: null },
+    { id: 'd1', type: 'defect', level: 'P0', group: 'security', features: ['F1'], summary: d('summary'), texts: { product: d('product words'), technical: `${d('technical words')} \`src/a.js:3\`` }, cites: ['src/a.js:3'], source: { chapter: 'defects', line: 3 }, remedies: [] },
+    { id: 'q1', type: 'open', level: null, group: null, features: ['system'], summary: d('question'), texts: { product: d('open words') }, source: { chapter: 'system', line: 5 }, remedies: [] },
   ];
   const problemsData = () => pageData({ problems: { sources: { defects: { state: 'ok', count: 1 }, design: { state: 'missing', count: null }, open: { state: 'ok', count: 1, unmatched: [] } }, rows: rows(), remedies: null } });
   const chunked = () => {

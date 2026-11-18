@@ -3,13 +3,19 @@ export const REVEAL_EVENT = 'xv-reveal';
 
 const reducedMotion = (): boolean => typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/**
- * Scroll to the heading `h-<index>` of the chapter `chapter` and focus it, waiting for it when the chapter's text is not on
- * the page yet (a part file that loads later). The heading counts only inside that chapter's own article, so the page being
- * left cannot answer for it. Gives up after `timeout` milliseconds; returns a function that stops the wait.
- */
+/** Scroll to the heading `h-<index>` of the chapter `chapter`; see `jumpToAnchor`. */
 export function jumpToHeading(chapter: string, index: number, timeout = 10000): () => void {
-  const find = (): HTMLElement | null => document.querySelector<HTMLElement>(`[data-chapter=${JSON.stringify(chapter)}] #h-${index}`);
+  return jumpToAnchor(chapter, `h-${index}`, timeout);
+}
+
+/**
+ * Scroll to the element with id `anchor` (a heading `h-<n>` or an item `remedy-<line>`) of the chapter `chapter` and focus it,
+ * waiting for it when the chapter's text is not on the page yet (a part file that loads later). The element counts only inside
+ * that chapter's own article, so the page being left cannot answer for it. Gives up after `timeout` milliseconds; returns a
+ * function that stops the wait.
+ */
+export function jumpToAnchor(chapter: string, anchor: string, timeout = 10000): () => void {
+  const find = (): HTMLElement | null => document.querySelector<HTMLElement>(`[data-chapter=${JSON.stringify(chapter)}] [id=${JSON.stringify(anchor)}]`);
   let observer: MutationObserver | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;

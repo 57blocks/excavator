@@ -17,6 +17,8 @@ export function viewOf(data: PageData, route: Route, coverageTitle: string): Vie
   if (body.name === 'home') return view;
   if (body.name === 'domain') return groupsOf(data).some((group) => group.id === body.id) ? view : null;
   if (body.name === 'problems' || body.name === 'remedies') return view;
+  if (body.name === 'processes') return data.processes === null ? null : view;
+  if (body.name === 'process') return data.processes?.items.some((item) => item.id === body.id) ? view : null;
   if (body.name === 'architecture') return hasArchitecture(data, view) ? view : null;
   return pageOf(pagesOf(data, view, coverageTitle), route) === undefined ? null : view;
 }
@@ -24,7 +26,7 @@ export function viewOf(data: PageData, route: Route, coverageTitle: string): Vie
 /** The fragment that shows the same page in `view`; the home page when that view does not have the page (the data page in the product view). */
 export function switchTarget(data: PageData, route: Route, view: View, coverageTitle: string): string {
   const body = bodyOf(route);
-  if (body.name === 'problems' || body.name === 'remedies') return routeHash(body, view);
+  if (body.name === 'problems' || body.name === 'remedies' || body.name === 'processes' || body.name === 'process') return routeHash(body, view);
   if (body.name === 'architecture') return routeHash(hasArchitecture(data, view) ? body : { name: 'home' }, view);
   if (body.name === 'domain') return routeHash(groupsOf(data).some((group) => group.id === body.id) ? body : { name: 'home' }, view);
   const key = routeKey(body);

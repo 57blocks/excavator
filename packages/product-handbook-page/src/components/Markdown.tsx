@@ -5,7 +5,7 @@ import type { Components } from 'react-markdown';
 
 import { chainSteps } from '../lib/chain-steps';
 import { useLinks } from '../lib/links';
-import { pluginsWithFeatureLinks } from '../lib/markdown-config';
+import { pluginsWithFeatureLinks, pluginsWithItemLinks } from '../lib/markdown-config';
 import { useModel } from '../lib/model';
 import { useText } from '../lib/text';
 import { Citation, parseCitation } from './Citation';
@@ -40,13 +40,23 @@ function codeOf(node: HastNode | undefined): HastNode | undefined {
 /**
  * Markdown as the page shows it: GitHub tables in a horizontal scroller, mermaid blocks as diagrams (a source that
  * does not render stays visible with a note), and an inline code span that is a whole citation (`path:12` or
- * `path:12-20`) as a citation chip. Raw HTML is not rendered. `idPrefix` makes the ids of the diagrams unique. A feature written as `Title (F12)` links to its page, except `chapter`'s own.
+ * `path:12-20`) as a citation chip. Raw HTML is not rendered. `idPrefix` makes the ids of the diagrams unique. A feature written as `Title (F12)` links to its page, except `chapter`'s own; in the remedies chapter an item id in an id group links to its row or process (remark-item-links.ts).
  */
 export function Markdown({ source, idPrefix, chapter }: { source: string; idPrefix: string; chapter?: string }) {
   const t = useText();
   const nav = useLinks();
-  const { titles } = useModel();
-  const plugins = useMemo(() => pluginsWithFeatureLinks({ titles, hrefOf: nav.chapter, own: chapter }), [titles, nav, chapter]);
+  const { titles, problems, processes } = useModel();
+  // The improvement suggestions chapter links its item ids to their rows and processes and puts an anchor on each item.
+  const plugins = useMemo(() => {
+    const features = { titles, hrefOf: nav.chapter, own: chapter };
+    if (chapter !== 'remedies') return pluginsWithFeatureLinks(features);
+    return pluginsWithItemLinks(features, {
+      problems: new Set(problems.rows.map((row) => row.id)),
+      processes: new Set((processes?.items ?? []).map((item) => item.id)),
+      problemHref: (rowId) => nav.problems({ row: rowId }),
+      processHref: nav.process,
+    });
+  }, [titles, nav, chapter, problems, processes]);
   // The fixed notices of a chapter: the not-verified text, and the not-passed text up to its first placeholder.
   const verified = t('chapter.notVerified');
   const notPassed = t('chapter.notPassed', { count: '{count}' }).split('{')[0];

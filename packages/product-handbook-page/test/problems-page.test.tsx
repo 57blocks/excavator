@@ -26,7 +26,7 @@ beforeEach(() => { window.history.replaceState(null, '', '#'); });
 const row = (id: string, over: Partial<ProblemRow> = {}): ProblemRow => ({
   id, type: 'defect', level: 'P1', group: 'security', features: ['F1'], summary: d(`summary ${id}`),
   texts: { product: d(`product text ${id}`), technical: `${d(`technical text ${id}`)} \`src/a.js:3-5\`` },
-  source: { chapter: 'defects', line: 4 }, remedy: null, ...over,
+  source: { chapter: 'defects', line: 4 }, remedies: [], ...over,
 });
 const design = (id: string, over: Partial<ProblemRow> = {}): ProblemRow => row(id, {
   type: 'design', level: 'high', group: 'duplication', summary: d(`design ${id}`),
@@ -39,10 +39,10 @@ const open = (id: string, over: Partial<ProblemRow> = {}): ProblemRow => row(id,
 
 const ROWS: ProblemRow[] = [
   row('d1', { level: 'P2' }),
-  row('d2', { level: 'P0', features: ['F1', 'F2'], remedy: { chapter: 'remedies', heading: 1 } }),
+  row('d2', { level: 'P0', features: ['F1', 'F2'], remedies: [{ heading: d('Security'), anchor: 'h-1' }] }),
   row('d3', { level: 'P1', features: ['F2'] }),
   design('r1', { level: 'low' }),
-  design('r2', { level: 'high', features: ['F2'], remedy: { chapter: 'remedies', heading: 0 } }),
+  design('r2', { level: 'high', features: ['F2'], remedies: [{ heading: d('Duplication'), anchor: 'h-0' }] }),
   open('q1'),
   open('q2', { features: ['F2'] }),
 ];

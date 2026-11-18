@@ -5,7 +5,7 @@ import { layoutMap } from './map-layout';
 import type { MapLayout } from './map-layout';
 import { domainColours } from './strata';
 import type { Pair } from './strata';
-import type { DomainData, DomainsState, HandoverData, PageData, ProblemsData } from './types';
+import type { DomainData, DomainsState, HandoverData, PageData, ProblemsData, ProcessesData } from './types';
 
 /**
  * What the pages share about the domains: whether the checked list is usable (`map`), the layout of the map, the colour of
@@ -26,6 +26,8 @@ export interface DomainModel {
   chapterDomain: Record<string, string>;
   /** The problems of the page as the core has them (no texts); the lists of a feature are taken from these rows. */
   problems: ProblemsData;
+  /** The business processes (null without a usable chapter); the process page, the feature pages and the links in the remedies read them. */
+  processes: ProcessesData | null;
   /** The number of problem rows that concern each feature (and `system`), 0 included: the one count the side list, the feature page and the overview show. */
   problemCount: Record<string, number>;
 }
@@ -48,7 +50,7 @@ export function buildModel(data: PageData, groups: Group[]): DomainModel {
   const problems = data.problems;
   const problemCount = countProblems(problems, chapterDomain);
   if (!usable) {
-    return { state: data.domains.state === 'ok' ? 'missing' : data.domains.state, map: false, layout: null, colours: domainColours(groups.map((group) => group.id)), handovers: [], domains: {}, titles, chapterDomain, problems, problemCount };
+    return { state: data.domains.state === 'ok' ? 'missing' : data.domains.state, map: false, layout: null, colours: domainColours(groups.map((group) => group.id)), handovers: [], domains: {}, titles, chapterDomain, problems, processes: data.processes, problemCount };
   }
   const { list, handovers } = data.domains;
   const layout = layoutMap(list.map((domain) => ({ id: domain.id, name: domain.name, features: domain.features.length })), handovers);
@@ -62,11 +64,12 @@ export function buildModel(data: PageData, groups: Group[]): DomainModel {
     titles,
     chapterDomain,
     problems,
+    processes: data.processes,
     problemCount,
   };
 }
 
-const EMPTY: DomainModel = { state: 'missing', map: false, layout: null, colours: {}, handovers: [], domains: {}, titles: {}, chapterDomain: {}, problems: { sources: { defects: { state: 'missing', count: null }, design: { state: 'missing', count: null }, open: { state: 'missing', count: null, unmatched: [] } }, rows: [], remedies: null }, problemCount: {} };
+const EMPTY: DomainModel = { state: 'missing', map: false, layout: null, colours: {}, handovers: [], domains: {}, titles: {}, chapterDomain: {}, problems: { sources: { defects: { state: 'missing', count: null }, design: { state: 'missing', count: null }, open: { state: 'missing', count: null, unmatched: [] } }, rows: [], remedies: null }, processes: null, problemCount: {} };
 
 export const ModelContext = createContext<DomainModel>(EMPTY);
 export const useModel = (): DomainModel => useContext(ModelContext);

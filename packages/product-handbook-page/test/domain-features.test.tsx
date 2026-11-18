@@ -18,7 +18,7 @@ afterEach(cleanup);
 
 const DOT = ` ${String.fromCharCode(0xb7)} `;
 const row = (id: string, over: Partial<ProblemRow>): ProblemRow => ({
-  id, type: 'defect', level: 'P1', group: null, features: ['F1'], summary: d(`summary ${id}`), texts: {}, source: { chapter: 'defects', line: 1 }, remedy: null, ...over,
+  id, type: 'defect', level: 'P1', group: null, features: ['F1'], summary: d(`summary ${id}`), texts: {}, source: { chapter: 'defects', line: 1 }, remedies: [], ...over,
 });
 const ROWS: ProblemRow[] = [
   row('a1', { level: 'P1' }),
