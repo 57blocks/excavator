@@ -169,7 +169,7 @@ h1, h2, h3, h4 { margin: 0; font-weight: 600; line-height: 1.3; }
 .domain h2 { margin-top: 36px; }
 /* The overview has no visible title (the system's name is in the top bar): the button row starts where the breadcrumbs start elsewhere. */
 .map-head { display: flex; gap: 16px; align-items: center; margin: 28px 0 12px; }
-.map-head .open-domains { margin-left: auto; flex: none; }
+.map-head .open-domains { flex: none; }
 
 /* Reading pages: the side list, the article, the table of contents */
 /* The left list sits at the screen's left edge and the page list (when there is one) at its right edge; the reading column is

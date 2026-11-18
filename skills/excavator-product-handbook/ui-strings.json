@@ -277,7 +277,7 @@
     "page.domain.noneIn": "No upstream domain.",
     "page.domain.noneOut": "No downstream domain.",
     "page.architecture.more": "More in the system overview:",
-    "page.home.openDomains": "Browse the domains",
+    "page.home.openDomains": "View all domains",
     "page.home.noMap.missing": "There is no map because the handbook has no checked list of links between domains.",
     "page.home.noMap.failed": "There is no map because the domains chapter did not pass its check.",
     "page.home.noMap.changed": "There is no map because the list of links between domains was changed after it was checked.",

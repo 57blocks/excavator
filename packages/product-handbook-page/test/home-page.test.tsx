@@ -13,7 +13,7 @@ import { AppView } from '../src/App';
 import { parseHash } from '../src/lib/route';
 import type { PageData } from '../src/lib/types';
 import { cleanup, mount } from './dom';
-import { domainData } from './domains-fixture';
+import { domainData, outlineWithFeatures } from './domains-fixture';
 import { d, marked } from './page-fixture';
 
 afterEach(cleanup);
@@ -305,7 +305,7 @@ describe('the phone list and the stylesheet', () => {
 });
 
 describe('the open-domains button and what the home page does not have', () => {
-  it('has the hidden title, then one button that opens the first domain at the top right of the map, above it', () => {
+  it('has the hidden title, then one button at the top left of the map, above it', () => {
     const host = home();
     const button = host.querySelector('a[data-part="open-domains"]') as HTMLAnchorElement;
     expect(button.getAttribute('href')).toBe('#/product/domain/d1');
@@ -315,7 +315,15 @@ describe('the open-domains button and what the home page does not have', () => {
     parts.forEach((part, at) => { if (at > 0) expect(parts[at - 1].compareDocumentPosition(part) & Node.DOCUMENT_POSITION_FOLLOWING, parts[at].className).toBeTruthy(); });
     expect(button.parentElement?.className).toBe('map-head');
     expect(button.parentElement?.parentElement?.className).toBe('atlas-section');
-    expect(readFileSync(join(__dirname, '../src/index.css'), 'utf-8')).toMatch(/\.map-head \.open-domains \{[^}]*margin-left: auto;/);
+    // The button is at the left of the row, where the reader starts reading, not pushed to the right.
+    expect(readFileSync(join(__dirname, '../src/index.css'), 'utf-8')).toMatch(/\.map-head \.open-domains \{ flex: none; \}/);
+  });
+
+  it('opens the index of all the domains when the outline places the domains chapter, and the first domain without it', () => {
+    const outline = outlineWithFeatures();
+    const indexed = domainData({ outline: { ...outline, parts: [{ title: d('Domains'), blocks: [{ block: 'domains', kind: 'chapter', title: d('Domains') }] }, ...outline.parts] } });
+    expect(home(indexed).querySelector('a[data-part="open-domains"]')?.getAttribute('href')).toBe('#/product/chapter/domains');
+    expect(home().querySelector('a[data-part="open-domains"]')?.getAttribute('href')).toBe('#/product/domain/d1');
   });
 
   it('has no feature list, no counts, no domain navigation and no architecture section, in either view', () => {

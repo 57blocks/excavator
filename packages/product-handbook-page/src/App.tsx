@@ -71,6 +71,9 @@ function isTyping(target: EventTarget | null): boolean {
 }
 
 /** The page for a route: the shell (bar, menu, the frame with the left list) around one view. Pure in its props, so a test can render any route to a string. */
+/** Whether the outline places the domains chapter, whose page is the index of all the domains. */
+const hasDomainsIndex = (data: PageData): boolean => data.outline.parts.some((part) => part.blocks.some((block) => block.kind === 'chapter' && block.block === DOMAINS_CHAPTER));
+
 export function AppView({ data, route, onSearch = () => undefined }: { data: PageData; route: Route; onSearch?: () => void }) {
   const t = useMemo(() => makeText(data.ui.strings), [data.ui.strings]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -125,7 +128,8 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   if (view !== null) {
     if (body.name === 'home') {
       place = { kind: 'home' };
-      main = <HomePage title={brandOf(data, view)} groups={groups} />;
+      // The button above the map opens the index of all the domains, or the first domain's page when the outline has no domains chapter.
+      main = <HomePage title={brandOf(data, view)} groups={groups} domainsHref={hasDomainsIndex(data) ? links.chapter(DOMAINS_CHAPTER) : undefined} />;
     } else if (body.name === 'architecture') {
       place = { kind: 'architecture' };
       main = <Architecture source={data.architecture.technical ?? ''} sections={systemSections(data.search)} />;
@@ -145,8 +149,7 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
       main = <RemediesPage data={data} tab={body.tab} />;
     } else if (body.name === 'processes') {
       // There is no list of all the processes: the old address opens the index of the domains, where each domain lists its own.
-      const indexed = data.outline.parts.some((part) => part.blocks.some((block) => block.kind === 'chapter' && block.block === DOMAINS_CHAPTER));
-      main = <Redirect href={indexed ? links.chapter(DOMAINS_CHAPTER) : links.home} />;
+      main = <Redirect href={hasDomainsIndex(data) ? links.chapter(DOMAINS_CHAPTER) : links.home} />;
     } else if (body.name === 'process') {
       // A process page is read inside its domain: the left list is the domain's.
       const domain = data.processes?.items.find((item) => item.id === body.id)?.domain;
