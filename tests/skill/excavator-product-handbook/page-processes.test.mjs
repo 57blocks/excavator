@@ -216,10 +216,11 @@ describe('page data /23: the process and the remedies of a row', () => {
 });
 
 describe('page data /23: the search index', () => {
-  it('has the numbered process headings, the generated sections and one item per defect and design problem with its number', () => {
+  it('has each process by its name (no number in the title, the chapter itself and its headings left out), the generated section of the remedies and one item per defect and design problem with its number', () => {
     const data = dataOf(setup({ chapters: FULL }));
-    const headings = data.search.filter((item) => item.kind === 'heading' && item.chapter === 'processes').map((item) => item.title);
-    expect(headings).toEqual(['P1 Order to archive', 'P2 Reminder run', 'Operations in no process']);
+    expect(data.search.filter((item) => item.chapter === 'processes')).toEqual([]);
+    const processes = data.search.filter((item) => item.kind === 'process');
+    expect(processes.map((item) => [item.id, item.title])).toEqual([['P1', 'Order to archive'], ['P2', 'Reminder run']]);
     expect(data.search.some((item) => item.kind === 'heading' && item.chapter === 'remedies' && item.title === 'Problems no measure addresses')).toBe(true);
     const problems = data.search.filter((item) => item.kind === 'problem');
     expect(problems.map((item) => [item.id, item.title])).toEqual([
@@ -304,5 +305,89 @@ describe('page data /23: the remedies of a process', () => {
     expect(bare.processes).toBeNull();
     expect(bare.problems.rows.flatMap((entry) => entry.remedies).some((link) => Object.hasOwn(link, 'process'))).toBe(false);
     expect(bare.search.filter((item) => item.kind === 'heading' && item.chapter === 'remedies').map((item) => item.title)).toContain('P1 Order to archive');
+  });
+});
+
+const BY_DOMAIN_TEXT = `# Remedies
+
+## P1 Order to archive
+
+- **Merge entrances** Close orders in one place [P1, D1] (\`${FORM}:7\`).
+
+## Defect fixes
+
+- **display** Fix both sides [D1, D2, P2] (\`${FORM}:6\`).
+
+- **display** A note with no ids here (\`${FORM}:6\`).
+`;
+const BY_DOMAIN_RUN = { ...FULL, remedies: BY_DOMAIN_TEXT };
+
+describe('page data /23: the items of the remedies under the business domains', () => {
+  const data = () => dataOf(setup({ chapters: BY_DOMAIN_RUN, domains: DOMAINS }));
+
+  it('puts an item that names defects of two domains and a process under both domains, with the problems of each domain only', () => {
+    const page = data();
+    const both = lineOf(page, 'Fix both sides');
+    const [first, second] = page.remedyDomains.domains;
+    // D1 is a defect of F1 (first domain), D2 of F2 and P2 starts at F3 (second domain).
+    expect([first.id, second.id]).toEqual(['d1', 'd2']);
+    expect(first.sections).toEqual([{ heading: 'Defect fixes', items: [{ line: both, problems: ['d1'] }] }]);
+    expect(second.sections).toEqual([{ heading: 'Defect fixes', items: [{ line: both, problems: ['d2'] }] }]);
+    expect(second.processes).toEqual([]);
+  });
+
+  it('puts an item under the heading of a process under that process, in the domain of its first step, with every problem it names', () => {
+    const page = data();
+    const merge = lineOf(page, 'Merge entrances');
+    expect(page.remedyDomains.domains[0].processes).toEqual([{ id: 'P1', items: [{ line: merge, problems: ['d1'] }] }]);
+    expect(page.remedyDomains.items.map((item) => item.line)).toEqual([merge, lineOf(page, 'Fix both sides'), lineOf(page, 'A note with no ids')]);
+    expect(page.remedyDomains.items[0].texts.product).not.toContain(FORM);
+    expect(page.remedyDomains.items[0].texts.technical).toContain(FORM);
+  });
+
+  it('puts an item with no id in the bucket of the items tied to no domain', () => {
+    const page = data();
+    expect(page.remedyDomains.untied).toEqual([{ line: lineOf(page, 'A note with no ids'), problems: [] }]);
+  });
+
+  it('says on each entry of a row where it is: under the domain of the row, or on the page of the process', () => {
+    const page = data();
+    const both = lineOf(page, 'Fix both sides');
+    expect(row(page, 'd1').remedies).toEqual([
+      { heading: 'P1 Order to archive', anchor: `remedy-${lineOf(page, 'Merge entrances')}`, process: 'P1' },
+      { heading: 'Defect fixes', anchor: `remedy-d1-${both}`, domain: 'd1' },
+    ]);
+    expect(row(page, 'd2').remedies).toEqual([{ heading: 'Defect fixes', anchor: `remedy-d2-${both}`, domain: 'd2' }]);
+  });
+
+  it('has the headings of the new layout in the search index: the domains, their processes and sections, the untied section', () => {
+    const page = data();
+    const headings = page.search.filter((item) => item.kind === 'heading' && item.chapter === 'remedies').map((item) => [item.title, item.level, item.heading]);
+    expect(headings).toEqual([
+      ['Order domain', 2, 0], ['Order to archive', 3, 1], ['Defect fixes', 3, 2],
+      ['Other domain', 2, 3], ['Defect fixes', 3, 4],
+      ['Not tied to a business domain', 2, 5], ['Problems no measure addresses', 2, 6],
+    ]);
+  });
+
+  it('leaves an old output as it was: no domain layout without usable domains or without an id in the chapter, and the entries as before', () => {
+    const noDomains = dataOf(setup({ chapters: BY_DOMAIN_RUN }));
+    expect(noDomains.remedyDomains).toBeNull();
+    expect(row(noDomains, 'd2').remedies.some((link) => Object.hasOwn(link, 'domain'))).toBe(false);
+    const oldChapter = dataOf(setup({ chapters: { ...FULL, remedies: OLD_REMEDIES }, domains: DOMAINS }));
+    expect(oldChapter.remedyDomains).toBeNull();
+    expect(row(oldChapter, 'd1').remedies).toEqual([{ heading: 'Fix security problems', anchor: 'h-0' }]);
+  });
+});
+
+describe('page data /23: the coverage page', () => {
+  it('has the operations no step names as a section of its own, with the same lines as the chapter generated section, and none without processes', () => {
+    const page = dataOf(setup({ chapters: FULL }));
+    expect(page.coverage.product).toContain('## Operations in no process');
+    expect(page.coverage.product).toContain('- Archive (F2): Restore an order');
+    const chapter = page.chapters.find((entry) => entry.id === 'processes').texts.product;
+    expect(chapter).toContain('- Archive (F2): Restore an order');
+    const bare = dataOf(setup({ chapters: { defects: DEFECTS, F1, F2, remedies: REMEDIES } }));
+    expect(bare.coverage.product).not.toContain('Operations in no process');
   });
 });

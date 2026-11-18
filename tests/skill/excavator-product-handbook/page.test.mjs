@@ -56,7 +56,7 @@ describe('page: the file and its data', () => {
     const run = make();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'chunks', 'language', 'languageTag', 'ui', 'views', 'titles', 'outline', 'chapters', 'coverage', 'history', 'domains', 'problems', 'processes', 'lead', 'architecture', 'search', 'technical']);
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'language', 'languageTag', 'ui', 'views', 'titles', 'outline', 'chapters', 'coverage', 'history', 'domains', 'problems', 'remedyDomains', 'processes', 'lead', 'architecture', 'search', 'technical']);
     expect(data.processes).toBeNull();
     expect(data.format).toBe('excavator-product-handbook-page/23');
     expect(data.chunks).toEqual({ parts: [], units: {} });

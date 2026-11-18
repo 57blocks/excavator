@@ -12,7 +12,10 @@ import { basename } from 'node:path';
 import { loadDataSection, pageSection } from './data-section.mjs';
 import { dictionariesPageSection, loadDictionariesSection } from './dict-section.mjs';
 import { architectureOf, domainsData, leadOf, searchIndex } from './page-domains.mjs';
+import { runNumbers } from './item-numbers.mjs';
+import { processCoverageLines } from './processes-coverage.mjs';
 import { problemsData } from './page-problems.mjs';
+import { remedyDomainsData, remedyPlacer } from './page-remedies.mjs';
 import { processesData } from './page-processes.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { languageTag } from './language-tag.mjs';
@@ -36,6 +39,8 @@ import { DEFAULT_VIEWS } from './views.mjs';
  *   `[{ heading, anchor }]`, one per list item or paragraph of the remedies chapter whose id group names the row (in chapter order; `heading` is the title
  *   of its level-2 section, `anchor` the id the remedies page puts on the item), `[]` when none does and for an open question. A remedies chapter that
  *   names no id gives the one level-2 heading that names the category or dimension, with its page heading id `h-<n>` as the anchor.
+ * - `remedyDomains` (S6c): the remedies items placed under the business domains they involve (page-remedies.mjs), or null when the page
+ *   shows the remedies chapter as it is; a row's `remedies` entry then points to the item's place (`process` or `domain`).
  * (/22 and older below.)
  *
  * Format /22 (earlier formats below; openspec change handbook-skill-first, design D7), the Markdown chapters:
@@ -90,13 +95,15 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     id: item.block,
     texts: Object.fromEntries(views.map((view) => [view, chapterMarkdown(forPage(item.block), view, run.ui)])),
   }));
-  // The page shows one chapter at a time, so the section's own title is its level-1 heading, like a chapter's.
-  const coverage = trimmed(coverageLines({ map: run.map, candidates: run.candidates, chapters: run.chapters, outline, t }).map((line) => (/^#{2,6} /.test(line) ? line.slice(1) : line)));
-  const history = scripts.includes('history') && placed.has('history') ? historyOf(run, roots[0]) : null;
   const domains = domainsData(run, views);
   const processes = processesData(run, views, { placed: placed.has('processes'), domains });
-  // The processes with suggestions are the ones whose section the remedies page folds into a list of links.
   const processIds = new Set((processes?.items ?? []).filter((item) => item.remedies !== undefined).map((item) => item.id));
+  const remedyDomains = remedyDomainsData(run, views, { domains, processes });
+  // The operations that no step of any process names are a section of the coverage page, as the processes chapter's generated section has them.
+  const gaps = processes === null ? [] : ['', ...processCoverageLines({ map: run.map, chapters: run.chapters, strings: run.ui, items: runNumbers(run).processes.items })];
+  const coverage = trimmed([...coverageLines({ map: run.map, candidates: run.candidates, chapters: run.chapters, outline, t }).map((line) => (/^#{2,6} /.test(line) ? line.slice(1) : line)), ...gaps]);
+  // The page shows one chapter at a time, so the section's own title is its level-1 heading, like a chapter's.
+  const history = scripts.includes('history') && placed.has('history') ? historyOf(run, roots[0]) : null;
   const chapterBlocks = parts.flatMap((part) => part.blocks).filter((item) => item.kind === 'chapter');
   const data = {
     format: PAGE_FORMAT,
@@ -111,11 +118,12 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     coverage: Object.fromEntries(views.map((view) => [view, coverage])),
     history: history === null ? null : historyPageSection(history),
     domains,
-    problems: problemsData(run, views, { processIds }),
+    problems: problemsData(run, views, { processIds, place: remedyPlacer(remedyDomains, domains) }),
+    remedyDomains,
     processes,
     lead: leadOf(run),
     architecture: architectureOf(run, views),
-    search: searchIndex(domains, chapterBlocks, run, { processIds }),
+    search: searchIndex(domains, chapterBlocks, run, { processIds, processes, remedyDomains }),
   };
   if (technical) {
     const wanted = (name) => TECHNICAL_ONLY_BLOCKS.includes(name) && scripts.includes(name) && placed.has(name);

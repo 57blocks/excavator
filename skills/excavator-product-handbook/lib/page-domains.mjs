@@ -140,6 +140,27 @@ export function foldProcessSections(headings, processIds, title) {
   return folded ? [{ title, level: 2 }, ...kept] : headings;
 }
 
+/**
+ * The headings of the remedies chapter as the page shows it when its items are under the business domains: the headings above the first
+ * level-2 heading, then for each domain its name (level 2), the names of its processes and the headings of its fixed sections (level 3),
+ * the section of the items tied to no domain, and the generated section at the end with its own headings.
+ */
+export function remedyPageHeadings(headings, remedyDomains, domains, processes, ui) {
+  const firstSection = headings.findIndex((heading) => heading.level === 2);
+  const generated = headings.findIndex((heading) => heading.level === 2 && heading.title === ui['chapter.remedies.uncovered']);
+  const out = firstSection === -1 ? [...headings] : headings.slice(0, firstSection);
+  const nameOf = new Map(domains.list.map((domain) => [domain.id, domain.name]));
+  const processName = new Map((processes?.items ?? []).map((item) => [item.id, item.name]));
+  for (const domain of remedyDomains.domains) {
+    out.push({ title: nameOf.get(domain.id), level: 2 });
+    for (const process of domain.processes) out.push({ title: processName.get(process.id), level: 3 });
+    for (const section of domain.sections) out.push({ title: section.heading, level: 3 });
+  }
+  if (remedyDomains.untied.length > 0) out.push({ title: ui['page.remedies.untied'], level: 2 });
+  if (generated !== -1) out.push(...headings.slice(generated));
+  return out;
+}
+
 /** The chapters the problems page shows instead (defects, design problems): no item of their own and none of their headings. */
 const NOT_SEARCHED = new Set(['defects', 'review']);
 
@@ -149,13 +170,22 @@ const NOT_SEARCHED = new Set(['defects', 'review']);
  * number finds the item. The headings are those of the chapter as the page shows it (chapter-render.mjs): the numbered process
  * headings (`P<n>`) and the generated sections at the end of the business-processes and remedies chapters are in the index.
  */
-export function searchIndex(domains, chapterBlocks, run, { processIds = new Set() } = {}) {
+export function searchIndex(domains, chapterBlocks, run, { processIds = new Set(), processes = null, remedyDomains = null } = {}) {
   const items = domains.list.map((domain) => ({ kind: 'domain', title: domain.name, chapter: null, domain: domain.id, heading: null, level: null }));
   for (const block of chapterBlocks) {
     if (NOT_SEARCHED.has(block.block)) continue;
+    // With processes the business-processes chapter has no page: each process is found by its name and opens its own page.
+    if (block.block === 'processes' && processes !== null) {
+      for (const item of processes.items) items.push({ kind: 'process', title: item.name, chapter: null, domain: null, heading: null, level: null, id: item.id });
+      continue;
+    }
     items.push({ kind: 'chapter', title: block.title, chapter: block.block, domain: null, heading: null, level: null });
     let headings = pageHeadings(productText(renderedChapter(run, block.block).text));
-    if (block.block === 'remedies') headings = foldProcessSections(headings, processIds, run.ui['page.remedies.processes']);
+    if (block.block === 'remedies') {
+      headings = remedyDomains === null
+        ? foldProcessSections(headings, processIds, run.ui['page.remedies.processes'])
+        : remedyPageHeadings(headings, remedyDomains, domains, processes, run.ui);
+    }
     headings.forEach(({ title, level }, index) => {
       items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index, level });
     });
