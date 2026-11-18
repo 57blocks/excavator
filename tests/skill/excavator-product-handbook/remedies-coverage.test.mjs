@@ -86,3 +86,22 @@ describe('the section of problems no measure addresses', () => {
     expect(readFileSync(join(run.out, 'handbook.md'), 'utf-8')).not.toContain('Problems no measure addresses');
   });
 });
+
+describe('the check tells the writer which items no measure names', () => {
+  it('prints the two Not named lines for a passing chapter and still passes', () => {
+    const run = numberedRun(cleanups);
+    run.write('remedies', remedies({ fixes: 'D1', unify: 'R1' }));
+    const result = run.check('remedies');
+    expect(result.status, result.stdout).toBe(0);
+    expect(result.stdout).toContain('chapters/remedies.md: passed\n  Not named: 1 high design problems: R2\n  Not named: 1 P0 defects: D2\n');
+    expect(result.stdout.match(/Not named:/g)).toHaveLength(2);
+  });
+
+  it('prints no Not named line when every item is named', () => {
+    const run = numberedRun(cleanups);
+    run.write('remedies', remedies({ fixes: 'D1, D2', unify: 'R2' }));
+    const result = run.check('remedies');
+    expect(result.status, result.stdout).toBe(0);
+    expect(result.stdout).not.toContain('Not named:');
+  });
+});

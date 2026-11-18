@@ -19,6 +19,7 @@ import { projectFiles } from './project-files.mjs';
 import { diskChapters, itemNumbers, readMapOrNull } from './item-numbers.mjs';
 import { remediesInputs } from './remedies-inputs.mjs';
 import { remediesReasons } from './remedies-check.mjs';
+import { uncoveredItems } from './remedies-coverage.mjs';
 import { loadStateV2, saveStateV2 } from './state-v2.mjs';
 import { loadUi } from './ui.mjs';
 
@@ -58,6 +59,15 @@ function beforeGate(outDir, target) {
   return { status: 1, lines: [...missing.map((id) => `missing: ${id}`), next] };
 }
 
+/** Information for the writer of the remedies chapter, never a reason: the items no list item names. */
+function notNamedLines({ design, defects }) {
+  const ids = (entries) => entries.map((entry) => entry.id).join(', ');
+  return [
+    ...(design.length > 0 ? [`  Not named: ${design.length} high design problems: ${ids(design)}`] : []),
+    ...(defects.length > 0 ? [`  Not named: ${defects.length} P0 defects: ${ids(defects)}`] : []),
+  ];
+}
+
 function checkChapters(outDir, names, root, record) {
   const dir = join(outDir, 'chapters');
   const available = existsSync(dir) ? readdirSync(dir).filter((file) => file.endsWith('.md')).map(stem).sort() : [];
@@ -82,6 +92,7 @@ function checkChapters(outDir, names, root, record) {
     let reasons;
     let bytes = null;
     let listHash = null;
+    let notes = [];
     if (!existsSync(path)) reasons = ['the file does not exist'];
     else if (kind === null) reasons = [`unknown chapter: not system, a cross chapter or a feature id of map.json`];
     else {
@@ -97,6 +108,7 @@ function checkChapters(outDir, names, root, record) {
       if (name === 'remedies') {
         const numbers = itemNumbers({ outDir, map: readMapOrNull(outDir), chapters: diskChapters(outDir, ['defects', 'review'], state), strings: ui.strings });
         reasons = [...reasons, ...remediesReasons(chapterText, { numbers, strings: ui.strings })];
+        if (reasons.length === 0) notes = notNamedLines(uncoveredItems(numbers, chapterText));
       }
     }
     const status = reasons.length === 0 ? 'passed' : 'failed';
@@ -112,6 +124,7 @@ function checkChapters(outDir, names, root, record) {
       state.chapters[name] = { status, attempts, reasons, sha256: hash, ...(name === 'domains' && status === 'passed' ? { json: listHash } : {}), ...(name === 'remedies' && status === 'passed' ? { inputs: remediesInputs(outDir) } : {}) };
     }
     lines.push(status === 'passed' ? `${label}: passed` : `${label}: failed${attempts === null ? '' : ` (attempt ${attempts})`}`);
+    lines.push(...notes);
     for (const reason of reasons) lines.push(`  - ${reason}`);
   }
   if (record) saveStateV2(outDir, state);
