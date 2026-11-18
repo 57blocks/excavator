@@ -27,10 +27,17 @@ const textsOf = (pieces, tag) => Object.fromEntries(tagged(pieces, tag).map(({ v
 
 /** A problem row as the core keeps it: the full-text fields (`texts`, `cites`) are in the unit. */
 const slimRow = ({ texts: _texts, cites: _cites, ...row }) => row;
-/** The row with `texts` and `cites` put back in the key order the page data builds it in. */
+/** The row with `texts` and `cites` put back after `summary`, in the key order the page data builds it in; every other key stays where it was. */
 function fullRow(row, piece) {
-  const { id, type, level, group, features, summary, source, remedy } = row;
-  return { id, type, level, group, features, summary, texts: piece.texts, ...(Object.hasOwn(piece, 'cites') ? { cites: piece.cites } : {}), source, remedy };
+  const out = {};
+  for (const [key, value] of Object.entries(row)) {
+    out[key] = value;
+    if (key === 'summary') {
+      out.texts = piece.texts;
+      if (Object.hasOwn(piece, 'cites')) out.cites = piece.cites;
+    }
+  }
+  return out;
 }
 
 const HISTORY_LISTS = ['years', 'apps', 'hotspots', 'coChange', 'tests'];

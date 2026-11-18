@@ -9,6 +9,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { DOMAINS_FILE, domainSection, sha256Of } from './domains-list.mjs';
+import { renderedChapter } from './chapter-render.mjs';
+import { runNumbers } from './item-numbers.mjs';
 import { productText } from './md-views.mjs';
 
 const FENCE = /^\s*```/;
@@ -121,16 +123,25 @@ export function leadOf(run) {
 /** The chapters the problems page shows instead (defects, design problems): no item of their own and none of their headings. */
 const NOT_SEARCHED = new Set(['defects', 'review']);
 
-/** The search index: the domains, then each chapter the outline places with its `##` and `###` headings, except the chapters in `NOT_SEARCHED`. */
+/**
+ * The search index: the domains, then each chapter the outline places with its `##` and `###` headings, except the chapters in
+ * `NOT_SEARCHED`, then one item per defect (`D<n>`) and design problem (`R<n>`) with its number in front of its short title, so a
+ * number finds the item. The headings are those of the chapter as the page shows it (chapter-render.mjs): the numbered process
+ * headings (`P<n>`) and the generated sections at the end of the business-processes and remedies chapters are in the index.
+ */
 export function searchIndex(domains, chapterBlocks, run) {
   const items = domains.list.map((domain) => ({ kind: 'domain', title: domain.name, chapter: null, domain: domain.id, heading: null, level: null }));
   for (const block of chapterBlocks) {
     if (NOT_SEARCHED.has(block.block)) continue;
     items.push({ kind: 'chapter', title: block.title, chapter: block.block, domain: null, heading: null, level: null });
-    pageHeadings(productText(run.chapters.get(block.block).text)).forEach(({ title, level }, index) => {
+    pageHeadings(productText(renderedChapter(run, block.block).text)).forEach(({ title, level }, index) => {
       items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index, level });
     });
   }
+  const numbers = runNumbers(run);
+  const problem = (id, title) => items.push({ kind: 'problem', title: `${id} ${title}`, chapter: null, domain: null, heading: null, level: null, id: id.toLowerCase() });
+  for (const entry of numbers.defects.items) problem(entry.id, entry.title);
+  for (const entry of numbers.design.items) problem(entry.id, entry.title);
   return items;
 }
 

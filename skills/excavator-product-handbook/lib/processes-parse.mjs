@@ -56,7 +56,7 @@ export function stepFields(text) {
   return { operation: bold[1].trim(), feature: ref === null ? null : ref[1] };
 }
 
-/** `[{ name, line, steps: [{ line, operation, feature }] }]` of a business-processes chapter, in heading order. */
+/** `[{ name, line, steps: [{ line, text, operation, feature }] }]` of a business-processes chapter, in heading order; `text` is the step's raw Markdown (its first line and the indented lines after it). */
 export function parseProcesses(text) {
   const lines = proseLines(text);
   const processes = [];
@@ -68,7 +68,7 @@ export function parseProcesses(text) {
       if (HEADING.test(next.raw) && HEADING.exec(next.raw)[1].length <= 2) break;
       rest.push(next);
     }
-    processes.push({ name: heading[2], line, steps: itemsOf(rest, STEP).map((item) => ({ line: item.line, ...stepFields(item.text) })) });
+    processes.push({ name: heading[2], line, steps: itemsOf(rest, STEP).map((item) => ({ line: item.line, text: item.text, ...stepFields(item.text) })) });
   });
   return processes;
 }

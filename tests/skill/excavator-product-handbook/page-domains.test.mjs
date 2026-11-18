@@ -8,6 +8,7 @@ import { join } from 'node:path';
 
 import { searchIndex } from '../../../skills/excavator-product-handbook/lib/page-domains.mjs';
 import { FORM, cite } from './md-run-fixture.mjs';
+import { SHIPPED_UI } from './helpers.mjs';
 import { STUB, dataOf, html, pageRun, runPage } from './page-md-fixture.mjs';
 
 const cleanups = [];
@@ -318,14 +319,18 @@ describe('page data /21: architecture', () => {
 
 describe('searchIndex: the chapters the problems page replaces', () => {
   const text = (title) => `# ${title}\n\n## First part\n\nText.\n\n### Sub part\n\nText.\n`;
-  const chapters = new Map(['defects', 'review', 'remedies', 'F1'].map((name) => [name, { text: text(name) }]));
+  const chapters = new Map(['defects', 'review', 'remedies', 'F1'].map((name) => [name, { text: text(name), record: { status: 'failed', attempts: 1, reasons: [] } }]));
   const blocks = [...chapters.keys()].map((block) => ({ block, kind: 'chapter', title: block }));
-  const items = searchIndex({ list: [] }, blocks, { chapters });
+  const strings = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8')).strings;
+  const items = searchIndex({ list: [] }, blocks, { chapters, ui: strings, map: null, outDir: join(tmpdir(), 'no-such-run') });
 
   it('leaves out the defects and review chapters with their headings, and keeps remedies and the others', () => {
     expect([...new Set(items.map((item) => item.chapter))]).toEqual(['remedies', 'F1']);
+    // The remedies headings are those of the chapter as the page shows it: the generated section at its end is one of them.
     expect(items.filter((item) => item.chapter === 'remedies').map((item) => [item.kind, item.title, item.heading])).toEqual([
-      ['chapter', 'remedies', null], ['heading', 'First part', 0], ['heading', 'Sub part', 1],
+      ['chapter', 'remedies', null], ['heading', 'First part', 0], ['heading', 'Sub part', 1], ['heading', strings['chapter.remedies.uncovered'], 2],
     ]);
+    // Defects and design problems that cannot be numbered (a chapter that did not pass) give no item of their own.
+    expect(items.filter((item) => item.kind === 'problem')).toEqual([]);
   });
 });

@@ -157,7 +157,7 @@ describe('problemsData: rows', () => {
   it('lists the open questions of the system and each feature, skipping the none line and joining a wrapped item', () => {
     const data = problemsData(full().load(), ['product', 'technical']);
     const open = rowsOf(data, 'open');
-    expect(open.map((row) => [row.features, row.level, row.group, row.remedy])).toEqual([[['system'], null, null, null], [['system'], null, null, null], [['F2'], null, null, null]]);
+    expect(open.map((row) => [row.features, row.level, row.group, row.remedies])).toEqual([[['system'], null, null, []], [['system'], null, null, []], [['F2'], null, null, []]]);
     expect(open[0].texts.technical).toContain('Who owns the archive');
     expect(open[0].cites).toEqual([`${FORM}:5`]);
     expect(open[0].texts.product).not.toContain('`');
@@ -215,19 +215,19 @@ describe('problemsData: remedies', () => {
     const data = problemsData(full().load(), ['product']);
     expect(data.remedies).toBe('remedies');
     const [security, display, time] = rowsOf(data, 'defect');
-    expect(security.remedy).toEqual({ chapter: 'remedies', heading: 0 });
-    expect(display.remedy).toEqual({ chapter: 'remedies', heading: 1 });
-    expect(time.remedy).toBeNull();
+    expect(security.remedies).toEqual([{ heading: 'Fix security problems', anchor: 'h-0' }]);
+    expect(display.remedies).toEqual([{ heading: 'The display fixes', anchor: 'h-1' }]);
+    expect(time.remedies).toEqual([]);
   });
 
   it('links a design problem by the dimension label and leaves a dimension with no heading unlinked', () => {
     const data = problemsData(full().load(), ['product']);
     const design = rowsOf(data, 'design');
-    expect(design.find((row) => row.group === 'access').remedy).toEqual({ chapter: 'remedies', heading: 5 });
-    expect(design.find((row) => row.group === 'duplication').remedy).toBeNull();
+    expect(design.find((row) => row.group === 'access').remedies).toEqual([{ heading: 'Permissions and roles', anchor: 'h-5' }]);
+    expect(design.find((row) => row.group === 'duplication').remedies).toEqual([]);
   });
 
-  it('links a row to the level-2 heading of the first item whose id group names its number; a row no item names gets none', () => {
+  it('links a row to every item whose id group names its number, in chapter order, each with the title of its section and the anchor of its line in the text the page renders (two lines down: the title is followed by the not-verified sentence); a row no item names gets none', () => {
     const numbered = `# Remedies
 
 ## Measures across processes
@@ -247,26 +247,26 @@ describe('problemsData: remedies', () => {
 1. **Fix** Move the secret [D1] (\`${FORM}:5\`).
 `;
     const data = problemsData(full({ remedies: numbered }).load(), ['product']);
-    const heading = (id) => data.rows.find((row) => row.id === id).remedy;
-    expect(heading('d1')).toEqual({ chapter: 'remedies', heading: 0 });
-    expect(heading('d2')).toEqual({ chapter: 'remedies', heading: 1 });
-    expect(heading('d3')).toBeNull();
-    expect(heading('r1')).toEqual({ chapter: 'remedies', heading: 0 });
-    expect(heading('r2')).toEqual({ chapter: 'remedies', heading: 2 });
-    expect(heading('r3')).toBeNull();
+    const links = (id) => data.rows.find((row) => row.id === id).remedies;
+    expect(links('d1')).toEqual([{ heading: 'Measures across processes', anchor: 'remedy-7' }, { heading: 'To fix', anchor: 'remedy-19' }]);
+    expect(links('d2')).toEqual([{ heading: 'Defect fixes', anchor: 'remedy-11' }]);
+    expect(links('d3')).toEqual([]);
+    expect(links('r1')).toEqual([{ heading: 'Measures across processes', anchor: 'remedy-7' }]);
+    expect(links('r2')).toEqual([{ heading: 'To simplify and unify', anchor: 'remedy-15' }]);
+    expect(links('r3')).toEqual([]);
   });
 
   it('has no remedies chapter id and no links without a remedies chapter', () => {
     const run = setup({ chapters: { defects: DEFECTS, system: SYSTEM }, batches: { b1: B1, b2: B2 } });
     const data = problemsData(run.load(), ['product']);
     expect(data.remedies).toBeNull();
-    expect(data.rows.every((row) => row.remedy === null)).toBe(true);
+    expect(data.rows.every((row) => row.remedies.length === 0)).toBe(true);
   });
 
   it('matches a category as a whole word only', () => {
     const run = setup({ chapters: { defects: DEFECTS, system: SYSTEM, remedies: '# R\n\n## Fix timeouts\n\n## Fix securityfoo\n' } });
     const data = problemsData(run.load(), ['product']);
-    expect(rowsOf(data, 'defect').map((row) => row.remedy)).toEqual([null, null, null]);
+    expect(rowsOf(data, 'defect').map((row) => row.remedies)).toEqual([[], [], []]);
   });
 });
 
@@ -351,6 +351,6 @@ describe('buildPageData: the problems key', () => {
     expect(keys.indexOf('problems')).toBe(keys.indexOf('domains') + 1);
     expect(data.problems.rows).toHaveLength(9);
     expect(data.problems.sources.defects.count).toBe(3);
-    expect(data.format).toBe('excavator-product-handbook-page/22');
+    expect(data.format).toBe('excavator-product-handbook-page/23');
   });
 });

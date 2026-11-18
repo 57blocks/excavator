@@ -13,6 +13,7 @@ import { loadDataSection, pageSection } from './data-section.mjs';
 import { dictionariesPageSection, loadDictionariesSection } from './dict-section.mjs';
 import { architectureOf, domainsData, leadOf, searchIndex } from './page-domains.mjs';
 import { problemsData } from './page-problems.mjs';
+import { processesData } from './page-processes.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { languageTag } from './language-tag.mjs';
 import { coverageLines } from './md-coverage.mjs';
@@ -25,6 +26,18 @@ import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
+ * Format /23 (openspec change handbook-process-review, design D10), the business processes and the remedies of each problem:
+ * - `processes`: null when the run has no business-processes chapter (no file, or one that did not pass its check) or the outline leaves it
+ *   out; otherwise `{ items, coverage }` (page-processes.mjs). An item is `{ id, name, steps, end?, features }`: `id` is `P<n>` as item-numbers.mjs
+ *   numbers it, a step is `{ role, operation, feature, text, cites? }` (`feature` a feature id; `text` the sentence without citations; `cites` the
+ *   citations of the sentence, only with the technical view), `end` is `{ text, cites? }` (absent without an end-state line) and `features` the
+ *   feature ids of the steps in step order, each once. `coverage` is `[{ feature, operations }]`: the operations of each feature that no step names.
+ * - `problems.rows`: a design row has `process` (`P<n>`) when its item names a process, and every row has `remedies` in place of /22's `remedy`:
+ *   `[{ heading, anchor }]`, one per list item or paragraph of the remedies chapter whose id group names the row (in chapter order; `heading` is the title
+ *   of its level-2 section, `anchor` the id the remedies page puts on the item), `[]` when none does and for an open question. A remedies chapter that
+ *   names no id gives the one level-2 heading that names the category or dimension, with its page heading id `h-<n>` as the anchor.
+ * (/22 and older below.)
+ *
  * Format /22 (earlier formats below; openspec change handbook-skill-first, design D7), the Markdown chapters:
  * - `titles`: the title of each selected view (`md.title`, `md.titleTechnical`).
  * - `outline`: `source` and `problems` as `resolveOutlineV2` gives them, `parts` as `{ title, blocks: [{ block, kind, title }] }` (`kind` is `chapter`,
@@ -45,7 +58,7 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * - `architecture` (/21): the section of the system chapter that holds its first mermaid fence, by selected view (page-domains.mjs); '' without one.
  * (/21: the same without `problems`; /20: the same without `architecture` and without `level` in the search items; /19: the same without these three keys; /18 and older: the structured handbook of openspec change product-handbook-map and its successors.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/22';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/23';
 
 const SCRIPT_TITLES = { data: 'md.data.heading', dictionaries: 'md.dict.heading', history: 'md.history.heading' };
 const trimmed = (lines) => lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
@@ -96,6 +109,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     history: history === null ? null : historyPageSection(history),
     domains,
     problems: problemsData(run, views),
+    processes: processesData(run, views, { placed: placed.has('processes') }),
     lead: leadOf(run),
     architecture: architectureOf(run, views),
     search: searchIndex(domains, chapterBlocks, run),

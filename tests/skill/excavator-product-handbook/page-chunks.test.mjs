@@ -58,7 +58,7 @@ describe('page: below the threshold it is one file', () => {
     expect(existsSync(join(made.out, PARTS_DIR))).toBe(false);
     const before = readFileSync(join(made.out, 'handbook.html'));
     const data = dataOf(html(made));
-    expect(data.format).toBe('excavator-product-handbook-page/22');
+    expect(data.format).toBe('excavator-product-handbook-page/23');
     expect(data.chunks).toEqual({ parts: [], units: {} });
     expect(data.chapters[1].texts.technical).toContain('# Orders');
     expect(data.technical.dictionaries.dictionaries).toHaveLength(31);
@@ -284,9 +284,9 @@ describe('splitPageData and restorePageData', () => {
   });
 
   describe('the problems unit', () => {
-    const row = (id, over = {}) => ({ id, type: 'defect', level: 'P0', group: 'security', features: ['F1'], summary: `sum ${id}`, texts: { product: `p ${id}`, technical: `t ${id}` }, cites: [`a.js:${id.length}`], source: { chapter: 'defects', line: 3 }, remedy: { chapter: 'remedies', heading: 1 }, ...over });
+    const row = (id, { process, ...over } = {}) => ({ id, type: 'defect', level: 'P0', group: 'security', features: ['F1'], summary: `sum ${id}`, texts: { product: `p ${id}`, technical: `t ${id}` }, cites: [`a.js:${id.length}`], ...(process === undefined ? {} : { process }), source: { chapter: 'defects', line: 3 }, remedies: [{ heading: 'Fix', anchor: 'remedy-5' }], ...over });
     const withRows = (rows) => ({ ...data(), problems: { sources: { defects: { state: 'ok', count: rows.length }, design: { state: 'missing', count: null }, open: { state: 'ok', count: 0, unmatched: [] } }, rows, remedies: 'remedies' } });
-    const rows = () => [row('d1'), row('r1', { type: 'design', level: 'high', group: 'duplication', texts: { product: { situation: 's', consequence: 'c' }, technical: { situation: 's2', consequence: 'c2' } }, remedy: null }), row('q1', { type: 'open', level: null, group: null, features: ['system'], cites: undefined })];
+    const rows = () => [row('d1'), row('r1', { type: 'design', level: 'high', group: 'duplication', texts: { product: { situation: 's', consequence: 'c' }, technical: { situation: 's2', consequence: 'c2' } }, process: 'P2', remedies: [] }), row('q1', { type: 'open', level: null, group: null, features: ['system'], cites: undefined })];
     // `cites` is absent from a row that never had it (the product-only build).
     const clean = (list) => list.map((one) => Object.fromEntries(Object.entries(one).filter(([, value]) => value !== undefined)));
 
@@ -303,7 +303,8 @@ describe('splitPageData and restorePageData', () => {
       const restored = restorePageData(core, listed);
       expect(restored).toEqual(input);
       expect(JSON.stringify(restored)).toBe(JSON.stringify(input));
-      expect(Object.keys(restored.problems.rows[0])).toEqual(['id', 'type', 'level', 'group', 'features', 'summary', 'texts', 'cites', 'source', 'remedy']);
+      expect(Object.keys(restored.problems.rows[0])).toEqual(['id', 'type', 'level', 'group', 'features', 'summary', 'texts', 'cites', 'source', 'remedies']);
+      expect(Object.keys(restored.problems.rows[1])).toEqual(['id', 'type', 'level', 'group', 'features', 'summary', 'texts', 'cites', 'process', 'source', 'remedies']);
     });
 
     it('yields no unit and keeps the problems as they are when there are no rows', () => {

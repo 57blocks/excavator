@@ -3,14 +3,15 @@
  * of problems, built once here so the overview, the feature pages and the problems page show the same rows (D1).
  * Defects come from the shared parser (D2), design problems from the checked batch files, open questions from the
  * fixed section of each chapter (D3). Each source has its own state and a source that is not `ok` gives no rows (D5);
- * a row's remedy anchor is the level-2 heading of the remedies item that names the row's number (D4, handbook-process-review D11),
- * or, for a remedies chapter that names no number, the one heading that names its category or dimension.
+ * a row's remedies are the items of the remedies chapter whose id group names the row's number (D4, handbook-process-review D10
+ * and D11), or, for a remedies chapter that names no number, the one heading that names its category or dimension.
  */
 
 import { citationGroups } from './chapter-cites.mjs';
 import { afterOpenQuestionTitle, openQuestionTitle, sectionItems } from './defects-items.mjs';
 import { runNumbers, summaryOf } from './item-numbers.mjs';
-import { productText } from './md-views.mjs';
+import { renderedChapter } from './chapter-render.mjs';
+import { chapterMarkdown, productText } from './md-views.mjs';
 import { pageHeadings, viewTexts } from './page-domains.mjs';
 import { namedIds, parseRemedies } from './remedies-parse.mjs';
 
@@ -19,28 +20,36 @@ export { summaryOf };
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const specsOf = (text) => citationGroups(text).flatMap((group) => group.specs);
 
-/** The remedies chapter as the rows read it: its level-2 headings (page index) and its list items, or null without the chapter. */
-function remedyIndex(run) {
+/**
+ * The remedies chapter as the rows read it: its level-2 headings (page index) and its list items, or null without the chapter.
+ * The items are read from the chapter as the page renders it (the generated section, the fixed notice sentences, the citations of
+ * the technical view when there is one), so the line of an item is the line the page's Markdown sees.
+ */
+function remedyIndex(run, views) {
   const chapter = run.chapters.get('remedies');
   if (chapter === undefined) return null;
   const headings = pageHeadings(productText(chapter.text)).map((heading, index) => ({ ...heading, index })).filter((heading) => heading.level === 2);
-  const parsed = parseRemedies(chapter.text);
+  const shown = chapterMarkdown(renderedChapter(run, 'remedies'), views.includes('technical') ? 'technical' : views[0], run.ui);
+  const parsed = parseRemedies(shown);
   return { headings, parsed, numbered: namedIds(parsed).size > 0 };
 }
 
+/** The anchor the remedies page puts on a list item or paragraph of the chapter: its first line in the text the page renders (the page blanks the chapter's title line instead of removing it). */
+export const remedyAnchor = (line) => `remedy-${line}`;
+
 /**
- * `{ chapter: 'remedies', heading }` for a row. When the remedies chapter names ids, the level-2 heading of the first list
- * item whose id group names `id` (null when no item does); an older chapter that names none keeps the match by name: exactly
- * one level-2 heading that `matches`.
+ * `[{ heading, anchor }]` for a row, in chapter order. When the remedies chapter names ids, one entry per list item or
+ * paragraph whose id group names `id` (`heading` is the title of its level-2 section, '' above the first; `anchor` is
+ * `remedyAnchor` of its line in the chapter as the page renders it), `[]` when none does. An older chapter that names none keeps the match by name: exactly one
+ * level-2 heading that `matches`, as one entry whose anchor is that heading's id `h-<n>` on the page; else `[]`.
  */
-function remedyOf(index, id, matches) {
-  if (index === null) return null;
+function remediesOf(index, id, matches) {
+  if (index === null) return [];
   if (index.numbered) {
-    const item = index.parsed.items.find((entry) => entry.ids.includes(id) && entry.section !== null);
-    return item === undefined ? null : { chapter: 'remedies', heading: item.section.page };
+    return index.parsed.items.filter((entry) => entry.ids.includes(id)).map((entry) => ({ heading: entry.section === null ? '' : entry.section.text, anchor: remedyAnchor(entry.line) }));
   }
   const found = index.headings.filter((heading) => matches(heading.title));
-  return found.length === 1 ? { chapter: 'remedies', heading: found[0].index } : null;
+  return found.length === 1 ? [{ heading: found[0].title, anchor: `h-${found[0].index}` }] : [];
 }
 
 /** The defect rows; a source that is not `ok` (item-numbers.mjs) gives none. */
@@ -60,7 +69,7 @@ function defectRows(run, views, index) {
       texts: viewTexts(entry.body, views),
       ...(technical ? { cites: specsOf(entry.item.text) } : {}),
       source: { chapter: 'defects', line: entry.line },
-      remedy: remedyOf(index, entry.id, (title) => word.test(title)),
+      remedies: remediesOf(index, entry.id, (title) => word.test(title)),
     };
   });
   return { state: 'ok', rows };
@@ -84,8 +93,9 @@ function designRows(run, views, index) {
         ? { situation: productText(item.situation), consequence: productText(item.consequence) }
         : { situation: item.situation, consequence: item.consequence }])),
       ...(technical ? { cites: [...item.cites] } : {}),
+      ...(entry.process === null ? {} : { process: entry.process }),
       source: { chapter: 'review', line: entry.line },
-      remedy: remedyOf(index, entry.id, (title) => title.includes(label)),
+      remedies: remediesOf(index, entry.id, (title) => title.includes(label)),
     };
   });
   return { state: 'ok', rows };
@@ -115,7 +125,7 @@ function openRows(run, views) {
         texts: viewTexts(text, views),
         ...(technical ? { cites: specsOf(item.text) } : {}),
         source: { chapter: stem, line: item.line },
-        remedy: null,
+        remedies: [],
       });
     }
   }
@@ -124,7 +134,7 @@ function openRows(run, views) {
 
 /** The `problems` key: the state and count of each source, the rows (defects, design problems, open questions) and the remedies chapter id. */
 export function problemsData(run, views) {
-  const index = remedyIndex(run);
+  const index = remedyIndex(run, views);
   const defects = defectRows(run, views, index);
   const design = designRows(run, views, index);
   const open = openRows(run, views);
