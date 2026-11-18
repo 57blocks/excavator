@@ -138,6 +138,7 @@ describe('the design-problems phase', () => {
       for (const match of TEXT[file].matchAll(/handbook\.mjs" review ([a-z]+)/g)) expect(usage, `${file}: review ${match[1]}`).toContain(`review ${match[1]}`);
     }
     expect(usage).toContain("'status', 'reset', 'skip', 'titles', 'summary'");
+    expect(usage).toContain('review candidates <out> <batch>');
   });
 
   it('the writer prompt defines the ten dimensions, the three impact rules, the file shape and the render loop', () => {
@@ -152,6 +153,22 @@ describe('the design-problems phase', () => {
     expect(writer).toMatch(/never open, search or read the project's code/);
     expect(writer).toMatch(/not user-friendly/);
     expect(writer).toMatch(/names, in the situation, the chapters in which you looked/);
+  });
+
+  it('step 4 runs review candidates and pastes it into Your batch; the writer names the three reasons, the two keys and the two-sided form', () => {
+    const text = review();
+    const step4 = text.slice(text.indexOf('4. Write the batches'), text.indexOf('5. Write the batch `cross`'));
+    expect(step4).toContain('handbook.mjs" review candidates "$OUT" <batch>');
+    const batchBlock = prompts(text).find((prompt) => prompt.startsWith('- Batch: `<batch>`'));
+    expect(batchBlock).toContain('- The comparison candidates of your batch, one per line (`none` when there is none):');
+    const [writer] = prompts(text);
+    expect(writer).toContain('"candidates": ["X3"]');
+    expect(writer).toContain('"dismissed": [{ "candidate": "X4", "reason": "different-subject" }]');
+    for (const reason of ['same', 'different-subject', 'not-in-chapters']) expect(writer, reason).toContain(`\`${reason}\``);
+    expect(writer).toContain('**Comparison candidates.**');
+    expect(writer).toContain('`<side>: <what that side\'s cited lines say>; <other side>: <...>`');
+    expect(writer).toMatch(/for `duplication`, `contradiction`, `inconsistency` and `access`/i);
+    expect(text).not.toMatch(/[^\x00-\x7F]/);
   });
 
   it('the verifier gets the claims output, searches the listed chapters only for an absence claim, and writes only the verdicts file; the writers are dispatched in the foreground', () => {

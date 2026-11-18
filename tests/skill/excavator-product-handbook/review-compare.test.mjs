@@ -181,3 +181,37 @@ describe('review compare-facts', () => {
     expect(result.status).toBe(2);
   });
 });
+
+describe('review candidates', () => {
+  const candidates = (run, batch) => runHandbook(['review', 'candidates', run.out, batch]);
+
+  it('prints the CANDIDATE lines of one batch exactly as compare-facts printed them, and none for a batch without', () => {
+    const run = make();
+    const printed = run.result().lines.filter((line) => line.startsWith('CANDIDATE'));
+    const file = run.read().candidates;
+    for (const batch of new Set(file.map((entry) => entry.batch).filter((id) => id !== null))) {
+      const expected = printed.filter((line) => line.split(' ')[4] === batch);
+      const result = candidates(run, batch);
+      expect(result.status).toBe(0);
+      expect(result.lines).toEqual(expected);
+      expect(expected.length).toBeGreaterThan(0);
+    }
+    expect(candidates(run, 'b9').lines).toEqual(['none']);
+  });
+
+  it('says none with the reason when the file is missing or does not parse, and exits 0', () => {
+    const run = make();
+    const missing = candidates(run, 'b1');
+    expect(missing.status).toBe(0);
+    expect(missing.lines[0]).toMatch(/^none: entries\/review-compare\.json /);
+    put(join(run.out, 'entries', 'review-compare.json'), '{ not json');
+    expect(candidates(run, 'b1').lines[0]).toMatch(/^none: entries\/review-compare\.json /);
+    put(join(run.out, 'entries', 'review-compare.json'), { candidates: 3 });
+    expect(candidates(run, 'b1').lines).toEqual(['none: entries/review-compare.json is not a comparison candidates file']);
+  });
+
+  it('needs exactly one batch', () => {
+    const run = make();
+    expect(runHandbook(['review', 'candidates', run.out]).status).toBe(2);
+  });
+});

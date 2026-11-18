@@ -226,8 +226,17 @@ export function reviewCompare(outDir, projectRoot) {
   }
   mkdirSync(join(outDir, 'entries'), { recursive: true });
   writeJson(join(outDir, COMPARE_FILE), { format: COMPARE_FORMAT, sources, candidates });
-  for (const candidate of candidates) {
-    lines.push(`CANDIDATE ${candidate.id} ${candidate.source} ${candidate.features.join(',') || '-'} ${candidate.batch ?? '-'} ${summary(candidate)}`);
-  }
+  for (const candidate of candidates) lines.push(candidateLine(candidate));
   return { status: 0, lines };
+}
+
+const candidateLine = (candidate) => `CANDIDATE ${candidate.id} ${candidate.source} ${candidate.features.join(',') || '-'} ${candidate.batch ?? '-'} ${summary(candidate)}`;
+
+/** `review candidates <out> <batch>`: the CANDIDATE lines of one batch from the candidates file alone, `none` or `none: <reason>`. */
+export function reviewCandidates(outDir, batch) {
+  const read = readJson(join(outDir, COMPARE_FILE));
+  if (!read.ok) return { status: 0, lines: [`none: ${COMPARE_FILE} ${read.reason}`] };
+  if (!isObject(read.value) || !Array.isArray(read.value.candidates)) return { status: 0, lines: [`none: ${COMPARE_FILE} is not a comparison candidates file`] };
+  const mine = read.value.candidates.filter((candidate) => isObject(candidate) && candidate.batch === batch && isObject(candidate.facts) && Array.isArray(candidate.features));
+  return { status: 0, lines: mine.length === 0 ? ['none'] : mine.map(candidateLine) };
 }

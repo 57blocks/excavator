@@ -25,7 +25,7 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review compare-facts "$OUT" --project "$PROJECT_ROOT"
    ```
-   It writes `$OUT/entries/review-compare.json`; its output is not shown to the user and nothing else uses it yet. Exit 1 or 2: show its message and stop.
+   It writes `$OUT/entries/review-compare.json`; its output is not shown to the user, and the writers of step 4 get their batch's candidates from that file. Exit 1 or 2: show its message and stop.
 
 3. Find what each batch needs, from its files:
    ```bash
@@ -37,7 +37,7 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    - `verify`: its items pass the check and are not judged yet: step 6;
    - `write`: no file, or a file the check refuses: step 4 (or 5 for `cross`). Clear the files of each such batch first, so that no verdict or removal of an earlier file is kept: `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review reset "$OUT" <batch>`.
 
-4. Write the batches `b1`, `b2` and so on that are in the state `write`. Dispatch at most `$CONCURRENCY` writers in one message so they run concurrently, each an `excavator-handbook-writer` subagent in the foreground with the prompt **Every design-problems writer** followed by the block **Your batch**. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT` and `$PROBLEMS` as their values everywhere, fill in the block **Your batch** from the `BATCH` line of the batch, and leave the rest exactly as written, `<batch>` included, so that every writer of the run starts with the same text. Wait for every writer of the message to return before you send the next message; never dispatch in the background. As each returns, check its file:
+4. Write the batches `b1`, `b2` and so on that are in the state `write`. Dispatch at most `$CONCURRENCY` writers in one message so they run concurrently, each an `excavator-handbook-writer` subagent in the foreground with the prompt **Every design-problems writer** followed by the block **Your batch**. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT` and `$PROBLEMS` as their values everywhere, fill in the block **Your batch** from the `BATCH` line of the batch and, before you dispatch the writer, run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review candidates "$OUT" <batch>` and paste its output unchanged under the candidates line of the block, and leave the rest exactly as written, `<batch>` included, so that every writer of the run starts with the same text. Wait for every writer of the message to return before you send the next message; never dispatch in the background. As each returns, check its file:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review render "$OUT" <batch> --project "$PROJECT_ROOT"
    ```
@@ -109,15 +109,21 @@ You write the design problems of one batch of features of a product handbook, fo
   "title": "<one phrase>",
   "situation": "<what the chapters say, one sentence>",
   "consequence": "<what the user has to do or cannot do because of it, one sentence>",
-  "cites": ["<path>:<a>-<b>"]
-}] }
+  "cites": ["<path>:<a>-<b>"],
+  "candidates": ["X3"]
+}], "dismissed": [{ "candidate": "X4", "reason": "different-subject" }] }
 ```
+
+`candidates` (on an item: the comparison candidates the item handles) and `dismissed` (at the top level) are present only when your batch has comparison candidates; they are the only keys besides the ones shown.
 
 Rules, all checked by the script:
 - `features` are feature ids of your batch, at least one, each once; a problem that needs a feature of another batch is not yours (the batch `cross` covers it).
 - `cites` are citations `<path>:<a>-<b>` (or `<path>:<n>`), each copied exactly, without backticks, from a line of a chapter of one of the listed features; never one you did not copy, and never changed. `duplication`, `contradiction`, `inconsistency` and `access` need citations from at least 2 different chapter lines.
 - `title`, `situation` and `consequence` are plain reader text in $LANGUAGE, with no backtick and no citation group (the script adds the citations). `situation` and `consequence` are one sentence each. No identifier with an underscore, no camel-case word, no path that starts with `/`, no file name with a source extension, no name followed by `(` and no word of advice ("should", "must", "better", "fix", "recommend" or their equivalents in $LANGUAGE). Keep labels as the chapters write them, in quotation marks. Name a feature as its chapter's title gives it, with its id in parentheses, for example "Leave requests (F12)".
+- For `duplication`, `contradiction`, `inconsistency` and `access` the situation is one sentence of two or more clauses, one for each side, in the form `<side>: <what that side's cited lines say>; <other side>: <...>`. Each clause names its feature (or the place of one feature) and holds only what the cited lines of that side say, never one summary of both sides. For example: "Orders (F3): a clerk creates an order on its form; Order import (F7): a clerk creates orders from an uploaded file".
 - A number in `title`, `situation` or `consequence` is a number that a cited chapter line holds, or a number of the facts of a listed feature; never a number you counted or computed yourself.
+
+**Comparison candidates.** The script found the candidates of your batch (the `CANDIDATE` lines of the block **Your batch**); you judge them. Each one gets exactly one conclusion: an item that lists it in `candidates`, or an entry in `dismissed` with one reason: `same` (the two sides state the same thing; nothing differs), `different-subject` (the two sides are about different things; for two implementations of one feature: the applications do different jobs of the feature and no job is done in both) or `not-in-chapters` (the chapters do not show the two sides). The check refuses a batch that leaves a candidate of the batch without a conclusion, names a candidate of another batch, or lists a candidate on an item that does not list its feature. A candidate of source `dual` is one feature whose routes lie in two applications, with the route count of each: when the chapter shows the same job reachable in both, write one `duplication` item with that feature in `features` and the candidate in `candidates`, whose situation says which operations each application serves, as the chapter shows them. A candidate is evidence, not proof: read the chapter before you decide.
 
 **What a good item is.** The consequence names what a user has to do or cannot do (enter it twice, go to another screen, wait for an administrator, get stuck); "complex", "confusing" or "not user-friendly" are not consequences. A claim that something does not exist ("there is no way to ...") names, in the situation, the chapters in which you looked for it. Write only what the cited lines show; where the chapters do not settle a point, leave it out. Do not write the same problem twice.
 
@@ -133,6 +139,8 @@ Reply with one line: `<batch>: written`.
 ````text
 - Batch: `<batch>` "<batch name>".
 - The features of the batch, whose chapters you read: <the feature ids of the BATCH line, each with its name, one per line>.
+- The comparison candidates of your batch, one per line (`none` when there is none):
+<the output of review candidates>
 ````
 
 **Your batch: cross.**
