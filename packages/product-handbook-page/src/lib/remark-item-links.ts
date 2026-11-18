@@ -21,10 +21,16 @@ export interface ItemLinkOptions {
   problemLabel?: string;
   /** Added to the line of an item for its id `remedy-<line>`, for an item rendered alone from the line `lineOffset + 1`. */
   lineOffset?: number;
+  /** The start of the id of an item before its line, `remedy-` unless given (the remedies page has an item under several domains, each with its own). */
+  anchorPrefix?: string;
+  /** Plain text for the reader who does not see numbers: every id group leaves the sentence, and the problem lines have the label and the title, no id and no link. */
+  plain?: boolean;
+  /** With `plain`: the rows (`d3`, `r12`) the lines are for, in order, instead of the ones the id groups of the item name. */
+  problemIds?: readonly string[];
 }
 
 /** The id the remedies page puts on the list item or paragraph that starts at `line` of its text (the anchor `page-problems.mjs` writes). */
-export const remedyAnchorOf = (line: number): string => `remedy-${line}`;
+export const remedyAnchorOf = (line: number, prefix = 'remedy-'): string => `${prefix}${line}`;
 
 const WIDE_COMMA = String.fromCharCode(0xff0c);
 const ID = '[DRP]\\d+';
@@ -68,7 +74,7 @@ function split(value: string, options: ItemLinkOptions, leading: boolean, droppi
     const inner = match[0];
     const all = Array.from(inner.matchAll(new RegExp(ID, 'g'))).map((id) => id[0]);
     // An item that has problem lines names its D and R rows there, so they leave the group; a group left empty goes with its brackets and the space before them.
-    const kept = all.filter((id) => !(dropping && !id.startsWith('P') && options.summaries?.has(id.toLowerCase()) === true));
+    const kept = all.filter((id) => !(options.plain === true || id.startsWith('P') || (dropping && options.summaries?.has(id.toLowerCase()) === true)));
     if (kept.length < all.length) {
       const before = rest.slice(cursor, at);
       if (kept.length === 0) push(textNode(before.replace(/\s+$/, '')));
@@ -119,13 +125,13 @@ function walk(node: MdNode, parent: MdNode | null, options: ItemLinkOptions, lin
 }
 
 /** Give each list item, and each paragraph that does not start a list item, the id `remedy-<line>` of the line it starts on, and make it focusable, so a link can jump to it. */
-function anchor(node: MdNode, parent: MdNode | null, offset: number): void {
+function anchor(node: MdNode, parent: MdNode | null, offset: number, prefix: string): void {
   const line = node.position?.start.line;
   const startsItem = node.type === 'paragraph' && parent !== null && parent.type === 'listItem' && parent.position?.start.line === line;
   if (line !== undefined && (node.type === 'listItem' || (node.type === 'paragraph' && !startsItem))) {
-    node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id: remedyAnchorOf(line + offset), tabIndex: -1 } };
+    node.data = { ...node.data, hProperties: { ...node.data?.hProperties, id: remedyAnchorOf(line + offset, prefix), tabIndex: -1 } };
   }
-  for (const child of node.children ?? []) anchor(child, node, offset);
+  for (const child of node.children ?? []) anchor(child, node, offset, prefix);
 }
 
 /** The D and R ids of the id groups in the text of `node` (code, links and the like are not read), in order, each once. */
@@ -147,7 +153,8 @@ const isBlock = (node: MdNode, parent: MdNode | null): boolean => node.type === 
 /** The ids of the problem rows each block (list item or paragraph) names, read before the ids are turned into links. */
 function problemLinesOf(node: MdNode, parent: MdNode | null, options: ItemLinkOptions, into: Map<MdNode, string[]>): void {
   if (isBlock(node, parent)) {
-    const known = problemIds(node).filter((id) => options.summaries?.has(id.toLowerCase()) === true);
+    const named = options.plain === true && options.problemIds !== undefined && node.type === 'listItem' ? options.problemIds.map((id) => id.toUpperCase()) : problemIds(node);
+    const known = named.filter((id) => options.summaries?.has(id.toLowerCase()) === true);
     if (known.length > 0) into.set(node, known);
   }
   for (const child of node.children ?? []) problemLinesOf(child, node, options, into);
@@ -174,6 +181,17 @@ function problemLine(id: string, options: ItemLinkOptions): MdNode {
   {
     {
       const key = id.toLowerCase();
+      if (options.plain === true) {
+        return {
+          type: 'remedyProblem',
+          data: { hName: 'div', hProperties: { className: ['remedy-problem'], 'data-problem-line': id } },
+          children: [
+            { type: 'remedyLabel', data: { hName: 'span', hProperties: { className: ['remedy-problem-label'] } }, children: [textNode(options.problemLabel ?? '')] },
+            textNode(' '),
+            { type: 'remedyTitle', data: { hName: 'span', hProperties: { className: ['remedy-problem-title'] } }, children: [textNode(options.summaries?.get(key) ?? '')] },
+          ],
+        };
+      }
       const href = options.problemHref(key);
       return {
         type: 'remedyProblem',
@@ -216,8 +234,8 @@ export function remarkItemLinks(options: ItemLinkOptions): (tree: MdNode) => voi
   return (tree) => {
     const lines = new Map<MdNode, string[]>();
     if (options.summaries !== undefined) problemLinesOf(tree, null, options, lines);
-    anchor(tree, null, options.lineOffset ?? 0);
-    walk(tree, null, options, lines);
+    anchor(tree, null, options.lineOffset ?? 0, options.anchorPrefix ?? 'remedy-');
+    walk(tree, null, options, lines, options.plain === true);
     if (lines.size > 0) insertProblemLines(tree, lines, options);
   };
 }

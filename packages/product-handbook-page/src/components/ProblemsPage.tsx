@@ -92,7 +92,7 @@ export function ProblemDetail({ row }: { row: ProblemRow }) {
       {row.type === 'design' && process !== undefined && (
         <div className="item-field" data-field="process">
           <span className="inline-label">{t('chapter.review.field.process')}</span>{' '}
-          <a href={nav.process(process.id)} data-part="process-link">{`${process.id} ${process.name}`}</a>
+          <a href={nav.process(process.id)} data-part="process-link">{process.name}</a>
         </div>
       )}
       {row.type !== 'open' && (

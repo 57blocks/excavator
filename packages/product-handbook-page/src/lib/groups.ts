@@ -1,4 +1,4 @@
-import { COVERAGE_BLOCK, inView, itemOf, itemOfBlock } from './pages';
+import { COVERAGE_BLOCK, inView, isHidden, itemOf } from './pages';
 import type { PageItem } from './pages';
 import type { OutlineBlock, PageData, View } from './types';
 
@@ -51,7 +51,7 @@ export function referencesOf(data: PageData, view: View, coverageTitle: string, 
   const grouped = new Set(groupsOf(data).flatMap((group) => group.features.map((item) => item.block)));
   const out: ReferenceGroup[] = [];
   for (const part of data.outline.parts) {
-    const items = part.blocks.filter((block) => inView(block, view) && !(isFeature(block) && grouped.has(block.block))).map((block) => named(itemOfBlock(data, block), systemTitle));
+    const items = part.blocks.filter((block) => inView(block, view) && !isHidden(data, block) && !(isFeature(block) && grouped.has(block.block))).map((block) => named(itemOf(block), systemTitle));
     if (items.length > 0) out.push({ title: part.title, items });
   }
   out.push({ title: null, items: [{ block: COVERAGE_BLOCK, kind: 'coverage', title: coverageTitle, key: 'coverage' }] });

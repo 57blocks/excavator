@@ -292,8 +292,7 @@ export function FeaturePage({ id, view, text }: { id: string; view: string; text
       <ul className="feature-processes" data-part="feature-processes">
         {through.map((process) => (
           <li key={process.id} data-process={process.id}>
-            <a href={nav.process(process.id)}><span className="proc-no">{process.id}</span> {process.name}</a>
-            <span className="muted"> {t('page.processes.stepCount', { count: process.steps.length })}</span>
+            <a href={nav.process(process.id)}>{process.name}</a>
           </li>
         ))}
       </ul>

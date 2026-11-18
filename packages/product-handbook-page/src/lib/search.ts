@@ -9,12 +9,6 @@ export const MAX_RESULTS = 40;
 /** The block id of the cross-feature domains chapter. */
 export const DOMAINS_CHAPTER = 'domains';
 
-/** The block id of the business-processes chapter, whose numbered process headings (`P4 Name`) open the process page. */
-export const PROCESSES_CHAPTER = 'processes';
-
-/** `P<n>` when a heading of the business-processes chapter starts with a process number. */
-const processOf = (title: string): string | null => /^(P\d+)\s/.exec(title)?.[1] ?? null;
-
 /** Where a result goes: a domain page, a chapter, a heading of a chapter (counted from 0 among its `h2` and `h3`), a process page or a problem row. */
 export type Target =
   | { kind: 'domain'; id: string }
@@ -89,12 +83,8 @@ function titleResults({ query, groups, items, references, domainsLabel, systemTi
   const chapterResult = (item: SearchItem): Result | null => {
     // A defect or design problem by its number: it opens its row on the problems page.
     if (item.kind === 'problem' && item.id !== undefined) return { key: `problem:${item.id}`, title: item.title, context: '', domain: null, target: { kind: 'problem', id: item.id } };
+    if (item.kind === 'process' && item.id !== undefined) return { key: `process:${item.id}`, title: item.title, context: '', domain: null, target: { kind: 'process', id: item.id } };
     if (item.chapter === null) return null;
-    // A process heading of the business-processes chapter opens that process.
-    if (item.kind === 'heading' && item.chapter === PROCESSES_CHAPTER && item.level === 2) {
-      const process = processOf(item.title);
-      if (process !== null) return { key: `heading:${item.chapter}:${item.heading}`, title: item.title, context: titleOfChapter.get(item.chapter) ?? item.chapter, domain: null, target: { kind: 'process', id: process } };
-    }
     const section = sectionOf.get(item);
     if (section !== undefined && item.heading !== null) {
       return { key: `heading:${item.chapter}:${item.heading}`, title: item.title, context: titleOfChapter.get(item.chapter) ?? item.chapter, domain: section, target: { kind: 'domain', id: section } };
@@ -159,17 +149,16 @@ export function textResults({ query, groups, items, sources, systemTitle, domain
     const group = groupOfFeature(groups, chapter);
     const lines = text.split('\n');
     const markAt = new Map(marksOf(lines).map((mark) => [mark.at, mark]));
-    interface Open { n: number; heading: string | null; domain: string | null; process: string | null; seen: Set<string>; count: number; best: { plain: string; hits: number } | null }
+    interface Open { n: number; heading: string | null; domain: string | null; seen: Set<string>; count: number; best: { plain: string; hits: number } | null }
     let fenced = false;
     let domainOfSection: string | null = null;
-    let processOfSection: string | null = null;
-    let open: Open = { n: -1, heading: null, domain: null, process: null, seen: new Set(), count: 0, best: null };
+    let open: Open = { n: -1, heading: null, domain: null, seen: new Set(), count: 0, best: null };
     const close = (): void => {
-      const { n, heading, domain, process, seen, count, best } = open;
+      const { n, heading, domain, seen, count, best } = open;
       if (best === null || seen.size < terms.length) return;
       const lower = best.plain.toLowerCase();
       const first = terms.map((term) => ({ term, at: lower.indexOf(term) })).filter((one) => one.at !== -1).sort((a, b) => a.at - b.at)[0];
-      const target: Target = domain !== null ? { kind: 'domain', id: domain } : process !== null ? { kind: 'process', id: process } : n === -1 ? { kind: 'chapter', id: chapter } : { kind: 'heading', chapter, heading: n };
+      const target: Target = domain !== null ? { kind: 'domain', id: domain } : n === -1 ? { kind: 'chapter', id: chapter } : { kind: 'heading', chapter, heading: n };
       out.push({ key: `text:${chapter}:${n}`, title: best.plain, context: heading === null ? title : `${title} \u00b7 ${heading}`, domain: domain ?? group?.id ?? null, target, snippet: snippetOf(best.plain, first.at, first.term.length), count });
     };
     lines.forEach((line, at) => {
@@ -179,8 +168,7 @@ export function textResults({ query, groups, items, sources, systemTitle, domain
       if (mark !== undefined) {
         close();
         if (mark.level === 2) domainOfSection = domainsIndex && chapter === DOMAINS_CHAPTER ? (groups.find((one) => one.name === mark.title)?.id ?? null) : null;
-        if (mark.level === 2) processOfSection = chapter === PROCESSES_CHAPTER ? processOf(mark.title) : null;
-        open = { n: mark.n, heading: plainLine(mark.title), domain: domainOfSection, process: processOfSection, seen: new Set(), count: 0, best: null };
+        open = { n: mark.n, heading: plainLine(mark.title), domain: domainOfSection, seen: new Set(), count: 0, best: null };
         return;
       }
       if (/^#\s/.test(line)) return;

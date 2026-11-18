@@ -39,3 +39,29 @@ export function withoutHandoverList(markdown: string, title = ''): string {
   }
   return sections.filter((one) => !(one.heading && one.bullet && !one.table && !one.mermaid)).flatMap((one) => one.lines).join('\n');
 }
+
+/**
+ * A domain's section of the domains chapter split at the level-3 section whose heading equals `title` (the main line): the text
+ * before it and the text after it, the section itself left out (it runs to the next level-3 heading). `found` is false, and `before`
+ * is the whole text, when no section has that heading. Lines inside fenced code blocks count for nothing.
+ */
+export function splitAtSection(markdown: string, title: string): { before: string; after: string; found: boolean } {
+  const lines = markdown.split('\n');
+  const wanted = title.trim();
+  let fence: string | null = null;
+  let from = -1;
+  let to = lines.length;
+  lines.forEach((line, at) => {
+    const open = FENCE.exec(line);
+    if (fence !== null) {
+      if (open !== null && open[1] === fence && open[2] === '') fence = null;
+    } else if (open !== null) {
+      fence = open[1];
+    } else if (line.startsWith('### ')) {
+      if (from === -1 && wanted !== '' && line.slice(4).replace(/\s*#*\s*$/, '').trim() === wanted) from = at;
+      else if (from !== -1 && to === lines.length) to = at;
+    }
+  });
+  if (from === -1) return { before: markdown, after: '', found: false };
+  return { before: lines.slice(0, from).join('\n'), after: lines.slice(to).join('\n'), found: true };
+}

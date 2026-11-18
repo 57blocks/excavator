@@ -7,7 +7,7 @@ import { jumpToHeading } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
 import type { PageItem } from '../lib/pages';
-import { MAX_RESULTS, MIN_TEXT_QUERY, PROCESSES_CHAPTER, searchAll } from '../lib/search';
+import { MAX_RESULTS, MIN_TEXT_QUERY, searchAll } from '../lib/search';
 import type { Result, TextSource } from '../lib/search';
 import type { Pair } from '../lib/strata';
 import { useText } from '../lib/text';
@@ -38,15 +38,16 @@ export function SearchDialog({ groups, colours, items, chapters, references, onC
   const nav = useLinks();
   const view = useView();
   const loader = useContext(LoaderContext);
-  const { map: domainsIndex, processes } = useModel();
+  const { map: domainsIndex, remedyDomains } = useModel();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const searched = useMemo(() => {
     const ids = new Set(items.filter((item) => item.kind === 'chapter' && item.chapter !== null).map((item) => item.chapter as string));
-    return chapters.filter((chapter) => ids.has(chapter.id));
-  }, [items, chapters]);
+    // The text of the remedies chapter is laid out by domain on its page, so its headings are not the ones its text has: it is found by its headings.
+    return chapters.filter((chapter) => ids.has(chapter.id) && !(chapter.id === 'remedies' && remedyDomains !== null));
+  }, [items, chapters, remedyDomains]);
   // The states of the chapters' units as one string, so that the sources are worked out again only when one of them changes.
   const statesKey = (): string => searched.map((chapter) => loader.state(chapterUnitKey(chapter.id)).status).join(',');
   const states = useSyncExternalStore(loader.subscribe, statesKey, statesKey);
@@ -86,9 +87,9 @@ export function SearchDialog({ groups, colours, items, chapters, references, onC
     else if (target.kind === 'process') window.location.hash = nav.process(target.id);
     else if (target.kind === 'problem') window.location.hash = nav.problems({ row: target.id });
     else {
-      // The remedies chapter is the improvement suggestions page, and the business-processes chapter (with processes data) the processes page, not chapter pages.
+      // The remedies chapter is the improvement suggestions page, not a chapter page.
       const chapter = target.kind === 'chapter' ? target.id : target.chapter;
-      window.location.hash = chapter === 'remedies' ? nav.remedies : chapter === PROCESSES_CHAPTER && processes !== null ? nav.processes : nav.chapter(chapter);
+      window.location.hash = chapter === 'remedies' ? nav.remedies : nav.chapter(chapter);
     }
     if (target.kind === 'heading') jumpToHeading(target.chapter, target.heading);
   };

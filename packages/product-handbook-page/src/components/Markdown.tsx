@@ -45,6 +45,9 @@ function MoreProblems({ count, children }: { count: number; children?: ReactNode
   );
 }
 
+/** How one item of the remedies chapter is rendered alone: its source starts at line `lineOffset + 1` of the chapter, its id starts with `anchorPrefix`, and its problem lines are for `problemIds` (the rows its id groups name when not given). */
+export interface RemedyItemOptions { lineOffset: number; anchorPrefix?: string; problemIds?: readonly string[] }
+
 /** The code element of a `pre` node, with its language class, or undefined. */
 function codeOf(node: HastNode | undefined): HastNode | undefined {
   return node?.children?.find((child) => child.type === 'element' && child.tagName === 'code');
@@ -53,9 +56,9 @@ function codeOf(node: HastNode | undefined): HastNode | undefined {
 /**
  * Markdown as the page shows it: GitHub tables in a horizontal scroller, mermaid blocks as diagrams (a source that
  * does not render stays visible with a note), and an inline code span that is a whole citation (`path:12` or
- * `path:12-20`) as a citation chip. Raw HTML is not rendered. `idPrefix` makes the ids of the diagrams unique. A feature written as `Title (F12)` links to its page, except `chapter`'s own; in the remedies chapter an item id in an id group links to its row or process and each item names its problems (remark-item-links.ts). `remedyItem` renders one item of that chapter alone (on the page of its process): its source starts at line `lineOffset + 1` of the chapter, and the process ids stay text, since the page is the process.
+ * `path:12-20`) as a citation chip. Raw HTML is not rendered. `idPrefix` makes the ids of the diagrams unique. A feature written as `Title (F12)` links to its page, except `chapter`'s own; in the remedies chapter an item id in an id group links to its row or process and each item names its problems (remark-item-links.ts). `remedyItem` renders one item of that chapter alone, in plain text (no id group, problem lines without ids or links; see remark-item-links.ts).
  */
-export function Markdown({ source, idPrefix, chapter, remedyItem }: { source: string; idPrefix: string; chapter?: string; remedyItem?: { lineOffset: number } }) {
+export function Markdown({ source, idPrefix, chapter, remedyItem }: { source: string; idPrefix: string; chapter?: string; remedyItem?: RemedyItemOptions }) {
   const t = useText();
   const nav = useLinks();
   const { titles, problems, processes } = useModel();
@@ -70,9 +73,9 @@ export function Markdown({ source, idPrefix, chapter, remedyItem }: { source: st
       processHref: nav.process,
       summaries: new Map(problems.rows.map((row) => [row.id, row.summary])),
       problemLabel: t('page.remedies.problem'),
-      ...(remedyItem === undefined ? {} : { lineOffset: remedyItem.lineOffset }),
+      ...(remedyItem === undefined ? {} : { plain: true, lineOffset: remedyItem.lineOffset, anchorPrefix: remedyItem.anchorPrefix, problemIds: remedyItem.problemIds }),
     });
-  }, [titles, nav, chapter, problems, processes, remedyItem?.lineOffset, t]);
+  }, [titles, nav, chapter, problems, processes, remedyItem?.lineOffset, remedyItem?.anchorPrefix, remedyItem?.problemIds?.join(','), t]);
   // The fixed notices of a chapter: the not-verified text, and the not-passed text up to its first placeholder.
   const verified = t('chapter.notVerified');
   const notPassed = t('chapter.notPassed', { count: '{count}' }).split('{')[0];

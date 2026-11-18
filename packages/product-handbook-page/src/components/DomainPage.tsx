@@ -1,7 +1,8 @@
 import type { Group } from '../lib/groups';
+import type { ProcessItem } from '../lib/types';
 import { groupByOther, handedOver, received } from '../lib/handovers';
 import type { Indexed } from '../lib/handovers';
-import { withoutHandoverList } from '../lib/domain-body';
+import { splitAtSection, withoutHandoverList } from '../lib/domain-body';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
 import { highestLevels, levelText } from '../lib/problems';
@@ -65,6 +66,37 @@ function Features({ group }: { group: Group }) {
   );
 }
 
+/** The arrow between the operations of a process: written as a code so the source stays plain ASCII. */
+const ARROW = ` ${String.fromCharCode(0x2192)} `;
+
+/**
+ * The business processes of the domain (those that start in it, in the chapter's order, none folded) in the place of its main line:
+ * each is its name as a link to its page, the operations of its steps in one line and, when it has design problems, their number.
+ */
+function Processes({ items }: { items: ProcessItem[] }) {
+  const t = useText();
+  const nav = useLinks();
+  const { problems } = useModel();
+  const counts: Record<string, number> = {};
+  for (const row of problems.rows) if (row.type === 'design' && row.process !== undefined) counts[row.process] = (counts[row.process] ?? 0) + 1;
+  return (
+    <section className="dom-processes" data-part="domain-processes">
+      <h2>{t('page.nav.processes')}</h2>
+      <ul className="proc-list">
+        {items.map((item) => (
+          <li key={item.id} data-process={item.id}>
+            <a href={nav.process(item.id)}>
+              <span className="proc-name">{item.name}</span>
+              <span className="proc-ops" data-part="process-operations">{item.steps.map((step) => step.operation).join(ARROW)}</span>
+              {(counts[item.id] ?? 0) > 0 && <span className="proc-badge" data-part="process-problem-count">{t('page.processes.problemCount', { count: counts[item.id] })}</span>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 interface Props { group: Group; colour: Pair; mapLabel: string; previous?: Group; next?: Group }
 
 /**
@@ -82,6 +114,11 @@ export function DomainPage({ group, colour, mapLabel, previous, next }: Props) {
   const domain = model.domains[group.id];
   const intro = domain?.intro[view] ?? '';
   const shown = withoutHandoverList(domain?.body[view] ?? '', t('chapter.domain.handovers')).trim();
+  // With processes the main line gives its place to the processes that start in this domain.
+  const own = (model.processes?.items ?? []).filter((item) => item.domain === group.id);
+  const split = model.processes === null ? null : splitAtSection(shown, t('chapter.domain.mainLine'));
+  const before = split === null ? shown : split.before.trim();
+  const after = split === null ? '' : split.after.trim();
   return (
     <div className="wrap domain" data-view="domain" data-domain={group.id} {...colourProps(colour)}>
       <Breadcrumbs trail={[{ label: mapLabel, href: nav.home }, { label: group.name }]} />
@@ -89,7 +126,9 @@ export function DomainPage({ group, colour, mapLabel, previous, next }: Props) {
       {intro !== '' && <p className="lede dom-lede"><InlineMarkdown source={intro} /></p>}
       {model.map ? (
         <>
-          {shown !== '' && <div className="dom-body"><Markdown source={shown} idPrefix={`domain-${group.id}`} /></div>}
+          {before !== '' && <div className="dom-body"><Markdown source={before} idPrefix={`domain-${group.id}`} /></div>}
+          {split !== null && own.length > 0 && <Processes items={own} />}
+          {after !== '' && <div className="dom-body"><Markdown source={after} idPrefix={`domain-${group.id}-after`} /></div>}
           <div className="dom-cols">
             <Column kind="in" list={received(model.handovers, group.id)} side="from" />
             <Column kind="out" list={handedOver(model.handovers, group.id)} side="to" />

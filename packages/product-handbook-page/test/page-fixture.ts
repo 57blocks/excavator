@@ -48,6 +48,7 @@ export interface Options {
   domains?: PageData['domains'];
   problems?: ProblemsData;
   processes?: ProcessesData | null;
+  remedyDomains?: PageData['remedyDomains'];
 }
 
 /** The problems of a page with no problem rows, every source usable. */
@@ -72,6 +73,7 @@ export function pageData(options: Options = {}): PageData {
     domains: options.domains ?? { state: 'missing', list: [], handovers: [] },
     problems: options.problems ?? NO_PROBLEMS,
     processes: options.processes ?? null,
+    remedyDomains: options.remedyDomains ?? null,
     lead: '',
     architecture: {},
     search: [],

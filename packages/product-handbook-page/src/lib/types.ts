@@ -215,15 +215,29 @@ export interface HandoverData { from: string; to: string; what: string; features
 
 /** One entry of the search index: a domain, a chapter, a `##` or `###` heading of a chapter (`heading` counts them from 0 in the chapter), or a defect or design problem by its number (`D3 title`). */
 export interface SearchItem {
-  kind: 'domain' | 'chapter' | 'heading' | 'problem';
+  kind: 'domain' | 'chapter' | 'heading' | 'problem' | 'process';
   title: string;
   chapter: string | null;
   domain: string | null;
   heading: number | null;
   /** 2 or 3 for a heading, null for the other kinds. */
   level: 2 | 3 | null;
-  /** The id of the problem row (`d3`, `r12`) of a `problem` item. */
+  /** The id of the problem row (`d3`, `r12`) of a `problem` item, the process (`P4`) of a `process` item. */
   id?: string;
+}
+
+/** An item of the remedies chapter placed under a domain or a process: its line in the chapter and the rows (`d3`, `r12`) its problem lines are for. */
+export interface RemedyRef { line: number; problems: string[] }
+
+/**
+ * The items of a remedies chapter that names ids, under the business domains they involve (page-remedies.mjs): `items` holds the text of
+ * each by view, `domains` (in the page's order, only those with items) the items under each process of the domain and under each fixed
+ * section of the chapter, `untied` the items that involve no domain. Null for a chapter that names no id or a page without usable domains.
+ */
+export interface RemedyDomains {
+  items: ProcessRemedy[];
+  domains: { id: string; processes: { id: string; items: RemedyRef[] }[]; sections: { heading: string; items: RemedyRef[] }[] }[];
+  untied: RemedyRef[];
 }
 
 /** The three kinds of problem rows: defects (parser), design problems (checked batches), open questions (fixed section of a chapter). */
@@ -259,7 +273,7 @@ export interface ProblemRow {
 }
 
 /** One item of the remedies chapter that names a problem row: the title of its section and the id of its element, on the remedies page or, with `process` (`P<n>`), on the page of that process. */
-export interface RemedyLink { heading: string; anchor: string; process?: string }
+export interface RemedyLink { heading: string; anchor: string; process?: string; domain?: string }
 
 /** One step of a process: who does it, the operation (the title of an operation of the feature), the feature id, the sentence and, in the technical view, its citations. */
 export interface ProcessStep { role: string; operation: string; feature: string; text: string; cites?: string[] }
@@ -306,6 +320,8 @@ export interface PageData {
   problems: ProblemsData;
   /** The business processes; null when the run has no usable business-processes chapter, so the page has no processes page. */
   processes: ProcessesData | null;
+  /** The items of the improvement suggestions under the business domains; null when the page shows the chapter as it is. */
+  remedyDomains: RemedyDomains | null;
   /** The first paragraph of the system chapter (product view text); empty without a system chapter. */
   lead: string;
   /** The section of the system chapter that holds its first diagram, by view; '' without one. */

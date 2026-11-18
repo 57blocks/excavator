@@ -17,7 +17,8 @@ export function viewOf(data: PageData, route: Route, coverageTitle: string): Vie
   if (body.name === 'home') return view;
   if (body.name === 'domain') return groupsOf(data).some((group) => group.id === body.id) ? view : null;
   if (body.name === 'problems' || body.name === 'remedies') return view;
-  if (body.name === 'processes') return data.processes === null ? null : view;
+  // The address of the old list of processes opens the domains index, in the same view.
+  if (body.name === 'processes') return view;
   if (body.name === 'process') return data.processes?.items.some((item) => item.id === body.id) ? view : null;
   if (body.name === 'architecture') return hasArchitecture(data, view) ? view : null;
   return pageOf(pagesOf(data, view, coverageTitle), route) === undefined ? null : view;
