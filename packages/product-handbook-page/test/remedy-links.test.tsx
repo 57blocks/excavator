@@ -431,7 +431,12 @@ describe('the remedies page in tabs by measure type', () => {
   it('keeps the type word where the group has several types, and gives an item written under a process a first row with the process as a link', () => {
     const page = open('#/product/remedies');
     const item = page.querySelector('#remedy-simplify-d2-5') as HTMLElement;
-    const row = item.closest('[data-remedy-line]')?.querySelector('[data-part="remedy-process"]') as HTMLElement;
+    // The process row is a row of the item itself, beside its problem and suggestion rows, so the three share one grid (a row
+    // outside the item made the item's whole text one cell of the outer grid and squeezed the process name into a zero-wide column).
+    const row = item.children[0] as HTMLElement;
+    expect(row.getAttribute('data-part')).toBe('remedy-process');
+    expect(Array.from(item.children).every((child) => child.classList.contains('remedy-row'))).toBe(true);
+    expect(Array.from(item.closest('[data-remedy-line]')?.children ?? []).some((child) => child.classList.contains('remedy-row'))).toBe(false);
     expect(row.querySelector('.remedy-row-label')?.textContent).toBe(fixed('page.remedies.process'));
     expect(row.querySelector('a')?.getAttribute('href')).toBe('#/product/processes/P1');
     expect(row.querySelector('a')?.textContent).toBe(d('Order to invoice'));

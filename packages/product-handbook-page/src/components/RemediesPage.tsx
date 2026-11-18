@@ -59,7 +59,6 @@ const withoutType = (text: string): string => text.replace(/^\*\*[^*]+\*\*\s*/, 
 
 /** The items of one place of a tab: each in plain text with the problem row of this place, its id made from `prefix` and its line; one written under a process has a first row with the process as a link to its page. */
 function Items({ refs, prefix }: { refs: RemedyRef[]; prefix: string }) {
-  const t = useText();
   const nav = useLinks();
   const view = useView();
   const { remedyDomains, processes } = useModel();
@@ -70,13 +69,8 @@ function Items({ refs, prefix }: { refs: RemedyRef[]; prefix: string }) {
     <ul className="proc-rows">
       {shown.map(({ ref, text }) => (
         <li key={ref.line} data-remedy-line={ref.line}>
-          {ref.process !== undefined && (
-            <div className="remedy-row" data-part="remedy-process">
-              <span className="remedy-row-label">{t('page.remedies.process')}</span>
-              <div className="remedy-row-content"><a href={nav.process(ref.process)}>{processName.get(ref.process) ?? ref.process}</a></div>
-            </div>
-          )}
-          <RemedyItem text={text} line={ref.line} anchorPrefix={prefix} problems={ref.problems} idPrefix={`${prefix}${ref.line}`} />
+          <RemedyItem text={text} line={ref.line} anchorPrefix={prefix} problems={ref.problems} idPrefix={`${prefix}${ref.line}`}
+            process={ref.process === undefined ? undefined : { name: processName.get(ref.process) ?? ref.process, href: nav.process(ref.process) }} />
         </li>
       ))}
     </ul>

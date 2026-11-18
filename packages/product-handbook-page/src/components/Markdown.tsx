@@ -42,7 +42,7 @@ function MoreProblems({ count, children }: { count: number; children?: ReactNode
 }
 
 /** How one item of the remedies chapter is rendered alone: its source starts at line `lineOffset + 1` of the chapter, its id starts with `anchorPrefix`, and its problem lines are for `problemIds` (the rows its id groups name when not given). */
-export interface RemedyItemOptions { lineOffset: number; anchorPrefix?: string; problemIds?: readonly string[] }
+export interface RemedyItemOptions { lineOffset: number; anchorPrefix?: string; problemIds?: readonly string[]; process?: { name: string; href: string } }
 
 /** The code element of a `pre` node, with its language class, or undefined. */
 function codeOf(node: HastNode | undefined): HastNode | undefined {
@@ -73,9 +73,10 @@ export function Markdown({ source, idPrefix, chapter, remedyItem }: { source: st
         suggestionLabel: t('page.remedies.suggestion'),
         separator: t('page.remedies.problemSeparator'),
         plain: true, lineOffset: remedyItem.lineOffset, anchorPrefix: remedyItem.anchorPrefix, problemIds: remedyItem.problemIds,
+        ...(remedyItem.process === undefined ? {} : { processRow: { label: t('page.remedies.process'), ...remedyItem.process } }),
       }),
     });
-  }, [titles, nav, chapter, problems, processes, remedyItem?.lineOffset, remedyItem?.anchorPrefix, remedyItem?.problemIds?.join(','), t]);
+  }, [titles, nav, chapter, problems, processes, remedyItem?.lineOffset, remedyItem?.anchorPrefix, remedyItem?.problemIds?.join(','), remedyItem?.process?.name, remedyItem?.process?.href, t]);
   // The fixed notices of a chapter: the not-verified text, and the not-passed text up to its first placeholder.
   const verified = t('chapter.notVerified');
   const notPassed = t('chapter.notPassed', { count: '{count}' }).split('{')[0];

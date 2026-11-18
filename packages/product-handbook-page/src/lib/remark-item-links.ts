@@ -29,6 +29,8 @@ export interface ItemLinkOptions {
   plain?: boolean;
   /** With `plain`: the rows (`d3`, `r12`) the lines are for, in order, instead of the ones the id groups of the item name. */
   problemIds?: readonly string[];
+  /** With `plain`: a first row of each item, the process the item was written under, as its label and a link to the process page. */
+  processRow?: { label: string; name: string; href: string };
 }
 
 /** The id the remedies page puts on the list item or paragraph that starts at `line` of its text (the anchor `page-problems.mjs` writes). */
@@ -187,13 +189,26 @@ const suggestionRow = (children: MdNode[], options: ItemLinkOptions): MdNode => 
   el('remedyValue', 'div', 'remedy-row-content', children),
 ], { 'data-part': 'remedy-suggestion' });
 
-/** Every list item of a plain-text chapter text as two rows: its problems (none: no row) and its suggestion. */
+/** The row of the process an item was written under: its label, then the process name as a link to its page. */
+const processRowOf = (process: NonNullable<ItemLinkOptions['processRow']>): MdNode => el('remedyRow', 'div', 'remedy-row', [
+  el('remedyLabel', 'span', 'remedy-row-label', [textNode(process.label)]),
+  el('remedyValue', 'div', 'remedy-row-content', [{ type: 'link', url: process.href, children: [textNode(process.name)] }]),
+], { 'data-part': 'remedy-process' });
+
+/**
+ * Every list item of a plain-text chapter text as rows: its process (only with `processRow`), its problems (none: no row) and its
+ * suggestion. The rows are the only children of the item, so they share one grid and their labels one column.
+ */
 function layoutItems(node: MdNode, rows: Map<MdNode, string[]>, options: ItemLinkOptions): void {
   for (const child of node.children ?? []) {
     layoutItems(child, rows, options);
     const ids = rows.get(child);
     if (ids === undefined || child.type !== 'listItem') continue;
-    child.children = [...(ids.length === 0 ? [] : [problemRow(ids, options)]), suggestionRow(child.children ?? [], options)];
+    child.children = [
+      ...(options.processRow === undefined ? [] : [processRowOf(options.processRow)]),
+      ...(ids.length === 0 ? [] : [problemRow(ids, options)]),
+      suggestionRow(child.children ?? [], options),
+    ];
   }
 }
 
