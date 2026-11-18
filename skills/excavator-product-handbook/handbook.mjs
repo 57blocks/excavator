@@ -31,6 +31,7 @@ import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { remediesInputsLines, remediesState } from './lib/remedies-inputs.mjs';
 import { replyLines } from './lib/reply.mjs';
+import { reviewCompare } from './lib/review-compare.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
 import { renderReview } from './lib/review-render.mjs';
 import { resetBatch, reviewStatus, reviewSummary, reviewTitles } from './lib/review-status.mjs';
@@ -115,6 +116,12 @@ Commands:
       of features whose chapters cite overlapping lines of one file (one pair for two features, with every such file;
       a file cited by more than 3 features is shared code and makes no pair), within a batch and across batches. Writes
       <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it.
+  review compare-facts <out> --project <root>
+      The comparison candidates (X1, X2, ...) from the artifacts in <out>, five sources in order: two implementations (a
+      feature whose route candidates lie in 2 or more application roots), dictionary mismatches, tables mentioned by 2 or
+      more applications, cross-cutting topic rows naming 2 or more features (rows resting only on problems lines are
+      counted and skipped) and code shared across batches. A source whose artifact is missing is printed as not computed
+      with its reason. Writes <out>/entries/review-compare.json and prints SOURCE, SKIPPED and CANDIDATE lines.
   review render <out> [<batch>...] --project <root>
       Check the items of <out>/entries/review/<batch>.json against the chapters: fields and values, the features of
       the batch (a cross item: features of 2 or more batches), each citation copied from a chapter of a listed feature,
@@ -292,11 +299,15 @@ const COMMANDS = {
   review(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     const [sub, out, ...rest] = positionals;
-    if (!['facts', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, render, claims, prune, status, reset, skip, titles or summary, then <out>');
+    if (!['facts', 'compare-facts', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, compare-facts, render, claims, prune, status, reset, skip, titles or summary, then <out>');
     if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
     if (sub === 'facts') {
       if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
       return report(reviewFacts(resolve(out), rest[0]));
+    }
+    if (sub === 'compare-facts') {
+      if (rest.length > 0) throw new UsageError('review compare-facts takes <out> and --project <root>');
+      return report(reviewCompare(resolve(out), projectRootOption(options.project)));
     }
     if (sub === 'status') return report(reviewStatus(resolve(out), projectRootOption(options.project)));
     if (sub === 'titles') return report(reviewTitles(resolve(out), projectRootOption(options.project)));

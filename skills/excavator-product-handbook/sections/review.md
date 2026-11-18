@@ -21,6 +21,12 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    ```
    It writes `$OUT/entries/review-facts.json` and prints the `BATCH` lines (`<batch>`, its name, its feature ids), the `FEATURE` lines of every feature (its operations, the steps of each operation, its states and transitions, its server-side steps, its hand-overs; a section it could not recognize is named, not counted) and the `PAIR` lines (one line for two features whose chapters cite the same lines of one file, with every such file; a file cited by more than 3 features is shared code and is not listed, and one `Shared files` line counts them). Exit 1 or 2: show its message and stop.
 
+2a. Compute the comparison candidates:
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review compare-facts "$OUT" --project "$PROJECT_ROOT"
+   ```
+   It writes `$OUT/entries/review-compare.json`; its output is not shown to the user and nothing else uses it yet. Exit 1 or 2: show its message and stop.
+
 3. Find what each batch needs, from its files:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review status "$OUT" --project "$PROJECT_ROOT"
