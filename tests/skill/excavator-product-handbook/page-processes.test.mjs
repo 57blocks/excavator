@@ -82,7 +82,7 @@ afterEach(() => {
 });
 
 /** A run with the chapters written as given (each recorded as passed unless named in `failed`) and one domain batch plus one process batch of design problems. */
-function setup({ chapters, failed = [] }) {
+function setup({ chapters, failed = [], domains = null }) {
   const run = makeRun();
   dirs.push(run.cleanup);
   run.writeMap();
@@ -102,8 +102,18 @@ function setup({ chapters, failed = [] }) {
     all.review = reviewChapterText({ strings: ui, map: run.map, outDir: run.out }, [{ batch: { id: 'b1' }, items: B1 }, { batch: { id: 'p1' }, items: P1 }]);
   }
   const records = {};
+  if (domains !== null) {
+    // Two domains give two batches of design problems: the second has none.
+    const list = Buffer.from(`${JSON.stringify({ domains, handovers: [] })}\n`);
+    writeFileSync(join(run.out, 'domains.json'), list);
+    writeFileSync(join(run.out, 'entries', 'review-facts.json'), JSON.stringify({ batches: [{ id: 'b1' }, { id: 'b2' }] }));
+    run.writeJson(join(run.out, 'entries', 'review', 'b2.json'), { items: [] });
+    all.domains = '# Domains\n';
+    records.domains = { status: 'passed', attempts: 1, reasons: [], sha256: sha(Buffer.from(all.domains)), json: sha(list) };
+  }
   for (const [name, text] of Object.entries(all)) {
     writeFileSync(join(run.out, 'chapters', `${name}.md`), text);
+    if (name === 'domains' && domains !== null) continue;
     records[name] = { status: failed.includes(name) ? 'failed' : 'passed', attempts: 1, reasons: [], sha256: sha(Buffer.from(text)) };
   }
   writeFileSync(join(run.out, 'state.json'), JSON.stringify({ format: 'excavator-product-handbook-state/2', chapters: records }));
@@ -215,5 +225,84 @@ describe('page data /23: the search index', () => {
     expect(problems.map((item) => [item.id, item.title])).toEqual([
       ['d1', 'D1 Open secret'], ['d2', 'D2 Hidden button'], ['r1', expect.stringMatching(/^R1 /)], ['r2', expect.stringMatching(/^R2 /)], ['r3', expect.stringMatching(/^R3 /)],
     ]);
+  });
+});
+
+const BY_PROCESS = `# Remedies
+
+## P1 Order to archive
+
+- **Merge entrances** Close orders in one place [P1, R1, D1] (\`${FORM}:7\`).
+- **Show it** Show the button [P1, D2] (\`${FORM}:6\`).
+
+## P2 Reminder run
+
+- **Fix** Mail the clerk [P2, D1] (\`${FORM}:6\`).
+
+## Defect fixes
+
+- **display** Show the button [D2, D99] (\`${FORM}:6\`).
+`;
+const DOMAINS = [{ name: 'Order domain', features: ['F1'] }, { name: 'Other domain', features: ['F2', 'F3'] }];
+const BY_PROCESS_RUN = { ...FULL, remedies: BY_PROCESS };
+const lineOf = (data, word, view = 'technical') => data.chapters.find((entry) => entry.id === 'remedies').texts[view].split('\n').findIndex((text) => text.includes(word)) + 1;
+
+describe('page data /23: the domain of a process', () => {
+  it('is the page id of the domain of the first step feature, even when a later step passes through another domain', () => {
+    const data = dataOf(setup({ chapters: FULL, domains: DOMAINS }));
+    expect(data.domains.state).toBe('ok');
+    // P1 starts at F1 (first domain) and also passes through F2 (second); P2 starts at F3 (second).
+    expect(data.processes.items.map((item) => [item.id, item.domain])).toEqual([['P1', 'd1'], ['P2', 'd2']]);
+  });
+
+  it('has no domain key when the domains are not usable or no domain lists the feature', () => {
+    const none = dataOf(setup({ chapters: FULL })).processes.items;
+    expect(none.some((item) => Object.hasOwn(item, 'domain'))).toBe(false);
+    const partial = dataOf(setup({ chapters: FULL, domains: [{ name: 'Order domain', features: ['F1'] }, { name: 'Empty one', features: [] }, { name: 'Third', features: ['F2'] }] })).processes.items;
+    expect(partial.map((item) => Object.hasOwn(item, 'domain'))).toEqual([true, false]);
+  });
+});
+
+describe('page data /23: the remedies of a process', () => {
+  it('lists the items under the heading of the process in chapter order, with their text by view', () => {
+    const data = dataOf(setup({ chapters: BY_PROCESS_RUN }));
+    const [first, second] = data.processes.items;
+    expect(first.remedies.map((entry) => entry.line)).toEqual([lineOf(data, 'Merge entrances'), lineOf(data, 'Show it')]);
+    expect(first.remedies[0].texts.technical).toContain('Close orders in one place [P1, R1, D1]');
+    expect(first.remedies[0].texts.technical).toContain(`\`${FORM}:7\``);
+    expect(first.remedies[0].texts.product).toContain('Close orders in one place [P1, R1, D1]');
+    expect(first.remedies[0].texts.product).not.toContain(FORM);
+    expect(second.remedies.map((entry) => entry.line)).toEqual([lineOf(data, 'Mail the clerk')]);
+  });
+
+  it('says on each remedy entry of a row which page it is on: the process page for an item under a process, the remedies page for the others', () => {
+    const data = dataOf(setup({ chapters: BY_PROCESS_RUN }));
+    expect(row(data, 'd1').remedies).toEqual([
+      { heading: 'P1 Order to archive', anchor: `remedy-${lineOf(data, 'Merge entrances')}`, process: 'P1' },
+      { heading: 'P2 Reminder run', anchor: `remedy-${lineOf(data, 'Mail the clerk')}`, process: 'P2' },
+    ]);
+    expect(row(data, 'd2').remedies).toEqual([
+      { heading: 'P1 Order to archive', anchor: `remedy-${lineOf(data, 'Show it')}`, process: 'P1' },
+      { heading: 'Defect fixes', anchor: `remedy-${lineOf(data, 'Show the button [D2, D99]')}` },
+    ]);
+  });
+
+  it('folds the sections of the processes in the search index into one heading in front of the others, numbered the way the page numbers them', () => {
+    const data = dataOf(setup({ chapters: BY_PROCESS_RUN }));
+    const headings = data.search.filter((item) => item.kind === 'heading' && item.chapter === 'remedies');
+    expect(headings.map((item) => [item.title, item.heading])).toEqual([['Suggestions along the business processes', 0], ['Defect fixes', 1], ['Problems no measure addresses', 2]]);
+  });
+
+  it('leaves an old output as it was: no process section, no remedies on a process, no process on an entry, every heading in the index', () => {
+    const data = dataOf(setup({ chapters: FULL }));
+    expect(data.processes.items.some((item) => Object.hasOwn(item, 'remedies'))).toBe(false);
+    expect(data.problems.rows.flatMap((entry) => entry.remedies).some((link) => Object.hasOwn(link, 'process'))).toBe(false);
+    const headings = data.search.filter((item) => item.kind === 'heading' && item.chapter === 'remedies').map((item) => [item.title, item.heading]);
+    expect(headings).toEqual([['Measures across processes', 0], ['Defect fixes', 1], ['To fix', 2], ['Problems no measure addresses', 3]]);
+    // A run with no processes chapter keeps the sections `P<n> <name>` where they are: they name no process of the page.
+    const bare = dataOf(setup({ chapters: { defects: DEFECTS, F1, F2, remedies: BY_PROCESS } }));
+    expect(bare.processes).toBeNull();
+    expect(bare.problems.rows.flatMap((entry) => entry.remedies).some((link) => Object.hasOwn(link, 'process'))).toBe(false);
+    expect(bare.search.filter((item) => item.kind === 'heading' && item.chapter === 'remedies').map((item) => item.title)).toContain('P1 Order to archive');
   });
 });

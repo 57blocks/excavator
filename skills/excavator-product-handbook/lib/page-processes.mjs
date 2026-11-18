@@ -10,7 +10,10 @@ import { citationGroups, specKey } from './chapter-cites.mjs';
 import { runNumbers } from './item-numbers.mjs';
 import { productText } from './md-views.mjs';
 import { uncoveredOperations } from './processes-coverage.mjs';
+import { viewTexts } from './page-domains.mjs';
+import { remedyIndex } from './page-problems.mjs';
 import { parseProcesses } from './processes-parse.mjs';
+import { processSectionId } from './remedies-parse.mjs';
 
 const WIDE_OPEN = String.fromCharCode(0xff08);
 const WIDE_CLOSE = String.fromCharCode(0xff09);
@@ -55,8 +58,19 @@ function endOf(lines, from, to, label, technical) {
   return null;
 }
 
-/** The `processes` key: `{ items, coverage }`, or null. `views` are the page's views. */
-export function processesData(run, views, { placed = true } = {}) {
+/** The id of the first domain of the page (in the page's order) that lists feature `feature`, or null. */
+function domainOf(domains, feature) {
+  if (domains === undefined || domains.state !== 'ok' || feature === undefined) return null;
+  return domains.list.find((domain) => domain.features.includes(feature))?.id ?? null;
+}
+
+/**
+ * The `processes` key: `{ items, coverage }`, or null. `views` are the page's views; `domains` is the page's `domains` key. An item has
+ * `domain` (the page id of the domain of its first step's feature, absent when the domains are not usable or none lists the feature) and
+ * `remedies` (`{ line, texts }`: the items of the remedies chapter under this process's level-2 heading, in chapter order, by view; absent
+ * when there are none).
+ */
+export function processesData(run, views, { placed = true, domains } = {}) {
   const numbers = runNumbers(run).processes;
   if (numbers.state !== 'ok' || !placed) return null;
   const technical = views.includes('technical');
@@ -64,6 +78,7 @@ export function processesData(run, views, { placed = true } = {}) {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const parsed = parseProcesses(text);
   const label = run.ui['chapter.processes.end'];
+  const remedies = remedyIndex(run, views);
   const items = numbers.items.map((entry, at) => {
     const process = parsed[at];
     const stop = at + 1 < parsed.length ? parsed[at + 1].line - 1 : lines.length;
@@ -74,7 +89,17 @@ export function processesData(run, views, { placed = true } = {}) {
       ...shown(sentenceOf(step.text), technical),
     }));
     const end = endOf(lines, process.line + 1, stop, label, technical);
-    return { id: entry.id, name: entry.title, steps, ...(end === null ? {} : { end }), features: [...entry.features] };
+    const domain = domainOf(domains, process.steps[0]?.feature ?? entry.features[0]);
+    const own = (remedies === null ? [] : remedies.parsed.items).filter((found) => found.section !== null && processSectionId(found.section.text) === entry.id);
+    return {
+      id: entry.id,
+      name: entry.title,
+      ...(domain === null ? {} : { domain }),
+      steps,
+      ...(end === null ? {} : { end }),
+      features: [...entry.features],
+      ...(own.length === 0 ? {} : { remedies: own.map((found) => ({ line: found.line, texts: viewTexts(found.text, views) })) }),
+    };
   });
   const coverage = uncoveredOperations({ map: run.map, chapters: run.chapters, strings: run.ui, items: numbers.items }).map((gap) => ({ feature: gap.id, operations: gap.operations }));
   return { items, coverage };

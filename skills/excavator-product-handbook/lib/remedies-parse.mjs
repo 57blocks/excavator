@@ -78,3 +78,8 @@ export function parseRemedies(text) {
 
 /** The ids that some block of the parsed chapter names. */
 export const namedIds = (parsed) => new Set(parsed.items.flatMap((item) => item.ids));
+
+const PROCESS_HEADING = /^(P\d+)(?:\s|$)/;
+
+/** The process id (`P22`) a level-2 heading of the remedies chapter is the section of (`P22 <name>`), or null. */
+export const processSectionId = (headingText) => PROCESS_HEADING.exec(headingText)?.[1] ?? null;

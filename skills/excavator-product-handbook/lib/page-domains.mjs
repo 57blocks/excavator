@@ -12,6 +12,7 @@ import { DOMAINS_FILE, domainSection, sha256Of } from './domains-list.mjs';
 import { renderedChapter } from './chapter-render.mjs';
 import { runNumbers } from './item-numbers.mjs';
 import { productText } from './md-views.mjs';
+import { processSectionId } from './remedies-parse.mjs';
 
 const FENCE = /^\s*```/;
 const TABLE = /^\s*\|/;
@@ -120,6 +121,25 @@ export function leadOf(run) {
   return system === undefined ? '' : firstParagraph(productText(system.text));
 }
 
+/**
+ * The headings of the remedies chapter as the remedies page shows them: the level-2 sections of the processes in `processIds`
+ * (`P<n> <name>`) and the level-3 headings under them are one section titled `title` in front of the others, and the rest keep their order.
+ */
+export function foldProcessSections(headings, processIds, title) {
+  const kept = [];
+  let folded = false;
+  let inside = false;
+  for (const heading of headings) {
+    if (heading.level === 2) {
+      const id = processSectionId(heading.title);
+      inside = id !== null && processIds.has(id);
+      if (inside) folded = true;
+    }
+    if (!inside) kept.push(heading);
+  }
+  return folded ? [{ title, level: 2 }, ...kept] : headings;
+}
+
 /** The chapters the problems page shows instead (defects, design problems): no item of their own and none of their headings. */
 const NOT_SEARCHED = new Set(['defects', 'review']);
 
@@ -129,12 +149,14 @@ const NOT_SEARCHED = new Set(['defects', 'review']);
  * number finds the item. The headings are those of the chapter as the page shows it (chapter-render.mjs): the numbered process
  * headings (`P<n>`) and the generated sections at the end of the business-processes and remedies chapters are in the index.
  */
-export function searchIndex(domains, chapterBlocks, run) {
+export function searchIndex(domains, chapterBlocks, run, { processIds = new Set() } = {}) {
   const items = domains.list.map((domain) => ({ kind: 'domain', title: domain.name, chapter: null, domain: domain.id, heading: null, level: null }));
   for (const block of chapterBlocks) {
     if (NOT_SEARCHED.has(block.block)) continue;
     items.push({ kind: 'chapter', title: block.title, chapter: block.block, domain: null, heading: null, level: null });
-    pageHeadings(productText(renderedChapter(run, block.block).text)).forEach(({ title, level }, index) => {
+    let headings = pageHeadings(productText(renderedChapter(run, block.block).text));
+    if (block.block === 'remedies') headings = foldProcessSections(headings, processIds, run.ui['page.remedies.processes']);
+    headings.forEach(({ title, level }, index) => {
       items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index, level });
     });
   }

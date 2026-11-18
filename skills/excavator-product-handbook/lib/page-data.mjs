@@ -94,6 +94,9 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const coverage = trimmed(coverageLines({ map: run.map, candidates: run.candidates, chapters: run.chapters, outline, t }).map((line) => (/^#{2,6} /.test(line) ? line.slice(1) : line)));
   const history = scripts.includes('history') && placed.has('history') ? historyOf(run, roots[0]) : null;
   const domains = domainsData(run, views);
+  const processes = processesData(run, views, { placed: placed.has('processes'), domains });
+  // The processes with suggestions are the ones whose section the remedies page folds into a list of links.
+  const processIds = new Set((processes?.items ?? []).filter((item) => item.remedies !== undefined).map((item) => item.id));
   const chapterBlocks = parts.flatMap((part) => part.blocks).filter((item) => item.kind === 'chapter');
   const data = {
     format: PAGE_FORMAT,
@@ -108,11 +111,11 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     coverage: Object.fromEntries(views.map((view) => [view, coverage])),
     history: history === null ? null : historyPageSection(history),
     domains,
-    problems: problemsData(run, views),
-    processes: processesData(run, views, { placed: placed.has('processes') }),
+    problems: problemsData(run, views, { processIds }),
+    processes,
     lead: leadOf(run),
     architecture: architectureOf(run, views),
-    search: searchIndex(domains, chapterBlocks, run),
+    search: searchIndex(domains, chapterBlocks, run, { processIds }),
   };
   if (technical) {
     const wanted = (name) => TECHNICAL_ONLY_BLOCKS.includes(name) && scripts.includes(name) && placed.has(name);

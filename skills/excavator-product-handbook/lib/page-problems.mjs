@@ -13,7 +13,7 @@ import { runNumbers, summaryOf } from './item-numbers.mjs';
 import { renderedChapter } from './chapter-render.mjs';
 import { chapterMarkdown, productText } from './md-views.mjs';
 import { pageHeadings, viewTexts } from './page-domains.mjs';
-import { namedIds, parseRemedies } from './remedies-parse.mjs';
+import { namedIds, parseRemedies, processSectionId } from './remedies-parse.mjs';
 
 export { summaryOf };
 
@@ -25,7 +25,7 @@ const specsOf = (text) => citationGroups(text).flatMap((group) => group.specs);
  * The items are read from the chapter as the page renders it (the generated section, the fixed notice sentences, the citations of
  * the technical view when there is one), so the line of an item is the line the page's Markdown sees.
  */
-function remedyIndex(run, views) {
+export function remedyIndex(run, views) {
   const chapter = run.chapters.get('remedies');
   if (chapter === undefined) return null;
   const headings = pageHeadings(productText(chapter.text)).map((heading, index) => ({ ...heading, index })).filter((heading) => heading.level === 2);
@@ -40,20 +40,28 @@ export const remedyAnchor = (line) => `remedy-${line}`;
 /**
  * `[{ heading, anchor }]` for a row, in chapter order. When the remedies chapter names ids, one entry per list item or
  * paragraph whose id group names `id` (`heading` is the title of its level-2 section, '' above the first; `anchor` is
- * `remedyAnchor` of its line in the chapter as the page renders it), `[]` when none does. An older chapter that names none keeps the match by name: exactly one
+ * `remedyAnchor` of its line in the chapter as the page renders it; an item under the level-2 heading `P<n> <name>` of a process in
+ * `processIds` also has `process: 'P<n>'`, the page the item is shown on, else it is on the remedies page), `[]` when none does. An older chapter that names none keeps the match by name: exactly one
  * level-2 heading that `matches`, as one entry whose anchor is that heading's id `h-<n>` on the page; else `[]`.
  */
-function remediesOf(index, id, matches) {
+function remediesOf(index, id, matches, processIds) {
   if (index === null) return [];
   if (index.numbered) {
-    return index.parsed.items.filter((entry) => entry.ids.includes(id)).map((entry) => ({ heading: entry.section === null ? '' : entry.section.text, anchor: remedyAnchor(entry.line) }));
+    return index.parsed.items.filter((entry) => entry.ids.includes(id)).map((entry) => {
+      const process = entry.section === null ? null : processSectionId(entry.section.text);
+      return {
+        heading: entry.section === null ? '' : entry.section.text,
+        anchor: remedyAnchor(entry.line),
+        ...(process !== null && processIds.has(process) ? { process } : {}),
+      };
+    });
   }
   const found = index.headings.filter((heading) => matches(heading.title));
   return found.length === 1 ? [{ heading: found[0].title, anchor: `h-${found[0].index}` }] : [];
 }
 
 /** The defect rows; a source that is not `ok` (item-numbers.mjs) gives none. */
-function defectRows(run, views, index) {
+function defectRows(run, views, index, processIds) {
   const { state, items } = runNumbers(run).defects;
   if (state !== 'ok') return { state, rows: [] };
   const technical = views.includes('technical');
@@ -69,13 +77,13 @@ function defectRows(run, views, index) {
       texts: viewTexts(entry.body, views),
       ...(technical ? { cites: specsOf(entry.item.text) } : {}),
       source: { chapter: 'defects', line: entry.line },
-      remedies: remediesOf(index, entry.id, (title) => word.test(title)),
+      remedies: remediesOf(index, entry.id, (title) => word.test(title), processIds),
     };
   });
   return { state: 'ok', rows };
 }
 
-function designRows(run, views, index) {
+function designRows(run, views, index, processIds) {
   const { state, items } = runNumbers(run).design;
   if (state !== 'ok') return { state, rows: [] };
   const technical = views.includes('technical');
@@ -95,7 +103,7 @@ function designRows(run, views, index) {
       ...(technical ? { cites: [...item.cites] } : {}),
       ...(entry.process === null ? {} : { process: entry.process }),
       source: { chapter: 'review', line: entry.line },
-      remedies: remediesOf(index, entry.id, (title) => title.includes(label)),
+      remedies: remediesOf(index, entry.id, (title) => title.includes(label), processIds),
     };
   });
   return { state: 'ok', rows };
@@ -133,10 +141,10 @@ function openRows(run, views) {
 }
 
 /** The `problems` key: the state and count of each source, the rows (defects, design problems, open questions) and the remedies chapter id. */
-export function problemsData(run, views) {
+export function problemsData(run, views, { processIds = new Set() } = {}) {
   const index = remedyIndex(run, views);
-  const defects = defectRows(run, views, index);
-  const design = designRows(run, views, index);
+  const defects = defectRows(run, views, index, processIds);
+  const design = designRows(run, views, index, processIds);
   const open = openRows(run, views);
   const source = ({ state, rows }) => ({ state, count: state === 'ok' ? rows.length : null });
   // `unmatched`: the chapters with no heading equal to the fixed text, so no question was taken from them.
