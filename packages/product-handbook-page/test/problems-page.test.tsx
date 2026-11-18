@@ -191,6 +191,15 @@ describe('the filters opened from the address', () => {
     expect(ids(html)).not.toContain('q1');
   });
 
+  it('the domain filter has a system-level choice, shown by its label, that keeps the rows that name the system chapter', () => {
+    const page = pageData({ domains: domainData().domains, problems: problems(), outline: domainData().outline, chapters: domainData().chapters });
+    const html = render(page, '#/product/problems?domain=system');
+    expect(ids(html)).toEqual(['q1']);
+    // The select shows the chosen value by its label, not by the value written in the address.
+    expect(html).toContain(marked['page.problems.filter.systemLevel']);
+    expect(render(page, '#/product/problems')).not.toContain(marked['page.problems.filter.systemLevel']);
+  });
+
   it('a defect of two features is visible under either one', () => {
     expect(at('#/problems?feature=F1&type=defect')).toEqual(['d2', 'd1']);
     expect(at('#/problems?feature=F2&type=defect')).toEqual(['d2', 'd3']);

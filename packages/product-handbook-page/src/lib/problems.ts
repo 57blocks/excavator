@@ -1,4 +1,4 @@
-import type { Group } from './groups';
+import { SYSTEM_BLOCK, type Group } from './groups';
 import type { ProblemFilters } from './route';
 import type { Text } from './text';
 import type { DesignText, ProblemLevel, ProblemRow, ProblemType, View } from './types';
@@ -31,12 +31,18 @@ export function textOfRow(row: ProblemRow, view: View): string {
   return typeof text === 'string' ? text : `${(text as DesignText).situation}\n${(text as DesignText).consequence}`;
 }
 
+
+/** The value of the domain filter for the problems of the whole system: the rows that name the system chapter (domain ids are `d<n>`). */
+export const SYSTEM_LEVEL = SYSTEM_BLOCK;
 /**
- * The rows that pass the filters. `domain`: any of the row's features is in that group; `feature`: the row names it;
+ * The rows that pass the filters. `domain`: any of the row's features is in that group, or with `SYSTEM_LEVEL` the row names the
+ * system chapter (a problem of the whole system, in no domain); `feature`: the row names it;
  * `type` and `level`: equal; `q`: a case-insensitive substring of the summary or of the row's text in `view`.
  */
 export function filterRows(rows: readonly ProblemRow[], filters: ProblemFilters, groups: readonly Group[], view: View): ProblemRow[] {
-  const domain = filters.domain === undefined ? null : new Set(groups.find((group) => group.id === filters.domain)?.features.map((item) => item.block) ?? []);
+  const domain = filters.domain === undefined ? null
+    : filters.domain === SYSTEM_LEVEL ? new Set([SYSTEM_BLOCK])
+      : new Set(groups.find((group) => group.id === filters.domain)?.features.map((item) => item.block) ?? []);
   const needle = filters.q?.trim().toLowerCase() ?? '';
   return rows.filter((row) => {
     if (domain !== null && !row.features.some((id) => domain.has(id))) return false;

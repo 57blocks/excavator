@@ -5,7 +5,7 @@ import { groupsOf, isFeature, SYSTEM_BLOCK } from '../lib/groups';
 import { jumpToAnchor } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
-import { ALL_LEVELS, PROBLEM_TYPES, categoryText, countRows, filterRows, levelText, sortRows, typeOfLevel } from '../lib/problems';
+import { ALL_LEVELS, PROBLEM_TYPES, categoryText, countRows, filterRows, levelText, sortRows, SYSTEM_LEVEL, typeOfLevel } from '../lib/problems';
 import { routeHash } from '../lib/route';
 import type { ProblemFilters } from '../lib/route';
 import { useText } from '../lib/text';
@@ -169,7 +169,9 @@ function List({ data, filters, onFilters }: { data: PageData; filters: ProblemFi
     value === undefined || known.some((entry) => entry.value === value) ? known : [...known, { value, label: value }]
   );
   const all = { value: ALL, label: t('page.problems.filter.all') };
-  const domains = option(filters.domain, groups.map((group) => ({ value: group.id, label: group.name })));
+  // The problems of the whole system (the rows that name the system chapter) are in no domain: they are the last choice.
+  const systemLevel = data.problems.rows.some((row) => row.features.includes(SYSTEM_BLOCK)) ? [{ value: SYSTEM_LEVEL, label: t('page.problems.filter.systemLevel') }] : [];
+  const domains = option(filters.domain, [...groups.map((group) => ({ value: group.id, label: group.name })), ...systemLevel]);
   const features = option(filters.feature, featureIds.map((id) => ({ value: id, label: featureTitle(id) })));
   const types = option(filters.type, PROBLEM_TYPES.map((type) => ({ value: type, label: t(`page.problems.type.${type}`) })));
   const levels = option(filters.level, ALL_LEVELS.map((level) => ({ value: level, label: levelText(t, level) })));

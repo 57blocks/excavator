@@ -255,6 +255,7 @@
     "page.problems.filter.level": "Level",
     "page.problems.filter.search": "Search the problems",
     "page.problems.filter.all": "All",
+    "page.problems.filter.systemLevel": "System level",
     "page.problems.status": "Showing {shown} of {total}",
     "page.problems.col.problem": "Problem",
     "page.problems.col.features": "Features",
