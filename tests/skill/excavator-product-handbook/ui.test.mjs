@@ -276,7 +276,7 @@ describe('check-ui --keep: the words of an earlier table survive the keys a newe
     run.writeJson(join(run.out, 'ui.json'), partial);
     const result = keepFor(run, file);
     expect(result.status).toBe(1);
-    expect(result.lines.filter((line) => line.startsWith('ui.json: missing key "chapter.review.')).length).toBe(30);
+    expect(result.lines.filter((line) => line.startsWith('ui.json: missing key "chapter.review.')).length).toBe(Object.keys(shipped().strings).filter((key) => key.startsWith('chapter.review.')).length);
     expect(read(run).strings['chapter.section.operations']).toBe(cjk(0x64cd, 0x4f5c));
   });
 

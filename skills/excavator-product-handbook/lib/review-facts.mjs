@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { citationGroups, parseSpec, specKey } from './chapter-cites.mjs';
 import { writeJson } from './json-file.mjs';
 import { FACTS_FILE, FACTS_FORMAT, reviewBatches } from './review-batches.mjs';
+import { assignProcessBatches } from './review-processes.mjs';
 import { chapterCounts } from './review-structure.mjs';
 import { directorySides, markServerSteps } from './step-sides.mjs';
 import { loadUi } from './ui.mjs';
@@ -163,5 +164,6 @@ export function reviewFacts(outDir, onlyBatch) {
   const old = ['cross.json', 'cross.unpruned.json', 'cross.verdicts.json'].filter((name) => existsSync(join(outDir, 'entries', 'review', name)));
   for (const name of old) rmSync(join(outDir, 'entries', 'review', name), { force: true });
   const removed = old.length > 0 ? [`Removed the old cross batch: ${old.join(', ')}`] : [];
-  return { status: 0, lines: [...factLines(computed.facts, onlyBatch ?? null), ...removed, `Facts: ${join(outDir, FACTS_FILE)}`] };
+  const processLine = assignProcessBatches(outDir);
+  return { status: 0, lines: [...factLines(computed.facts, onlyBatch ?? null), ...removed, processLine, `Facts: ${join(outDir, FACTS_FILE)}`] };
 }

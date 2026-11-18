@@ -15,17 +15,21 @@ import { readerTextReasons } from './chapter-lint.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { isObject, readJson, writeTextAtomic } from './json-file.mjs';
 import { FACTS_FILE } from './review-batches.mjs';
+import { REVIEW_DIR, batchFile } from './review-files.mjs';
+import { processBatches } from './review-processes.mjs';
 import { candidateReasons } from './review-candidate-check.mjs';
 import { compareBatches } from './review-compare.mjs';
 import { compareSection } from './review-compare-status.mjs';
 import { loadUi } from './ui.mjs';
 import { adviceWordsOf } from './word-lists.mjs';
 
-export const REVIEW_DIR = 'entries/review';
+export { REVIEW_DIR, batchFile };
 export const DIMENSIONS = Object.freeze(['duplication', 'contradiction', 'complexity', 'redundancy', 'dead-end', 'inconsistency', 'manual', 'access', 'traceability', 'other']);
 export const IMPACTS = Object.freeze(['high', 'medium', 'low']);
 const TWO_PLACE = new Set(['duplication', 'contradiction', 'inconsistency', 'access']);
 const ITEM_KEYS = ['dimension', 'impact', 'features', 'title', 'situation', 'consequence', 'cites'];
+const PROCESS_DIMENSIONS = Object.freeze(['duplication', 'complexity', 'redundancy', 'manual', 'dead-end']);
+const PROCESS_ID = /^P[1-9][0-9]*$/;
 const CANDIDATE_ID = /^X[1-9][0-9]*$/;
 export const DISMISS_REASONS = Object.freeze(['same', 'different-subject', 'not-in-chapters', 'already-kept']);
 const WIDE_STOPS = String.fromCharCode(0x3002, 0xff01, 0xff1f);
@@ -34,8 +38,6 @@ const STOP_END = new RegExp(`[.!?${WIDE_STOPS}]+$`);
 const range = (from, to) => `${String.fromCharCode(from)}-${String.fromCharCode(to)}`;
 const CJK = new RegExp(`[${range(0x3000, 0x303f)}${range(0x3040, 0x30ff)}${range(0x4e00, 0x9fff)}${range(0xff00, 0xffef)}]`);
 const CJK_END = new RegExp(`${CJK.source}$`);
-
-export const batchFile = (batch) => `${REVIEW_DIR}/${batch}.json`;
 
 const isStrings = (value) => Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 const digitRuns = (text) => text.match(/\d+/g) ?? [];
@@ -72,8 +74,8 @@ export function reviewContext(outDir, root) {
     ok: true,
     outDir,
     facts,
-    // The domain batches of the facts file, then the comparison batches of the candidates file.
-    batches: [...facts.batches, ...compareBatches(outDir)],
+    // The domain batches of the facts file, then the comparison batches, then the process batches.
+    batches: [...facts.batches, ...compareBatches(outDir), ...processBatches(outDir)],
     map: mapRead.value,
     strings: ui.strings,
     advice: adviceWordsOf(ui.strings),
@@ -93,8 +95,8 @@ function factNumbers(entry) {
 function itemReasons(ctx, batch, item) {
   const reasons = [];
   const add = (reason) => reasons.push(reason);
-  if (!isObject(item) || !ITEM_KEYS.every((key) => Object.hasOwn(item, key)) || Object.keys(item).some((key) => key !== 'candidates' && !ITEM_KEYS.includes(key))) {
-    return [`the item must be an object with exactly the keys ${ITEM_KEYS.join(', ')} (and optionally candidates)`];
+  if (!isObject(item) || !ITEM_KEYS.every((key) => Object.hasOwn(item, key)) || Object.keys(item).some((key) => key !== 'candidates' && key !== 'process' && !ITEM_KEYS.includes(key))) {
+    return [`the item must be an object with exactly the keys ${ITEM_KEYS.join(', ')} (and optionally candidates, and process in a process batch)`];
   }
   if (Object.hasOwn(item, 'candidates')) {
     const list = item.candidates;
@@ -115,7 +117,18 @@ function itemReasons(ctx, batch, item) {
   if (unknown.length > 0) add(`features ${unknown.join(', ')} are not in the map`);
   if (new Set(item.features).size !== item.features.length) add('features lists a feature more than once');
   const known = item.features.filter((id) => ctx.ids.includes(id));
-  if (batch.compare === true) {
+  if (batch.process !== true && Object.hasOwn(item, 'process')) add(`process is only for a process batch; ${batch.id} is not one`);
+  if (batch.process === true) {
+    if (Object.hasOwn(item, 'candidates')) add('a process batch item has no candidates');
+    if (!PROCESS_DIMENSIONS.includes(item.dimension)) add(`a process batch item has dimension ${PROCESS_DIMENSIONS.join(', ')}; this one is ${JSON.stringify(item.dimension)}`);
+    const process = typeof item.process === 'string' && PROCESS_ID.test(item.process) ? batch.processes.find((entry) => entry.id === item.process) : undefined;
+    if (!Object.hasOwn(item, 'process')) add(`a process batch item must name its process, one of ${batch.processes.map((entry) => entry.id).join(', ')}`);
+    else if (process === undefined) add(`process ${JSON.stringify(item.process)} is not a process of batch ${batch.id} (${batch.processes.map((entry) => entry.id).join(', ')})`);
+    else {
+      const outside = known.filter((id) => !process.features.includes(id));
+      if (outside.length > 0) add(`features ${outside.join(', ')} are not steps of process ${process.id} (${process.name}); its step features are ${process.features.join(', ')}`);
+    }
+  } else if (batch.compare === true) {
     if (!Array.isArray(item.candidates) || item.candidates.length === 0) add('a comparison batch item must list the candidates it handles');
   } else {
     const outside = known.filter((id) => !batch.features.includes(id));
@@ -212,6 +225,8 @@ export function reviewChapterText(ctx, batches) {
   const colon = wide ? String.fromCharCode(0xff1a) : ': ';
   const semicolon = wide ? String.fromCharCode(0xff1b) : '; ';
   const flat = sortedReviewItems(batches);
+  const processNames = new Map(processBatches(ctx.outDir).flatMap((batch) => batch.processes.map((entry) => [entry.id, entry.name])));
+  const processName = (id) => processNames.get(id) ?? '';
   const nameOf = (id) => `${ctx.map.features.find((feature) => feature.id === id)?.name ?? id} (${id})`;
   const out = [`# ${t('title')}`, '', `## ${t('counts')}`, ''];
   out.push(`| ${[t('field.dimension'), ...IMPACTS.map((impact) => t(`impact.${impact}`))].join(' | ')} |`);
@@ -230,7 +245,8 @@ export function reviewChapterText(ctx, batches) {
     }
     const features = item.features.map(nameOf).join(wide ? String.fromCharCode(0x3001) : ', ');
     out.push(`### R${at + 1} ${item.title.trim()}`, '');
-    out.push(cited(`${t('field.impact')}${colon}${t(`impact.${item.impact}`)}${semicolon}${t('field.features')}${colon}${features}`, item.cites, wide), '');
+    const process = item.process === undefined || item.process === null ? '' : `${semicolon}${t('field.process')}${colon}${item.process} ${processName(item.process)}`.trimEnd();
+    out.push(cited(`${t('field.impact')}${colon}${t(`impact.${item.impact}`)}${semicolon}${t('field.features')}${colon}${features}${process}`, item.cites, wide), '');
     out.push(cited(`${t('field.situation')}${colon}${item.situation}`, item.cites, wide), '');
     out.push(cited(`${t('field.consequence')}${colon}${item.consequence}`, item.cites, wide), '');
   }

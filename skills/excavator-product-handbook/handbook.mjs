@@ -35,6 +35,7 @@ import { checkPart, joinParts, processesParts, resetPart } from './lib/processes
 import { replyLines } from './lib/reply.mjs';
 import { reviewCandidateLines, reviewCandidates, reviewCompare } from './lib/review-compare.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
+import { reviewProcessLines } from './lib/review-processes.mjs';
 import { renderReview } from './lib/review-render.mjs';
 import { compareStatusReport, resetBatch, reviewStatus, reviewSummary, reviewTitles } from './lib/review-status.mjs';
 import { pruneReview, reviewClaims } from './lib/review-verify.mjs';
@@ -118,7 +119,14 @@ Commands:
       of features whose chapters cite overlapping lines of one file (one pair for two features, with every such file;
       a file cited by more than 3 features is shared code and makes no pair), within a batch and across batches. Writes
       <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it. It also removes the entries/review/cross*.json files
-      of an older run and says so.
+      of an older run and says so. When the business processes chapter passed it also packs the processes, in order, into the
+      process batches p1..pn (consecutive processes whose steps add up to at most 60; a longer process is a batch alone),
+      writes them with the chapter's digest to <out>/entries/review-processes.json and prints "Process batches: <n> (<k> processes)"
+      (a different digest clears every p* batch first); without a passed chapter it removes that file and says "Process batches: none".
+  review processes <out> <batch>
+      For a process batch: per process in order a "PROCESS<TAB>P<n><TAB><name><TAB><features>" line and every non-empty line of its
+      section of chapters/processes.md as "processes.md:<line>: <text>". Exits 1 for another id, or when processes.md changed since
+      review facts.
   review compare-facts <out> --project <root>
       The comparison candidates (X1, X2, ...) from the artifacts in <out>, five sources in order: two implementations (a
       feature whose route candidates lie in 2 or more application roots), dictionary mismatches, tables mentioned by 2 or
@@ -159,14 +167,15 @@ Commands:
   review status <out> --project <root>
       One line per batch: "<batch>", a state and the batch name, the state being write (no file, or a file that does
       not pass render; the reasons follow), verify (items to judge), prune (verdicts to apply, or a batch with no
-      item), done (pruned) or wait (a comparison batch while a domain batch is not done). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
+      item), done (pruned) or wait (a comparison or process batch while a domain batch is not done). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
       records; review skip <out> <batch> does the same and leaves an empty batch. review titles <out> --project <root>
       lists the items of the domain batches (batch, item, dimension, impact, features, title). review summary <out>
       prints "<batch> <name> kept=<n> removed=<m>" for each pruned batch.
   remedies-inputs <out>
       Print the items the remedies chapter may name, one line each and an indented "cites:" line after it: "DEFECT D<n> <level>
-      <category> <feature ids> <short title>" for each defect and "DESIGN R<n> <impact> <dimension> <feature ids> <title>" for each
-      design problem, numbered the way check, assemble and the page number them. A source that is not available prints one line
+      <category> <feature ids> <short title>" for each defect, "DESIGN R<n> <impact> <dimension> <feature ids> [P<n>] <title>" for each
+      design problem and, for each process a design problem names, "PROCESS P<n> <steps> <feature ids> <name>" with indented
+      design:, defects: and cites: lines, numbered the way check, assemble and the page number them. A source that is not available prints one line
       saying so ("DESIGN none: review.md is missing").
   remedies-state <out> --project <root>
       Print STATUS (the recorded status of the remedies chapter or none), ATTEMPTS, FILE (yes or no) and STALE (yes
@@ -341,7 +350,7 @@ const COMMANDS = {
   review(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     const [sub, out, ...rest] = positionals;
-    if (!['facts', 'compare-facts', 'candidates', 'candidate-lines', 'compare-status', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, compare-facts, candidates, candidate-lines, compare-status, render, claims, prune, status, reset, skip, titles or summary, then <out>');
+    if (!['facts', 'compare-facts', 'candidates', 'candidate-lines', 'compare-status', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary', 'processes'].includes(sub)) throw new UsageError('review takes facts, compare-facts, candidates, candidate-lines, compare-status, render, claims, prune, status, reset, skip, titles, summary or processes, then <out>');
     if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
     if (sub === 'facts') {
       if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
@@ -362,6 +371,10 @@ const COMMANDS = {
     if (sub === 'compare-status') {
       if (rest.length > 0) throw new UsageError('review compare-status takes <out> and --project <root>');
       return report(compareStatusReport(resolve(out), projectRootOption(options.project)));
+    }
+    if (sub === 'processes') {
+      if (rest.length !== 1) throw new UsageError('review processes takes <out> and one process batch');
+      return report(reviewProcessLines(resolve(out), rest[0]));
     }
     if (sub === 'status') return report(reviewStatus(resolve(out), projectRootOption(options.project)));
     if (sub === 'titles') return report(reviewTitles(resolve(out), projectRootOption(options.project)));

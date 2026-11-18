@@ -32,13 +32,14 @@ describe('remedies-inputs', () => {
       `  cites: ${FORM}:6`,
       'DESIGN R3 low dead-end F3 A reminder cannot be stopped',
       `  cites: ${FORM}:11`,
+      'PROCESS none: processes.md is missing',
     ]);
   });
 
   it('says in one line that the design problems are not written', () => {
     const lines = inputs(numberedRun(cleanups, { review: false })).lines;
-    expect(lines.slice(-1)).toEqual(['DESIGN none: review.md is missing']);
-    expect(lines).toHaveLength(7);
+    expect(lines.slice(-2)).toEqual(['DESIGN none: review.md is missing', 'PROCESS none: processes.md is missing']);
+    expect(lines).toHaveLength(8);
   });
 
   it('says so for a defects chapter that is missing, and for a design problems chapter edited after its render', () => {

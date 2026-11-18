@@ -20,6 +20,7 @@ import { productText } from './md-views.mjs';
 import { parseProcesses } from './processes-parse.mjs';
 import { FACTS_FILE, reviewBatches } from './review-batches.mjs';
 import { compareBatches } from './review-compare.mjs';
+import { processBatches } from './review-processes.mjs';
 import { batchFile, reviewChapterText, sortedReviewItems } from './review-render.mjs';
 
 const WIDE_SEMICOLON = String.fromCharCode(0xff1b);
@@ -81,8 +82,8 @@ function defectNumbers(chapters, strings) {
   };
 }
 
-/** The domain batch ids followed by the comparison batches, the order of `reviewContext`'s batch list. */
-const withLaterBatches = (outDir, ids) => [...ids, ...compareBatches(outDir).map((batch) => batch.id)];
+/** The domain batch ids followed by the comparison and process batches, the order of `reviewContext`'s batch list. */
+const withLaterBatches = (outDir, ids) => [...ids, ...compareBatches(outDir).map((batch) => batch.id), ...processBatches(outDir).map((batch) => batch.id)];
 
 /** The batches the review chapter was rendered from, in order: the facts file's, else the ones the run's map and domains give. */
 function batchIds(outDir) {
@@ -125,6 +126,7 @@ function designNumbers(outDir, map, chapters, strings) {
       impact: item.impact,
       dimension: item.dimension,
       features: [...item.features],
+      process: typeof item.process === 'string' ? item.process : null,
       title: item.title.trim(),
       cites: [...new Set(item.cites.map((cite) => specKey(cite.trim())))],
       line: heading === -1 ? 1 : heading + 1,

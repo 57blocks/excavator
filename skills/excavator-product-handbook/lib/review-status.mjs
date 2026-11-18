@@ -16,7 +16,7 @@ import { REMOVED_FILE, unprunedFile, verdictsFile } from './review-verify.mjs';
 /** One of write (no valid file), verify (valid items to judge), prune (verdicts, or no item, to apply) or done (pruned). */
 function batchState(ctx, batch) {
   const has = (file) => existsSync(join(ctx.outDir, file));
-  if (batch.compare === true && ctx.facts.batches.some((domain) => batchState(ctx, domain).state !== 'done')) return { state: 'wait', reasons: [] };
+  if ((batch.compare === true || batch.process === true) && ctx.facts.batches.some((domain) => batchState(ctx, domain).state !== 'done')) return { state: 'wait', reasons: [] };
   if (has(unprunedFile(batch.id))) return { state: 'done', reasons: [] };
   if (has(verdictsFile(batch.id))) return { state: 'prune', reasons: [] };
   if (!has(batchFile(batch.id))) return { state: 'write', reasons: [] };

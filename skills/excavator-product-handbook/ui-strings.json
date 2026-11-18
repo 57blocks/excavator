@@ -346,6 +346,7 @@
     "chapter.review.field.features": "Features",
     "chapter.review.field.situation": "Situation",
     "chapter.review.field.consequence": "Consequence",
+    "chapter.review.field.process": "Process",
     "chapter.review.compare.title": "Coverage of the comparison candidates",
     "chapter.review.compare.counts": "{source}: {count} candidates; {item} became design problems, {dismissed} judged not a problem, {unjudged} not judged",
     "chapter.review.compare.notComputed": "{source}: not computed",

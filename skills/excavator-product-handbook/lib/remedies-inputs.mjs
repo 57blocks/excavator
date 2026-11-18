@@ -20,7 +20,7 @@ const digestOf = (outDir, name) => {
 };
 
 /** The digest of the chapters the remedies read. */
-export const remediesInputs = (outDir) => sha(`defects:${digestOf(outDir, 'defects')}\nreview:${digestOf(outDir, 'review')}`);
+export const remediesInputs = (outDir) => sha(`defects:${digestOf(outDir, 'defects')}\nreview:${digestOf(outDir, 'review')}\nprocesses:${digestOf(outDir, 'processes')}`);
 
 /** `remedies-state <out>`. Returns { status, lines }. */
 export function remediesState(outDir) {
@@ -44,6 +44,22 @@ function tableLines(tag, source, file, line) {
   return source.items.flatMap((entry) => [line(entry), `  cites: ${entry.cites.length === 0 ? 'none' : entry.cites.join('; ')}`]);
 }
 
+/** The PROCESS table: each process some design problem names, with the design problems and defects that touch it and its citations. */
+function processTable(numbers) {
+  if (numbers.processes.state !== 'ok') return [`PROCESS none: ${phrase('processes', numbers.processes.state)}`];
+  const design = numbers.design.state === 'ok' ? numbers.design.items : [];
+  const named = numbers.processes.items.filter((process) => design.some((entry) => entry.process === process.id));
+  if (named.length === 0) return ['PROCESS none: no design problem names a process'];
+  const defects = numbers.defects.state === 'ok' ? numbers.defects.items : [];
+  const list = (ids) => (ids.length === 0 ? 'none' : ids.join(', '));
+  return named.flatMap((process) => [
+    `PROCESS ${process.id} ${process.steps.length} ${process.features.join(',')} ${process.title}`,
+    `  design: ${list(design.filter((entry) => entry.process === process.id).map((entry) => entry.id))}`,
+    `  defects: ${list(defects.filter((entry) => entry.features.some((id) => process.features.includes(id))).map((entry) => entry.id))}`,
+    `  cites: ${process.cites.length === 0 ? 'none' : process.cites.join('; ')}`,
+  ]);
+}
+
 /** `remedies-inputs <out>`: the tables of the defects and the design problems, numbered the way the page and the checks number them. Returns { status, lines }. */
 export function remediesInputsLines(outDir) {
   const ui = loadUi(outDir);
@@ -52,13 +68,14 @@ export function remediesInputsLines(outDir) {
   if (map === null) return { status: 1, lines: ['map.json is missing or has no features list'] };
   const loaded = loadStateV2(outDir);
   if (!loaded.ok) return { status: 1, lines: [loaded.line] };
-  const chapters = diskChapters(outDir, ['defects', 'review'], loaded.state);
+  const chapters = diskChapters(outDir, ['defects', 'review', 'processes'], loaded.state);
   const numbers = itemNumbers({ outDir, map, chapters, strings: ui.strings });
   return {
     status: 0,
     lines: [
       ...tableLines('DEFECT', numbers.defects, 'defects', (e) => `DEFECT ${e.id} ${e.level} ${e.category} ${e.features.join(',')} ${e.title}`),
-      ...tableLines('DESIGN', numbers.design, 'review', (e) => `DESIGN ${e.id} ${e.impact} ${e.dimension} ${e.features.join(',')} ${e.title}`),
+      ...tableLines('DESIGN', numbers.design, 'review', (e) => `DESIGN ${e.id} ${e.impact} ${e.dimension} ${e.features.join(',')}${e.process === null ? '' : ` ${e.process}`} ${e.title}`),
+      ...processTable(numbers),
     ],
   };
 }

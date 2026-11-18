@@ -14,13 +14,12 @@ import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isObject, readJson, writeJson } from './json-file.mjs';
+import { REMOVED_FILE, unprunedFile, verdictsFile } from './review-files.mjs';
 import { batchFile, renderReview, reviewContext } from './review-render.mjs';
 import { specKey } from './chapter-cites.mjs';
 import { UsageError } from './errors.mjs';
 
-export const REMOVED_FILE = 'entries/review-removed.json';
-export const verdictsFile = (batch) => `entries/review/${batch}.verdicts.json`;
-export const unprunedFile = (batch) => `entries/review/${batch}.unpruned.json`;
+export { REMOVED_FILE, unprunedFile, verdictsFile };
 const VERDICTS = ['supported', 'unsupported'];
 
 /** `{ ok: true, ctx, batch, items }` for a batch that exists in the facts file and whose file is a list of items; else `{ ok: false, lines }`. */

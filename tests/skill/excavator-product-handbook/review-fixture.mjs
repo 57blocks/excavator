@@ -95,6 +95,8 @@ export function reviewRun(cleanups, { extra = {} } = {}) {
   run.writeBatch = (batch, items) => run.writeJson(join(run.out, 'entries', 'review', `${batch}.json`), { items });
   run.facts = (...args) => runHandbook(['review', 'facts', run.out, ...args, '--project', run.root]);
   run.render = (...args) => runHandbook(['review', 'render', run.out, ...args, '--project', run.root]);
+  run.status = () => runHandbook(['review', 'status', run.out, '--project', run.root]);
+  run.prune = (batch) => runHandbook(['review', 'prune', run.out, batch, '--project', run.root]);
   run.readFacts = () => JSON.parse(readFileSync(join(run.out, 'entries', 'review-facts.json'), 'utf-8'));
   return run;
 }

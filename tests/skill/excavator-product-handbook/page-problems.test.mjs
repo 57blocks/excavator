@@ -101,7 +101,7 @@ function setup({ chapters = {}, batches = null, failed = [] } = {}) {
     const ids = Object.keys(batches);
     writeFileSync(join(run.out, 'entries', 'review-facts.json'), JSON.stringify({ batches: ids.map((id) => ({ id })) }));
     for (const [id, items] of Object.entries(batches)) run.writeJson(join(run.out, 'entries', 'review', `${id}.json`), { items });
-    all.review = reviewChapterText({ strings: ui, map: run.map }, ids.map((id) => ({ batch: { id }, items: batches[id] })));
+    all.review = reviewChapterText({ strings: ui, map: run.map, outDir: run.out }, ids.map((id) => ({ batch: { id }, items: batches[id] })));
   }
   for (const [name, text] of Object.entries(all)) write(name, text);
   writeFileSync(join(run.out, 'state.json'), JSON.stringify({ format: 'excavator-product-handbook-state/2', chapters: records }));
