@@ -25,7 +25,7 @@ Five rules govern everything below:
 | One `excavator-handbook-writer` subagent for the system (Phase 4) | Reads the manifests, configuration, start-up, registration and deployment files of every application root, and writes `chapters/system.md`. |
 | One `excavator-handbook-writer` subagent per feature (Phase 5) | Reads the feature's seed files and follows the code out of them, and writes `chapters/<id>.md`, with its open questions and its problems. |
 | One `excavator-handbook-writer` subagent per cross chapter (Phases 8 and 8c) | Reads only the chapters already written, and writes `chapters/<name>.md` for `domains`, `roles`, `notifications`, `topics`, `defects` or `remedies`. |
-| One `excavator-handbook-writer` subagent for the business processes (only with the `processes` section, Phase 8a) | Reads only the chapters already written and the operations `handbook.mjs processes facts` prints, and writes `chapters/processes.md`. |
+| One `excavator-handbook-writer` subagent per business domain for the business processes (only with the `processes` section, Phase 8a) | Reads only the chapters already written and the operations `handbook.mjs processes facts` prints for its domain, and writes its part `entries/processes/<part>.md`; `handbook.mjs processes join` joins the parts into `chapters/processes.md`. |
 | One `excavator-handbook-writer` subagent for each batch of features and for each comparison batch, then one verifier for each batch (only with the `review` section, Phase 8b) | Each writer reads the chapters of its batch (a comparison batch: the chapter lines of its comparison candidates) and writes the items of its batch to `entries/review/<batch>.json`; each verifier reads only each item and the chapter lines it cites and writes `entries/review/<batch>.verdicts.json`. The script writes `chapters/review.md` from the items that stay. |
 | One `excavator-handbook-writer` subagent for the fixed text (only when the language is not English) | Translates the fixed-text table and writes `ui.json`. |
 
@@ -45,7 +45,7 @@ All under `$OUT`:
 | `data.json`, `dictionaries.json` | `handbook.mjs data` (Phase 6) |
 | `entries/history.json` | `handbook.mjs history` (Phase 7) |
 | `chapters/domains.md`, `roles.md`, `notifications.md`, `topics.md`, `defects.md`, `remedies.md` | one subagent each (Phases 8 and 8c) |
-| `chapters/processes.md` | the processes subagent (Phase 8a, only with `processes`) |
+| `chapters/processes.md` | `handbook.mjs processes join`, from the parts `entries/processes/<part>.md` the processes subagents write (Phase 8a, only with `processes`) |
 | `entries/review-facts.json`, `entries/review-compare.json`, `entries/review/<batch>.json`, `.verdicts.json`, `.unpruned.json`, `entries/review-removed.json`, `chapters/review.md` | `handbook.mjs review` and the writers and verifiers of the design problems (Phase 8b, only with `review`) |
 | `outline.json` | you (Phase 9) |
 | `state.json` | `handbook.mjs check` only: the result, attempts and reasons of each chapter |

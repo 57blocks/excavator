@@ -225,18 +225,21 @@ describe('the design-problems phase', () => {
 describe('the business processes phase', () => {
   const text = () => TEXT['sections/processes.md'];
 
-  it('gates on the chapters, dispatches one writer after the shared prompt and checks the chapter', () => {
-    const order = ['check "$OUT" --before processes --project "$PROJECT_ROOT"', '.chapters.processes', '**Every cross chapter**', 'check "$OUT" processes --project "$PROJECT_ROOT"'].map((needle) => text().indexOf(needle));
+  it('gates on the chapters, dispatches one writer per part after the shared prompt, joins the parts and checks the chapter', () => {
+    const order = ['check "$OUT" --before processes --project "$PROJECT_ROOT"', '.chapters.processes', 'processes parts "$OUT" --project "$PROJECT_ROOT"', '**Every cross chapter**', 'processes check-part "$OUT" <part> --project "$PROJECT_ROOT"', 'processes reset "$OUT" <part>', 'processes skip "$OUT" <part>', 'processes join "$OUT" --project "$PROJECT_ROOT"', 'check "$OUT" processes --project "$PROJECT_ROOT"'].map((needle) => text().indexOf(needle));
     expect(order.every((at) => at !== -1), JSON.stringify(order)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text()).toContain('in the foreground');
   });
 
-  it('the writer prints the operations and the fixed text, uses the fixed title and writes steps the check can parse', () => {
+  it('the part writer prints its operations and the fixed text, writes no title and writes steps the check can parse', () => {
     const [prompt] = prompts(text());
-    expect(prompt).toContain('handbook.mjs" processes facts "$OUT"');
+    expect(prompt).toContain('handbook.mjs" processes facts "$OUT" <part>');
     expect(prompt).toContain('startswith("chapter.processes.")');
-    expect(prompt).toContain('exactly `<chapter.processes.title>`');
+    expect(prompt).toContain('No level-1 heading');
+    expect(prompt).toContain('$OUT/entries/processes/<part>.md');
+    expect(prompt).toMatch(/The first step of every process is an operation of one of your features/);
+    expect(prompt).toContain('processes check-part "$OUT" <part> --project "$PROJECT_ROOT"');
     expect(prompt).toContain('`<role>: **<operation>** (<feature title> (F<n>))`');
     expect(prompt).toContain('`<chapter.processes.end>:');
     expect(prompt).toMatch(/never judge a process/);
