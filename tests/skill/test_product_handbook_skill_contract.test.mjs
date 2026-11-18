@@ -212,13 +212,35 @@ describe('the design-problems phase', () => {
     const text = TEXT['sections/remedies.md'];
     expect(text).toContain('remedies-state "$OUT"');
     expect(text).toContain('handbook.mjs" remedies-inputs "$OUT"');
-    expect(text).toContain('`$OUT/chapters/review.md` only where an item sends you');
+    expect(text).toContain('`$OUT/chapters/review.md` and `$OUT/chapters/processes.md` only where an item sends you');
+    expect(text).toContain('`PROCESS P<n> <steps> <feature ids> <name>`');
+    expect(text).toMatch(/one level-2 heading per `PROCESS` line/);
+    expect(text).toContain('like `[P4, R12, D3]`');
     for (const key of ['crossProcess', 'defectFixes', 'simplify', 'fix']) expect(text).toContain(`<chapter.remedies.${key}>`);
     for (const type of ['merge-entrance', 'unify-rule', 'remove-step', 'automate', 'retire-old', 'fix']) expect(text).toContain(`<chapter.remedies.type.${type}>`);
     expect(text).toContain('startswith("chapter.remedies.")');
     expect(text).toMatch(/exactly one group per item/);
     expect(text).toMatch(/never write an id that is not printed/);
     expect(text).toContain('STALE=yes');
+  });
+});
+
+describe('the process batches of the design problems', () => {
+  const text = () => TEXT['sections/review.md'];
+
+  it('writes the process batches after the domain batches, with their own block', () => {
+    expect(text()).toMatch(/a comparison batch or a process batch while a domain batch is not `done`/);
+    expect(text()).toContain('followed by the block **Your process batch**');
+    expect(text()).toContain('**Your process batch.**');
+  });
+
+  it('the process writer prints its processes, names the process on every item and keeps to the process dimensions', () => {
+    const block = text().slice(text().indexOf('**Your process batch.**'), text().indexOf('**The verifier.**'));
+    expect(block).toContain('handbook.mjs" review processes "$OUT" <batch>');
+    expect(block).toContain('review titles "$OUT" --project "$PROJECT_ROOT"');
+    for (const dimension of ['duplication', 'complexity', 'redundancy', 'manual', 'dead-end']) expect(block).toContain(`\`${dimension}\``);
+    expect(block).toMatch(/never from the business processes chapter/);
+    expect(text()).toContain('`process` (on an item: the business process it lies along');
   });
 });
 
