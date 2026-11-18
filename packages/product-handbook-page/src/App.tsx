@@ -128,8 +128,8 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   if (view !== null) {
     if (body.name === 'home') {
       place = { kind: 'home' };
-      // The button above the map opens the index of all the domains, or the first domain's page when the outline has no domains chapter.
-      main = <HomePage title={brandOf(data, view)} groups={groups} domainsHref={hasDomainsIndex(data) ? links.chapter(DOMAINS_CHAPTER) : undefined} />;
+      // The button above the map opens the first domain's page, whose left list has every domain.
+      main = <HomePage title={brandOf(data, view)} groups={groups} />;
     } else if (body.name === 'architecture') {
       place = { kind: 'architecture' };
       main = <Architecture source={data.architecture.technical ?? ''} sections={systemSections(data.search)} />;
