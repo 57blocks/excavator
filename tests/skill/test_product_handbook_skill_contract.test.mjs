@@ -135,7 +135,7 @@ describe('the design-problems phase', () => {
   it('every review sub-command the text runs is one the script has', () => {
     const usage = readFileSync(join(skillDir, 'handbook.mjs'), 'utf-8');
     for (const file of ['sections/review.md', 'sections/remedies.md']) {
-      for (const match of TEXT[file].matchAll(/handbook\.mjs" review ([a-z]+)/g)) expect(usage, `${file}: review ${match[1]}`).toContain(`review ${match[1]}`);
+      for (const match of TEXT[file].matchAll(/handbook\.mjs" review ([a-z-]+)/g)) expect(usage, `${file}: review ${match[1]}`).toContain(`review ${match[1]}`);
     }
     expect(usage).toContain("'status', 'reset', 'skip', 'titles', 'summary'");
     expect(usage).toContain('review candidates <out> <batch>');
@@ -157,7 +157,7 @@ describe('the design-problems phase', () => {
 
   it('step 4 runs review candidates and pastes it into Your batch; the writer names the three reasons, the two keys and the two-sided form', () => {
     const text = review();
-    const step4 = text.slice(text.indexOf('4. Write the batches'), text.indexOf('5. Write the batch `cross`'));
+    const step4 = text.slice(text.indexOf('4. Write the batches'), text.indexOf('5. Write the comparison batches'));
     expect(step4).toContain('handbook.mjs" review candidates "$OUT" <batch>');
     const batchBlock = prompts(text).find((prompt) => prompt.startsWith('- Batch: `<batch>`'));
     expect(batchBlock).toContain('- The comparison candidates of your batch, one per line (`none` when there is none):');
@@ -169,6 +169,25 @@ describe('the design-problems phase', () => {
     expect(writer).toContain('`<side>: <what that side\'s cited lines say>; <other side>: <...>`');
     expect(writer).toMatch(/for `duplication`, `contradiction`, `inconsistency` and `access`/i);
     expect(text).not.toMatch(/[^\x00-\x7F]/);
+  });
+
+  it('step 5 writes the comparison batches after the domain batches with their own block; the writer bounds the consequence and knows already-kept', () => {
+    const text = review();
+    const step5 = text.slice(text.indexOf('5. Write the comparison batches'), text.indexOf('6. Verify.'));
+    expect(step5).toContain('`wait`');
+    expect(step5).toContain('do steps 6 and 7 for the domain batches first');
+    expect(step5).toContain('handbook.mjs" review candidates "$OUT" <batch>');
+    expect(step5).toContain('**Your comparison batch**');
+    const block = prompts(text).find((prompt) => prompt.startsWith('- Batch: `<batch>`, a comparison batch.'));
+    expect(block).toContain('handbook.mjs" review candidate-lines "$OUT" <candidate id>');
+    expect(block).toContain('handbook.mjs" review titles "$OUT" --project "$PROJECT_ROOT"');
+    for (const source of ['dict', 'table', 'topic', 'code']) expect(block, source).toContain(`- \`${source}\`:`);
+    expect(block).toContain('<the output of review candidates>');
+    const [writer] = prompts(text);
+    expect(writer).toContain('`already-kept`');
+    expect(writer).toContain('never one step further');
+    expect(text).not.toMatch(/`cross`/);
+    expect(text).not.toContain('review facts "$OUT" cross');
   });
 
   it('the verifier gets the claims output, searches the listed chapters only for an absence claim, and writes only the verdicts file; the writers are dispatched in the foreground', () => {
