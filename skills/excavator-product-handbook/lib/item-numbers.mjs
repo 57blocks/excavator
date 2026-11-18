@@ -19,6 +19,7 @@ import { readJson } from './json-file.mjs';
 import { productText } from './md-views.mjs';
 import { parseProcesses } from './processes-parse.mjs';
 import { FACTS_FILE, reviewBatches } from './review-batches.mjs';
+import { compareBatches } from './review-compare.mjs';
 import { batchFile, reviewChapterText, sortedReviewItems } from './review-render.mjs';
 
 const WIDE_SEMICOLON = String.fromCharCode(0xff1b);
@@ -80,14 +81,17 @@ function defectNumbers(chapters, strings) {
   };
 }
 
+/** The domain batch ids followed by the comparison batches, the order of `reviewContext`'s batch list. */
+const withLaterBatches = (outDir, ids) => [...ids, ...compareBatches(outDir).map((batch) => batch.id)];
+
 /** The batches the review chapter was rendered from, in order: the facts file's, else the ones the run's map and domains give. */
 function batchIds(outDir) {
   const facts = readJson(join(outDir, FACTS_FILE));
   if (facts.ok && Array.isArray(facts.value?.batches) && facts.value.batches.every((batch) => typeof batch?.id === 'string')) {
-    return facts.value.batches.map((batch) => batch.id);
+    return withLaterBatches(outDir, facts.value.batches.map((batch) => batch.id));
   }
   const listed = reviewBatches(outDir);
-  return listed.ok ? listed.batches.map((batch) => batch.id) : null;
+  return listed.ok ? withLaterBatches(outDir, listed.batches.map((batch) => batch.id)) : null;
 }
 
 /** The `[{ batch, items }]` the chapter was rendered from, or null when a batch file is missing or unreadable. */
