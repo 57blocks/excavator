@@ -14,7 +14,7 @@ import { switchTarget, viewOf } from '../src/lib/navigation';
 import { pagesOf } from '../src/lib/pages';
 import { parseHash, routeHash } from '../src/lib/route';
 import { searchAll } from '../src/lib/search';
-import type { ChapterData, PageData, ProcessesData, SearchItem } from '../src/lib/types';
+import type { ChapterData, PageData, ProblemRow, ProcessesData, SearchItem } from '../src/lib/types';
 import { cleanup, mount } from './dom';
 import { FEATURES, outlineWithFeatures, domainData } from './domains-fixture';
 import { BOTH, d, marked } from './page-fixture';
@@ -27,18 +27,24 @@ const fixed = (key: string, values: Record<string, string | number> = {}): strin
 const PROCESSES: ProcessesData = {
   items: [
     {
-      id: 'P1', name: d('Order to invoice'), features: ['F2', 'F3'],
+      id: 'P1', name: d('Order to invoice'), domain: 'd2', features: ['F2', 'F3'],
       steps: [
         { role: d('Clerk'), operation: d('Enter an order'), feature: 'F2', text: d('The clerk saves the order.'), cites: ['src/a.js:1-3'] },
         { role: d('System'), operation: d('Create an invoice'), feature: 'F3', text: d('The system bills it.'), cites: ['src/b.js:4'] },
       ],
       end: { text: d('Invoiced.'), cites: ['src/c.js:9'] },
     },
-    { id: 'P2', name: d('Order follow-up'), features: ['F2'], steps: [{ role: d('Clerk'), operation: d('Enter an order'), feature: 'F2', text: d('Again.'), cites: ['src/d.js:2'] }] },
-    { id: 'P3', name: d('Support call'), features: ['F4'], steps: [{ role: d('Agent'), operation: d('Answer a call'), feature: 'F4', text: d('Answered.'), cites: [] }] },
+    { id: 'P2', name: d('Order follow-up'), domain: 'd2', features: ['F2'], steps: [{ role: d('Clerk'), operation: d('Enter an order'), feature: 'F2', text: d('Again.'), cites: ['src/d.js:2'] }] },
+    { id: 'P3', name: d('Support call'), domain: 'd4', features: ['F4'], steps: [{ role: d('Agent'), operation: d('Answer a call'), feature: 'F4', text: d('Answered.'), cites: [] }] },
   ].map((item) => ({ ...item, features: item.features })),
   coverage: [{ feature: 'F3', operations: [d('Cancel an invoice'), d('Resend an invoice')] }],
 };
+const designRow = (id: string, process: string | undefined, over: Partial<ProblemRow> = {}): ProblemRow => ({
+  id, type: 'design', level: 'high', group: 'duplication', features: ['F2'], summary: d(`summary ${id}`),
+  texts: { product: { situation: d(`situation ${id}`), consequence: d(`consequence ${id}`) }, technical: { situation: d(`tech situation ${id}`), consequence: d(`tech consequence ${id}`) } },
+  cites: ['src/p.js:10-12'], ...(process === undefined ? {} : { process }), source: { chapter: 'review', line: 6 }, remedies: [], ...over,
+});
+const withRows = (base: PageData, rows: ProblemRow[]): PageData => ({ ...base, problems: { ...base.problems, rows } });
 const PROCESS_TEXT = `# ${d('Business processes')}\n\n## P1 ${d('Order to invoice')}\n\ntext\n`;
 
 const withProcesses = (processes: ProcessesData | null, placed = processes !== null): PageData => {
@@ -114,16 +120,59 @@ describe('the navigation', () => {
 
 describe('the list page', () => {
   const html = decode(render(page, '#/product/processes'));
-  it('lists each process with its number, name and step count, each linking to its page', () => {
-    for (const [id, name, count] of [['P1', 'Order to invoice', 2], ['P2', 'Order follow-up', 1], ['P3', 'Support call', 1]] as const) {
-      const at = html.indexOf(`data-process="${id}"`);
-      expect(at, id).toBeGreaterThan(-1);
-      const row = html.slice(at, html.indexOf('</li>', at));
-      expect(row).toContain(`href="#/product/processes/${id}"`);
-      expect(row).toContain(d(name));
-      expect(row).toContain(fixed('page.processes.stepCount', { count }));
-    }
+  it('has one section per domain in the page order, each with its name and its number of processes, then the operations in no process', () => {
+    const sections = Array.from(html.matchAll(/data-part="process-domain" data-domain="(\w+)"/g)).map((found) => found[1]);
+    expect(sections).toEqual(['d2', 'd4']);
+    const titles = Array.from(html.matchAll(/<h2 class="proc-domain-title"><span>([^<]*)<\/span><span class="proc-count" data-part="domain-process-count">(\d+)<\/span>/g)).map((found) => [found[1], found[2]]);
+    expect(titles).toEqual([[d('Orders'), '2'], [d('Support'), '1']]);
     expect(html).toContain(`<h1 class="page-title">${fixed('page.nav.processes')}</h1>`);
+    expect(html.indexOf('data-part="process-coverage"')).toBeGreaterThan(html.lastIndexOf('data-part="process-domain"'));
+  });
+
+  it('shows a domain with 2 processes with problems and 3 without as the 2 with badges and a row "3 more" that unfolds on a click', () => {
+    const five: ProcessesData = {
+      items: ['P1', 'P2', 'P3', 'P4', 'P5'].map((id) => ({ id, name: d(`Process ${id}`), domain: 'd2', features: ['F2'], steps: [{ role: d('Clerk'), operation: d('Enter an order'), feature: 'F2', text: d('Saves.') }] })),
+      coverage: [],
+    };
+    const rows = [designRow('r1', 'P1'), designRow('r2', 'P1'), designRow('r3', 'P2'), designRow('r4', undefined)];
+    window.history.replaceState(null, '', '#/product/processes');
+    const host = mount(<App data={withRows(withProcesses(five), rows)} />);
+    const section = host.querySelector('[data-domain="d2"]') as HTMLElement;
+    const shown = Array.from(section.querySelectorAll('[data-part="process-list"] li'));
+    expect(shown.map((row) => row.getAttribute('data-process'))).toEqual(['P1', 'P2']);
+    expect(shown.map((row) => row.querySelector('[data-part="process-problem-count"]')?.textContent)).toEqual([fixed('page.processes.problemCount', { count: 2 }), fixed('page.processes.problemCount', { count: 1 })]);
+    const more = section.querySelector('[data-part="process-more"]') as HTMLElement;
+    expect(more.textContent).toBe(fixed('page.processes.more', { count: 3 }));
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    expect(section.querySelector('[data-part="process-rest"]')).toBeNull();
+    expect(section.querySelector('[data-process="P3"]')).toBeNull();
+    act(() => more.click());
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    const rest = Array.from(section.querySelectorAll('[data-part="process-rest"] li'));
+    expect(rest.map((row) => row.getAttribute('data-process'))).toEqual(['P3', 'P4', 'P5']);
+    expect(rest.some((row) => row.querySelector('[data-part="process-problem-count"]') !== null)).toBe(false);
+    expect(rest[0].querySelector('a')?.getAttribute('href')).toBe('#/product/processes/P3');
+  });
+
+  it('shows the processes of a domain where none has a problem folded under one row, and a process with problems outside it', () => {
+    window.history.replaceState(null, '', '#/product/processes');
+    const host = mount(<App data={withRows(page, [designRow('r1', 'P1')])} />);
+    const empty = host.querySelector('[data-domain="d4"]') as HTMLElement;
+    expect(empty.querySelector('[data-part="process-list"]')).toBeNull();
+    expect(empty.querySelector('[data-part="process-more"]')?.textContent).toBe(fixed('page.processes.more', { count: 1 }));
+    const first = host.querySelector('[data-domain="d2"]') as HTMLElement;
+    expect(first.querySelectorAll('[data-part="process-list"] li')).toHaveLength(1);
+    expect(first.querySelector('[data-part="process-more"]')?.textContent).toBe(fixed('page.processes.more', { count: 1 }));
+  });
+
+  it('puts a process of no domain in a section of its own, and shows no domain heading when the page has no domain at all', () => {
+    const loose: ProcessesData = { ...PROCESSES, items: PROCESSES.items.map(({ domain: _domain, ...item }) => item) };
+    const none = decode(render(withProcesses(loose), '#/product/processes'));
+    expect(none).not.toContain('class="proc-domain-title"');
+    expect(none).toContain('data-domain="other"');
+    const mixed: ProcessesData = { ...PROCESSES, items: [...PROCESSES.items.slice(0, 2), { ...PROCESSES.items[2], domain: undefined }] };
+    const some = decode(render(withProcesses(mixed), '#/product/processes'));
+    expect(some).toContain(`<span>${fixed('page.processes.noDomain')}</span>`);
   });
 
   it('ends with the operations in no process, by feature, as links', () => {
@@ -132,7 +181,7 @@ describe('the list page', () => {
     expect(section).toContain(fixed('chapter.processes.uncovered'));
     expect(section).toContain('href="#/product/chapter/F3"');
     expect(section).toContain(`${d('Cancel an invoice')}${fixed('chapter.processes.uncoveredJoin')}${d('Resend an invoice')}`);
-    expect(html.indexOf('data-part="process-list"')).toBeLessThan(at);
+    expect(html.indexOf('data-part="process-domain"')).toBeLessThan(at);
     const none = decode(render(withProcesses({ ...PROCESSES, coverage: [] }), '#/product/processes'));
     expect(none).toContain(fixed('chapter.processes.uncoveredNone'));
   });
@@ -167,16 +216,68 @@ describe('one process', () => {
     expect(html).toContain('title="src/c.js:9"');
   });
 
-  it('lists the features the process passes through and the design problems that name it', () => {
-    const withRow: PageData = { ...page, problems: { ...page.problems, rows: [{
-      id: 'r4', type: 'design', level: 'high', group: 'duplication', features: ['F2'], summary: d('Two entrances'), texts: {}, process: 'P1', source: { chapter: 'review', line: 3 }, remedies: [],
-    }] } };
-    const html = decode(render(withRow, '#/product/processes/P1'));
+  it('lists the features the process passes through, after its problems and suggestions', () => {
+    const html = decode(render(withRows(page, [designRow('r4', 'P1')]), '#/product/processes/P1'));
     expect(html.slice(html.indexOf('data-part="process-features"'))).toContain('href="#/product/chapter/F3"');
-    const problems = html.slice(html.indexOf('data-part="process-problems"'));
-    expect(problems).toContain('href="#/product/problems?row=r4"');
-    expect(problems).toContain(`R4 ${d('Two entrances')}`);
-    expect(decode(render(page, '#/product/processes/P2'))).not.toContain('data-part="process-problems"');
+    expect(html.indexOf('data-part="process-problems"')).toBeLessThan(html.indexOf('data-part="process-features"'));
+    expect(html.indexOf('data-part="process-end"')).toBeLessThan(html.indexOf('data-part="process-problems"'));
+  });
+
+  it('shows the design problems that name it with the title, the impact, the situation and the consequence, and a link to its row', () => {
+    const rows = [designRow('r4', 'P1'), designRow('r5', 'P2'), designRow('r6', 'P1', { level: 'low' })];
+    const html = decode(render(withRows(page, rows), '#/product/processes/P1'));
+    const section = html.slice(html.indexOf('data-part="process-problems"'), html.indexOf('data-part="process-features"'));
+    expect(section).toContain(`<h2>${fixed('page.processes.problems')}</h2>`);
+    expect(section.indexOf(d('summary r4'))).toBeLessThan(section.indexOf(d('summary r6')));
+    expect(section).not.toContain(d('summary r5'));
+    for (const word of ['summary r4', 'situation r4', 'consequence r4', 'situation r6']) expect(section, word).toContain(d(word));
+    expect(section).toContain(fixed('chapter.review.impact.high'));
+    expect(section).toContain(fixed('chapter.review.impact.low'));
+    expect(section).toContain(`href="#/product/problems?row=r4" data-problem-link="r4">${fixed('page.processes.viewRow')}`);
+    expect(section).not.toContain('data-part="citation"');
+    expect(section).not.toContain('tech situation');
+    const technical = decode(render(withRows(page, rows), '#/technical/processes/P1'));
+    const tech = technical.slice(technical.indexOf('data-part="process-problems"'), technical.indexOf('data-part="process-features"'));
+    expect(tech).toContain(d('tech situation r4'));
+    expect(tech).toContain(d('tech consequence r4'));
+    expect(tech).toContain('data-part="citation"');
+  });
+
+  it('shows the suggestions written under it, each with a line for the problem it names linked to the row, and its own text, label and anchor', () => {
+    const rows = [designRow('r4', 'P1')];
+    const withRemedies = (item: ProcessesData['items'][number]): ProcessesData => ({ ...PROCESSES, items: [item, ...PROCESSES.items.slice(1)] });
+    const item = { ...PROCESSES.items[0], remedies: [
+      { line: 7, texts: { product: `**${d('Merge entrances')}** ${d('Close in one place')} [P1, R4, D99].`, technical: `**${d('Merge entrances')}** ${d('Close in one place')} [P1, R4, D99] \`src/q.js:3\`.` } },
+      { line: 9, texts: { product: `**${d('Second')}** ${d('No problem named')} [P1].`, technical: `**${d('Second')}** ${d('No problem named')} [P1].` } },
+    ] };
+    const html = decode(render(withRows(withProcesses(withRemedies(item)), rows), '#/product/processes/P1'));
+    const section = html.slice(html.indexOf('data-part="process-remedies"'), html.indexOf('data-part="process-features"'));
+    expect(section).toContain(`<h2>${fixed('page.processes.suggestions')}</h2>`);
+    expect(section.indexOf('id="remedy-7"')).toBeGreaterThan(-1);
+    expect(section.indexOf('id="remedy-7"')).toBeLessThan(section.indexOf('id="remedy-9"'));
+    const first = section.slice(section.indexOf('id="remedy-7"'), section.indexOf('id="remedy-9"'));
+    expect(first).toContain(`<span class="remedy-problem-label">${fixed('page.remedies.problem')}</span> <a href="#/product/problems?row=r4" data-item="R4">R4</a> <a href="#/product/problems?row=r4" data-item="R4-title" class="remedy-problem-title">${d('summary r4')}</a>`);
+    expect(first.match(/class="remedy-problem"/g)).toHaveLength(1);
+    expect(first).not.toContain('data-problem-line="D99"');
+    expect(first).toContain(`<strong>${d('Merge entrances')}</strong> ${d('Close in one place')}`);
+    expect(first).toContain('[P1, D99]');
+    // The page is the process: its own number is not a link.
+    expect(first).not.toContain('data-item="P1"');
+    expect(first.indexOf('data-part="remedy-problems"')).toBeLessThan(first.indexOf(d('Merge entrances')));
+    expect(first).not.toContain('data-part="citation"');
+    const second = section.slice(section.indexOf('id="remedy-9"'));
+    expect(second).not.toContain('data-part="remedy-problems"');
+    const technical = decode(render(withRows(withProcesses(withRemedies(item)), rows), '#/technical/processes/P1'));
+    expect(technical.slice(technical.indexOf('data-part="process-remedies"'))).toContain('data-part="citation"');
+  });
+
+  it('shows neither the problems nor the suggestions section for a process that has none', () => {
+    const html = decode(render(withRows(page, [designRow('r4', 'P1')]), '#/product/processes/P2'));
+    expect(html).not.toContain('data-part="process-problems"');
+    expect(html).not.toContain('data-part="process-remedies"');
+    expect(html).not.toContain(`<h2>${fixed('page.processes.problems')}</h2>`);
+    expect(html).not.toContain(`<h2>${fixed('page.processes.suggestions')}</h2>`);
+    expect(html).toContain('data-part="process-features"');
   });
 
   it('is not found for a process the data does not have', () => {

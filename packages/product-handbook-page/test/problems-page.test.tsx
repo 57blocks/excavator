@@ -257,7 +257,7 @@ describe('the expanded rows', () => {
     expect(product.querySelector('button')?.getAttribute('aria-expanded')).toBe('true');
     expect(product.textContent).toContain(d('product text d2'));
     expect(product.textContent).not.toContain('technical text');
-    expect(product.querySelector('[data-field="group"]')?.textContent).toContain(`${t('page.problems.field.category')} security`);
+    expect(product.querySelector('[data-field="group"]')?.textContent).toContain(`${t('page.problems.field.category')} ${t('page.defects.category.security')}`);
     expect(Array.from(product.querySelectorAll('[data-field="features"] a')).map((a) => [a.textContent, a.getAttribute('href')])).toEqual([[d('Orders'), '#/product/chapter/F1'], [d('Reminders'), '#/product/chapter/F2']]);
     expect(product.querySelector('[data-part="remedy-link"]')?.getAttribute('href')).toBe('#/product/remedies');
     cleanup();

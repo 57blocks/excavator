@@ -258,14 +258,20 @@ export interface ProblemRow {
   remedies: RemedyLink[];
 }
 
-/** One item of the remedies chapter that names a problem row: the title of its section and the id of its element on the remedies page. */
-export interface RemedyLink { heading: string; anchor: string }
+/** One item of the remedies chapter that names a problem row: the title of its section and the id of its element, on the remedies page or, with `process` (`P<n>`), on the page of that process. */
+export interface RemedyLink { heading: string; anchor: string; process?: string }
 
 /** One step of a process: who does it, the operation (the title of an operation of the feature), the feature id, the sentence and, in the technical view, its citations. */
 export interface ProcessStep { role: string; operation: string; feature: string; text: string; cites?: string[] }
 
-/** A business process: its number `P<n>`, its name, its steps, its end state when it has one, and the feature ids of its steps in step order, each once. */
-export interface ProcessItem { id: string; name: string; steps: ProcessStep[]; end?: { text: string; cites?: string[] }; features: string[] }
+/** An item of the remedies chapter written under a process: the line it starts on in the chapter (its anchor is `remedy-<line>`) and its Markdown by view. */
+export interface ProcessRemedy { line: number; texts: Partial<Record<View, string>> }
+
+/**
+ * A business process: its number `P<n>`, its name, the id of the domain of its first step's feature (when the page knows one), its steps,
+ * its end state when it has one, the feature ids of its steps in step order, each once, and the items of the remedies chapter under its heading.
+ */
+export interface ProcessItem { id: string; name: string; domain?: string; steps: ProcessStep[]; end?: { text: string; cites?: string[] }; features: string[]; remedies?: ProcessRemedy[] }
 
 /** The business processes of the page (null without a usable chapter): the processes and, by feature, the operations that no step names. */
 export interface ProcessesData { items: ProcessItem[]; coverage: { feature: string; operations: string[] }[] }

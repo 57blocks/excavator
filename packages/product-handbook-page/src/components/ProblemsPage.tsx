@@ -5,7 +5,7 @@ import { groupsOf, isFeature, SYSTEM_BLOCK } from '../lib/groups';
 import { jumpToAnchor } from '../lib/heading-jump';
 import { useLinks, useView } from '../lib/links';
 import { useModel } from '../lib/model';
-import { ALL_LEVELS, PROBLEM_TYPES, countRows, filterRows, levelText, sortRows, typeOfLevel } from '../lib/problems';
+import { ALL_LEVELS, PROBLEM_TYPES, categoryText, countRows, filterRows, levelText, sortRows, typeOfLevel } from '../lib/problems';
 import { routeHash } from '../lib/route';
 import type { ProblemFilters } from '../lib/route';
 import { useText } from '../lib/text';
@@ -50,36 +50,40 @@ function remedyLabel(t: ReturnType<typeof useText>, count: number, at: number, h
   return heading === '' ? t('page.problems.remedyItemPlain', { n: at + 1 }) : t('page.problems.remedyItem', { n: at + 1, heading });
 }
 
+/** The text of a problem in the reader's view: the situation and the consequence of a design problem (with its citations in the technical view), the text of the others; null when the row has no text in this view. */
+export function ProblemBody({ row }: { row: ProblemRow }) {
+  const view = useView();
+  const text = row.texts[view];
+  if (text === undefined) return null;
+  if (row.type === 'design') return <DesignBody row={row} design={text as DesignText} />;
+  return <div className="prob-body"><Markdown source={text as string} idPrefix={`problem-${row.id}`} /></div>;
+}
+
+function DesignBody({ row, design }: { row: ProblemRow; design: DesignText }) {
+  const t = useText();
+  const view = useView();
+  return (
+    <div className="prob-body">
+      <div className="item-field"><span className="inline-label">{t('chapter.review.field.situation')}</span><Markdown source={design.situation} idPrefix={`problem-${row.id}-situation`} /></div>
+      <div className="item-field"><span className="inline-label">{t('chapter.review.field.consequence')}</span><Markdown source={design.consequence} idPrefix={`problem-${row.id}-consequence`} /></div>
+      {view === 'technical' && row.cites !== undefined && row.cites.length > 0 && <Cites cites={row.cites} />}
+    </div>
+  );
+}
+
 /** The body of a problem: its text in the reader's view, group, features, the process of a design problem and a link to each remedy that names it. Needs a row with its texts. */
 export function ProblemDetail({ row }: { row: ProblemRow }) {
   const t = useText();
-  const view = useView();
   const nav = useLinks();
   const { titles, processes } = useModel();
-  const text = row.texts[view];
   const featureTitle = (id: string): string => (id === SYSTEM_BLOCK ? t('page.nav.system') : titles[id] ?? id);
   const process = row.process === undefined ? undefined : processes?.items.find((item) => item.id === row.process);
-  let body = null;
-  if (text !== undefined) {
-    if (row.type === 'design') {
-      const design = text as DesignText;
-      body = (
-        <>
-          <div className="item-field"><span className="inline-label">{t('chapter.review.field.situation')}</span><Markdown source={design.situation} idPrefix={`problem-${row.id}-situation`} /></div>
-          <div className="item-field"><span className="inline-label">{t('chapter.review.field.consequence')}</span><Markdown source={design.consequence} idPrefix={`problem-${row.id}-consequence`} /></div>
-          {view === 'technical' && row.cites !== undefined && row.cites.length > 0 && <Cites cites={row.cites} />}
-        </>
-      );
-    } else {
-      body = <Markdown source={text as string} idPrefix={`problem-${row.id}`} />;
-    }
-  }
   const group = row.group === null ? null : row.type === 'design'
     ? { label: t('chapter.review.field.dimension'), value: t(`chapter.review.dimension.${row.group}`) }
-    : { label: t('page.problems.field.category'), value: row.group };
+    : { label: t('page.problems.field.category'), value: categoryText(t, row.group) };
   return (
     <div className="prob-detail" id={`problem-${row.id}`} data-part="problem-detail">
-      {body !== null && <div className="prob-body">{body}</div>}
+      <ProblemBody row={row} />
       {group !== null && <div className="item-field" data-field="group"><span className="inline-label">{group.label}</span> {group.value}</div>}
       <div className="item-field" data-field="features">
         <span className="inline-label">{t('chapter.review.field.features')}</span>{' '}
@@ -99,7 +103,7 @@ export function ProblemDetail({ row }: { row: ProblemRow }) {
               <ul className="prob-remedies" role="list">
                 {row.remedies.map((link, at) => (
                   <li key={link.anchor}>
-                    <a href={nav.remedies} data-part="remedy-link" data-anchor={link.anchor} onClick={() => { jumpToAnchor('remedies', link.anchor); }}>{remedyLabel(t, row.remedies.length, at, link.heading)}</a>
+                    <a href={link.process === undefined ? nav.remedies : nav.process(link.process)} data-part="remedy-link" data-anchor={link.anchor} onClick={() => { jumpToAnchor(link.process === undefined ? 'remedies' : 'processes', link.anchor); }}>{remedyLabel(t, row.remedies.length, at, link.heading)}</a>
                   </li>
                 ))}
               </ul>

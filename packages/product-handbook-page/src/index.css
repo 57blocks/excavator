@@ -694,8 +694,26 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .proc-list a:hover .proc-name { text-decoration: underline; }
 .proc-name { overflow-wrap: anywhere; }
 .proc-count { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
-.proc-coverage, .proc-features, .proc-problems { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
-.proc-coverage ul, .proc-features ul, .proc-problems ul, .feature-processes { margin: 8px 0 0; padding: 0 0 0 18px; }
+.proc-coverage, .proc-features, .proc-problems, .proc-remedies { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
+.proc-coverage ul, .proc-features ul, .feature-processes { margin: 8px 0 0; padding: 0 0 0 18px; }
+.proc-domain { margin-top: 32px; }
+.proc-domain-title { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0; font-size: 19px; line-height: 1.3; }
+.proc-badge { margin-right: 10px; padding: 0 8px; border-radius: 999px; font-size: 12.5px; font-weight: 600; background: var(--surface-2); color: var(--brick); }
+.proc-more { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--line); background: none; color: var(--text-2); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.proc-more:hover { color: var(--text); }
+.proc-more .chev { width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform var(--t-in) var(--ease); }
+.proc-more[aria-expanded="true"] .chev { transform: rotate(45deg); }
+.proc-rows { margin: 8px 0 0; padding: 0; list-style: none; }
+.proc-rows > li { padding: 14px 0; border-top: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.proc-rows > li:first-child { border-top: 0; }
+.proc-row-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 0; margin-bottom: 6px; }
+.proc-row-link { display: inline-block; margin-top: 6px; font-size: 13.5px; }
+.proc-remedies .prose ul { margin: 0; padding: 0; list-style: none; }
+.proc-remedies .prose li { margin: 0; }
+.remedy-problems { display: grid; gap: 2px; margin: 0 0 4px; font-size: 13.5px; }
+.remedy-problem { display: flex; flex-wrap: wrap; gap: 0 6px; }
+.remedy-more { justify-self: start; padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; font-size: 13.5px; cursor: pointer; }
+.remedy-problem-label { color: var(--text-3); }
 .proc-steps { margin: 16px 0 0; padding: 0; list-style: none; counter-reset: pstep; }
 .proc-steps > li { counter-increment: pstep; position: relative; padding: 12px 0 12px 36px; border-top: 1px solid var(--line); }
 .proc-steps > li:last-child { border-bottom: 1px solid var(--line); }

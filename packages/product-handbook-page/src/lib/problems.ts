@@ -66,3 +66,9 @@ export function highestLevels(rows: readonly ProblemRow[], id: string): { defect
   const top = (type: 'defect' | 'design'): ProblemLevel | null => LEVELS[type].find((level) => own.some((row) => row.type === type && row.level === level)) ?? null;
   return { defect: top('defect'), design: top('design') };
 }
+
+/** The category words of a defect, as the chapter of defects writes them. */
+export const DEFECT_CATEGORIES: readonly string[] = ['authorization', 'error-handling', 'notification', 'consistency', 'calculation', 'hard-coded', 'contract', 'security', 'display', 'time', 'other'];
+
+/** The label of a defect category word, or the word itself when it is no category. */
+export const categoryText = (t: Text, word: string): string => (DEFECT_CATEGORIES.includes(word) ? t(`page.defects.category.${word}`) : word);

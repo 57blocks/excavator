@@ -153,7 +153,7 @@ describe('the remedies page', () => {
     for (const [anchor, word] of [['remedy-5', 'Merge the entrances'], ['remedy-9', 'Show the button'], ['remedy-13', 'Move the secret']] as const) {
       const at = html.indexOf(`id="${anchor}"`);
       expect(at, anchor).toBeGreaterThan(-1);
-      expect(html.slice(at, at + 200)).toContain(d(word));
+      expect(html.slice(at, at + 1200)).toContain(d(word));
     }
   });
 
@@ -163,7 +163,7 @@ describe('the remedies page', () => {
     expect(first).toContain('<a href="#/product/problems?row=r1" data-item="R1">R1</a>');
     expect(first).toContain('<a href="#/product/problems?row=d1" data-item="D1">D1</a>');
     const last = html.slice(html.indexOf('id="remedy-13"'));
-    expect(last).toContain('[<a href="#/product/problems?row=d1" data-item="D1">D1</a>, D99, P9]');
+    expect(last).toContain('[D99, P9]');
   });
 
   it('links the id that starts an item of the generated section', () => {
@@ -218,5 +218,172 @@ describe('the address of a row', () => {
     } finally {
       Element.prototype.scrollIntoView = original;
     }
+  });
+});
+
+// A remedies chapter with the sections of two processes in front of a fixed section (lines: P1 item 5, P2 item 9, fixed items 13 and 15).
+const BY_PROCESS = [
+  `# ${d('Remedies')}`, '', `## P1 ${d('Order to invoice')}`, '',
+  `- **${d('Merge the entrances')}** ${d('Close in one place')} [P1, R1, D1]`, '', `## P2 ${d('Follow-up')}`, '',
+  `- **${d('Mail it')}** ${d('Send the mail')} [P2, R2]`, '', `## ${d('Fixes')}`, '',
+  `- **${d('Show the button')}** ${d('Make it visible')} [R1, D1, D99]`, '',
+  `- **${d('Other')}** ${d('Text without ids')}`, '',
+].join('\n');
+const byProcess = (): PageData => {
+  const base = data({}, BY_PROCESS);
+  const processes: ProcessesData = { items: [
+    { ...PROCESSES.items[0], remedies: [{ line: 5, texts: { product: `**${d('Merge the entrances')}** ${d('Close in one place')} [P1, R1, D1]`, technical: `**${d('Merge the entrances')}** ${d('Close in one place')} [P1, R1, D1]` } }] },
+    { id: 'P2', name: d('Follow-up'), features: ['F2'], steps: [], remedies: [{ line: 9, texts: { product: `**${d('Mail it')}** ${d('Send the mail')} [P2, R2]`, technical: `**${d('Mail it')}** ${d('Send the mail')} [P2, R2]` } }] },
+  ], coverage: [] };
+  const rows = base.problems.rows.map((row) => (row.id === 'r1' ? { ...row, remedies: [{ heading: `P1 ${d('Order to invoice')}`, anchor: 'remedy-5', process: 'P1' }, { heading: d('Fixes'), anchor: 'remedy-13' }] } : row));
+  return { ...base, processes, problems: { ...base.problems, rows } };
+};
+
+describe('the remedies page with sections of processes', () => {
+  const html = decode(render(byProcess(), '#/product/remedies'));
+
+  it('folds the sections of the processes into one section of links, one row for each process with its number of suggestions', () => {
+    const fold = html.slice(html.indexOf('data-part="remedy-processes"'), html.indexOf('data-part="remedies"') + 4000);
+    expect(fold).toContain(`<h2>${fixed('page.remedies.processes')}</h2>`);
+    expect(fold).toContain(`href="#/product/processes/P1"><span class="proc-no">P1</span><span class="proc-name">${d('Order to invoice')}</span><span class="proc-count">${fixed('page.remedies.suggestionCount', { count: 1 })}</span>`);
+    expect(fold).toContain('href="#/product/processes/P2"');
+    expect(html).not.toContain(`>P1 ${d('Order to invoice')}</h2>`);
+    expect(html).not.toContain(d('Close in one place'));
+    expect(html).not.toContain(d('Send the mail'));
+    // The fixed section stays, with its anchors on the lines they had.
+    expect(html).toContain(d('Fixes'));
+    expect(html.indexOf('id="remedy-13"')).toBeGreaterThan(-1);
+    expect(html.indexOf('id="remedy-15"')).toBeGreaterThan(-1);
+    expect(html.indexOf('data-part="remedy-processes"')).toBeLessThan(html.indexOf('id="remedy-13"'));
+  });
+
+  it('shows a line "Problem", id, title above a suggestion of a fixed section for each problem it names, and none for an id the page does not know', () => {
+    const item = html.slice(html.indexOf('id="remedy-13"'), html.indexOf('id="remedy-15"'));
+    const lines = item.match(/<div class="remedy-problem" data-problem-line="(\w+)">/g);
+    expect(lines).toEqual(['<div class="remedy-problem" data-problem-line="R1">', '<div class="remedy-problem" data-problem-line="D1">']);
+    expect(item).toContain(`<span class="remedy-problem-label">${fixed('page.remedies.problem')}</span> <a href="#/product/problems?row=d1" data-item="D1">D1</a> <a href="#/product/problems?row=d1" data-item="D1-title" class="remedy-problem-title">${d('defect d1')}</a>`);
+    expect(item).toContain(`data-item="R1-title" class="remedy-problem-title">${d('design r1')}</a>`);
+    expect(item).not.toContain('data-problem-line="D99"');
+    expect(item).toContain('D99]');
+    expect(item.indexOf('data-part="remedy-problems"')).toBeLessThan(item.indexOf(d('Show the button')));
+    const plain = html.slice(html.indexOf('id="remedy-15"'));
+    expect(plain).not.toContain('data-part="remedy-problems"');
+  });
+
+  it('leaves a remedies chapter without sections of processes as it is: no folded section, the headings in place', () => {
+    const old = decode(render(data(), '#/product/remedies'));
+    expect(old).not.toContain('data-part="remedy-processes"');
+    expect(old).not.toContain(fixed('page.remedies.processes'));
+    expect(old).toContain(d('Across processes'));
+  });
+});
+
+describe('a link of a row to a suggestion under a process', () => {
+  it('opens the page of the process at that suggestion, and a link to a fixed section still opens the remedies page', async () => {
+    window.history.replaceState(null, '', '#/product/problems');
+    const scrolled: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function scrollIntoViewStub(this: Element) { scrolled.push(this.id); } as typeof Element.prototype.scrollIntoView;
+    try {
+      const host = mount(<App data={byProcess()} />);
+      const row = expand(host, 'r1');
+      const links = Array.from(row.querySelectorAll<HTMLAnchorElement>('[data-part="remedy-link"]'));
+      expect(links.map((link) => link.getAttribute('href'))).toEqual(['#/product/processes/P1', '#/product/remedies']);
+      act(() => links[0].click());
+      await follow(links[0]);
+      expect(host.querySelector('[data-view="process"]')?.getAttribute('data-process')).toBe('P1');
+      expect(scrolled).toContain('remedy-5');
+      expect(document.activeElement?.id).toBe('remedy-5');
+      expect(document.activeElement?.textContent).toContain(d('Close in one place'));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('keeps the suggestions of a process clear of the top bar when scrolled to (the same margin as on the remedies page)', () => {
+    const css = readFileSync(join(process.cwd(), 'src/index.css'), 'utf-8');
+    expect(css).toMatch(/\[id\^="remedy-"\][^{]*\{[^}]*scroll-margin-top: calc\(var\(--topbar-h\)/);
+  });
+});
+
+describe('the problem lines of a suggestion with many ids', () => {
+  const many = (): PageData => {
+    const base = data();
+    const rows = ['d1', 'd2', 'd3', 'd4', 'd5'].map((id) => defect(id));
+    const text = [`# ${d('Remedies')}`, '', `## ${d('Fixes')}`, '', `- ${d('Fix all')} [D1, D2, D3, D4, D5]`, '', `- ${d('Fix two')} [D1, D2]`, ''].join('\n');
+    return { ...base, chapters: base.chapters.map((entry) => (entry.id === 'remedies' ? { id: 'remedies', texts: { product: text, technical: text } } : entry)), problems: { ...base.problems, rows } };
+  };
+
+  it('shows the first 3 lines in the order of the group and a row "2 more problems" that shows all 5 on a click; 2 ids show 2 lines and no row', () => {
+    window.history.replaceState(null, '', '#/product/remedies');
+    const host = mount(<App data={many()} />);
+    const item = host.querySelector('#remedy-5') as HTMLElement;
+    const lines = (): string[] => Array.from(item.querySelectorAll('[data-problem-line]')).map((line) => line.getAttribute('data-problem-line') as string);
+    expect(lines()).toEqual(['D1', 'D2', 'D3']);
+    const more = item.querySelector('[data-part="remedy-more"]') as HTMLElement;
+    expect(more.textContent).toBe(fixed('page.remedies.moreProblems', { count: 2 }));
+    act(() => more.click());
+    expect(lines()).toEqual(['D1', 'D2', 'D3', 'D4', 'D5']);
+    const two = host.querySelector('#remedy-7') as HTMLElement;
+    expect(two.querySelectorAll('[data-problem-line]')).toHaveLength(2);
+    expect(two.querySelector('[data-part="remedy-more"]')).toBeNull();
+  });
+});
+
+describe('the id group of a suggestion that has problem lines', () => {
+  const page = (): PageData => {
+    const base = data();
+    const rows = ['d1', 'd2', 'd3', 'd4', 'd5'].map((id) => defect(id));
+    const text = [`# ${d('Remedies')}`, '', `## ${d('Fixes')}`, '',
+      `- **${d('Fix')}** ${d('text')} [P1, D1, D2, D3, D4, D5].`, '',
+      `- **${d('Only defects')}** ${d('more text')} [D1, D2].`, '',
+      `- **${d('Unknown')}** ${d('some text')} [D1, D99].`, '',
+      `- **authorization** ${d('Category word')} [D1].`, '', `- **${d('Fix')}** ${d('Plain bold')}.`, '',
+      `## ${d('Problems no measure addresses')}`, '', `- D1 ${d('Not addressed')}`, ''].join('\n');
+    return { ...base, chapters: base.chapters.map((entry) => (entry.id === 'remedies' ? { id: 'remedies', texts: { product: text, technical: text } } : entry)), problems: { ...base.problems, rows } };
+  };
+  const html = decode(render(page(), '#/product/remedies'));
+  const textOf = (from: string, to: string): string => html.slice(html.indexOf(from), html.indexOf(to)).replace(/<[^>]*>/g, '');
+
+  it('leaves the D and R ids to the problem lines and keeps the P id in the group', () => {
+    const item = html.slice(html.indexOf('id="remedy-5"'), html.indexOf('id="remedy-7"'));
+    expect(item.match(/class="remedy-problem" data-problem-line/g)).toHaveLength(3);
+    expect(item).toContain('data-part="remedy-more"');
+    expect(item).toContain(`${d('text')} [<a href="#/product/processes/P1" data-item="P1">P1</a>].`);
+    expect(item).not.toContain(', <a');
+  });
+
+  it('drops the brackets and the space before them from a group left empty, and keeps an id the page does not know as text', () => {
+    const only = html.slice(html.indexOf('id="remedy-7"'), html.indexOf('id="remedy-9"'));
+    expect(only).toContain(`${d('more text')}.</p>`);
+    expect(only).not.toContain('[');
+    const unknown = html.slice(html.indexOf('id="remedy-9"'), html.indexOf('id="remedy-11"'));
+    expect(unknown).toContain(`${d('some text')} [D99].`);
+    expect(textOf('id="remedy-9"', 'id="remedy-11"')).not.toContain('D1,');
+  });
+
+  it('leaves the generated section alone', () => {
+    expect(html.slice(html.indexOf(d('Not addressed')) - 200)).toContain('data-item="D1"');
+  });
+
+  it('shows the category word that starts an item as its label, and any other bold text as written', () => {
+    const item = html.slice(html.indexOf('id="remedy-11"'), html.indexOf('id="remedy-13"'));
+    expect(item).toContain(`<strong>${fixed('page.defects.category.authorization')}</strong>`);
+    expect(item).not.toContain('<strong>authorization</strong>');
+    expect(html).toContain(`<strong>${d('Fix')}</strong> ${d('Plain bold')}`);
+  });
+
+  it('shows the label of a defect category in the row of the problems page, and keeps the ui table to the categories the chapter of defects writes', () => {
+    window.history.replaceState(null, '', '#/product/problems');
+    const host = mount(<App data={page()} />);
+    const row = expand(host, 'd1');
+    expect(row.querySelector('[data-field="group"]')?.textContent).toContain(fixed('page.defects.category.security'));
+    const shipped = Object.keys(JSON.parse(readFileSync(join(process.cwd(), '../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')).strings).filter((key) => key.startsWith('page.defects.category.')).map((key) => key.slice('page.defects.category.'.length)).sort();
+    const source = readFileSync(join(process.cwd(), '../../skills/excavator-product-handbook/lib/defects-items.mjs'), 'utf-8');
+    const words = (/DEFECT_CATEGORIES = Object\.freeze\(\[([^\]]*)\]/.exec(source)?.[1] ?? '').split(',').map((word) => word.trim().replace(/'/g, '')).filter(Boolean).sort();
+    expect(shipped).toEqual(words);
+    const own = readFileSync(join(process.cwd(), 'src/lib/problems.ts'), 'utf-8');
+    const ours = (/DEFECT_CATEGORIES: readonly string\[\] = \[([^\]]*)\]/.exec(own)?.[1] ?? '').split(',').map((word) => word.trim().replace(/'/g, '')).filter(Boolean).sort();
+    expect(ours).toEqual(words);
   });
 });
