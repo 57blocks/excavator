@@ -103,7 +103,9 @@ export function pruneReview(outDir, root, id) {
       return { status: 1, lines: [`${id}: ${batchFile(id)} changed after it was pruned; delete ${unprunedFile(id)} and ${verdictsFile(id)} and verify the batch again`] };
     }
   } else copyFileSync(join(outDir, batchFile(id)), join(outDir, unprunedFile(id)));
-  writeJson(join(outDir, batchFile(id)), { items: kept });
+  const original = readJson(join(outDir, unprunedFile(id)));
+  const dismissed = original.ok ? original.value.dismissed : undefined;
+  writeJson(join(outDir, batchFile(id)), dismissed === undefined ? { items: kept } : { items: kept, dismissed });
 
   const recorded = readJson(join(outDir, REMOVED_FILE));
   const earlier = recorded.ok && Array.isArray(recorded.value?.removed) ? recorded.value.removed.filter((entry) => entry.batch !== id) : [];

@@ -94,6 +94,10 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
   const seenHeadings = [];
   let listOrTable = false;
 
+  // The counts table and the coverage section of the design-problems chapter are computed by the script: they carry no citation.
+  const computedSection = () => name === 'review' && lastLevelTwo !== null
+    && ['chapter.review.counts', 'chapter.review.compare.title'].some((key) => typeof strings[key] === 'string' && lastLevelTwo === strings[key]);
+
   const checkCitations = (line, source) => {
     for (const group of citationGroups(source)) {
       if (source[group.start] === '(' && CJK_BEFORE.test(source.slice(0, group.start).trimEnd())) {
@@ -140,8 +144,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       if (!block.header) {
         listOrTable = true;
         // The counts table of the design-problems chapter is computed by the script from its items: its rows carry no citation.
-        const computed = name === 'review' && typeof strings['chapter.review.counts'] === 'string' && lastLevelTwo === strings['chapter.review.counts'];
-        if (!computed && !inOpen && !isFixed(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
+        if (!computedSection() && !inOpen && !isFixed(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
       }
       continue;
     }
@@ -149,7 +152,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       listOrTable = true;
       checkCitations(block.line, block.text);
       checkReader(block.line, block.text);
-      if (!inOpen && !isFixed(block.text) && !endsWithColon(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
+      if (!inOpen && !computedSection() && !isFixed(block.text) && !endsWithColon(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
       continue;
     }
     // paragraph: each source line is checked for citations and reader text; sentences carry the fact and length rules
@@ -167,7 +170,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       });
       return line;
     };
-    if (isFixed(block.text)) continue;
+    if (isFixed(block.text) || computedSection()) continue;
     if (sentences.length > MAX_SENTENCES) add(block.line, `a paragraph of ${sentences.length} sentences; at most ${MAX_SENTENCES}`);
     if (inOpen) continue;
     sentences.forEach((sentence, k) => {

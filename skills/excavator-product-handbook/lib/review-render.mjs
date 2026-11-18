@@ -15,6 +15,7 @@ import { readerTextReasons } from './chapter-lint.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { isObject, readJson, writeTextAtomic } from './json-file.mjs';
 import { CROSS_BATCH, FACTS_FILE } from './review-batches.mjs';
+import { compareSection } from './review-compare-status.mjs';
 import { loadUi } from './ui.mjs';
 import { adviceWordsOf } from './word-lists.mjs';
 
@@ -23,6 +24,8 @@ export const DIMENSIONS = Object.freeze(['duplication', 'contradiction', 'comple
 export const IMPACTS = Object.freeze(['high', 'medium', 'low']);
 const TWO_PLACE = new Set(['duplication', 'contradiction', 'inconsistency', 'access']);
 const ITEM_KEYS = ['dimension', 'impact', 'features', 'title', 'situation', 'consequence', 'cites'];
+const CANDIDATE_ID = /^X[1-9][0-9]*$/;
+export const DISMISS_REASONS = Object.freeze(['same', 'different-subject', 'not-in-chapters']);
 const WIDE_STOPS = String.fromCharCode(0x3002, 0xff01, 0xff1f);
 const LIST_MARKER = /^\s*(?:[-*]|\d+\.)\s+/;
 const STOP_END = new RegExp(`[.!?${WIDE_STOPS}]+$`);
@@ -86,8 +89,14 @@ function factNumbers(entry) {
 function itemReasons(ctx, batch, item) {
   const reasons = [];
   const add = (reason) => reasons.push(reason);
-  if (!isObject(item) || Object.keys(item).length !== ITEM_KEYS.length || !ITEM_KEYS.every((key) => Object.hasOwn(item, key))) {
-    return [`the item must be an object with exactly the keys ${ITEM_KEYS.join(', ')}`];
+  if (!isObject(item) || !ITEM_KEYS.every((key) => Object.hasOwn(item, key)) || Object.keys(item).some((key) => key !== 'candidates' && !ITEM_KEYS.includes(key))) {
+    return [`the item must be an object with exactly the keys ${ITEM_KEYS.join(', ')} (and optionally candidates)`];
+  }
+  if (Object.hasOwn(item, 'candidates')) {
+    const list = item.candidates;
+    if (!isStrings(list) || list.some((id) => !CANDIDATE_ID.test(id)) || new Set(list).size !== list.length) {
+      add('candidates must be a list of distinct comparison candidate ids such as X3');
+    }
   }
   if (!DIMENSIONS.includes(item.dimension)) add(`dimension ${JSON.stringify(item.dimension)} is not one of ${DIMENSIONS.join(', ')}`);
   if (!IMPACTS.includes(item.impact)) add(`impact ${JSON.stringify(item.impact)} is not one of ${IMPACTS.join(', ')}`);
@@ -151,10 +160,24 @@ function itemReasons(ctx, batch, item) {
 export function validateBatch(ctx, batch) {
   const read = readJson(join(ctx.outDir, batchFile(batch.id)));
   if (!read.ok) return { reasons: [`${batch.id}: ${batchFile(batch.id)} ${read.reason}`], items: [] };
-  if (!isObject(read.value) || Object.keys(read.value).length !== 1 || !Array.isArray(read.value.items)) {
+  if (!isObject(read.value) || !Array.isArray(read.value.items) || Object.keys(read.value).some((key) => key !== 'items' && key !== 'dismissed')) {
     return { reasons: [`${batch.id}: ${batchFile(batch.id)} must be an object with exactly the key "items", a list`], items: [] };
   }
   const reasons = [];
+  if (Object.hasOwn(read.value, 'dismissed')) {
+    const { dismissed } = read.value;
+    if (!Array.isArray(dismissed)) reasons.push(`${batch.id}: dismissed must be a list of { candidate, reason }`);
+    else {
+      dismissed.forEach((entry, at) => {
+        if (!isObject(entry) || Object.keys(entry).length !== 2 || !Object.hasOwn(entry, 'candidate') || !Object.hasOwn(entry, 'reason')) {
+          reasons.push(`${batch.id} dismissed ${at}: must be an object with exactly candidate and reason`);
+          return;
+        }
+        if (typeof entry.candidate !== 'string' || !CANDIDATE_ID.test(entry.candidate)) reasons.push(`${batch.id} dismissed ${at}: candidate ${JSON.stringify(entry.candidate)} is not a comparison candidate id such as X3`);
+        if (!DISMISS_REASONS.includes(entry.reason)) reasons.push(`${batch.id} dismissed ${at}: reason ${JSON.stringify(entry.reason)} is not one of ${DISMISS_REASONS.join(', ')}`);
+      });
+    }
+  }
   read.value.items.forEach((item, at) => {
     for (const reason of itemReasons(ctx, batch, item)) reasons.push(`${batch.id} item ${at}: ${reason}`);
   });
@@ -208,6 +231,7 @@ export function reviewChapterText(ctx, batches) {
     out.push(cited(`${t('field.situation')}${colon}${item.situation}`, item.cites, wide), '');
     out.push(cited(`${t('field.consequence')}${colon}${item.consequence}`, item.cites, wide), '');
   }
+  out.push(...compareSection(ctx, batches.map((entry) => entry.batch.id), { t, wide, nameOf }));
   return `${out.join('\n').trimEnd()}\n`;
 }
 

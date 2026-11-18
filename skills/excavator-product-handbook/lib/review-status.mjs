@@ -10,6 +10,7 @@ import { join } from 'node:path';
 
 import { readJson, writeJson } from './json-file.mjs';
 import { CROSS_BATCH } from './review-batches.mjs';
+import { compareStatus, compareStatusLines } from './review-compare-status.mjs';
 import { batchFile, reviewContext, validateBatch } from './review-render.mjs';
 import { REMOVED_FILE, unprunedFile, verdictsFile } from './review-verify.mjs';
 
@@ -85,4 +86,11 @@ export function reviewSummary(outDir) {
     lines.push([batch.id, batch.name, `kept=${kept}`, `removed=${records.filter((entry) => entry.batch === batch.id).length}`].join('\t'));
   }
   return { status: 0, lines: lines.length > 0 ? lines : ['(no batch has been pruned)'] };
+}
+
+/** `review compare-status <out> --project <root>`: the COMPARE and UNJUDGED lines; writes no file. */
+export function compareStatusReport(outDir, root) {
+  const ctx = openContext(outDir, root);
+  if (!ctx.ok) return ctx.result;
+  return { status: 0, lines: compareStatusLines(compareStatus(outDir, ctx.facts.batches.map((batch) => batch.id))) };
 }

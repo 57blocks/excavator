@@ -108,7 +108,7 @@ function designNumbers(outDir, map, chapters, strings) {
   if (state !== 'ok') return { state, items: [] };
   const batches = map === null ? null : loadBatches(outDir);
   const text = chapters.get('review').text;
-  if (batches === null || reviewChapterText({ strings, map }, batches) !== text) return { state: 'changed', items: [] };
+  if (batches === null || reviewChapterText({ strings, map, outDir }, batches) !== text) return { state: 'changed', items: [] };
   const lines = text.split('\n');
   let from = 0;
   const items = sortedReviewItems(batches).map(({ item }, at) => {
