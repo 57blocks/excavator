@@ -40,7 +40,7 @@ function commandNames() {
 
 describe('the phase files', () => {
   it('are exactly the files the sections table and SKILL.md use', () => {
-    expect(FILES).toEqual(['SKILL.md', 'sections/cross.md', 'sections/data.md', 'sections/features.md', 'sections/history.md', 'sections/remedies.md', 'sections/review.md', 'sections/system.md', 'stages/cross-prompt.md', 'stages/map.md', 'stages/outline.md']);
+    expect(FILES).toEqual(['SKILL.md', 'sections/cross.md', 'sections/data.md', 'sections/features.md', 'sections/history.md', 'sections/processes.md', 'sections/remedies.md', 'sections/review.md', 'sections/system.md', 'stages/cross-prompt.md', 'stages/map.md', 'stages/outline.md']);
   });
 
   it('are ASCII only', () => {
@@ -222,6 +222,36 @@ describe('the design-problems phase', () => {
   });
 });
 
+describe('the business processes phase', () => {
+  const text = () => TEXT['sections/processes.md'];
+
+  it('gates on the chapters, dispatches one writer after the shared prompt and checks the chapter', () => {
+    const order = ['check "$OUT" --before processes --project "$PROJECT_ROOT"', '.chapters.processes', '**Every cross chapter**', 'check "$OUT" processes --project "$PROJECT_ROOT"'].map((needle) => text().indexOf(needle));
+    expect(order.every((at) => at !== -1), JSON.stringify(order)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(text()).toContain('in the foreground');
+  });
+
+  it('the writer prints the operations and the fixed text, uses the fixed title and writes steps the check can parse', () => {
+    const [prompt] = prompts(text());
+    expect(prompt).toContain('handbook.mjs" processes facts "$OUT"');
+    expect(prompt).toContain('startswith("chapter.processes.")');
+    expect(prompt).toContain('exactly `<chapter.processes.title>`');
+    expect(prompt).toContain('`<role>: **<operation>** (<feature title> (F<n>))`');
+    expect(prompt).toContain('`<chapter.processes.end>:');
+    expect(prompt).toMatch(/never judge a process/);
+    expect(prompt).toMatch(/never fill a gap with a step of your own/);
+  });
+
+  it('SKILL.md lists processes as an optional section that --review adds', () => {
+    const skill = TEXT['SKILL.md'];
+    expect(skill).toContain('`defects`, `processes`, `review`, `remedies`');
+    expect(skill).toContain('`sections/processes.md` (Phase 8a');
+    expect(skill).toMatch(/--review` - add the `processes` and `review` sections/);
+    expect(skill).not.toMatch(/the cross batch/);
+  });
+});
+
 describe('the dispatches', () => {
   it('every line that dispatches a subagent names the writer', () => {
     const missing = [];
@@ -247,7 +277,7 @@ describe('the dispatches', () => {
   });
 
   it('the cross chapters never give the writer the project: PROJECT_ROOT occurs only as the argument of the check', () => {
-    const files = ['stages/cross-prompt.md', 'sections/cross.md', 'sections/remedies.md', 'sections/review.md'];
+    const files = ['stages/cross-prompt.md', 'sections/cross.md', 'sections/processes.md', 'sections/remedies.md', 'sections/review.md'];
     for (const file of files) {
       for (const prompt of prompts(TEXT[file])) {
         const uses = Array.from(prompt.matchAll(/\$PROJECT_ROOT/g)).length;
