@@ -16,14 +16,16 @@ export interface ItemLinkOptions {
   /** The address of the problems page at one row, and of one process. */
   problemHref: (rowId: string) => string;
   processHref: (id: string) => string;
-  /** The short title of each problem row by id (lower case); with it, each item gets one line per `D<n>` or `R<n>` of its id groups that is a row: `problemLabel`, the id, the title, the last two linked to the row. */
+  /** With `plain`: the short title of each problem row by id (lower case), the labels of the two rows of an item and the separator of the titles. */
   summaries?: ReadonlyMap<string, string>;
   problemLabel?: string;
+  suggestionLabel?: string;
+  separator?: string;
   /** Added to the line of an item for its id `remedy-<line>`, for an item rendered alone from the line `lineOffset + 1`. */
   lineOffset?: number;
   /** The start of the id of an item before its line, `remedy-` unless given (the remedies page has an item under several domains, each with its own). */
   anchorPrefix?: string;
-  /** Plain text for the reader who does not see numbers: every id group leaves the sentence, and the problem lines have the label and the title, no id and no link. */
+  /** Plain text for the reader who does not see numbers: every id group leaves the sentence, and each item is a row of its problems' titles and a row of the suggestion, no id and no link. */
   plain?: boolean;
   /** With `plain`: the rows (`d3`, `r12`) the lines are for, in order, instead of the ones the id groups of the item name. */
   problemIds?: readonly string[];
@@ -51,7 +53,7 @@ function idNode(id: string, options: ItemLinkOptions): MdNode {
 }
 
 /** One text value as text and link nodes, or null when it holds no id group and no leading id. */
-function split(value: string, options: ItemLinkOptions, leading: boolean, dropping: boolean): MdNode[] | null {
+function split(value: string, options: ItemLinkOptions, leading: boolean): MdNode[] | null {
   const out: MdNode[] = [];
   const push = (node: MdNode): void => {
     const last = out[out.length - 1];
@@ -73,8 +75,8 @@ function split(value: string, options: ItemLinkOptions, leading: boolean, droppi
     const at = match.index as number;
     const inner = match[0];
     const all = Array.from(inner.matchAll(new RegExp(ID, 'g'))).map((id) => id[0]);
-    // An item that has problem lines names its D and R rows there, so they leave the group; a group left empty goes with its brackets and the space before them.
-    const kept = all.filter((id) => !(options.plain === true || id.startsWith('P') || (dropping && options.summaries?.has(id.toLowerCase()) === true)));
+    // A process number never shows, and in plain text the whole group leaves the sentence; a group left empty goes with its brackets and the space before them.
+    const kept = all.filter((id) => !(options.plain === true || id.startsWith('P')));
     if (kept.length < all.length) {
       const before = rest.slice(cursor, at);
       if (kept.length === 0) push(textNode(before.replace(/\s+$/, '')));
@@ -106,19 +108,19 @@ function split(value: string, options: ItemLinkOptions, leading: boolean, droppi
   return out.filter((node) => node.type !== 'text' || node.value !== '');
 }
 
-function walk(node: MdNode, parent: MdNode | null, options: ItemLinkOptions, lines: Map<MdNode, string[]>, dropping = false): void {
+function walk(node: MdNode, parent: MdNode | null, options: ItemLinkOptions): void {
   if (node.children === undefined) return;
   const next: MdNode[] = [];
   node.children.forEach((child, at) => {
     if (SKIPPED.has(child.type)) { next.push(child); return; }
     if (child.type === 'text' && child.value !== undefined) {
       const leading = at === 0 && node.type === 'paragraph' && parent !== null && parent.type === 'listItem';
-      const pieces = split(child.value, options, leading, dropping);
+      const pieces = split(child.value, options, leading);
       if (pieces === null) next.push(child);
       else next.push(...pieces);
       return;
     }
-    walk(child, node, options, lines, dropping || lines.has(child));
+    walk(child, node, options);
     next.push(child);
   });
   node.children = next;
@@ -147,95 +149,68 @@ function problemIds(node: MdNode, into: string[] = []): string[] {
   return into;
 }
 
-/** An item whose paragraph is the start of a list item is handled by the list item. */
-const isBlock = (node: MdNode, parent: MdNode | null): boolean => node.type === 'listItem' || (node.type === 'paragraph' && !(parent !== null && parent.type === 'listItem'));
-
 /** The ids of the problem rows each block (list item or paragraph) names, read before the ids are turned into links. */
-function problemLinesOf(node: MdNode, parent: MdNode | null, options: ItemLinkOptions, into: Map<MdNode, string[]>): void {
-  if (isBlock(node, parent)) {
-    const named = options.plain === true && options.problemIds !== undefined && node.type === 'listItem' ? options.problemIds.map((id) => id.toUpperCase()) : problemIds(node);
-    const known = named.filter((id) => options.summaries?.has(id.toLowerCase()) === true);
-    if (known.length > 0) into.set(node, known);
+function problemLinesOf(node: MdNode, _parent: MdNode | null, options: ItemLinkOptions, into: Map<MdNode, string[]>): void {
+  if (node.type === 'listItem') {
+    const named = options.problemIds !== undefined ? options.problemIds.map((id) => id.toUpperCase()) : problemIds(node);
+    into.set(node, named.filter((id) => options.summaries?.has(id.toLowerCase()) === true));
   }
   for (const child of node.children ?? []) problemLinesOf(child, node, options, into);
 }
 
-const link = (url: string, text: string, part: string): MdNode => ({ type: 'link', url, children: [textNode(text)], data: { hProperties: { 'data-item': part } } });
+/** The most problem titles an item shows at once; the rest are behind a button on the same row. */
+export const MAX_PROBLEM_TITLES = 3;
 
-/** The most problem lines an item shows at once; the rest are behind one row that unfolds. */
-export const MAX_PROBLEM_LINES = 3;
+const el = (type: string, tag: string, className: string, children: MdNode[], extra: Record<string, unknown> = {}): MdNode => ({ type, data: { hName: tag, hProperties: { className: [className], ...extra } }, children });
 
-/** The block of the lines of one item: for each id one `div` of the label, the id and the title, the last two linked to the row. */
-function problemBlock(ids: string[], options: ItemLinkOptions): MdNode {
-  return {
-    type: 'remedyProblems',
-    data: { hName: 'div', hProperties: { className: ['remedy-problems'], 'data-part': 'remedy-problems' } },
-    children: [...ids.slice(0, MAX_PROBLEM_LINES).map((id) => problemLine(id, options)), ...(ids.length > MAX_PROBLEM_LINES
-      ? [{ type: 'remedyMore', data: { hName: 'remedy-more', hProperties: { 'data-count': ids.length - MAX_PROBLEM_LINES } }, children: ids.slice(MAX_PROBLEM_LINES).map((id) => problemLine(id, options)) }]
-      : [])],
-  };
+/** One title of a problem, in plain text; the id is only an attribute. */
+const titleNode = (id: string, options: ItemLinkOptions): MdNode => el('remedyTitle', 'span', 'remedy-problem-title', [textNode(options.summaries?.get(id.toLowerCase()) ?? '')], { 'data-problem-line': id });
+
+/** The row of the problems of an item: the label once, then the titles on one line joined by the separator, the first three, then a button for the rest. */
+function problemRow(ids: string[], options: ItemLinkOptions): MdNode {
+  const separator = options.separator ?? '; ';
+  const joined = (list: string[], first: boolean): MdNode[] => list.flatMap((id, at) => [...(first && at === 0 ? [] : [textNode(separator)]), titleNode(id, options)]);
+  const rest = ids.slice(MAX_PROBLEM_TITLES);
+  const value = [
+    ...joined(ids.slice(0, MAX_PROBLEM_TITLES), true),
+    ...(rest.length === 0 ? [] : [{ type: 'remedyMore', data: { hName: 'remedy-more', hProperties: { 'data-count': rest.length } }, children: joined(rest, false) }]),
+  ];
+  return el('remedyRow', 'div', 'remedy-row', [
+    el('remedyLabel', 'span', 'remedy-row-label', [textNode(options.problemLabel ?? '')]),
+    el('remedyValue', 'div', 'remedy-row-content', value),
+  ], { 'data-part': 'remedy-problems' });
 }
 
-/** One line: the label, the id and the title, the last two linked to the row. */
-function problemLine(id: string, options: ItemLinkOptions): MdNode {
-  {
-    {
-      const key = id.toLowerCase();
-      if (options.plain === true) {
-        return {
-          type: 'remedyProblem',
-          data: { hName: 'div', hProperties: { className: ['remedy-problem'], 'data-problem-line': id } },
-          children: [
-            { type: 'remedyLabel', data: { hName: 'span', hProperties: { className: ['remedy-problem-label'] } }, children: [textNode(options.problemLabel ?? '')] },
-            textNode(' '),
-            { type: 'remedyTitle', data: { hName: 'span', hProperties: { className: ['remedy-problem-title'] } }, children: [textNode(options.summaries?.get(key) ?? '')] },
-          ],
-        };
-      }
-      const href = options.problemHref(key);
-      return {
-        type: 'remedyProblem',
-        data: { hName: 'div', hProperties: { className: ['remedy-problem'], 'data-problem-line': id } },
-        children: [
-          { type: 'remedyLabel', data: { hName: 'span', hProperties: { className: ['remedy-problem-label'] } }, children: [textNode(options.problemLabel ?? '')] },
-          textNode(' '),
-          link(href, id, id),
-          textNode(' '),
-          { ...link(href, options.summaries?.get(key) ?? '', `${id}-title`), data: { hProperties: { 'data-item': `${id}-title`, className: ['remedy-problem-title'] } } },
-        ],
-      };
-    }
-  }
-}
+/** The row of the suggestion: its label, then what the list item held. */
+const suggestionRow = (children: MdNode[], options: ItemLinkOptions): MdNode => el('remedyRow', 'div', 'remedy-row', [
+  el('remedyLabel', 'span', 'remedy-row-label', [textNode(options.suggestionLabel ?? '')]),
+  el('remedyValue', 'div', 'remedy-row-content', children),
+], { 'data-part': 'remedy-suggestion' });
 
-/** Put the lines in front of the content of a list item, and in front of a paragraph that is no list item's. */
-function insertProblemLines(node: MdNode, lines: Map<MdNode, string[]>, options: ItemLinkOptions): void {
-  if (node.children === undefined) return;
-  const next: MdNode[] = [];
-  for (const child of node.children) {
-    insertProblemLines(child, lines, options);
-    const ids = lines.get(child);
-    if (ids === undefined) { next.push(child); continue; }
-    if (child.type === 'listItem') child.children = [problemBlock(ids, options), ...(child.children ?? [])];
-    else next.push(problemBlock(ids, options));
-    next.push(child);
+/** Every list item of a plain-text chapter text as two rows: its problems (none: no row) and its suggestion. */
+function layoutItems(node: MdNode, rows: Map<MdNode, string[]>, options: ItemLinkOptions): void {
+  for (const child of node.children ?? []) {
+    layoutItems(child, rows, options);
+    const ids = rows.get(child);
+    if (ids === undefined || child.type !== 'listItem') continue;
+    child.children = [...(ids.length === 0 ? [] : [problemRow(ids, options)]), suggestionRow(child.children ?? [], options)];
   }
-  node.children = next;
 }
 
 /**
- * A remark plugin for the improvement suggestions chapter: every item id in an id group (`[P4, R12, D3]`), and a bare id that
- * starts a list item (the generated section lists problems that way), becomes a link to its row on the problems page or its
- * process page when it exists, and stays text when it does not; every list item and paragraph gets the id `remedy-<line>`.
- * With `summaries`, each item also gets one line per problem it names (`problemBlock`). It reads the tree and changes only text
- * nodes and the properties of items, and adds those lines.
+ * A remark plugin for the improvement suggestions chapter. Without `plain`: every item id in an id group (`[P4, R12, D3]`), and a
+ * bare id that starts a list item (the generated section lists problems that way), becomes a link to its row on the problems page
+ * when it exists and stays text when it does not (a process number never shows); every list item and paragraph gets the id
+ * `remedy-<line>`. With `plain` (an item rendered alone): the id groups leave the sentence and each list item is two rows, the
+ * problems it names (their titles in plain text, no id and no link) and the suggestion. It changes only text nodes, the properties
+ * of items and the children of list items.
  */
 export function remarkItemLinks(options: ItemLinkOptions): (tree: MdNode) => void {
   return (tree) => {
-    const lines = new Map<MdNode, string[]>();
-    if (options.summaries !== undefined) problemLinesOf(tree, null, options, lines);
+    const rows = new Map<MdNode, string[]>();
+    if (options.plain === true) problemLinesOf(tree, null, options, rows);
     anchor(tree, null, options.lineOffset ?? 0, options.anchorPrefix ?? 'remedy-');
-    walk(tree, null, options, lines, options.plain === true);
-    if (lines.size > 0) insertProblemLines(tree, lines, options);
+    walk(tree, null, options);
+    if (rows.size > 0) layoutItems(tree, rows, options);
   };
 }

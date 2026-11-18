@@ -232,11 +232,14 @@ export interface RemedyRef { line: number; problems: string[] }
 /**
  * The items of a remedies chapter that names ids, under the business domains they involve (page-remedies.mjs): `items` holds the text of
  * each by view, `domains` (in the page's order, only those with items) the items under each process of the domain and under each fixed
- * section of the chapter, `untied` the items that involve no domain. Null for a chapter that names no id or a page without usable domains.
+ * section of the chapter, `defectFixes` the section of the defect fixes (not repeated under the domains), `untied` the items that involve no domain. Null for a chapter that names no id or a page without usable domains.
  */
 export interface RemedyDomains {
   items: ProcessRemedy[];
-  domains: { id: string; processes: { id: string; items: RemedyRef[] }[]; sections: { heading: string; items: RemedyRef[] }[] }[];
+  /** `covered`: the number of the domain's problems that the defect fixes name, and the fixes that name some (their line and bold label), for the line at the end of the domain's section. */
+  domains: { id: string; processes: { id: string; items: RemedyRef[] }[]; sections: { heading: string; items: RemedyRef[] }[]; covered?: { count: number; items: { line: number; label: string }[] } }[];
+  /** The items of the section of the defect fixes, each once with every problem it names, under the chapter's own heading; null without any. */
+  defectFixes: { heading: string; items: RemedyRef[] } | null;
   untied: RemedyRef[];
 }
 

@@ -219,10 +219,10 @@ describe('one process', () => {
     expect(tech).toContain('data-part="citation"');
   });
 
-  it('shows the suggestions written under it in plain text: a problem line with the label and the short title and no id or link, the sentence without its id group, the anchor of its line', () => {
-    const rows = [designRow('r4', 'P1')];
+  it('shows the suggestions written under it as two rows, as the remedies page does: one row of the problem titles, one of the suggestion without its id group, the anchor of its line', () => {
+    const rows = [designRow('r4', 'P1'), designRow('r6', 'P1')];
     const item = { ...PROCESSES.items[0], remedies: [
-      { line: 7, texts: { product: `**${d('Merge entrances')}** ${d('Close in one place')} [P1, R4, D99].`, technical: `**${d('Merge entrances')}** ${d('Close in one place')} [P1, R4, D99] \`src/q.js:3\`.` } },
+      { line: 7, texts: { product: `**${d('Merge entrances')}** ${d('Close in one place')} [P1, R4, R6, D99].`, technical: `**${d('Merge entrances')}** ${d('Close in one place')} [P1, R4, R6, D99] \`src/q.js:3\`.` } },
       { line: 9, texts: { product: `**${d('Second')}** ${d('No problem named')} [P1].`, technical: `**${d('Second')}** ${d('No problem named')} [P1].` } },
     ] };
     const data = withRows(withProcesses({ ...PROCESSES, items: [item, ...PROCESSES.items.slice(1)] }), rows);
@@ -231,16 +231,20 @@ describe('one process', () => {
     const section = host.querySelector('[data-part="process-remedies"]') as HTMLElement;
     expect(section.querySelector('h2')?.textContent).toBe(fixed('page.processes.suggestions'));
     const first = section.querySelector('#remedy-7') as HTMLElement;
-    const lines = first.querySelectorAll('.remedy-problem');
-    expect(lines).toHaveLength(1);
-    expect(lines[0].textContent).toBe(`${fixed('page.remedies.problem')} ${d('summary r4')}`);
-    expect(lines[0].querySelector('a')).toBeNull();
+    const labels = Array.from(first.querySelectorAll('.remedy-row-label')).map((label) => label.textContent);
+    expect(labels).toEqual([fixed('page.remedies.problem'), fixed('page.remedies.suggestion')]);
+    const problems = first.querySelector('[data-part="remedy-problems"] .remedy-row-content') as HTMLElement;
+    expect(problems.textContent).toBe(`${d('summary r4')}${fixed('page.remedies.problemSeparator')}${d('summary r6')}`);
     expect(first.querySelector('a')).toBeNull();
-    expect(first.textContent).toContain(`${d('Merge entrances')} ${d('Close in one place')}.`);
+    const suggestion = first.querySelector('[data-part="remedy-suggestion"] .remedy-row-content') as HTMLElement;
+    expect(suggestion.textContent).toBe(`${d('Merge entrances')} ${d('Close in one place')}.`);
     expect(first.textContent).not.toMatch(/[\[\]]|\bR4\b|\bD99\b|P1/);
-    expect(first.querySelector('strong')?.textContent).toBe(d('Merge entrances'));
-    expect(section.querySelector('#remedy-9')?.querySelector('.remedy-problems')).toBeNull();
-    expect(section.querySelector('#remedy-9')?.textContent).not.toContain('[');
+    expect(suggestion.querySelector('strong')?.textContent).toBe(d('Merge entrances'));
+    // An item that names no problem has the suggestion row only.
+    const second = section.querySelector('#remedy-9') as HTMLElement;
+    expect(second.querySelector('[data-part="remedy-problems"]')).toBeNull();
+    expect(second.querySelector('.remedy-row-label')?.textContent).toBe(fixed('page.remedies.suggestion'));
+    expect(second.textContent).not.toContain('[');
   });
 
   it('shows neither the problems nor the suggestions section for a process that has none', () => {

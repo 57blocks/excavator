@@ -710,10 +710,14 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
 .proc-row-link { display: inline-block; margin-top: 6px; font-size: 13.5px; }
 .proc-remedies .prose ul { margin: 0; padding: 0; list-style: none; }
 .proc-remedies .prose li { margin: 0; }
-.remedy-problems { display: grid; gap: 2px; margin: 0 0 4px; font-size: 13.5px; }
-.remedy-problem { display: flex; flex-wrap: wrap; gap: 0 6px; }
+:has(> .remedy-row) { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
+.remedy-row { display: contents; }
+.remedy-row-label { color: var(--text-3); font-size: 13px; }
+.remedy-row-content { min-width: 0; overflow-wrap: anywhere; }
+.remedy-row-content > p { margin: 0; }
+.remedy-covered { margin: 12px 0 0; font-size: 14px; color: var(--text-2); }
+.remedy-problem-title { color: var(--text); }
 .remedy-more { justify-self: start; padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; font-size: 13.5px; cursor: pointer; }
-.remedy-problem-label { color: var(--text-3); }
 .proc-steps { margin: 16px 0 0; padding: 0; list-style: none; counter-reset: pstep; }
 .proc-steps > li { counter-increment: pstep; position: relative; padding: 12px 0 12px 36px; border-top: 1px solid var(--line); }
 .proc-steps > li:last-child { border-bottom: 1px solid var(--line); }
@@ -734,3 +738,5 @@ h4.dir-in, .dir-in > h2 { color: var(--ochre); }
   .prob-head { grid-template-columns: minmax(0, 1fr); padding: 12px 4px; }
   .prob-features::before { content: none; }
 }
+li:has(> .remedy-row) { list-style: none; }
+:is(ul, ol):has(> li > .remedy-row) { padding-left: 0; }

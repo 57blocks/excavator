@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
+import { jumpToAnchor } from '../lib/heading-jump';
 import { useLinks } from '../lib/links';
+import { categoryText } from '../lib/problems';
 import { onlyBeforeSections, onlyGeneratedSection, withoutProcessSections } from '../lib/remedy-fold';
 import { useModel } from '../lib/model';
 import { useText } from '../lib/text';
 import { numberHeadings } from '../lib/toc';
-import type { PageData, RemedyRef } from '../lib/types';
+import type { PageData, RemedyDomains, RemedyRef } from '../lib/types';
 import { useView } from '../lib/links';
 import { Breadcrumbs } from './Breadcrumbs';
 import { ChapterPage } from './ChapterPage';
@@ -69,10 +71,27 @@ function Items({ refs, prefix }: { refs: RemedyRef[]; prefix: string }) {
   );
 }
 
+/** The line at the end of a domain's section: how many more of its problems the defect fixes cover, then the category of each fix as a link to it. */
+function Covered({ covered }: { covered: NonNullable<RemedyDomains['domains'][number]['covered']> }) {
+  const t = useText();
+  const nav = useLinks();
+  return (
+    <p className="remedy-covered" data-part="remedy-covered">
+      {t('page.remedies.covered', { count: covered.count })}{' '}
+      {covered.items.map((item, at) => (
+        <span key={item.line}>
+          {at > 0 && t('page.remedies.problemSeparator')}
+          <a href={nav.remedies} data-anchor={`remedy-f-${item.line}`} onClick={() => { jumpToAnchor('remedies', `remedy-f-${item.line}`); }}>{categoryText(t, item.label)}</a>
+        </span>
+      ))}
+    </p>
+  );
+}
+
 /**
  * The items of the chapter under the business domains (page-remedies.mjs): for each domain its name, then its processes (the process's
- * name as a link to its page) with their items, then its fixed sections of the chapter, each under its own heading; last the items
- * tied to no domain.
+ * name as a link to its page) with their items, then its fixed sections of the chapter, each under its own heading, then a line for the
+ * defect fixes that cover some of its problems; then the section of the defect fixes (each fix once); last the items tied to no domain.
  */
 function DomainSections() {
   const t = useText();
@@ -97,8 +116,15 @@ function DomainSections() {
               <Items refs={section.items} prefix={`remedy-${domain.id}-`} />
             </div>
           ))}
+          {domain.covered !== undefined && <Covered covered={domain.covered} />}
         </section>
       ))}
+      {remedyDomains.defectFixes !== null && (
+        <section className="remedy-domain" data-part="remedy-defect-fixes">
+          <div className="prose"><h2>{remedyDomains.defectFixes.heading}</h2></div>
+          <Items refs={remedyDomains.defectFixes.items} prefix="remedy-f-" />
+        </section>
+      )}
       {remedyDomains.untied.length > 0 && (
         <section className="remedy-domain" data-part="remedy-untied">
           <div className="prose"><h2>{t('page.remedies.untied')}</h2></div>

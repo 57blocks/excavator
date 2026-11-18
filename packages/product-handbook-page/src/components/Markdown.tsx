@@ -33,16 +33,12 @@ export function mermaidFenceLines(source: string): number[] {
   return lines;
 }
 
-/** The row after the first problem lines of a suggestion: "{count} more problems", which unfolds the rest of the lines on a click. */
+/** The button after the first titles on the problem row of a suggestion: "and {count} more", which shows the rest of the titles on the same row on a click. */
 function MoreProblems({ count, children }: { count: number; children?: ReactNode }) {
   const t = useText();
   const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button type="button" className="remedy-more" data-part="remedy-more" aria-expanded={open} onClick={() => setOpen((before) => !before)}>{t('page.remedies.moreProblems', { count })}</button>
-      {open && children}
-    </>
-  );
+  if (open) return <>{children}</>;
+  return <>{' '}<button type="button" className="remedy-more" data-part="remedy-more" aria-expanded="false" onClick={() => setOpen(true)}>{t('page.remedies.moreTitles', { count })}</button></>;
 }
 
 /** How one item of the remedies chapter is rendered alone: its source starts at line `lineOffset + 1` of the chapter, its id starts with `anchorPrefix`, and its problem lines are for `problemIds` (the rows its id groups name when not given). */
@@ -71,9 +67,13 @@ export function Markdown({ source, idPrefix, chapter, remedyItem }: { source: st
       processes: remedyItem === undefined ? new Set((processes?.items ?? []).map((item) => item.id)) : new Set<string>(),
       problemHref: (rowId) => nav.problems({ row: rowId }),
       processHref: nav.process,
-      summaries: new Map(problems.rows.map((row) => [row.id, row.summary])),
-      problemLabel: t('page.remedies.problem'),
-      ...(remedyItem === undefined ? {} : { plain: true, lineOffset: remedyItem.lineOffset, anchorPrefix: remedyItem.anchorPrefix, problemIds: remedyItem.problemIds }),
+      ...(remedyItem === undefined ? {} : {
+        summaries: new Map(problems.rows.map((row) => [row.id, row.summary])),
+        problemLabel: t('page.remedies.problem'),
+        suggestionLabel: t('page.remedies.suggestion'),
+        separator: t('page.remedies.problemSeparator'),
+        plain: true, lineOffset: remedyItem.lineOffset, anchorPrefix: remedyItem.anchorPrefix, problemIds: remedyItem.problemIds,
+      }),
     });
   }, [titles, nav, chapter, problems, processes, remedyItem?.lineOffset, remedyItem?.anchorPrefix, remedyItem?.problemIds?.join(','), t]);
   // The fixed notices of a chapter: the not-verified text, and the not-passed text up to its first placeholder.
