@@ -86,10 +86,11 @@ suite('page in a browser (O4)', () => {
         const [atlas, list] = await page.evaluate("[getComputedStyle(document.querySelector('.atlas')).display, getComputedStyle(document.querySelector('.rel-list')).display]");
         if (width < 900) expect([atlas, list]).toEqual(['none', 'block']);
         else expect([atlas, list]).toEqual(['grid', 'none']);
-        // The overview has no grid, no counts and no feature list: the map, then one button to the first domain.
+        // The overview has no grid, no counts and no feature list: the map, then one button to the index of all the domains, at the left.
         expect(await page.evaluate("document.querySelectorAll('[data-part=\"overview-grid\"], [data-part=\"overview-counts\"], .dom-table, [data-part=\"domain-table\"]').length")).toBe(0);
-        expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').getAttribute('href')")).toBe('#/product/domain/d1');
-        expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').textContent")).toBe('Browse the domains');
+        expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').getAttribute('href')")).toBe('#/product/chapter/domains');
+        expect(await page.evaluate("document.querySelector('a[data-part=\"open-domains\"]').textContent")).toBe('View all domains');
+        expect(await page.evaluate("Math.round(document.querySelector('a[data-part=\"open-domains\"]').getBoundingClientRect().left - document.querySelector('.map-head').getBoundingClientRect().left) <= (document.querySelector('.map-heading').getBoundingClientRect().width > 1 ? document.querySelector('.map-heading').getBoundingClientRect().width + 16 : 0)")).toBe(true);
         await fits(page, width, 'the home page with the map');
         // With a usable list the domain pages have no features list (the domains chapter section gives the features); the two columns come last, before the domain nav.
         for (const id of ['d1', 'd2', 'd3']) {
