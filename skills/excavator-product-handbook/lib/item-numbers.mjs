@@ -1,8 +1,8 @@
 /**
- * The numbers of the items of the defects chapter (`D<n>`) and of the design-problems chapter (`R<n>`), computed in one
- * place (openspec change handbook-process-review, design D2). `check`, `remedies-inputs`, the coverage section and the
- * page's problem rows all read their items from `itemNumbers`, so a number means the same item everywhere. A later
- * slice adds the process numbers (`P<n>`) to the result.
+ * The numbers of the items of the defects chapter (`D<n>`), of the design-problems chapter (`R<n>`) and of the
+ * business-processes chapter (`P<n>`, the level-2 headings in order), computed in one place (openspec change
+ * handbook-process-review, design D2). `check`, `remedies-inputs`, the coverage sections and the page's problem rows all
+ * read their items from `itemNumbers`, so a number means the same item everywhere.
  *
  * A source is `{ state, items }`; `state` is `ok`, `missing` (no chapter), `failed` (no passed record of the chapter's
  * present bytes) or `changed` (the design problems chapter no longer equals what its batch files render to), and a
@@ -17,6 +17,7 @@ import { citationGroups, specKey } from './chapter-cites.mjs';
 import { parseDefects } from './defects-items.mjs';
 import { readJson } from './json-file.mjs';
 import { productText } from './md-views.mjs';
+import { parseProcesses } from './processes-parse.mjs';
 import { FACTS_FILE, reviewBatches } from './review-batches.mjs';
 import { batchFile, reviewChapterText, sortedReviewItems } from './review-render.mjs';
 
@@ -129,12 +130,35 @@ function designNumbers(outDir, map, chapters, strings) {
   return { state: 'ok', items };
 }
 
+function processNumbers(chapters) {
+  const state = chapterState(chapters, 'processes');
+  if (state !== 'ok') return { state, items: [] };
+  const text = chapters.get('processes').text;
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const processes = parseProcesses(text);
+  const items = processes.map((process, at) => {
+    const end = at + 1 < processes.length ? processes[at + 1].line - 1 : lines.length;
+    const steps = process.steps.filter((step) => step.feature !== null && step.operation !== null)
+      .map((step) => ({ feature: step.feature, operation: step.operation, line: step.line }));
+    return {
+      id: `P${at + 1}`,
+      n: at + 1,
+      title: process.name,
+      line: process.line,
+      steps,
+      features: [...new Set(steps.map((step) => step.feature))],
+      cites: specsOf(lines.slice(process.line - 1, end).join('\n')),
+    };
+  });
+  return { state: 'ok', items };
+}
+
 /**
- * `{ defects, design }` of a run. `chapters`: a Map of chapter name -> `{ text, record }` (the loaded run's, or `diskChapters`);
+ * `{ defects, design, processes }` of a run. `chapters`: a Map of chapter name -> `{ text, record }` (the loaded run's, or `diskChapters`);
  * `map`: the parsed map.json or null; `strings`: the run's fixed text.
  */
 export function itemNumbers({ outDir, map, chapters, strings }) {
-  return { defects: defectNumbers(chapters, strings), design: designNumbers(outDir, map, chapters, strings) };
+  return { defects: defectNumbers(chapters, strings), design: designNumbers(outDir, map, chapters, strings), processes: processNumbers(chapters) };
 }
 
 const memo = new WeakMap();

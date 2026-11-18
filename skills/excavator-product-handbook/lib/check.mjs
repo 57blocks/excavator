@@ -1,5 +1,5 @@
 /**
- * check <out> [<chapter>...] [--before cross|review] --project <root>: the final check of the
+ * check <out> [<chapter>...] [--before cross|review|processes] --project <root>: the final check of the
  * Markdown chapters under <out>/chapters/, recorded in state.json (format /2), or the
  * gate that says whether the cross chapters may be written. Never changes a chapter.
  */
@@ -16,6 +16,7 @@ import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
 import { withStateLock } from './lock.mjs';
 import { projectFiles } from './project-files.mjs';
+import { processesReasons } from './processes-check.mjs';
 import { diskChapters, itemNumbers, readMapOrNull } from './item-numbers.mjs';
 import { remediesInputs } from './remedies-inputs.mjs';
 import { remediesReasons } from './remedies-check.mjs';
@@ -40,7 +41,7 @@ function kindOf(name, ids) {
   return ids.includes(name) ? 'feature' : null;
 }
 
-/** The gate before cross chapters (`target` cross) or the design problems (`review`): the map exists and every feature has a passed chapter or one that failed twice. */
+/** The gate before cross chapters (`target` cross), the business processes (`processes`) or the design problems (`review`): the map exists and every feature has a passed chapter or one that failed twice. */
 function beforeGate(outDir, target) {
   const ids = featureIds(outDir);
   if (ids === null) {
@@ -52,9 +53,11 @@ function beforeGate(outDir, target) {
     const record = loaded.state.chapters[id];
     return !(record !== undefined && (record.status === 'passed' || (record.status === 'failed' && record.attempts >= 2)));
   });
-  const [ready, next] = target === 'review'
-    ? ['Design problems', 'Next: write and check these features before the design problems']
-    : ['Cross chapters', 'Next: write and check these features before the cross chapters'];
+  const [ready, next] = {
+    review: ['Design problems', 'Next: write and check these features before the design problems'],
+    processes: ['Business processes', 'Next: write and check these features before the business processes'],
+    cross: ['Cross chapters', 'Next: write and check these features before the cross chapters'],
+  }[target];
   if (missing.length === 0) return { status: 0, lines: [`${ready}: ready (${ids.length} features)`] };
   return { status: 1, lines: [...missing.map((id) => `missing: ${id}`), next] };
 }
@@ -71,7 +74,7 @@ function notNamedLines({ design, defects }) {
 function checkChapters(outDir, names, root, record) {
   const dir = join(outDir, 'chapters');
   const available = existsSync(dir) ? readdirSync(dir).filter((file) => file.endsWith('.md')).map(stem).sort() : [];
-  // The remedies chapter is checked last: its ids are read from the defects and design-problems chapters, which a call that checks them too has just recorded.
+  // The remedies chapter is checked last: its ids are read from the defects, business-processes and design-problems chapters, which a call that checks them too has just recorded.
   const asked = names.length > 0 ? [...new Set(names.map(stem))] : available;
   const wanted = [...asked.filter((name) => name !== 'remedies'), ...asked.filter((name) => name === 'remedies')];
   const ui = loadUi(outDir);
@@ -105,8 +108,9 @@ function checkChapters(outDir, names, root, record) {
         listHash = list.hash;
       }
       if (name === 'defects') reasons = [...reasons, ...defectsReasons(outDir, chapterText, ids, ui.strings)];
+      if (name === 'processes') reasons = [...reasons, ...processesReasons(outDir, chapterText, { featureIds: ids, strings: ui.strings })];
       if (name === 'remedies') {
-        const numbers = itemNumbers({ outDir, map: readMapOrNull(outDir), chapters: diskChapters(outDir, ['defects', 'review'], state), strings: ui.strings });
+        const numbers = itemNumbers({ outDir, map: readMapOrNull(outDir), chapters: diskChapters(outDir, ['defects', 'processes', 'review'], state), strings: ui.strings });
         reasons = [...reasons, ...remediesReasons(chapterText, { numbers, strings: ui.strings })];
         if (reasons.length === 0) notes = notNamedLines(uncoveredItems(numbers, chapterText));
       }
@@ -136,7 +140,7 @@ function checkChapters(outDir, names, root, record) {
 export function checkCommand(outDir, names, root, { before, record = true } = {}) {
   if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
   if (before !== undefined) {
-    if (before !== 'cross' && before !== 'review') throw new UsageError('--before takes cross or review');
+    if (!['cross', 'review', 'processes'].includes(before)) throw new UsageError('--before takes cross, review or processes');
     if (!record) throw new UsageError(`--no-record cannot be used with --before ${before}`);
     return beforeGate(outDir, before);
   }

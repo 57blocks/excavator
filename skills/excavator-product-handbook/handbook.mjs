@@ -5,7 +5,7 @@
  * project's source statically and never builds or runs it.
  *
  * Subcommands: candidates, applications, check-map, select, check-ui, data,
- * history, check, assemble, page, reply, sections, review. Run `handbook.mjs --help`
+ * history, check, assemble, page, reply, sections, review, processes. Run `handbook.mjs --help`
  * for the arguments of each.
  *
  * check-map and check hold <out>/state.json.lock while they run.
@@ -30,6 +30,7 @@ import { withStateLock } from './lib/lock.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { remediesInputsLines, remediesState } from './lib/remedies-inputs.mjs';
+import { processesFacts } from './lib/processes-facts.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { reviewCandidateLines, reviewCandidates, reviewCompare } from './lib/review-compare.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
@@ -63,11 +64,11 @@ Commands:
       exit 1. No fuzzy matching. Changes no file.
   sections [<list>] [--review]
       Validate the --sections list (comma-separated: system, features, data, history, domains, roles, notifications, topics,
-      defects, review, remedies, outline; empty or absent is all but review) and print "SECTIONS=<the sections in fixed order>",
+      defects, processes, review, remedies, outline; empty or absent is all but processes and review) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the map stage file first, once, then each
-      section's file, once (the five cross chapters before review share one). --review adds review; whenever review
-      is selected, remedies and outline are selected too. A value that is not a section exits 1 and the
+      section's file, once (the five cross chapters before processes share one). --review adds processes and review; whenever review
+      is selected, processes, remedies and outline are selected too; whenever processes is selected, outline is. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
@@ -170,7 +171,14 @@ Commands:
       Print STATUS (the recorded status of the remedies chapter or none), ATTEMPTS, FILE (yes or no) and STALE (yes
       when it passed and the digest of defects.md and review.md differs from the one recorded with it, or none was
       recorded and review.md exists).
-  check <out> [<chapter>...] [--before cross|review] [--no-record] --project <root>
+  processes facts <out>
+      The reading list of the writer of the business processes, in map order, from map.json, the run's fixed text, the
+      feature chapters and domains.json: "OP<TAB><F><TAB><F>.md:<line><TAB><title>" for each level-3 heading of a feature
+      chapter's operations section, "UNREAD<TAB><F><TAB><reason>" for a feature with no chapter or no operations section,
+      "EDGE<TAB><F><TAB><G><TAB><F>.md:<line>" for each other map feature named in a list item of its hand-overs section,
+      "HANDOVER<TAB><from> -> <to>: <what>" for each hand-over of domains.json, and a last "Counts:" line. Exits 1 when
+      map.json is missing. Writes no file.
+  check <out> [<chapter>...] [--before cross|review|processes] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
       fact line cites, paragraphs have at most 4 sentences, a feature chapter has a list or a
@@ -180,7 +188,9 @@ Commands:
       reasons in state.json (format /2); a state.json of another format exits 1 and asks for
       --fresh. --no-record prints the same without writing state.json. --before cross checks no
       chapter: it exits 0 when every feature has a passed chapter or one that failed twice;
-      --before review checks no chapter either and holds the same rule, and also needs a map.
+      --before review and --before processes check no chapter either and hold the same rule, and also need a map
+      (--before processes prints "Business processes: ready (<n> features)"). A processes chapter must write each step as a
+      numbered item whose first bold fragment is an operation title of the feature named by the first (F<n>) after it.
       Never changes a chapter.
   check-ui <out> [--language <name>] [--keep <file>]
       Run in English with no <out>/ui.json: copy the shipped English table
@@ -354,6 +364,12 @@ const COMMANDS = {
     const { positionals } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('remedies-inputs takes exactly one <out> directory');
     return report(remediesInputsLines(resolve(positionals[0])));
+  },
+  processes(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals[0] !== 'facts') throw new UsageError('processes takes facts, then <out>');
+    if (positionals.length !== 2) throw new UsageError('processes facts takes exactly one <out> directory');
+    return report(processesFacts(positionals[1]));
   },
   'remedies-state'(args) {
     const { positionals } = parseArgs(args, ['project']);

@@ -5,7 +5,7 @@
  * citation of a block is one of the citations of the items its id group names. The chapter's own lint (citations exist, code
  * words) runs as for every chapter.
  *
- * `numbers.processes` is where a later slice supplies the process ids.
+ * An id is a `D` defect, an `R` design problem or a `P` business process; `numbers.processes` supplies the process ids.
  */
 
 import { UNAVAILABLE } from './item-numbers.mjs';
@@ -21,9 +21,11 @@ function resolveId(id, numbers) {
     const entry = source.items[number - 1];
     return entry === undefined ? { problem: `${id} is not ${what}: there ${source.items.length === 1 ? 'is' : 'are'} ${source.items.length}` } : { entry };
   }
-  if (numbers.processes === undefined) return { problem: `${id}: there is no process inventory` };
-  const entry = numbers.processes.items?.[number - 1];
-  return entry === undefined ? { problem: `${id} is not a process` } : { entry };
+  const source = numbers.processes;
+  if (source === undefined) return { problem: `${id}: there is no process inventory` };
+  if (source.state !== 'ok') return { problem: `${id}: the business processes are not available (processes.md ${UNAVAILABLE[source.state]})` };
+  const entry = source.items[number - 1];
+  return entry === undefined ? { problem: `${id} is not a process: there ${source.items.length === 1 ? 'is' : 'are'} ${source.items.length}` } : { entry };
 }
 
 /** The reasons the remedies chapter `text` is refused; `numbers` is `itemNumbers`' result. */

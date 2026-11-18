@@ -26,24 +26,30 @@ const TABLE = Object.freeze([
   Object.freeze({ id: 'notifications', stages: WITH_PROMPT, file: CROSS }),
   Object.freeze({ id: 'topics', stages: WITH_PROMPT, file: CROSS }),
   Object.freeze({ id: 'defects', stages: WITH_PROMPT, file: CROSS }),
+  Object.freeze({ id: 'processes', stages: WITH_PROMPT, file: 'sections/processes.md' }),
   Object.freeze({ id: 'review', stages: MAP, file: 'sections/review.md' }),
   Object.freeze({ id: 'remedies', stages: WITH_PROMPT, file: 'sections/remedies.md' }),
   Object.freeze({ id: 'outline', stages: MAP, file: 'stages/outline.md' }),
 ]);
 
 export const SECTIONS = Object.freeze(TABLE.map((row) => row.id));
-/** `review` is optional (openspec change handbook-design-review, D1): it costs more than the rest and is one more layer of judgment, so it is not in the default. */
-export const OPTIONAL_SECTIONS = Object.freeze(['review']);
+/**
+ * `review` is optional (openspec change handbook-design-review, D1): it costs more than the rest and is one more layer of judgment, so it is not in the default.
+ * `processes` is optional too (openspec change handbook-process-review, D1): a default-on section would make existing automatic runs silently dearer.
+ */
+export const OPTIONAL_SECTIONS = Object.freeze(['processes', 'review']);
 export const DEFAULT_SECTIONS = Object.freeze(SECTIONS.filter((id) => !OPTIONAL_SECTIONS.includes(id)));
-/** What a run that writes `review` writes with it: the remedies cover it and the outline places it. */
-const WITH_REVIEW = Object.freeze(['remedies', 'outline']);
+/** What a run that writes `review` writes with it: the processes it reads, the remedies that cover it and the outline that places it. */
+const WITH_REVIEW = Object.freeze(['processes', 'remedies', 'outline']);
+/** What a run that writes `processes` writes with it: the outline places the chapter. */
+const WITH_PROCESSES = Object.freeze(['outline']);
 
 /**
  * `{ ok: true, sections }` with the sections in the fixed order, or
  * `{ ok: false, lines }` naming the value that is not a section and the
  * allowed ones. `text` undefined or blank is the default sections (every one but
- * `review`); `review: true` (the `--review` option) adds `review` to them, and
- * whenever `review` is selected `remedies` and `outline` are selected too.
+ * `processes` and `review`); `review: true` (the `--review` option) adds `processes` and `review` to them, whenever `review` is
+ * selected `processes`, `remedies` and `outline` are selected too, and whenever `processes` is selected `outline` is.
  */
 export function parseSections(text, { review = false } = {}) {
   const blank = text === undefined || String(text).trim() === '';
@@ -54,13 +60,14 @@ export function parseSections(text, { review = false } = {}) {
       ok: false,
       lines: [
         `--sections: ${bad.map((part) => JSON.stringify(part)).join(', ')} is not a section`,
-        `--sections takes ${SECTIONS.join(', ')}, any of them separated by a comma (default: all but review; --review adds review)`,
+        `--sections takes ${SECTIONS.join(', ')}, any of them separated by a comma (default: all but processes and review; --review adds both)`,
       ],
     };
   }
   const chosen = new Set(parts);
   if (review) chosen.add('review');
   if (chosen.has('review')) for (const id of WITH_REVIEW) chosen.add(id);
+  if (chosen.has('processes')) for (const id of WITH_PROCESSES) chosen.add(id);
   return { ok: true, sections: SECTIONS.filter((section) => chosen.has(section)) };
 }
 

@@ -21,7 +21,7 @@ export function defaultParts({ blocks, featureIds, t }) {
   const take = (...names) => names.filter(has);
   const parts = [
     ['md.part.system', take('system')],
-    ['md.part.people', take('domains', 'roles')],
+    ['md.part.people', take('domains', 'processes', 'roles')],
     ['md.part.features', featureIds.filter(has)],
     ['md.part.notifications', take('notifications', 'topics')],
     ['md.part.data', take('data', 'dictionaries', 'history')],

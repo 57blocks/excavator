@@ -16,10 +16,10 @@ import { sentencesOf } from './chapter-sentences.mjs';
 import { adviceWordsOf, wordsIn } from './word-lists.mjs';
 
 export const MAX_SENTENCES = 4;
-export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'review', 'remedies']);
+export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'processes', 'review', 'remedies']);
 
-/** The cross chapters every run is expected to write; `review` is optional (written only with `--review`), so its absence is no gap. */
-export const EXPECTED_CROSS_CHAPTERS = Object.freeze(CROSS_CHAPTERS.filter((name) => name !== 'review'));
+/** The cross chapters every run is expected to write; `processes` and `review` are optional (written only with `--review` or their own section), so their absence is no gap. */
+export const EXPECTED_CROSS_CHAPTERS = Object.freeze(CROSS_CHAPTERS.filter((name) => name !== 'processes' && name !== 'review'));
 /** The fixed level-2 headings of a feature chapter, in order: the seven section names, then the two closing sections. */
 export const FEATURE_HEADING_KEYS = Object.freeze([
   'chapter.section.overview', 'chapter.section.screens', 'chapter.section.operations', 'chapter.section.rules',

@@ -369,6 +369,11 @@
     "chapter.remedies.uncovered": "Problems no measure addresses",
     "chapter.remedies.uncoveredNone": "Every high-impact design problem and every P0 defect is addressed by a measure.",
     "chapter.remedies.uncoveredNoReview": "The design problems are not written, so only the defects are listed.",
+    "chapter.processes.title": "Business processes",
+    "chapter.processes.end": "End state",
+    "chapter.processes.uncovered": "Operations in no process",
+    "chapter.processes.uncoveredJoin": ", ",
+    "chapter.processes.uncoveredNone": "Every operation appears in a process.",
     "chapter.notVerified": "Not verified: this chapter was written by a model from the source code, and its sentences were not checked one by one against the code.",
     "chapter.notPassed": "This chapter did not pass the final check; {count} problems remain, and the chapter is kept as written."
   }

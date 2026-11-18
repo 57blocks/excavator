@@ -6,21 +6,26 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SECTIONS, SECTIONS, parseSections, readPlan } from '../../../skills/excavator-product-handbook/lib/sections.mjs';
 import { runHandbook } from './helpers.mjs';
 
-const NAMES = ['system', 'features', 'data', 'history', 'domains', 'roles', 'notifications', 'topics', 'defects', 'review', 'remedies', 'outline'];
-const DEFAULTS = NAMES.filter((name) => name !== 'review');
+const NAMES = ['system', 'features', 'data', 'history', 'domains', 'roles', 'notifications', 'topics', 'defects', 'processes', 'review', 'remedies', 'outline'];
+const DEFAULTS = NAMES.filter((name) => name !== 'review' && name !== 'processes');
 
 describe('parseSections', () => {
-  it('defaults to every section but review when the list is not given or empty', () => {
+  it('defaults to every section but processes and review when the list is not given or empty', () => {
     expect(SECTIONS).toEqual(NAMES);
     expect(DEFAULT_SECTIONS).toEqual(DEFAULTS);
     for (const text of [undefined, '', '   ']) expect(parseSections(text)).toEqual({ ok: true, sections: DEFAULTS });
   });
 
-  it('--review adds review to the default, to a list, and always brings remedies and outline', () => {
+  it('--review adds processes and review to the default, to a list, and always brings remedies and outline', () => {
     expect(parseSections(undefined, { review: true })).toEqual({ ok: true, sections: NAMES });
-    expect(parseSections('features', { review: true })).toEqual({ ok: true, sections: ['features', 'review', 'remedies', 'outline'] });
-    expect(parseSections('review', { review: false })).toEqual({ ok: true, sections: ['review', 'remedies', 'outline'] });
+    expect(parseSections('features', { review: true })).toEqual({ ok: true, sections: ['features', 'processes', 'review', 'remedies', 'outline'] });
+    expect(parseSections('review', { review: false })).toEqual({ ok: true, sections: ['processes', 'review', 'remedies', 'outline'] });
     expect(parseSections('remedies')).toEqual({ ok: true, sections: ['remedies'] });
+  });
+
+  it('processes alone brings only the outline, not remedies and not review', () => {
+    expect(parseSections('processes')).toEqual({ ok: true, sections: ['processes', 'outline'] });
+    expect(parseSections('features,processes')).toEqual({ ok: true, sections: ['features', 'processes', 'outline'] });
   });
 
   it('returns the sections in the fixed order, without repeats, whatever order they are written in', () => {
@@ -32,24 +37,26 @@ describe('parseSections', () => {
     for (const bad of ['trace', 'features,trace', 'Features', 'features,', ',', 'features system', 'overview', 'priority', 'architecture']) {
       const result = parseSections(bad);
       expect(result.ok, bad).toBe(false);
-      expect(result.lines[1], bad).toBe(`--sections takes ${NAMES.join(', ')}, any of them separated by a comma (default: all but review; --review adds review)`);
+      expect(result.lines[1], bad).toBe(`--sections takes ${NAMES.join(', ')}, any of them separated by a comma (default: all but processes and review; --review adds both)`);
     }
     expect(parseSections('features,trace').lines[0]).toContain('"trace"');
     expect(parseSections('trace', { review: true }).ok).toBe(false);
-    expect(parseSections('trace').lines[1]).toContain('defects, review, remedies, outline');
+    expect(parseSections('trace').lines[1]).toContain('defects, processes, review, remedies, outline');
   });
 });
 
 describe('readPlan', () => {
   it('reads the map stage once, then each section file once, in run order', () => {
-    expect(readPlan(NAMES)).toEqual(['stages/map.md', 'stages/cross-prompt.md', 'sections/system.md', 'sections/features.md', 'sections/data.md', 'sections/history.md', 'sections/cross.md', 'sections/review.md', 'sections/remedies.md', 'stages/outline.md']);
+    expect(readPlan(NAMES)).toEqual(['stages/map.md', 'stages/cross-prompt.md', 'sections/system.md', 'sections/features.md', 'sections/data.md', 'sections/history.md', 'sections/cross.md', 'sections/processes.md', 'sections/review.md', 'sections/remedies.md', 'stages/outline.md']);
     expect(readPlan(DEFAULTS)).not.toContain('sections/review.md');
+    expect(readPlan(DEFAULTS)).not.toContain('sections/processes.md');
   });
 
   it('the five cross chapters before the design problems share one file, read once; review and remedies have their own', () => {
     expect(readPlan(['defects'])).toEqual(['stages/map.md', 'stages/cross-prompt.md', 'sections/cross.md']);
     expect(readPlan(['domains', 'roles', 'notifications', 'topics', 'defects'])).toEqual(['stages/map.md', 'stages/cross-prompt.md', 'sections/cross.md']);
     expect(readPlan(['review'])).toEqual(['stages/map.md', 'sections/review.md']);
+    expect(readPlan(['processes'])).toEqual(['stages/map.md', 'stages/cross-prompt.md', 'sections/processes.md']);
     expect(readPlan(['remedies'])).toEqual(['stages/map.md', 'stages/cross-prompt.md', 'sections/remedies.md']);
   });
 
@@ -80,9 +87,10 @@ describe('handbook.mjs sections', () => {
     expect(withFlag.lines[0]).toBe(`SECTIONS=${NAMES.join(',')}`);
     expect(withFlag.lines).toContain('READ=sections/review.md');
     const only = runHandbook(['sections', 'review']);
-    expect(only.lines[0]).toBe('SECTIONS=review,remedies,outline');
-    expect(only.lines.slice(1)).toEqual(['READ=stages/map.md', 'READ=stages/cross-prompt.md', 'READ=sections/review.md', 'READ=sections/remedies.md', 'READ=stages/outline.md']);
-    expect(runHandbook(['sections', '--review', 'features']).lines[0]).toBe('SECTIONS=features,review,remedies,outline');
+    expect(only.lines[0]).toBe('SECTIONS=processes,review,remedies,outline');
+    expect(only.lines.slice(1)).toEqual(['READ=stages/map.md', 'READ=stages/cross-prompt.md', 'READ=sections/processes.md', 'READ=sections/review.md', 'READ=sections/remedies.md', 'READ=stages/outline.md']);
+    expect(runHandbook(['sections', '--review', 'features']).lines[0]).toBe('SECTIONS=features,processes,review,remedies,outline');
+    expect(runHandbook(['sections', 'processes']).lines[0]).toBe('SECTIONS=processes,outline');
     expect(runHandbook(['sections', 'features']).lines.join('\n')).not.toContain('review');
   });
 
