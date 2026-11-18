@@ -141,24 +141,27 @@ export function foldProcessSections(headings, processIds, title) {
 }
 
 /**
- * The headings of the remedies chapter as the page shows it when its items are under the business domains: the headings above the first
- * level-2 heading, then for each domain its name (level 2), the names of its processes and the headings of its fixed sections (level 3),
- * the section of the defect fixes, the section of the items tied to no domain, and the generated section at the end with its own headings.
+ * The headings of the remedies page when its items are in tabs by measure type: for each tab `{ title, level, tab, index }`, `index`
+ * counting the `##` and `###` headings of the page as that tab shows them (the ones above the chapter's first level-2 heading, then
+ * the tab's own: in the defect fixes the subsection of the category items, then a subsection per domain and one for the items tied to
+ * no domain; in the last tab, the headings of the generated section). Only one tab is on the page at a time.
  */
-export function remedyPageHeadings(headings, remedyDomains, domains, processes, ui) {
+export function remedyTabHeadings(headings, remedyDomains, domains, ui) {
   const firstSection = headings.findIndex((heading) => heading.level === 2);
   const generated = headings.findIndex((heading) => heading.level === 2 && heading.title === ui['chapter.remedies.uncovered']);
-  const out = firstSection === -1 ? [...headings] : headings.slice(0, firstSection);
+  const preamble = firstSection === -1 ? headings.length : firstSection;
   const nameOf = new Map(domains.list.map((domain) => [domain.id, domain.name]));
-  const processName = new Map((processes?.items ?? []).map((item) => [item.id, item.name]));
-  for (const domain of remedyDomains.domains) {
-    out.push({ title: nameOf.get(domain.id), level: 2 });
-    for (const process of domain.processes) out.push({ title: processName.get(process.id), level: 3 });
-    for (const section of domain.sections) out.push({ title: section.heading, level: 3 });
+  const out = [];
+  for (const group of remedyDomains.groups) {
+    const name = ui[`page.remedies.group.${group.id}`];
+    const own = [
+      ...(group.across.length > 0 ? [{ title: ui['page.remedies.across'], level: 3 }] : []),
+      ...group.domains.map((domain) => ({ title: `${nameOf.get(domain.id)} - ${name}`, level: 3 })),
+      ...(group.untied.length > 0 ? [{ title: `${ui['page.remedies.untied']} - ${name}`, level: 3 }] : []),
+    ];
+    own.forEach((heading, at) => out.push({ ...heading, tab: group.id, index: preamble + at }));
   }
-  if (remedyDomains.defectFixes !== null) out.push({ title: remedyDomains.defectFixes.heading, level: 2 });
-  if (remedyDomains.untied.length > 0) out.push({ title: ui['page.remedies.untied'], level: 2 });
-  if (generated !== -1) out.push(...headings.slice(generated));
+  if (remedyDomains.generated !== null && generated !== -1) headings.slice(generated).forEach((heading, at) => out.push({ ...heading, tab: 'uncovered', index: preamble + at }));
   return out;
 }
 
@@ -182,11 +185,11 @@ export function searchIndex(domains, chapterBlocks, run, { processIds = new Set(
     }
     items.push({ kind: 'chapter', title: block.title, chapter: block.block, domain: null, heading: null, level: null });
     let headings = pageHeadings(productText(renderedChapter(run, block.block).text));
-    if (block.block === 'remedies') {
-      headings = remedyDomains === null
-        ? foldProcessSections(headings, processIds, run.ui['page.remedies.processes'])
-        : remedyPageHeadings(headings, remedyDomains, domains, processes, run.ui);
+    if (block.block === 'remedies' && remedyDomains !== null) {
+      for (const { title, level, tab, index } of remedyTabHeadings(headings, remedyDomains, domains, run.ui)) items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index, level, tab });
+      continue;
     }
+    if (block.block === 'remedies') headings = foldProcessSections(headings, processIds, run.ui['page.remedies.processes']);
     headings.forEach(({ title, level }, index) => {
       items.push({ kind: 'heading', title, chapter: block.block, domain: null, heading: index, level });
     });

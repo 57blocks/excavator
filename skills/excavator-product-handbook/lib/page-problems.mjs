@@ -50,7 +50,8 @@ function remediesOf(index, id, matches, { processIds, place, features }) {
     return index.parsed.items.filter((entry) => entry.ids.includes(id)).map((entry) => {
       const process = entry.section === null ? null : processSectionId(entry.section.text);
       const heading = entry.section === null ? '' : entry.section.text;
-      if (process !== null && processIds.has(process)) return { heading, anchor: remedyAnchor(entry.line), process };
+      // The reader sees the process by name only: the number of the heading stays in the link target.
+      if (process !== null && processIds.has(process)) return { heading: heading.slice(process.length).trim(), anchor: remedyAnchor(entry.line), process };
       // With the items placed under the business domains, the anchor is the one of the place under the domain of the row.
       const placed = place === null || entry.section === null ? null : place(entry.line, features);
       return placed === null ? { heading, anchor: remedyAnchor(entry.line) } : { heading, ...placed };

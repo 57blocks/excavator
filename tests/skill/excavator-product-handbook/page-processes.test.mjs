@@ -279,11 +279,11 @@ describe('page data /23: the remedies of a process', () => {
   it('says on each remedy entry of a row which page it is on: the process page for an item under a process, the remedies page for the others', () => {
     const data = dataOf(setup({ chapters: BY_PROCESS_RUN }));
     expect(row(data, 'd1').remedies).toEqual([
-      { heading: 'P1 Order to archive', anchor: `remedy-${lineOf(data, 'Merge entrances')}`, process: 'P1' },
-      { heading: 'P2 Reminder run', anchor: `remedy-${lineOf(data, 'Mail the clerk')}`, process: 'P2' },
+      { heading: 'Order to archive', anchor: `remedy-${lineOf(data, 'Merge entrances')}`, process: 'P1' },
+      { heading: 'Reminder run', anchor: `remedy-${lineOf(data, 'Mail the clerk')}`, process: 'P2' },
     ]);
     expect(row(data, 'd2').remedies).toEqual([
-      { heading: 'P1 Order to archive', anchor: `remedy-${lineOf(data, 'Show it')}`, process: 'P1' },
+      { heading: 'Order to archive', anchor: `remedy-${lineOf(data, 'Show it')}`, process: 'P1' },
       { heading: 'Defect fixes', anchor: `remedy-${lineOf(data, 'Show the button [D2, D99]')}` },
     ]);
   });
@@ -322,90 +322,113 @@ const BY_DOMAIN_TEXT = `# Remedies
 
 ## To simplify and unify
 
-- **Simplify** Merge both [D1, D2] (\`${FORM}:7\`).
+- **Unify the rule** Use one rule for both [D1, D2] (\`${FORM}:7\`).
 
-- **Simplify** A note with no ids here (\`${FORM}:6\`).
+- **Fix** Repair the date [D2] (\`${FORM}:6\`).
+
+- **Mystery** A label that is no type [D1] (\`${FORM}:6\`).
+
+- **Automate** Send it by itself, no ids here (\`${FORM}:6\`).
 `;
 const BY_DOMAIN_RUN = { ...FULL, remedies: BY_DOMAIN_TEXT };
 
-describe('page data /23: the items of the remedies under the business domains', () => {
+describe('page data /23: the items of the remedies in groups by measure type, under the business domains', () => {
   const data = () => dataOf(setup({ chapters: BY_DOMAIN_RUN, domains: DOMAINS }));
   const lines = (page) => ({
-    merge: lineOf(page, 'Merge entrances'), fixBoth: lineOf(page, 'Fix both sides'), again: lineOf(page, 'Check the caller again'), simplify: lineOf(page, 'Merge both'), note: lineOf(page, 'A note with no ids'),
+    merge: lineOf(page, 'Close orders in one place'), fixBoth: lineOf(page, 'Fix both sides'), again: lineOf(page, 'Check the caller again'), unify: lineOf(page, 'Use one rule'),
+    repair: lineOf(page, 'Repair the date'), mystery: lineOf(page, 'A label that is no type'), automate: lineOf(page, 'Send it by itself'),
   });
+  const group = (page, id) => page.remedyDomains.groups.find((entry) => entry.id === id);
 
-  it('puts an item of another fixed section that names defects of two domains under both, with the problems of each domain only', () => {
+  it('groups the items by their bold type word: simplify, unify, automate, defects, and other for a label that is no type, in this order', () => {
     const page = data();
     const at = lines(page);
-    const [first, second] = page.remedyDomains.domains;
-    // D1 is a defect of F1 (first domain), D2 of F2 (second domain).
-    expect([first.id, second.id]).toEqual(['d1', 'd2']);
-    expect(first.sections).toEqual([{ heading: 'To simplify and unify', items: [{ line: at.simplify, problems: ['d1'] }] }]);
-    expect(second.sections).toEqual([{ heading: 'To simplify and unify', items: [{ line: at.simplify, problems: ['d2'] }] }]);
-    expect(second.processes).toEqual([]);
+    expect(page.remedyDomains.groups.map((entry) => [entry.id, entry.count])).toEqual([['simplify', 1], ['unify', 1], ['automate', 1], ['defects', 3], ['other', 1]]);
+    expect(group(page, 'simplify').domains).toEqual([{ id: 'd1', items: [{ line: at.merge, problems: ['d1'], process: 'P1' }] }]);
+    expect(group(page, 'other').domains).toEqual([{ id: 'd1', items: [{ line: at.mystery, problems: ['d1'] }] }]);
+    expect(group(page, 'automate').untied).toEqual([{ line: at.automate, problems: [], bare: true }]);
   });
 
-  it('gives a defect fix one place only, the section of the defect fixes, with every problem it names, and none under a domain', () => {
+  it('puts an item of type fix in the defects group even when it is in another section of the chapter, and the category items once, across domains', () => {
     const page = data();
     const at = lines(page);
-    expect(page.remedyDomains.defectFixes).toEqual({ heading: 'Defect fixes', items: [{ line: at.fixBoth, problems: ['d1', 'd2'] }, { line: at.again, problems: ['d1'] }] });
-    const placed = page.remedyDomains.domains.flatMap((domain) => [...domain.processes, ...domain.sections].flatMap((entry) => entry.items.map((item) => item.line)));
-    expect(placed).not.toContain(at.fixBoth);
-    expect(placed).not.toContain(at.again);
+    const defects = group(page, 'defects');
+    expect(defects.across).toEqual([{ line: at.fixBoth, problems: ['d1', 'd2'] }, { line: at.again, problems: ['d1'] }]);
+    expect(defects.domains.find((entry) => entry.id === 'd2').items).toEqual([{ line: at.repair, problems: ['d2'], bare: true }]);
+    expect(group(page, 'simplify').domains.flatMap((entry) => entry.items.map((item) => item.line))).not.toContain(at.repair);
   });
 
-  it('says for each domain how many distinct problems of it the defect fixes name, and which fixes with their bold label', () => {
+  it('puts a unify item that names defects of two domains under both, with the problems of each domain only and its type word left out', () => {
     const page = data();
     const at = lines(page);
-    const [first, second] = page.remedyDomains.domains;
-    // D1 is named by two fixes and counts once.
+    const unify = group(page, 'unify');
+    expect(unify.domains).toEqual([{ id: 'd1', items: [{ line: at.unify, problems: ['d1'], bare: true }] }, { id: 'd2', items: [{ line: at.unify, problems: ['d2'], bare: true }] }]);
+    expect(unify.count).toBe(1);
+  });
+
+  it('counts the distinct items of a group, not their places', () => {
+    const page = data();
+    const places = (entry) => entry.across.length + entry.untied.length + entry.domains.reduce((sum, domain) => sum + domain.items.length, 0);
+    expect(places(group(page, 'unify'))).toBe(2);
+    expect(group(page, 'unify').count).toBe(1);
+    expect(places(group(page, 'defects'))).toBe(3);
+    expect(group(page, 'defects').count).toBe(3);
+  });
+
+  it('says for each domain of the defects group how many distinct problems of it the category items name, and which with their bold label', () => {
+    const page = data();
+    const at = lines(page);
+    const [first, second] = group(page, 'defects').domains;
+    // D1 is named by two category items and counts once.
     expect(first.covered).toEqual({ count: 1, items: [{ line: at.fixBoth, label: 'display' }, { line: at.again, label: 'security' }] });
     expect(second.covered).toEqual({ count: 1, items: [{ line: at.fixBoth, label: 'display' }] });
   });
 
-  it('puts an item under the heading of a process under that process, in the domain of its first step, with every problem it names', () => {
+  it('has in `items` the text of every item of the groups, and the number of problems the generated section lists', () => {
     const page = data();
     const at = lines(page);
-    expect(page.remedyDomains.domains[0].processes).toEqual([{ id: 'P1', items: [{ line: at.merge, problems: ['d1'] }] }]);
-    expect(page.remedyDomains.items.map((item) => item.line)).toEqual([at.merge, at.fixBoth, at.again, at.simplify, at.note]);
+    expect(page.remedyDomains.items.map((item) => item.line)).toEqual([at.merge, at.fixBoth, at.again, at.unify, at.repair, at.mystery, at.automate]);
     expect(page.remedyDomains.items[0].texts.product).not.toContain(FORM);
     expect(page.remedyDomains.items[0].texts.technical).toContain(FORM);
+    const chapter = page.chapters.find((entry) => entry.id === 'remedies').texts.product.split('\n');
+    expect(page.remedyDomains.generated).toBe(chapter.filter((line) => /^- [DR]\d+ /.test(line)).length);
+    expect(page.remedyDomains.generated).toBeGreaterThan(0);
   });
 
-  it('puts an item with no id in the bucket of the items tied to no domain', () => {
-    const page = data();
-    expect(page.remedyDomains.untied).toEqual([{ line: lines(page).note, problems: [] }]);
-  });
-
-  it('says on each entry of a row where it is: the page of the process, the single anchor of a defect fix, or the item under the domain of the row', () => {
+  it('says on each entry of a row where it is: the page of the process, or the tab with the anchor of the place under the domain of the row', () => {
     const page = data();
     const at = lines(page);
     expect(row(page, 'd1').remedies).toEqual([
-      { heading: 'P1 Order to archive', anchor: `remedy-${at.merge}`, process: 'P1' },
-      { heading: 'Defect fixes', anchor: `remedy-f-${at.fixBoth}` },
-      { heading: 'Defect fixes', anchor: `remedy-f-${at.again}` },
-      { heading: 'To simplify and unify', anchor: `remedy-d1-${at.simplify}`, domain: 'd1' },
+      { heading: 'Order to archive', anchor: `remedy-${at.merge}`, process: 'P1' },
+      { heading: 'Defect fixes', anchor: `remedy-defects-a-${at.fixBoth}`, tab: 'defects' },
+      { heading: 'Defect fixes', anchor: `remedy-defects-a-${at.again}`, tab: 'defects' },
+      { heading: 'To simplify and unify', anchor: `remedy-unify-d1-${at.unify}`, tab: 'unify', domain: 'd1' },
+      { heading: 'To simplify and unify', anchor: `remedy-other-d1-${at.mystery}`, tab: 'other', domain: 'd1' },
     ]);
     expect(row(page, 'd2').remedies).toEqual([
-      { heading: 'Defect fixes', anchor: `remedy-f-${at.fixBoth}` },
-      { heading: 'To simplify and unify', anchor: `remedy-d2-${at.simplify}`, domain: 'd2' },
+      { heading: 'Defect fixes', anchor: `remedy-defects-a-${at.fixBoth}`, tab: 'defects' },
+      { heading: 'To simplify and unify', anchor: `remedy-unify-d2-${at.unify}`, tab: 'unify', domain: 'd2' },
+      { heading: 'To simplify and unify', anchor: `remedy-defects-d2-${at.repair}`, tab: 'defects', domain: 'd2' },
     ]);
   });
 
-  it('has the headings of the new layout in the search index: the domains, their processes and sections, the defect fixes, the untied section', () => {
+  it('has the headings of each tab in the search index, counted the way the page counts them in that tab, with the tab', () => {
     const page = data();
-    const headings = page.search.filter((item) => item.kind === 'heading' && item.chapter === 'remedies').map((item) => [item.title, item.level, item.heading]);
+    const headings = page.search.filter((item) => item.kind === 'heading' && item.chapter === 'remedies').map((item) => [item.title, item.level, item.heading, item.tab]);
     expect(headings).toEqual([
-      ['Order domain', 2, 0], ['Order to archive', 3, 1], ['To simplify and unify', 3, 2],
-      ['Other domain', 2, 3], ['To simplify and unify', 3, 4],
-      ['Defect fixes', 2, 5], ['Not tied to a business domain', 2, 6], ['Problems no measure addresses', 2, 7],
+      ['Order domain - Simplify', 3, 0, 'simplify'],
+      ['Order domain - Unify rules', 3, 0, 'unify'], ['Other domain - Unify rules', 3, 1, 'unify'],
+      ['Not tied to a business domain - Automate', 3, 0, 'automate'],
+      ['Fixes across domains', 3, 0, 'defects'], ['Order domain - Defect fixes', 3, 1, 'defects'], ['Other domain - Defect fixes', 3, 2, 'defects'],
+      ['Order domain - Other measures', 3, 0, 'other'],
+      ['Problems no measure addresses', 2, 0, 'uncovered'],
     ]);
   });
 
-  it('leaves an old output as it was: no domain layout without usable domains or without an id in the chapter, and the entries as before', () => {
+  it('leaves an old output as it was: no tabs without usable domains or without an id in the chapter, and the entries as before', () => {
     const noDomains = dataOf(setup({ chapters: BY_DOMAIN_RUN }));
     expect(noDomains.remedyDomains).toBeNull();
-    expect(row(noDomains, 'd2').remedies.some((link) => Object.hasOwn(link, 'domain'))).toBe(false);
+    expect(row(noDomains, 'd2').remedies.some((link) => Object.hasOwn(link, 'tab'))).toBe(false);
     const oldChapter = dataOf(setup({ chapters: { ...FULL, remedies: OLD_REMEDIES }, domains: DOMAINS }));
     expect(oldChapter.remedyDomains).toBeNull();
     expect(row(oldChapter, 'd1').remedies).toEqual([{ heading: 'Fix security problems', anchor: 'h-0' }]);

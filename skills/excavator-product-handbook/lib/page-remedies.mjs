@@ -1,13 +1,19 @@
 /**
- * The `remedyDomains` key of the page data (openspec change handbook-process-review, design D10, S6c): the items of a remedies chapter
- * that names ids, placed under the business domains they involve, for the improvement suggestions page. An item is a paragraph or list
- * item with its id groups. A D or R id involves the domains of its item's features (the first domain of the page that lists each
- * feature); a P id involves the domain of its process. An item under the level-2 heading of a process is shown under that process
- * (in the process's domain); every other item (the fixed sections of the chapter) is shown under each domain it involves, once, with
- * the problems of that domain only. The items of the section of the defect fixes are the exception: each is in `defectFixes`, once, with every problem it names, and each domain
- * has `covered` (the number of its problems those items name, and the items with their bold label) for a line at the end of its section. An item with no id, or whose ids involve no domain, goes to the `untied` list. The text above the first
- * level-2 heading and the generated section at the end stay in the chapter and are not here. `null` when the chapter names no id, the
- * domains are not usable or there is no chapter, so the page shows the chapter as it is.
+ * The `remedyDomains` key of the page data (openspec change handbook-process-review, design D10, S6e): the items of a remedies chapter
+ * that names ids, in groups by measure type and, inside a group, under the business domains they involve, for the improvement
+ * suggestions page. An item is a paragraph or list item with its id groups. The group comes from the item's leading bold type word,
+ * compared with the run's `chapter.remedies.type.*` texts: `simplify` (merge entrance, remove step, retire old), `unify`, `automate`,
+ * `defects` (every item of the section of the defect fixes, which are the category items, and the type fix) and `other` for a label
+ * that is no type, outside the section of the defect fixes. A D or R id involves the domains of its item's features (the first domain of
+ * the page that lists each feature); a P id involves the domain of its process. An item under the level-2 heading of a process is
+ * shown under that process's domain (its ref has `process`); every other item is shown under each domain it involves, once each, with
+ * the problems of that domain only. The category items of the defect fixes are in `across` of the `defects` group, once, with every
+ * problem they name, and each domain of that group has `covered` (the number of its problems those items name, and the items with their
+ * bold label) for a line at its end. An item with no id, or whose ids involve no domain, goes to the `untied` list of its group. A ref
+ * has `bare` when the item's type word is left out of its text (the group has one type, or the item is a plain fix). `count` is the
+ * number of distinct items of a group. `generated` is the number of problems the generated section at the end lists (null when it
+ * lists none). The text above the first level-2 heading and the generated section stay in the chapter and are not in `items`. `null`
+ * when the chapter names no id, the domains are not usable or there is no chapter, so the page shows the chapter as it is.
  */
 
 import { runNumbers } from './item-numbers.mjs';
@@ -29,7 +35,18 @@ function featureDomains(domains) {
   };
 }
 
-/** `{ items, domains, untied }` or null; see the file comment. `processes` is the page's `processes` key (null without one). */
+/** The groups of the page in order, and the measure types (the end of the key `chapter.remedies.type.<type>`) each holds. */
+export const REMEDY_GROUPS = Object.freeze({
+  simplify: ['merge-entrance', 'remove-step', 'retire-old'],
+  unify: ['unify-rule'],
+  automate: ['automate'],
+  defects: ['fix'],
+  other: [],
+});
+
+const LEADING_BOLD = /^\*\*([^*]+)\*\*/;
+
+/** `{ items, groups, generated }` or null; see the file comment. `processes` is the page's `processes` key (null without one). */
 export function remedyDomainsData(run, views, { domains, processes }) {
   const index = remedyIndex(run, views);
   if (index === null || !index.numbered || domains.state !== 'ok') return null;
@@ -42,78 +59,86 @@ export function remedyDomainsData(run, views, { domains, processes }) {
   const processDomain = new Map((processes?.items ?? []).map((item) => [item.id, item.domain ?? null]));
   const generated = run.ui['chapter.remedies.uncovered'];
   const defectHeading = run.ui['chapter.remedies.defectFixes'];
-  const fixes = [];
   const order = domains.list.map((domain) => domain.id);
-  const slots = new Map(order.map((id) => [id, { processes: new Map(), sections: new Map() }]));
+  // The group of a type word: the one whose types have this text in the run's table.
+  const groupOf = new Map();
+  for (const [group, types] of Object.entries(REMEDY_GROUPS)) for (const type of types) groupOf.set(run.ui[`chapter.remedies.type.${type}`], group);
+  const slots = new Map(Object.keys(REMEDY_GROUPS).map((id) => [id, { across: [], domains: new Map(order.map((domain) => [domain, []])), untied: [], lines: new Set() }]));
   const items = [];
-  const untied = [];
+  let listed = 0;
   for (const item of index.parsed.items) {
-    if (item.section === null || item.section.text === generated) continue;
+    if (item.section === null) continue;
+    if (item.section.text === generated) {
+      if (/^[DR]\d+\s/.test(item.text)) listed += 1;
+      continue;
+    }
     items.push({ line: item.line, texts: viewTexts(item.text, views) });
     const rows = [...new Set(item.ids.flatMap((id) => (rowOf(id) !== null && rowFeatures.has(rowOf(id)) ? [rowOf(id)] : [])))];
+    const label = LEADING_BOLD.exec(item.text)?.[1].trim() ?? '';
+    const category = item.section.text === defectHeading;
+    const group = category ? 'defects' : groupOf.get(label) ?? 'other';
+    const slot = slots.get(group);
+    slot.lines.add(item.line);
+    if (category) { slot.across.push({ line: item.line, problems: rows, label }); continue; }
+    const bare = group === 'unify' || group === 'automate' || group === 'defects' ? { bare: true } : {};
     const process = processSectionId(item.section.text);
     if (process !== null && processDomain.has(process)) {
       const domain = processDomain.get(process);
-      if (domain === null) { untied.push({ line: item.line, problems: rows }); continue; }
-      const slot = slots.get(domain).processes;
-      slot.set(process, [...(slot.get(process) ?? []), { line: item.line, problems: rows }]);
-      continue;
-    }
-    if (item.section.text === defectHeading) {
-      fixes.push({ line: item.line, problems: rows, label: /^\*\*([^*]+)\*\*/.exec(item.text)?.[1].trim() ?? '' });
+      const ref = { line: item.line, problems: rows, process, ...bare };
+      if (domain === null) slot.untied.push(ref);
+      else slot.domains.get(domain).push(ref);
       continue;
     }
     const involved = new Set(item.ids.flatMap((id) => (id.startsWith('P') ? (processDomain.get(id) ?? null) ?? [] : domainsOf(rowFeatures.get(id.toLowerCase()) ?? []))));
-    if (involved.size === 0) { untied.push({ line: item.line, problems: rows }); continue; }
+    if (involved.size === 0) { slot.untied.push({ line: item.line, problems: rows, ...bare }); continue; }
     for (const domain of order.filter((id) => involved.has(id))) {
       const own = rows.filter((row) => domainsOf(rowFeatures.get(row)).includes(domain));
-      const slot = slots.get(domain).sections;
-      slot.set(item.section.text, [...(slot.get(item.section.text) ?? []), { line: item.line, problems: own }]);
+      slot.domains.get(domain).push({ line: item.line, problems: own, ...bare });
     }
   }
-  const processOrder = (processes?.items ?? []).map((item) => item.id);
-  // For each domain: the distinct problems of it that the defect fixes name, and the fixes that name some.
+  // For each domain of the defects group: the distinct problems of it that the category items name, and the items that name some.
   const coveredOf = (id) => {
     const named = new Set();
     const lines = [];
-    for (const fix of fixes) {
+    for (const fix of slots.get('defects').across) {
       const own = fix.problems.filter((row) => domainsOf(rowFeatures.get(row)).includes(id));
       own.forEach((row) => named.add(row));
       if (own.length > 0) lines.push({ line: fix.line, label: fix.label });
     }
     return named.size === 0 ? null : { count: named.size, items: lines };
   };
-  const used = order.flatMap((id) => {
+  const groups = Object.keys(REMEDY_GROUPS).flatMap((id) => {
     const slot = slots.get(id);
-    const covered = coveredOf(id);
-    if (slot.processes.size === 0 && slot.sections.size === 0 && covered === null) return [];
-    return [{
-      id,
-      ...(covered === null ? {} : { covered }),
-      processes: processOrder.filter((process) => slot.processes.has(process)).map((process) => ({ id: process, items: slot.processes.get(process) })),
-      sections: [...slot.sections].map(([heading, list]) => ({ heading, items: list })),
-    }];
+    if (slot.lines.size === 0) return [];
+    const domainList = order.flatMap((domain) => {
+      const refs = slot.domains.get(domain);
+      const covered = id === 'defects' ? coveredOf(domain) : null;
+      return refs.length === 0 && covered === null ? [] : [{ id: domain, items: refs, ...(covered === null ? {} : { covered }) }];
+    });
+    return [{ id, count: slot.lines.size, across: slot.across.map(({ line, problems }) => ({ line, problems })), domains: domainList, untied: slot.untied }];
   });
-  return { items, domains: used, defectFixes: fixes.length === 0 ? null : { heading: defectHeading, items: fixes.map(({ line, problems }) => ({ line, problems })) }, untied };
+  return { items, groups, generated: listed === 0 ? null : listed };
 }
 
 /**
- * `(line, features) => { anchor, domain? } | null`: where the item that starts on `line` is shown for a row with `features`: under the
- * first domain (in the page's order) of the row's features that has it, else under the first domain that has it, else among the
- * items tied to no domain. The anchor is `remedy-<domain>-<line>` (`remedy-f-<line>` for a defect fix, `remedy-u-<line>` for those tied to no domain), unique per place.
+ * `(line, features) => { anchor, tab, domain? } | null`: where the item that starts on `line` is shown for a row with `features`: in
+ * its group's tab, among the category items (`across`) of the defect fixes, else under the first domain (in the page's order) of the
+ * row's features that has it, else under the first domain that has it, else among the items tied to no domain. The anchor is
+ * `remedy-<group>-<domain>-<line>` (`a` for the category items, `u` for those tied to no domain), unique per tab, place and item.
  */
 export function remedyPlacer(data, domains) {
   if (data === null) return null;
   const domainsOf = featureDomains(domains);
-  const has = (domain, line) => domain.processes.some((process) => process.items.some((item) => item.line === line)) || domain.sections.some((section) => section.items.some((item) => item.line === line));
   return (line, features) => {
-    // A defect fix is in one place, its section; the anchor is `remedy-f-<line>`.
-    if (data.defectFixes?.items.some((item) => item.line === line) === true) return { anchor: `remedy-f-${line}` };
-    const candidates = [...domainsOf(features), ...data.domains.map((domain) => domain.id)];
+    const group = data.groups.find((entry) => entry.across.some((item) => item.line === line) || entry.untied.some((item) => item.line === line) || entry.domains.some((domain) => domain.items.some((item) => item.line === line)));
+    if (group === undefined) return null;
+    if (group.across.some((item) => item.line === line)) return { anchor: `remedy-${group.id}-a-${line}`, tab: group.id };
+    const has = (domain) => domain.items.some((item) => item.line === line);
+    const candidates = [...domainsOf(features), ...group.domains.map((domain) => domain.id)];
     for (const id of candidates) {
-      const domain = data.domains.find((entry) => entry.id === id);
-      if (domain !== undefined && has(domain, line)) return { anchor: `remedy-${id}-${line}`, domain: id };
+      const domain = group.domains.find((entry) => entry.id === id);
+      if (domain !== undefined && has(domain)) return { anchor: `remedy-${group.id}-${id}-${line}`, tab: group.id, domain: id };
     }
-    return data.untied.some((item) => item.line === line) ? { anchor: `remedy-u-${line}` } : null;
+    return { anchor: `remedy-${group.id}-u-${line}`, tab: group.id };
   };
 }
