@@ -5,8 +5,7 @@ import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { graphHeaderLine } from '../excavator-prd-report/helpers.mjs';
-import { FIXTURE_PROJECT, runHandbook } from './helpers.mjs';
+import { FIXTURE_PROJECT, graphHeaderLine, runHandbook } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {

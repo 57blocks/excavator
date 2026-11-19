@@ -172,3 +172,55 @@ export function set(object, path, value) {
 }
 
 export { clone };
+
+export const CATALOG_PATH = join(repoRoot, 'skills/excavator-product-handbook/lib/entrypoint-catalog.json');
+export const ENTRYPOINT_FIXTURES = join(repoRoot, 'tests/fixtures/entrypoints');
+
+/** Run `handbook.mjs candidates <args>`; adds `json` (null when stdout is not JSON). */
+export function runCandidates(args, options = {}) {
+  const out = runHandbook(['candidates', ...args], options);
+  let json = null;
+  try {
+    json = JSON.parse(out.stdout);
+  } catch {
+    json = null;
+  }
+  return { ...out, json };
+}
+
+/** A fresh temp directory (realpath'd so path comparisons hold on macOS); returns { root, cleanup }. */
+export function makeTempDir(prefix = 'xhb-') {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
+
+/** Copy a committed entrypoint fixture project into `dest` (created when missing). */
+export function copyFixture(name, dest) {
+  mkdirSync(dest, { recursive: true });
+  cpSync(join(ENTRYPOINT_FIXTURES, name), dest, { recursive: true });
+  return dest;
+}
+
+/** Write `files` ({ relPath: text }) under `root`, creating directories. */
+export function writeFiles(root, files) {
+  for (const [rel, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, rel)), { recursive: true });
+    writeFileSync(join(root, rel), text);
+  }
+}
+
+/** A knowledge-graph header line naming `frameworks`, in the line-store layout. */
+export function graphHeaderLine(frameworks) {
+  return `${JSON.stringify({
+    record: 'header',
+    format: 'excavator-knowledge-graph-lines/1',
+    keys: ['version', 'project', 'nodes', 'edges'],
+    fields: { version: '1', project: { name: 'synthetic', languages: [], frameworks } },
+    counts: { nodes: 0, edges: 0 },
+  })}\n`;
+}
+
+/** Each candidate as `file:line kind framework`, the form the tests compare. */
+export function itemKeys(items) {
+  return items.map((item) => `${item.file}:${item.line} ${item.kind} ${item.framework}`);
+}

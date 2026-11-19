@@ -17,9 +17,6 @@ const nameOf = (path) => path.slice(path.lastIndexOf('/') + 1);
 /** The model of a run that has no usable history file (`state` says why). */
 const withoutFile = (state) => ({ state, noHistory: null, years: [], apps: [], hotspots: [], coChange: [], tests: [], conventions: TEST_CONVENTIONS.map((convention) => convention.id) });
 
-/** The model of an output that was given none (an older caller): the file was not written. */
-export const NO_HISTORY_FILE = Object.freeze(withoutFile('missing'));
-
 /**
  * `{ state, noHistory, years, apps, hotspots, coChange, tests, conventions }`. `state` is `ok`, `missing` or `malformed`. `hotspots` rows
  * carry `name` (the file name) beside `path`, `coChange` rows the name and the application of each file (null for a file in none).

@@ -215,10 +215,10 @@ done
 - A skopo mode first builds the facts (`lazy`, no model call) when `.excavator/` is missing or stale, so `/work/repo` must be writable as for `full`.
 - The skills write only to `/work/out/skopo`: `run/` (the plan, the research reports, the questions, the notes, the lint passes and `metrics.json`), `skopo/` (the skopository; never locked by a run) and `report/` (`report.md` and `report.html`, a page that opens from disk).
 
-Other Excavator skills (for example `/excavator-prd-report`) run with Claude Code as the entrypoint, against a repository that already has Lazy products:
+Other Excavator skills (for example `/excavator-product-handbook`) run with Claude Code as the entrypoint, against a repository that already has Lazy products:
 
 ```sh
-docker run -d --name prd-<name> \
+docker run -d --name handbook-<name> \
   -v /srv/excavator/<name>:/work/repo \
   -v /srv/excavator/out/<name>:/work/out \
   -e AWS_REGION=eu-central-1 \
@@ -227,16 +227,14 @@ docker run -d --name prd-<name> \
   -e ANTHROPIC_DEFAULT_SONNET_MODEL=<PROFILE> \
   -e ANTHROPIC_DEFAULT_HAIKU_MODEL=<PROFILE> \
   --entrypoint claude excavator-runner:<TAG> \
-  -p "/excavator:excavator-prd-report /work/repo --scope <subdir> --language <lang> --out /work/out/prd-report --concurrency 3" \
+  -p "/excavator:excavator-product-handbook /work/repo --language <lang> --out /work/out/product-handbook --concurrency 3" \
   --plugin-dir /opt/excavator --setting-sources user --settings '{"disableAllHooks": true}' \
   --model <PROFILE> --permission-mode bypassPermissions --permission-prompts none \
   --max-budget-usd <USD> --no-session-persistence --output-format stream-json --verbose
-docker logs -f prd-<name> > /srv/excavator/out/<name>/run.jsonl    # or: docker wait prd-<name>
+docker logs -f handbook-<name> > /srv/excavator/out/<name>/run.jsonl    # or: docker wait handbook-<name>
 ```
 
-`/excavator-prd-report` writes only to `--out` (default `<repo>/.excavator/prd-report/`): `index.json` (the entrypoints and the features they are grouped into), one chapter and one findings file per feature, the verification reports, the assembled `PRD.md` and `report.html` (the report page: one self-contained file built from a template that `pnpm -r build` writes to `packages/prd-report-page/dist/`, which the image's build stage already runs). It never runs `/excavator` or rebuilds the facts in `.excavator/`. Each feature is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: verified features are kept and the rest are finished; `--fresh` starts over.
-
-`/excavator-product-handbook` runs the same way (swap the prompt for `/excavator:excavator-product-handbook /work/repo --language <lang> --out /work/out/product-handbook --concurrency 3`; `--features "<ids or names>"` writes entries for only those features). It writes only to `--out` (default `<repo>/.excavator/product-handbook/`): the entrypoint candidates, the product map, one entry per feature, the run state, the assembled `handbook.md` and `handbook.html` (one self-contained page built from a template that `pnpm -r build` writes to `packages/product-handbook-page/dist/`, which the image's build stage already runs). It never runs `/excavator`, rebuilds the facts in `.excavator/` or builds the target project. Each feature entry is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: checked entries are kept and the rest are finished; `--fresh` starts over.
+`/excavator-product-handbook` writes only to `--out` (`--features "<ids or names>"` writes entries for only those features) (default `<repo>/.excavator/product-handbook/`): the entrypoint candidates, the product map, one entry per feature, the run state, the assembled `handbook.md` and `handbook.html` (one self-contained page built from a template that `pnpm -r build` writes to `packages/product-handbook-page/dist/`, which the image's build stage already runs). It never runs `/excavator`, rebuilds the facts in `.excavator/` or builds the target project. Each feature entry is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: checked entries are kept and the rest are finished; `--fresh` starts over.
 
 Run long jobs detached (`docker run -d`) so they do not depend on an interactive Session Manager session.
 
