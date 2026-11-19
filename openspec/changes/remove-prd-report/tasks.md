@@ -21,6 +21,10 @@
 - [x] 4.1 `listEntrypoints` 去掉 `useGraph` 与读头行的代码，输出保持 O1；`candidates.mjs` 与 `run-precision.test.mjs` 不再传 `useGraph`
 - [x] 4.2 删除只测知识图头行的用例，记下用例名（O3）：迁移时（commit 2）没有带过来的两个是「puts a framework the catalog has no patterns for in uncovered, with no candidates」与「reads the frameworks from the knowledge-graph header when there is one」；手册「从不读知识图」的 D10 用例保留
 
-## 5. 收尾检查
+## 5. 删掉无效的 lint 脚本（commit 5）
 
-- [ ] 5.1 O2 的全仓 grep 符合预期；O4 全部检查通过
+- [x] 5.1 根 `package.json` 删 `lint` 脚本与 `eslint`、`@eslint/js`、`typescript-eslint`、`globals`，`pnpm install` 更新锁文件；删前确认 `pnpm run lint` 因没有配置文件而失败、仓库里没有别处引用这四个包
+
+## 6. 收尾检查
+
+- [ ] 6.1 O2 的全仓 grep 符合预期；O4 全部检查通过

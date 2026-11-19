@@ -15,6 +15,7 @@
 - 入口清单模块去掉 `useGraph` 选项与读知识图的代码；手册 `candidates` 的输出逐字节不变。
 - 其余提到 `prd-report` 的地方改掉：README、`docs/deploy.md`、安装测试与 service-only 合约测试。
 - `openspec/specs/prd-report/` 整个能力移除。归档的变更与其他活跃变更里的历史提及不改。
+- 顺带清理：根 `package.json` 的 `lint` 脚本（`eslint .`）从来没有配置文件，一跑就失败，CI 也不跑它；删掉这个脚本和只为它装的 `eslint`、`@eslint/js`、`typescript-eslint`、`globals` 四个开发依赖。
 
 ## Capabilities
 
