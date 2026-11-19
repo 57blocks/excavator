@@ -232,7 +232,8 @@ describe('comparison batches', () => {
     const dir = join(run.out, 'entries', 'review');
     for (const name of ['c-data-1.json', 'c-data-2.json', 'c-data-2.verdicts.json', 'c-data-3.json', 'c-data-3.unpruned.json', 'c-data-3.verdicts.json', 'b1.json', 'b9.json']) put(join(dir, name), { items: [] });
     put(join(run.out, 'entries', 'review-removed.json'), { removed: [{ batch: 'cross' }] });
-    manyMismatches(run, 1);
+    // 25 mismatches keep c-data-1 as it was; c-data-2 now holds only the two tables.
+    manyMismatches(run, 25);
     const result = run.result();
     expect(existsSync(join(dir, 'c-data-2.json'))).toBe(false);
     expect(existsSync(join(dir, 'c-data-2.verdicts.json'))).toBe(false);
@@ -240,6 +241,33 @@ describe('comparison batches', () => {
     for (const name of ['c-data-1.json', 'b1.json', 'b9.json']) expect(existsSync(join(dir, name)), name).toBe(true);
     expect(result.lines).toContain('Removed stale comparison batch files: c-data-2.json, c-data-2.verdicts.json, c-data-3.json, c-data-3.unpruned.json, c-data-3.verdicts.json');
     expect(existsSync(join(run.out, 'entries', 'review-removed.json'))).toBe(true);
+  });
+
+  it('keeps the files of a batch whose candidates are unchanged and removes those of a batch whose candidates changed', () => {
+    const run = make();
+    manyMismatches(run, 27);
+    run.result();
+    const dir = join(run.out, 'entries', 'review');
+    for (const name of ['c-data-1.json', 'c-data-1.verdicts.json', 'c-data-2.json']) put(join(dir, name), { items: [] });
+    const again = run.result();
+    for (const name of ['c-data-1.json', 'c-data-1.verdicts.json', 'c-data-2.json']) expect(existsSync(join(dir, name)), name).toBe(true);
+    expect(again.lines.some((line) => line.startsWith('Removed stale comparison batch files'))).toBe(false);
+    const file = JSON.parse(readFileSync(join(run.out, 'dictionaries.json'), 'utf-8'));
+    file.mismatches[1] = { ...file.mismatches[1], key: 'k1-renamed' };
+    put(join(run.out, 'dictionaries.json'), file);
+    const changed = run.result();
+    expect(run.read().candidates.filter((entry) => entry.batch === 'c-data-1')).toHaveLength(25);
+    expect(changed.lines).toContain('Removed stale comparison batch files: c-data-1.json, c-data-1.verdicts.json');
+    expect(existsSync(join(dir, 'c-data-2.json'))).toBe(true);
+  });
+
+  it('removes every c-* batch file when the previous candidates file is unreadable', () => {
+    const run = make();
+    run.result();
+    const dir = join(run.out, 'entries', 'review');
+    put(join(dir, 'c-data-1.json'), { items: [] });
+    put(join(run.out, 'entries', 'review-compare.json'), '{ nope');
+    expect(run.result().lines).toContain('Removed stale comparison batch files: c-data-1.json');
   });
 });
 

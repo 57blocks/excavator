@@ -240,9 +240,12 @@ export function reviewCompare(outDir, projectRoot) {
     for (const found of result.candidates) candidates.push({ id: `X${candidates.length + 1}`, source, features: found.features, batch: found.batch, facts: found.facts, places: found.places });
   }
   assignCompareBatches(candidates);
+  const before = batchContents(readJson(join(outDir, COMPARE_FILE)));
   mkdirSync(join(outDir, 'entries'), { recursive: true });
   writeJson(join(outDir, COMPARE_FILE), { format: COMPARE_FORMAT, sources, candidates });
-  const stale = removeStaleBatchFiles(outDir, new Set(compareBatches(outDir).map((batch) => batch.id)));
+  // Candidate ids are positions and every run numbers them again, so a batch keeps its files only when it holds the same candidates.
+  const after = batchContents({ ok: true, value: { candidates } });
+  const stale = removeStaleBatchFiles(outDir, new Set([...after].filter(([id, content]) => before.get(id) === content).map(([id]) => id)));
   if (stale.length > 0) lines.push(`Removed stale comparison batch files: ${stale.join(', ')}`);
   for (const candidate of candidates) lines.push(candidateLine(candidate));
   return { status: 0, lines };
@@ -264,6 +267,23 @@ export function compareBatches(outDir) {
   const ids = new Set(read.value.candidates.filter((candidate) => isObject(candidate) && typeof candidate.batch === 'string' && COMPARE_BATCH_ID.test(candidate.batch)).map((candidate) => candidate.batch));
   const rank = (id) => { const [, group, number] = COMPARE_BATCH_ID.exec(id); return [COMPARE_GROUPS.findIndex(([name]) => name === group), Number(number)]; };
   return [...ids].sort((x, y) => rank(x)[0] - rank(y)[0] || rank(x)[1] - rank(y)[1]).map((id) => ({ id, name: id, features: [], compare: true }));
+}
+
+/**
+ * Batch id -> the JSON text of its candidates, in order, from a read of the candidates file; an empty map when the read
+ * failed or is not a candidates file, so that every batch file then counts as stale.
+ */
+function batchContents(read) {
+  const contents = new Map();
+  if (!read.ok || !isObject(read.value) || !Array.isArray(read.value.candidates)) return contents;
+  const members = new Map();
+  for (const candidate of read.value.candidates) {
+    if (!isObject(candidate) || typeof candidate.batch !== 'string' || !COMPARE_BATCH_ID.test(candidate.batch)) continue;
+    if (!members.has(candidate.batch)) members.set(candidate.batch, []);
+    members.get(candidate.batch).push(candidate);
+  }
+  for (const [id, list] of members) contents.set(id, JSON.stringify(list));
+  return contents;
 }
 
 /** Deletes entries/review/c-*.json files (batch, unpruned, verdicts) whose batch id is not in `keep`; returns their names. */

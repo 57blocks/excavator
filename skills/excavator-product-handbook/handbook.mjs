@@ -134,8 +134,8 @@ Commands:
       counted and skipped) and code shared across batches. A source whose artifact is missing is printed as not computed
       with its reason. Each candidate records its batch (two implementations: the domain batch of its feature; the others:
       c-data-<n>, c-topics-<n> or c-code-<n>, at most 25 candidates each) and its places (file and line range). Writes
-      <out>/entries/review-compare.json, deletes the c-* batch files whose batch no longer exists, and prints SOURCE,
-      SKIPPED and CANDIDATE lines.
+      <out>/entries/review-compare.json, deletes the c-* batch files whose batch no longer exists or holds other
+      candidates than before, and prints SOURCE, SKIPPED and CANDIDATE lines.
   review candidates <out> <batch>
       The CANDIDATE lines of one batch, read from <out>/entries/review-compare.json alone, in the format of compare-facts;
       one line "none" when the batch has none, or "none: <reason>" when the file is missing or does not parse.
