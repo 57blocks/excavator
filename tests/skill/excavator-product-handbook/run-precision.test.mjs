@@ -136,7 +136,7 @@ describe('D4, D6: the notes of a chapter', () => {
 describe('D7: comment lines are no entrypoint candidates', () => {
   const listed = async (code) => {
     const root = project({ 'package.json': '{"dependencies":{"express":"4"}}\n', 'src/app.js': code });
-    const listing = await listEntrypoints(root, { useGraph: false });
+    const listing = await listEntrypoints(root);
     return listing.items.map((item) => `${item.line}`);
   };
   it('a real route is a candidate; the same text after //, /* or * is not', async () => {

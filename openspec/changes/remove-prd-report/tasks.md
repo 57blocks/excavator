@@ -18,8 +18,8 @@
 
 ## 4. 去掉读知识图的分支（commit 4）
 
-- [ ] 4.1 `listEntrypoints` 去掉 `useGraph` 与读头行的代码，输出保持 O1
-- [ ] 4.2 删除只测知识图头行的用例，记下用例名（O3）
+- [x] 4.1 `listEntrypoints` 去掉 `useGraph` 与读头行的代码，输出保持 O1；`candidates.mjs` 与 `run-precision.test.mjs` 不再传 `useGraph`
+- [x] 4.2 删除只测知识图头行的用例，记下用例名（O3）：迁移时（commit 2）没有带过来的两个是「puts a framework the catalog has no patterns for in uncovered, with no candidates」与「reads the frameworks from the knowledge-graph header when there is one」；手册「从不读知识图」的 D10 用例保留
 
 ## 5. 收尾检查
 
