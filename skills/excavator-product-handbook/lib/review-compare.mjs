@@ -12,6 +12,7 @@ import { isUnder, scanProject } from './applications.mjs';
 import { NO_APPLICATION } from './data-files.mjs';
 import { sectionItems } from './defects-items.mjs';
 import { isObject, readJson, writeJson } from './json-file.mjs';
+import { rebindBatchFiles } from './review-candidate-rebind.mjs';
 import { citedRanges, computeFacts } from './review-facts.mjs';
 import { FACTS_FILE } from './review-batches.mjs';
 import { loadUi } from './ui.mjs';
@@ -240,13 +241,18 @@ export function reviewCompare(outDir, projectRoot) {
     for (const found of result.candidates) candidates.push({ id: `X${candidates.length + 1}`, source, features: found.features, batch: found.batch, facts: found.facts, places: found.places });
   }
   assignCompareBatches(candidates);
-  const before = batchContents(readJson(join(outDir, COMPARE_FILE)));
+  const previousRead = readJson(join(outDir, COMPARE_FILE));
+  const before = batchContents(previousRead);
+  const previous = previousRead.ok && isObject(previousRead.value) && Array.isArray(previousRead.value.candidates) ? previousRead.value.candidates : null;
   mkdirSync(join(outDir, 'entries'), { recursive: true });
   writeJson(join(outDir, COMPARE_FILE), { format: COMPARE_FORMAT, sources, candidates });
   // Candidate ids are positions and every run numbers them again, so a batch keeps its files only when it holds the same candidates.
   const after = batchContents({ ok: true, value: { candidates } });
   const stale = removeStaleBatchFiles(outDir, new Set([...after].filter(([id, content]) => before.get(id) === content).map(([id]) => id)));
   if (stale.length > 0) lines.push(`Removed stale comparison batch files: ${stale.join(', ')}`);
+  // A domain batch file also holds the review of its features, so its candidate ids are rewritten instead.
+  const rebound = rebindBatchFiles(outDir, previous, candidates);
+  if (rebound.length > 0) lines.push(`Rewrote comparison candidate ids in batch files: ${rebound.map((entry) => `${entry.name} (${entry.renamed} renamed, ${entry.dropped} dropped)`).join(', ')}`);
   for (const candidate of candidates) lines.push(candidateLine(candidate));
   return { status: 0, lines };
 }

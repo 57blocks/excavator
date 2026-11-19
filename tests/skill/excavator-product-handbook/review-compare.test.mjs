@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { compareBatches } from '../../../skills/excavator-product-handbook/lib/review-compare.mjs';
+import { rebindBatchFiles } from '../../../skills/excavator-product-handbook/lib/review-candidate-rebind.mjs';
 import { runHandbook } from './helpers.mjs';
 
 const bases = [];
@@ -259,6 +260,72 @@ describe('comparison batches', () => {
     expect(run.read().candidates.filter((entry) => entry.batch === 'c-data-1')).toHaveLength(25);
     expect(changed.lines).toContain('Removed stale comparison batch files: c-data-1.json, c-data-1.verdicts.json');
     expect(existsSync(join(dir, 'c-data-2.json'))).toBe(true);
+  });
+
+  describe('the candidate ids of a domain batch file', () => {
+    const setCandidates = (run, edits) => {
+      const map = JSON.parse(readFileSync(join(run.out, 'map.json'), 'utf-8'));
+      for (const feature of map.features) if (edits[feature.id] !== undefined) feature.candidates = edits[feature.id];
+      put(join(run.out, 'map.json'), map);
+    };
+    const dualOf = (run, feature) => run.read().candidates.find((entry) => entry.source === 'dual' && entry.features[0] === feature);
+    const reviewed = (ids) => ({ items: [{ title: 'Two forms', candidates: ids.items }, { title: 'No candidates' }], dismissed: ids.dismissed.map((candidate) => ({ candidate, reason: 'intended' })) });
+
+    it('follow their candidates when an earlier candidate goes, and drop a candidate that is gone', () => {
+      const run = make();
+      // F2 also gets a route in apps/old, so F1 and F2 both have two implementations, in domain batch b1.
+      setCandidates(run, { F2: ['r1', 'r3', 'r4'] });
+      run.result();
+      const [f1, f2] = [dualOf(run, 'F1'), dualOf(run, 'F2')];
+      expect([f1.id, f2.id, f1.batch, f2.batch]).toEqual(['X1', 'X2', 'b1', 'b1']);
+      const dir = join(run.out, 'entries', 'review');
+      put(join(dir, 'b1.json'), reviewed({ items: ['X2'], dismissed: ['X1'] }));
+      put(join(dir, 'b1.unpruned.json'), reviewed({ items: ['X2', 'X1'], dismissed: [] }));
+      put(join(dir, 'b1.verdicts.json'), { verdicts: ['X1'] });
+      const unchanged = run.result();
+      expect(unchanged.lines.some((line) => line.startsWith('Rewrote comparison candidate ids'))).toBe(false);
+      // F1 loses its route in apps/new: its candidate goes, F2's becomes X1 and every later id moves down by one.
+      setCandidates(run, { F1: ['r1', 'j1'] });
+      const changed = run.result();
+      expect(dualOf(run, 'F1')).toBeUndefined();
+      expect(dualOf(run, 'F2').id).toBe('X1');
+      expect(changed.lines).toContain('Rewrote comparison candidate ids in batch files: b1.json (1 renamed, 1 dropped), b1.unpruned.json (1 renamed, 1 dropped)');
+      const read = (name) => JSON.parse(readFileSync(join(dir, name), 'utf-8'));
+      expect(read('b1.json')).toEqual({ items: [{ title: 'Two forms', candidates: ['X1'] }, { title: 'No candidates' }], dismissed: [] });
+      expect(read('b1.unpruned.json').items[0]).toEqual({ title: 'Two forms', candidates: ['X1'] });
+      expect(read('b1.verdicts.json')).toEqual({ verdicts: ['X1'] });
+    });
+
+    it('drops an item\'s candidates key when none is left, and every id when the previous candidates file is unreadable', () => {
+      const run = make();
+      run.result();
+      const dir = join(run.out, 'entries', 'review');
+      put(join(dir, 'b1.json'), reviewed({ items: ['X1'], dismissed: [] }));
+      put(join(run.out, 'entries', 'review-compare.json'), '{ nope');
+      expect(run.result().lines).toContain('Rewrote comparison candidate ids in batch files: b1.json (0 renamed, 1 dropped)');
+      expect(JSON.parse(readFileSync(join(dir, 'b1.json'), 'utf-8')).items[0]).toEqual({ title: 'Two forms' });
+    });
+  });
+
+  it('rebindBatchFiles drops an id whose candidate moved to another batch, pairs equal candidates in order, and leaves c-* files and already wrong ids alone', () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), 'xhb-rebind-')));
+    bases.push(base);
+    const dir = join(base, 'entries', 'review');
+    const same = { source: 'dual', features: ['F1'], facts: {}, places: [] };
+    const previous = [{ id: 'X1', batch: 'b1', ...same }, { id: 'X2', batch: 'b1', ...same }, { id: 'X3', batch: 'b1', source: 'dual', features: ['F2'], facts: {}, places: [] }];
+    const candidates = [{ id: 'X1', batch: 'b2', source: 'dual', features: ['F2'], facts: {}, places: [] }, { id: 'X2', batch: 'b1', ...same }, { id: 'X3', batch: 'b1', ...same }];
+    put(join(dir, 'b1.json'), { items: [{ candidates: ['X1', 'X2', 'X3', null] }], dismissed: [{ candidate: null, reason: 'intended' }] });
+    put(join(dir, 'c-data-1.json'), { items: [{ candidates: ['X1'] }] });
+    // Ids that were already wrong (another batch's candidate, an unknown id) are left for the batch check to report.
+    put(join(dir, 'p1.json'), { items: [{ candidates: ['X1'] }] });
+    put(join(dir, 'b9.json'), { items: [{ candidates: ['X3', 'X7'] }], dismissed: [{ candidate: 'X2', reason: 'intended' }] });
+    expect(rebindBatchFiles(base, previous, candidates)).toEqual([{ name: 'b1.json', renamed: 2, dropped: 1 }]);
+    const read = (name) => JSON.parse(readFileSync(join(dir, name), 'utf-8'));
+    // A null id is not a string: the rewrite keeps it, for the batch check to refuse.
+    expect(read('b1.json')).toEqual({ items: [{ candidates: ['X2', 'X3', null] }], dismissed: [{ candidate: null, reason: 'intended' }] });
+    expect(read('c-data-1.json').items[0].candidates).toEqual(['X1']);
+    expect(read('p1.json').items[0].candidates).toEqual(['X1']);
+    expect(read('b9.json')).toEqual({ items: [{ candidates: ['X3', 'X7'] }], dismissed: [{ candidate: 'X2', reason: 'intended' }] });
   });
 
   it('removes every c-* batch file when the previous candidates file is unreadable', () => {
