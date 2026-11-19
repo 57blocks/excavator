@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { citationGroups, parseSpec, specKey } from './chapter-cites.mjs';
-import { writeJson } from './json-file.mjs';
+import { readJson, writeJson } from './json-file.mjs';
 import { FACTS_FILE, FACTS_FORMAT, reviewBatches } from './review-batches.mjs';
 import { assignProcessBatches } from './review-processes.mjs';
 import { chapterCounts } from './review-structure.mjs';
@@ -104,8 +104,9 @@ export function computeFacts(outDir) {
   const features = {};
   const ranges = new Map();
   // Every run writes candidates.json first; without it no step has a side and none is counted as a server step.
-  const candidatesPath = join(outDir, 'candidates.json');
-  const sides = existsSync(candidatesPath) ? directorySides(JSON.parse(readFileSync(candidatesPath, 'utf-8'))) : new Map();
+  const candidates = readJson(join(outDir, 'candidates.json'));
+  if (!candidates.ok && !candidates.missing) return { ok: false, lines: [`candidates.json ${candidates.reason}; write it again with handbook.mjs candidates`] };
+  const sides = candidates.ok ? directorySides(candidates.value) : new Map();
   for (const feature of batched.map.features) {
     const path = join(outDir, 'chapters', `${feature.id}.md`);
     if (!existsSync(path)) {

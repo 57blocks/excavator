@@ -131,6 +131,15 @@ describe('review facts', () => {
     expect(result.lines).toEqual(['map.json is missing or has no features; write and check the map first']);
   });
 
+  it('says candidates.json is not valid JSON, and writes nothing', () => {
+    const run = reviewRun(cleanups);
+    writeFileSync(join(run.out, 'candidates.json'), '{ nope');
+    const result = run.facts();
+    expect(result.status).toBe(1);
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toMatch(/^candidates\.json is not valid JSON \(.*\); write it again with handbook\.mjs candidates$/);
+  });
+
   it('a feature without a chapter is listed as missing', () => {
     const run = reviewRun(cleanups);
     writeFileSync(join(run.out, 'chapters', 'F3.md'), '');
