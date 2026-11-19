@@ -314,14 +314,15 @@ describe('comparison batches', () => {
     const same = { source: 'dual', features: ['F1'], facts: {}, places: [] };
     const previous = [{ id: 'X1', batch: 'b1', ...same }, { id: 'X2', batch: 'b1', ...same }, { id: 'X3', batch: 'b1', source: 'dual', features: ['F2'], facts: {}, places: [] }];
     const candidates = [{ id: 'X1', batch: 'b2', source: 'dual', features: ['F2'], facts: {}, places: [] }, { id: 'X2', batch: 'b1', ...same }, { id: 'X3', batch: 'b1', ...same }];
-    put(join(dir, 'b1.json'), { items: [{ candidates: ['X1', 'X2', 'X3'] }] });
+    put(join(dir, 'b1.json'), { items: [{ candidates: ['X1', 'X2', 'X3', null] }], dismissed: [{ candidate: null, reason: 'intended' }] });
     put(join(dir, 'c-data-1.json'), { items: [{ candidates: ['X1'] }] });
     // Ids that were already wrong (another batch's candidate, an unknown id) are left for the batch check to report.
     put(join(dir, 'p1.json'), { items: [{ candidates: ['X1'] }] });
     put(join(dir, 'b9.json'), { items: [{ candidates: ['X3', 'X7'] }], dismissed: [{ candidate: 'X2', reason: 'intended' }] });
     expect(rebindBatchFiles(base, previous, candidates)).toEqual([{ name: 'b1.json', renamed: 2, dropped: 1 }]);
     const read = (name) => JSON.parse(readFileSync(join(dir, name), 'utf-8'));
-    expect(read('b1.json').items[0].candidates).toEqual(['X2', 'X3']);
+    // A null id is not a string: the rewrite keeps it, for the batch check to refuse.
+    expect(read('b1.json')).toEqual({ items: [{ candidates: ['X2', 'X3', null] }], dismissed: [{ candidate: null, reason: 'intended' }] });
     expect(read('c-data-1.json').items[0].candidates).toEqual(['X1']);
     expect(read('p1.json').items[0].candidates).toEqual(['X1']);
     expect(read('b9.json')).toEqual({ items: [{ candidates: ['X3', 'X7'] }], dismissed: [{ candidate: 'X2', reason: 'intended' }] });

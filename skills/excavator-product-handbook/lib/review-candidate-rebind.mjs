@@ -15,6 +15,9 @@ import { join } from 'node:path';
 
 import { isObject, readJson, writeJson } from './json-file.mjs';
 
+/** What `rebind` returns for an id it drops; every other value, null included, stays in the file. */
+const DROP = Symbol('drop');
+
 /** What a candidate is, without its id and batch. */
 const keyOf = (candidate) => JSON.stringify([candidate.source, candidate.features, candidate.facts, candidate.places]);
 
@@ -54,16 +57,16 @@ export function rebindBatchFiles(outDir, previous, candidates) {
     if (!read.ok || !isObject(read.value)) continue;
     let renamed = 0;
     let dropped = 0;
-    /** The new id of `id`, or null when it is dropped; a value that is not a string is left for the batch check. */
+    /** The new id of `id`, or DROP; a value that is not a string is left for the batch check. */
     const rebind = (id) => {
       if (typeof id !== 'string') return id;
-      let next = null;
+      let next = DROP;
       if (previous !== null) {
         const rename = renames.get(id);
         if (rename === undefined || rename.batch !== batch) return id;
-        next = rename.next !== null && rename.next.batch === batch ? rename.next.id : null;
+        if (rename.next !== null && rename.next.batch === batch) next = rename.next.id;
       }
-      if (next === null) dropped += 1;
+      if (next === DROP) dropped += 1;
       else if (next !== id) renamed += 1;
       return next;
     };
@@ -71,7 +74,7 @@ export function rebindBatchFiles(outDir, previous, candidates) {
     if (Array.isArray(value.items)) {
       value.items = value.items.map((item) => {
         if (!isObject(item) || !Array.isArray(item.candidates)) return item;
-        const list = item.candidates.map(rebind).filter((id) => id !== null);
+        const list = item.candidates.map(rebind).filter((id) => id !== DROP);
         if (list.length > 0 || item.candidates.length === 0) return { ...item, candidates: list };
         const { candidates: _gone, ...rest } = item;
         return rest;
@@ -80,7 +83,7 @@ export function rebindBatchFiles(outDir, previous, candidates) {
     if (Array.isArray(value.dismissed)) {
       value.dismissed = value.dismissed
         .map((entry) => (isObject(entry) && Object.hasOwn(entry, 'candidate') ? { ...entry, candidate: rebind(entry.candidate) } : entry))
-        .filter((entry) => !isObject(entry) || entry.candidate !== null);
+        .filter((entry) => !isObject(entry) || entry.candidate !== DROP);
     }
     if (renamed === 0 && dropped === 0) continue;
     writeJson(join(dir, name), value);
