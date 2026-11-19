@@ -11,16 +11,16 @@
 
 ## 3. 删除 prd-report（commit 3）
 
-- [ ] 3.1 删除 skill、页面包、prd-report 测试目录、合约测试、`lanes` 夹具、旧金样目录
-- [ ] 3.2 根 `package.json` 的 `typecheck` 去掉该包，`pnpm install` 更新锁文件
-- [ ] 3.3 安装测试与 service-only 合约测试去掉对它的期望
+- [x] 3.1 删除 skill、页面包、prd-report 测试目录、合约测试、`lanes` 夹具、旧金样目录
+- [x] 3.2 根 `package.json` 的 `typecheck` 去掉该包，`vitest.config.ts` 去掉它的测试目录，`pnpm install` 更新锁文件
+- [x] 3.3 安装测试与 service-only 合约测试去掉对它的期望
+- [x] 3.4 README 与 `docs/deploy.md` 去掉该 skill 的段落与命令（与删除同一个 commit，否则 `check-refs` 在这一步就红）
 
 ## 4. 去掉读知识图的分支（commit 4）
 
 - [ ] 4.1 `listEntrypoints` 去掉 `useGraph` 与读头行的代码，输出保持 O1
 - [ ] 4.2 删除只测知识图头行的用例，记下用例名（O3）
 
-## 5. 文档（commit 5）
+## 5. 收尾检查
 
-- [ ] 5.1 README 与 `docs/deploy.md` 去掉该 skill 的段落与命令
-- [ ] 5.2 O2 的全仓 grep 无结果；O4 全部检查通过
+- [ ] 5.1 O2 的全仓 grep 符合预期；O4 全部检查通过

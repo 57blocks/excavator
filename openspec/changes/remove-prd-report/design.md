@@ -27,7 +27,7 @@
 ## Oracles（动手前写死）
 
 - **O1 输出不变：** `tests/fixtures/entrypoints-golden/` 下四个金样（express-app、gin-service、react-web、express-app 加 `--scope src/routes`）是本变更动手前用当时的 `handbook.mjs candidates` 生成的，项目根写作 `<ROOT>`。每一步之后 `candidates` 的输出都与它们逐字节相等。金样测试先做一次变异：临时改动输出里的一个字，测试必须变红，再还原。
-- **O2 删干净：** `git grep -n 'prd-report'` 在 `openspec/` 以外没有结果；`git grep -n 'useGraph\|readGraphFrameworks'` 没有结果。
+- **O2 删干净：** `git grep -n 'prd-report'` 在 `openspec/` 以外只剩指向本变更名 `remove-prd-report` 的注释；`git grep -n 'useGraph\|readGraphFrameworks'` 没有结果。
 - **O3 覆盖不丢：** 迁移后的入口清单测试用例数 = 原来经 `prd.mjs entrypoints` 跑的用例数 − 只测知识图头行的用例数；PR 里逐个列出删掉的用例名。
 - **O4 三件套绿：** `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`pnpm run typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict`。
 

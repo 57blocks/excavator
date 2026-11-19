@@ -151,7 +151,7 @@ describe('handbook.mjs candidates (entrypoint lister)', () => {
       'dist/app.js': route,
       'build/app.js': route,
       'vendor/x.js': route,
-      '.excavator/prd-report/x.js': route,
+      '.excavator/product-handbook/x.js': route,
       'src/extra.test.js': route,
     });
     const out = runCandidates([root]);
