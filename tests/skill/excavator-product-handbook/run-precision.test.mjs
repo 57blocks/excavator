@@ -1,14 +1,12 @@
 // O1 of openspec change handbook-run-precision: each decision has a positive and a negative case.
-// D1 advice words, D2 JavaScript workspaces, D3 entity-decoded quotes, D4 quote locations,
-// D6 feature numbers in headings, D7 comment lines are no candidates.
+// D1 advice words, D2 JavaScript workspaces, D3 entity-decoded quotes, D7 comment lines are
+// no candidates. The D4 and D6 cases tested the old chapter checker, which no command runs any more.
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { checkChapter } from '../../../skills/excavator-product-handbook/lib/chapter-check.mjs';
 import { listEntrypoints } from '../../../skills/excavator-product-handbook/lib/entrypoints.mjs';
-import { projectFiles } from '../../../skills/excavator-product-handbook/lib/project-files.mjs';
 import { decodeEntities, labelOccurs } from '../../../skills/excavator-product-handbook/lib/values.mjs';
 import { adviceWordsOf, wordsIn } from '../../../skills/excavator-product-handbook/lib/word-lists.mjs';
 import { runHandbook } from './helpers.mjs';
@@ -80,56 +78,6 @@ describe('D3: entities and white space in quotes', () => {
     expect(labelOccurs("it's here", ['it&#39;s   here'])).toBe(true);
     expect(labelOccurs('Privacy & Terms', ['Privacy &\n   Terms'])).toBe(true);
     expect(labelOccurs('privacy & terms', ['Privacy &amp; Terms'])).toBe(false);
-  });
-});
-
-describe('D4, D6: the notes of a chapter', () => {
-  const root = () => project({
-    'src/a.js': 'const a = 1;\nconst title = "Privacy &amp; Terms";\n',
-    'src/b.js': 'one\ntwo\nconst label = "Cancel order";\nlast\n',
-    'src/c.js': 'first\nlater: Cancel order again\n',
-  });
-  const chapter = (heading, sentence) => `# ${heading}\n\n${sentence}\n\n<!-- no-diagram: none -->\n`;
-  const notesOf = (dir, source) => checkChapter(source, { files: projectFiles(dir) }).notes;
-
-  it('a quote with an entity in its cited line gives no note', () => {
-    expect(notesOf(root(), chapter('Terms', 'The page shows "Privacy & Terms" (`src/a.js:2`).'))).toEqual([]);
-  });
-  it('a quote that is in another line of the cited file says where, the cited file first', () => {
-    const [note] = notesOf(root(), chapter('Terms', 'The button reads "Cancel order" (`src/a.js:1`).'));
-    expect(note.kind).toBe('quote');
-    expect(note.detail).toContain('it first occurs at src/b.js:3');
-    const [own] = notesOf(root(), chapter('Terms', 'The button reads "Cancel order" (`src/c.js:1`).'));
-    expect(own.detail).toContain('it first occurs at src/c.js:2');
-  });
-  it('a document is never named, and source code comes before other files', () => {
-    const dir = project({
-      'README.md': 'Say Hello world here\n',
-      'notes.txt': 'Hello world\n',
-      'a-mock.json': '{"t": "Hello world"}\n',
-      'src/z.js': 'x\nconst t = "Hello world";\n',
-      'src/a.js': 'const a = 1;\n',
-    });
-    const [note] = notesOf(dir, chapter('Terms', 'It reads "Hello world" (`src/a.js:1`).'));
-    expect(note.detail).toContain('it first occurs at src/z.js:2');
-    const docOnly = project({ 'README.md': 'Only here\n', 'src/a.js': 'const a = 1;\n' });
-    const [none] = notesOf(docOnly, chapter('Terms', 'It reads "Only here" (`src/a.js:1`).'));
-    expect(none.detail).toContain('that text does not occur in any file of the project');
-  });
-  it('a quote that is nowhere says so with the fixed text', () => {
-    const [note] = notesOf(root(), chapter('Terms', 'The button reads "Nothing like it" (`src/a.js:1`).'));
-    expect(note.detail).toContain('that text does not occur in any file of the project');
-  });
-  it('a feature number in a level-1 heading is no number; 12 in the text still is', () => {
-    const dir = root();
-    expect(notesOf(dir, chapter('F12 Orders', 'It shows "Cancel order" (`src/b.js:3`).'))).toEqual([]);
-    const [note] = notesOf(dir, chapter('F12 Orders', 'It shows 12 orders and "Cancel order" (`src/b.js:3`).'));
-    expect(note.kind).toBe('number');
-    expect(note.detail).toContain('number 12');
-  });
-  it('a number in a level-2 heading is still checked', () => {
-    const source = '# Orders\n\n## F12 part\n\nIt shows "Cancel order" (`src/b.js:3`).\n\n<!-- no-diagram: none -->\n';
-    expect(notesOf(root(), source).some((note) => note.kind === 'number')).toBe(true);
   });
 });
 

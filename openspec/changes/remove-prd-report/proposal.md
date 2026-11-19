@@ -16,6 +16,7 @@
 - 其余提到 `prd-report` 的地方改掉：README、`docs/deploy.md`、安装测试与 service-only 合约测试。
 - `openspec/specs/prd-report/` 整个能力移除。归档的变更与其他活跃变更里的历史提及不改。
 - 顺带清理：根 `package.json` 的 `lint` 脚本（`eslint .`）从来没有配置文件，一跑就失败，CI 也不跑它；删掉这个脚本和只为它装的 `eslint`、`@eslint/js`、`typescript-eslint`、`globals` 四个开发依赖。
+- 顺带清理手册里的死代码：章节检查改由 `lintChapter`（`check` 命令）做之后，旧的 `checkChapter` 已没有调用方；删掉它所在的 `chapter-check.mjs`（其中仍在用的 `quotedTexts` 挪进 `chapter-lint.mjs`）、只被它引用的 `chapter-parse.mjs` 与 `quote-locator.mjs`、`run-precision.test.mjs` 里只测它的 6 个用例，以及两个没有任何引用的常量 `SQL_OPERATIONS`、`NO_HISTORY_FILE`。规格里没有对应需求，运行行为不变。
 
 ## Capabilities
 

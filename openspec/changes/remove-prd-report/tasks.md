@@ -25,6 +25,11 @@
 
 - [x] 5.1 根 `package.json` 删 `lint` 脚本与 `eslint`、`@eslint/js`、`typescript-eslint`、`globals`，`pnpm install` 更新锁文件；删前确认 `pnpm run lint` 因没有配置文件而失败、仓库里没有别处引用这四个包
 
-## 6. 收尾检查
+## 6. 删掉手册里的死代码（commit 6）
 
-- [x] 6.1 O2 的全仓 grep 符合预期；O4 全部检查通过（全量 299 个测试文件、6843 个用例通过，4 个跳过）
+- [x] 6.1 `quotedTexts` 挪进 `chapter-lint.mjs`；删 `chapter-check.mjs`、`chapter-parse.mjs`、`quote-locator.mjs` 与 `run-precision.test.mjs` 的「D4, D6: the notes of a chapter」6 个用例；删常量 `SQL_OPERATIONS`、`NO_HISTORY_FILE`
+- [x] 6.2 手册测试全绿（705 个，比之前少的正是删掉的 6 个），typecheck、check-refs 通过，`git grep` 不再有这三个模块与两个常量
+
+## 7. 收尾检查
+
+- [x] 7.1 O2 的全仓 grep 符合预期；O4 全部检查通过（全量 299 个测试文件、6843 个用例通过，4 个跳过）
