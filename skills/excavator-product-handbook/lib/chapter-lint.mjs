@@ -8,12 +8,16 @@
  */
 
 import { bannedFragments, outsideLabels } from './banned-words.mjs';
-import { quotedTexts } from './chapter-check.mjs';
 import { chapterBlocks, splitRow } from './chapter-blocks.mjs';
 import { openQuestionsReasons } from './defects-items.mjs';
 import { citationGroups, resolveSpec, specKey } from './chapter-cites.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { adviceWordsOf, wordsIn } from './word-lists.mjs';
+
+const QUOTES = [/\u201c([^\u201d]+)\u201d/g, /"([^"]+)"/g, /\u300c([^\u300d]+)\u300d/g];
+
+/** The quoted texts of `text`. */
+const quotedTexts = (text) => QUOTES.flatMap((pattern) => Array.from(text.matchAll(pattern), (match) => match[1]));
 
 export const MAX_SENTENCES = 4;
 export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'processes', 'review', 'remedies']);

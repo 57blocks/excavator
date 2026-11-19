@@ -8,9 +8,6 @@
  * here runs SQL.
  */
 
-/** The SQL operations, named the way a migration call of the same meaning is named. */
-export const SQL_OPERATIONS = Object.freeze(['create-table', 'drop-table', 'rename-table', 'alter-table', 'create-index', 'insert', 'update', 'delete', 'truncate']);
-
 const STATEMENT = /\b(CREATE\s+TABLE|DROP\s+TABLE|ALTER\s+TABLE|RENAME\s+TABLE|CREATE\s+(?:UNIQUE\s+)?INDEX|INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE(?:\s+TABLE)?)\b/gi;
 const PLACEHOLDER = /\$\{[^}]*\}/y;
 const SEGMENT = /(?:\\?[`"])?([A-Za-z_][\w$]*)(?:\\?[`"])?/y;

@@ -8,7 +8,6 @@ import { defineConfig } from 'vitest/config';
 //   - src/**                 — skill TS source tests
 //   - packages/explorer/src/**/__tests__/** — the copied dashboard's own tests
 //   - packages/explorer/test/**  — the template build scripts
-//   - packages/prd-report-page/test/**  — the report page's route, filter and sanitize logic
 //   - packages/product-handbook-page/test/**  — the handbook page's template contract and fixed-text check
 //
 // The `@excavator/core` package owns its own vitest.config.ts and is
@@ -34,7 +33,6 @@ export default defineConfig({
       'src/**/*.test.{js,mjs,ts}',
       'packages/explorer/test/**/*.test.mjs',
       'packages/explorer/src/**/__tests__/**/*.test.ts',
-      'packages/prd-report-page/test/**/*.test.{ts,mjs}',
       'packages/product-handbook-page/test/**/*.test.{ts,tsx,mjs}',
     ],
     exclude: [

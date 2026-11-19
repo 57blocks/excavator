@@ -1,22 +1,19 @@
 /**
- * The entrypoint candidate lister, used by excavator-product-handbook and the
- * PRD report skill's entrypoints command.
+ * The entrypoint candidate lister of excavator-product-handbook.
  *
  * Reads the project's source statically and lists every line a pattern of
  * `entrypoint-catalog.json` matches, as `{ id, kind, file, line, text,
  * framework }`. Which catalog groups run is decided by the detected
- * frameworks: the knowledge-graph header's `project.frameworks` when the graph
- * is there, otherwise the build files read by the same detector /excavator
- * uses (a caller that must not read anything under `.excavator/` passes
- * `useGraph: false` and always gets the build files); the catalog's own `detect`
- * rules add the libraries the graph never records (cron libraries, a Go or
- * Node main). Every detected framework lands
+ * frameworks: the build files, read by the same detector /excavator uses (the
+ * knowledge graph and everything else under `.excavator/` is never read); the
+ * catalog's own `detect` rules add the libraries that detector does not report
+ * (cron libraries, a Go or Node main). Every detected framework lands
  * in exactly one of `covered` (the catalog has patterns for it) or
  * `uncovered`. Every walked file lands in one bucket of `files`. No model
  * call, nothing built or run.
  */
 
-import { closeSync, existsSync, lstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -34,8 +31,6 @@ export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 /** A line whose trimmed start is a comment opener; only the line start is read, never the extent of a block comment. */
 export const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*)/;
 const TEXT_CAP = 200;
-const GRAPH_FILE = join('.excavator', 'knowledge-graph.jsonl');
-const HEADER_CAP_BYTES = 16 * 1024 * 1024;
 
 const RESIDUAL = Object.freeze({
   skips: `Directories named ${SKIPPED_DIRECTORIES.join(', ')} and files whose name ends in _test.go or contains .test. or .spec. are not scanned; an entrypoint in them is not listed.`,
@@ -45,7 +40,6 @@ const RESIDUAL = Object.freeze({
   react: 'Under react and react-router, route objects (path:) are listed only in files whose path contains "rout", and under react <Route> elements too; a route declared in another file is not listed.',
   gin: 'The gin route pattern (.GET(, .POST( and the other verbs) also matches outbound HTTP-client calls of the same shape; such lines are expected to be left unassigned.',
   graphIgnored: 'The knowledge graph is not read (the caller asked for detection from the build files only): frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
-  noGraph: 'No knowledge graph: frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
 });
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -98,39 +92,6 @@ function resolveScope(projectRoot, scope) {
     throw new UsageError(`--scope ${scope} is not a directory inside ${projectRoot}`);
   }
   return rel.split(sep).join('/');
-}
-
-/** The first line of the knowledge graph, read without loading the whole file. */
-function readGraphFrameworks(projectRoot) {
-  const path = join(projectRoot, GRAPH_FILE);
-  if (!existsSync(path)) return { state: 'absent' };
-  let fd;
-  try {
-    fd = openSync(path, 'r');
-    const chunks = [];
-    let total = 0;
-    const buffer = Buffer.alloc(64 * 1024);
-    for (;;) {
-      const read = readSync(fd, buffer, 0, buffer.length, total);
-      if (read === 0) break;
-      const chunk = Buffer.from(buffer.subarray(0, read));
-      const end = chunk.indexOf(0x0a);
-      chunks.push(end === -1 ? chunk : chunk.subarray(0, end));
-      total += read;
-      if (end !== -1) break;
-      if (total > HEADER_CAP_BYTES) return { state: 'unreadable', reason: `line 1 is longer than ${HEADER_CAP_BYTES} bytes` };
-    }
-    const header = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
-    const frameworks = header?.record === 'header' ? header.fields?.project?.frameworks : undefined;
-    if (!Array.isArray(frameworks) || !frameworks.every((value) => typeof value === 'string')) {
-      return { state: 'unreadable', reason: 'line 1 is not a header with fields.project.frameworks' };
-    }
-    return { state: 'read', frameworks };
-  } catch (error) {
-    return { state: 'unreadable', reason: error.message };
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
 }
 
 /** The detector /excavator's scan uses, from the plugin's own @excavator/core build. */
@@ -241,11 +202,11 @@ function detectedByCatalog(group, manifests) {
 
 /**
  * List the entrypoint candidates of `projectRoot` (optionally only under
- * `scope`). With `useGraph: false` the knowledge graph is not opened, not even
- * to see whether it exists. Returns the listing object without a `format`
- * field; each command stamps its own.
+ * `scope`). The knowledge graph is not opened, not even to see whether it
+ * exists. Returns the listing object without a `format` field; the caller
+ * stamps its own.
  */
-export async function listEntrypoints(projectRootArg, { scope = null, catalogPath = CATALOG_FILE, useGraph = true } = {}) {
+export async function listEntrypoints(projectRootArg, { scope = null, catalogPath = CATALOG_FILE } = {}) {
   let projectRoot;
   try {
     projectRoot = realpathSync(resolve(projectRootArg));
@@ -257,9 +218,8 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
   const groups = loadCatalog(catalogPath);
   const catalogManifests = new Set(groups.flatMap((group) => (group.detect ?? []).map((rule) => rule.manifest)));
 
-  const graph = useGraph ? readGraphFrameworks(projectRoot) : { state: 'ignored' };
-  const registry = graph.state === 'read' ? null : await loadFrameworkRegistry();
-  const isManifest = (rel) => catalogManifests.has(basename(rel)) || (registry !== null && registry.isManifestPath(rel));
+  const registry = await loadFrameworkRegistry();
+  const isManifest = (rel) => catalogManifests.has(basename(rel)) || registry.isManifestPath(rel);
 
   // Pass 1: every file under the scope, with the manifests among them.
   const stats = {
@@ -274,10 +234,8 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
   const manifestPaths = [...ancestorManifests(projectRoot, scopeRel, isManifest), ...files.filter((f) => isManifest(f.rel)).map((f) => f.rel)];
   const manifests = manifestPaths.map((path) => ({ path, content: readManifest(projectRoot, path) }));
 
-  // Detected frameworks: the graph header, else the build-file detector; plus the catalog's own rules.
-  const detected = new Set(graph.state === 'read'
-    ? graph.frameworks
-    : registry.detectWithEvidence(manifests.filter((m) => m.content !== null)).map((d) => d.id));
+  // Detected frameworks: the build-file detector, plus the catalog's own rules.
+  const detected = new Set(registry.detectWithEvidence(manifests.filter((m) => m.content !== null)).map((d) => d.id));
   for (const group of groups) {
     if (group.detect !== null && detectedByCatalog(group, manifests)) detected.add(group.name);
   }
@@ -341,16 +299,12 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
   const residualAssumptions = [RESIDUAL.skips, RESIDUAL.size, RESIDUAL.oneLine, RESIDUAL.oneCandidate];
   if (covered.includes('react') || covered.includes('react-router')) residualAssumptions.push(RESIDUAL.react);
   if (covered.includes('gin')) residualAssumptions.push(RESIDUAL.gin);
-  if (graph.state === 'absent') residualAssumptions.push(RESIDUAL.noGraph);
-  if (graph.state === 'ignored') residualAssumptions.push(RESIDUAL.graphIgnored);
-  if (graph.state === 'unreadable') {
-    residualAssumptions.push(`The knowledge graph header could not be read (${graph.reason}); frameworks were detected from the build files instead.`);
-  }
+  residualAssumptions.push(RESIDUAL.graphIgnored);
 
   return {
     projectRoot,
     scope: scopeRel,
-    detection: { source: graph.state === 'read' ? 'knowledge-graph' : 'build-files', graph: graph.state },
+    detection: { source: 'build-files', graph: 'ignored' },
     frameworks,
     covered,
     uncovered,
