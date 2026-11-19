@@ -46,12 +46,14 @@ export const DOMAIN_SUBHEADING_KEYS = Object.freeze(['chapter.domain.features', 
 
 /**
  * Reasons for the level-3 headings of each domain (each level-2 section) of the domains chapter `text`: each is one of the
- * fixed three, they come in the fixed order, and the features and hand-overs headings are there. Skipped when the run's
- * text lacks the keys.
+ * fixed three, they come in the fixed order, and the features and hand-overs headings are there. The section of open
+ * questions (`## <chapter.openQuestions>`, which the writer may add last) is not a domain and is not checked. Skipped when
+ * the run's text lacks the keys.
  */
 export function domainSubheadingReasons(text, strings) {
   const fixed = DOMAIN_SUBHEADING_KEYS.map((key) => strings[key]);
   if (fixed.some((value) => typeof value !== 'string' || value.trim() === '')) return [];
+  const open = strings['chapter.openQuestions'];
   const reasons = [];
   const sections = [];
   let fenced = false;
@@ -64,6 +66,7 @@ export function domainSubheadingReasons(text, strings) {
     if (three !== null && !line.startsWith('####') && sections.length > 0) sections[sections.length - 1].subs.push({ text: three[1].trim(), line: index + 1 });
   });
   for (const section of sections) {
+    if (section.name === open) continue;
     let last = -1;
     for (const sub of section.subs) {
       const at = fixed.indexOf(sub.text);

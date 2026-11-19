@@ -99,6 +99,13 @@ describe('the fixed level-3 headings of each domain (design D23)', () => {
   failsWith('a heading of its own', DOMAINS_MD.replace('### Hand-overs\n\n- Orders', '### Who hands what\n\n- Orders'), /a level-3 heading of the domain "Order handling" that is not one of the fixed headings: Who hands what/);
   failsWith('the hand-overs missing', DOMAINS_MD.replace('### Hand-overs\n\nNone.\n', 'None.\n'), /the domain "Automatic work" has no level-3 heading "Hand-overs"/);
   failsWith('the order turned round', DOMAINS_MD.replace('### Features\n\n| Feature | Purpose |\n| --- | --- |\n| Reminders', '### Main line\n\n1. one\n\n### Features\n\n| Feature | Purpose |\n| --- | --- |\n| Reminders'), /the level-3 heading "Features" of the domain "Automatic work" is out of order/);
+  it('passes with a last section of open questions, which is not a domain and has no level-3 headings', () => {
+    const run = newRun();
+    run.write('domains', `${DOMAINS_MD}\n## Points to confirm\n\n- Whether reminders also go to the archive is not settled by the chapters.\n`);
+    run.writeList(goodList());
+    const result = run.check('domains');
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  });
   it('passes with the main line after the hand-overs', () => {
     const run = newRun();
     run.write('domains', `${DOMAINS_MD}\n### Main line\n\n1. Reminders (F3) send mail (${cite('10')}).\n`);
