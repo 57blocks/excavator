@@ -307,7 +307,7 @@ describe('comparison batches', () => {
     });
   });
 
-  it('rebindBatchFiles drops an id whose candidate moved to another batch, pairs equal candidates in order and leaves c-* files alone', () => {
+  it('rebindBatchFiles drops an id whose candidate moved to another batch, pairs equal candidates in order, and leaves c-* files and already wrong ids alone', () => {
     const base = realpathSync(mkdtempSync(join(tmpdir(), 'xhb-rebind-')));
     bases.push(base);
     const dir = join(base, 'entries', 'review');
@@ -316,9 +316,15 @@ describe('comparison batches', () => {
     const candidates = [{ id: 'X1', batch: 'b2', source: 'dual', features: ['F2'], facts: {}, places: [] }, { id: 'X2', batch: 'b1', ...same }, { id: 'X3', batch: 'b1', ...same }];
     put(join(dir, 'b1.json'), { items: [{ candidates: ['X1', 'X2', 'X3'] }] });
     put(join(dir, 'c-data-1.json'), { items: [{ candidates: ['X1'] }] });
+    // Ids that were already wrong (another batch's candidate, an unknown id) are left for the batch check to report.
+    put(join(dir, 'p1.json'), { items: [{ candidates: ['X1'] }] });
+    put(join(dir, 'b9.json'), { items: [{ candidates: ['X3', 'X7'] }], dismissed: [{ candidate: 'X2', reason: 'intended' }] });
     expect(rebindBatchFiles(base, previous, candidates)).toEqual([{ name: 'b1.json', renamed: 2, dropped: 1 }]);
-    expect(JSON.parse(readFileSync(join(dir, 'b1.json'), 'utf-8')).items[0].candidates).toEqual(['X2', 'X3']);
-    expect(JSON.parse(readFileSync(join(dir, 'c-data-1.json'), 'utf-8')).items[0].candidates).toEqual(['X1']);
+    const read = (name) => JSON.parse(readFileSync(join(dir, name), 'utf-8'));
+    expect(read('b1.json').items[0].candidates).toEqual(['X2', 'X3']);
+    expect(read('c-data-1.json').items[0].candidates).toEqual(['X1']);
+    expect(read('p1.json').items[0].candidates).toEqual(['X1']);
+    expect(read('b9.json')).toEqual({ items: [{ candidates: ['X3', 'X7'] }], dismissed: [{ candidate: 'X2', reason: 'intended' }] });
   });
 
   it('removes every c-* batch file when the previous candidates file is unreadable', () => {

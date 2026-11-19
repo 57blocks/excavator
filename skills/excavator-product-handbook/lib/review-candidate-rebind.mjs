@@ -3,9 +3,11 @@
  * (openspec change handbook-process-review). Candidate ids are positions in entries/review-compare.json and every
  * `review compare-facts` numbers them again, so a run that adds or drops an earlier candidate gives every later one
  * another id. A domain batch file holds the review of its features as well as the conclusions on its two-implementation
- * candidates, so it is not removed like a c-* batch file; its candidate ids are rewritten instead: an id whose candidate
- * is still there, in the same batch, gets that candidate's new id, and any other id is dropped, so that the candidate
- * shows as without a conclusion rather than another candidate taking its conclusion.
+ * candidates, so it is not removed like a c-* batch file; its candidate ids are rewritten instead. Only an id that the
+ * previous run gave to a candidate of the same batch is touched: it gets the new id of that candidate, or is dropped when
+ * the candidate is gone or moved to another batch, so that the candidate shows as without a conclusion rather than another
+ * candidate taking its conclusion. Any other id (unknown, or of another batch, as in a process batch) was already wrong
+ * and is left for the batch check to report. When the previous candidates file is unreadable every id is dropped.
  */
 
 import { existsSync, readdirSync } from 'node:fs';
@@ -16,10 +18,7 @@ import { isObject, readJson, writeJson } from './json-file.mjs';
 /** What a candidate is, without its id and batch. */
 const keyOf = (candidate) => JSON.stringify([candidate.source, candidate.features, candidate.facts, candidate.places]);
 
-/**
- * Old id -> the new candidate with the same key, or null when it is gone. Equal keys are paired in order. With no
- * previous candidates (`previous` is null) the map is empty and every id counts as gone.
- */
+/** Old id -> `{ batch, next }`: its batch then, and the new candidate with the same key or null. Equal keys are paired in order. */
 export function candidateRenames(previous, candidates) {
   const renames = new Map();
   if (previous === null) return renames;
@@ -32,7 +31,7 @@ export function candidateRenames(previous, candidates) {
   for (const old of previous) {
     if (!isObject(old) || typeof old.id !== 'string') continue;
     const queue = free.get(keyOf(old));
-    renames.set(old.id, queue !== undefined && queue.length > 0 ? queue.shift() : null);
+    renames.set(old.id, { batch: old.batch, next: queue !== undefined && queue.length > 0 ? queue.shift() : null });
   }
   return renames;
 }
@@ -58,8 +57,12 @@ export function rebindBatchFiles(outDir, previous, candidates) {
     /** The new id of `id`, or null when it is dropped; a value that is not a string is left for the batch check. */
     const rebind = (id) => {
       if (typeof id !== 'string') return id;
-      const candidate = renames.get(id);
-      const next = candidate !== undefined && candidate !== null && candidate.batch === batch ? candidate.id : null;
+      let next = null;
+      if (previous !== null) {
+        const rename = renames.get(id);
+        if (rename === undefined || rename.batch !== batch) return id;
+        next = rename.next !== null && rename.next.batch === batch ? rename.next.id : null;
+      }
       if (next === null) dropped += 1;
       else if (next !== id) renamed += 1;
       return next;
