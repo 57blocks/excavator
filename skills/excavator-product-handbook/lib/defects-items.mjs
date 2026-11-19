@@ -141,7 +141,6 @@ export function sectionItems(text, title, none) {
 
 const sectionItemCount = (text, title, none) => (sectionItems(text, title, none) ?? []).length;
 
-/** The reasons of an item's title: none, too long, or the start of the sentence after it (a title names the defect; it does not repeat the sentence). */
 /**
  * The reasons a short bold title fails (designs D20, D21): none, longer than `DEFECT_TITLE_LIMIT` code points, or the start of
  * the text after it. `what` and `noun` name the item in the reasons; `missing` is the reason when there is no title.
