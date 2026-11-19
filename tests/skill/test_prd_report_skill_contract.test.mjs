@@ -275,7 +275,7 @@ describe('excavator-prd-report skill: --project', () => {
 });
 
 describe('excavator-prd-report skill: its recipes run', () => {
-  const project = resolve(repoRoot, 'tests/fixtures/prd-report-pipeline/express-app');
+  const project = resolve(repoRoot, 'tests/fixtures/entrypoints/express-app');
   const PLAN = {
     language: 'English', role: 'product manager', scope: null,
     inferred: [{ id: 'i1', kind: 'job', file: 'src/jobs/reminders.js', line: 1, text: 'x', framework: 'node-schedule', provenance: 'inferred' }],

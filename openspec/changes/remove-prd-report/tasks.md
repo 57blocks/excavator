@@ -5,9 +5,9 @@
 
 ## 2. 入口清单测试换入口（commit 2，此时 prd-report 仍在）
 
-- [ ] 2.1 `git mv` 三个夹具项目到 `tests/fixtures/entrypoints/`，改所有引用它们的路径
-- [ ] 2.2 手册测试目录加入口清单测试：原 `entrypoints.test.mjs`、`entrypoints-nestjs.test.mjs` 的用例经 `handbook.mjs candidates` 或 `listEntrypoints` 跑；共用小工具移到手册 helpers；`candidates.test.mjs` 不再从 prd-report 的 helpers 引入
-- [ ] 2.3 金样测试 `entrypoints-golden.test.mjs` 改为比 `tests/fixtures/entrypoints-golden/`，做一次变异确认会红（O1）
+- [x] 2.1 `git mv` 三个夹具项目到 `tests/fixtures/entrypoints/`，改所有引用它们的路径
+- [x] 2.2 手册测试目录加入口清单测试：原 `entrypoints.test.mjs`、`entrypoints-nestjs.test.mjs` 的用例经 `handbook.mjs candidates` 或 `listEntrypoints` 跑；共用小工具移到手册 helpers；`candidates.test.mjs` 不再从 prd-report 的 helpers 引入
+- [x] 2.3 金样测试 `entrypoints-golden.test.mjs` 改为比 `tests/fixtures/entrypoints-golden/`，做一次变异确认会红（O1）
 
 ## 3. 删除 prd-report（commit 3）
 

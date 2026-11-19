@@ -15,6 +15,7 @@ export const repoRoot = resolve(here, '../../..');
 export const PRD_SCRIPT = join(repoRoot, 'skills/excavator-prd-report/prd.mjs');
 export const CATALOG_PATH = join(repoRoot, 'skills/excavator-product-handbook/lib/entrypoint-catalog.json');
 export const FIXTURES = join(repoRoot, 'tests/fixtures/prd-report-pipeline');
+export const ENTRYPOINT_FIXTURES = join(repoRoot, 'tests/fixtures/entrypoints');
 
 /** Run `node prd.mjs <args>`; returns { status, stdout, stderr, json } (json is null when stdout is not JSON). */
 export function runPrd(args, options = {}) {
@@ -37,7 +38,7 @@ export function makeTempDir(prefix = 'xprd-') {
 /** Copy a committed fixture project into `dest` (created when missing). */
 export function copyFixture(name, dest) {
   mkdirSync(dest, { recursive: true });
-  cpSync(join(FIXTURES, name), dest, { recursive: true });
+  cpSync(join(ENTRYPOINT_FIXTURES, name), dest, { recursive: true });
   return dest;
 }
 

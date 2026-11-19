@@ -8,6 +8,7 @@ import { join } from 'node:path';
 
 import {
   CATALOG_PATH,
+  ENTRYPOINT_FIXTURES,
   FIXTURES,
   copyFixture,
   graphHeaderLine,
@@ -57,7 +58,7 @@ describe('entrypoint-catalog.json', () => {
 
 describe('prd.mjs entrypoints', () => {
   it('lists the express fixture: routes, a node-schedule job and a bin script, not the spec file', () => {
-    const out = runPrd(['entrypoints', join(FIXTURES, 'express-app')]);
+    const out = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'express-app')]);
     expect(out.status, out.stderr).toBe(0);
     expect(out.json.frameworks).toEqual(['express', 'node-main', 'node-schedule']);
     expect(out.json.covered).toEqual(['express', 'node-main', 'node-schedule']);
@@ -84,7 +85,7 @@ describe('prd.mjs entrypoints', () => {
   });
 
   it('lists an express route whose path is on the next line, at the line of the call, and not the line before a route', () => {
-    const out = runPrd(['entrypoints', join(FIXTURES, 'express-app')]);
+    const out = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'express-app')]);
     const payments = out.json.items.filter((item) => item.file === 'src/routes/payments.js');
     expect(payments.map((item) => item.line)).toEqual([5, 9]);
     expect(payments[0].text).toBe("router.post( '/payments',");
@@ -110,13 +111,13 @@ describe('prd.mjs entrypoints', () => {
     const router = runPrd(['entrypoints', root]);
     expect(router.json.covered).toEqual(['react-router']);
     expect(router.json.residualAssumptions.join('\n')).toMatch(/only in files whose path contains "rout"/);
-    const gin = runPrd(['entrypoints', join(FIXTURES, 'gin-service')]);
+    const gin = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'gin-service')]);
     expect(gin.json.residualAssumptions.join('\n')).toMatch(/outbound HTTP-client calls/);
-    expect(runPrd(['entrypoints', join(FIXTURES, 'express-app')]).json.residualAssumptions.join('\n')).not.toMatch(/outbound HTTP-client calls|contains "rout"/);
+    expect(runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'express-app')]).json.residualAssumptions.join('\n')).not.toMatch(/outbound HTTP-client calls|contains "rout"/);
   });
 
   it('lists the gin fixture: routes, a cron job and both mains, not the _test.go file', () => {
-    const out = runPrd(['entrypoints', join(FIXTURES, 'gin-service')]);
+    const out = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'gin-service')]);
     expect(out.status, out.stderr).toBe(0);
     expect(out.json.frameworks).toEqual(['gin', 'go-cron', 'go-main']);
     expect(out.json.uncovered).toEqual([]);
@@ -133,7 +134,7 @@ describe('prd.mjs entrypoints', () => {
   });
 
   it('lists the react-router fixture: <Route> anywhere, path: only in a router directory', () => {
-    const out = runPrd(['entrypoints', join(FIXTURES, 'react-web')]);
+    const out = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'react-web')]);
     expect(out.status, out.stderr).toBe(0);
     expect(out.json.frameworks).toEqual(['react', 'react-router']);
     expect(out.json.covered).toEqual(['react', 'react-router']);
@@ -226,13 +227,13 @@ describe('prd.mjs entrypoints', () => {
   });
 
   it('prints the same bytes on a second run', () => {
-    const first = runPrd(['entrypoints', join(FIXTURES, 'react-web')]);
-    const second = runPrd(['entrypoints', join(FIXTURES, 'react-web')]);
+    const first = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'react-web')]);
+    const second = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'react-web')]);
     expect(first.stdout).toBe(second.stdout);
   });
 
   it('rejects a scope outside the project and a missing project with exit 2', () => {
-    const escaped = runPrd(['entrypoints', join(FIXTURES, 'gin-service'), '--scope', '../express-app']);
+    const escaped = runPrd(['entrypoints', join(ENTRYPOINT_FIXTURES, 'gin-service'), '--scope', '../express-app']);
     expect(escaped.status).toBe(2);
     expect(escaped.stderr).toMatch(/scope/);
     const missing = runPrd(['entrypoints', join(FIXTURES, 'no-such-project')]);
