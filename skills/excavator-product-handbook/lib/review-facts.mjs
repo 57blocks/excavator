@@ -5,13 +5,15 @@
  * overlapping lines of the same file) and prints them. Reads no project code.
  */
 
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { citationGroups, parseSpec, specKey } from './chapter-cites.mjs';
-import { writeJson } from './json-file.mjs';
-import { CROSS_BATCH, FACTS_FILE, FACTS_FORMAT, reviewBatches } from './review-batches.mjs';
+import { readJson, writeJson } from './json-file.mjs';
+import { FACTS_FILE, FACTS_FORMAT, reviewBatches } from './review-batches.mjs';
+import { assignProcessBatches } from './review-processes.mjs';
 import { chapterCounts } from './review-structure.mjs';
+import { directorySides, markServerSteps } from './step-sides.mjs';
 import { loadUi } from './ui.mjs';
 
 /** The `{ file, a, b }` of every well-formed citation in `text`, each once. */
@@ -101,6 +103,10 @@ export function computeFacts(outDir) {
   const batchOf = new Map(batched.batches.flatMap((batch) => batch.features.map((id) => [id, batch.id])));
   const features = {};
   const ranges = new Map();
+  // Every run writes candidates.json first; without it no step has a side and none is counted as a server step.
+  const candidates = readJson(join(outDir, 'candidates.json'));
+  if (!candidates.ok && !candidates.missing) return { ok: false, lines: [`candidates.json ${candidates.reason}; write it again with handbook.mjs candidates`] };
+  const sides = candidates.ok ? directorySides(candidates.value) : new Map();
   for (const feature of batched.map.features) {
     const path = join(outDir, 'chapters', `${feature.id}.md`);
     if (!existsSync(path)) {
@@ -108,7 +114,9 @@ export function computeFacts(outDir) {
       continue;
     }
     const text = readFileSync(path, 'utf-8');
-    features[feature.id] = { name: feature.name, batch: batchOf.get(feature.id) ?? null, chapter: true, ...chapterCounts(text, ui.strings) };
+    // The server steps are counted as the page folds them: from the steps' citations (design D22).
+    const marked = markServerSteps(text, { sides, operations: ui.strings['chapter.section.operations'], marker: ui.strings['chapter.serverSteps'] });
+    features[feature.id] = { name: feature.name, batch: batchOf.get(feature.id) ?? null, chapter: true, ...chapterCounts(marked, ui.strings) };
     ranges.set(feature.id, citedRanges(text));
   }
   const found = sharedCodePairs(ranges, order);
@@ -125,7 +133,7 @@ const rangeText = (ranges) => ranges.map(([a, b]) => (a === b ? `${a}` : `${a}-$
 
 /** The printed lines of `facts`; with `onlyBatch`, the pairs are those that touch that batch (the table of features is always whole). */
 export function factLines(facts, onlyBatch = null) {
-  const lines = [`Batches: ${facts.batches.length - 1} (source: ${facts.source}), then ${CROSS_BATCH}`];
+  const lines = [`Batches: ${facts.batches.length} (source: ${facts.source})`];
   for (const batch of facts.batches) lines.push(['BATCH', batch.id, batch.name, batch.features.join(',')].join('\t'));
   for (const [id, entry] of Object.entries(facts.features)) {
     if (!entry.chapter) {
@@ -137,8 +145,7 @@ export function factLines(facts, onlyBatch = null) {
     lines.push(cells.join('\t'));
   }
   for (const pair of facts.pairs) {
-    // The cross batch reads the pairs that span batches; any other batch reads the pairs that touch it.
-    if (onlyBatch === CROSS_BATCH ? pair.scope !== 'across' : onlyBatch !== null && !pair.batches.includes(onlyBatch)) continue;
+    if (onlyBatch !== null && !pair.batches.includes(onlyBatch)) continue;
     lines.push(['PAIR', pair.scope, pair.features.join(','), pair.files.map((entry) => `${entry.file}:${rangeText(entry.ranges)}`).join('; ')].join('\t'));
   }
   lines.push(`Shared files (cited by more than ${facts.shared.limit} features, left out of the pairs): ${facts.shared.files}`);
@@ -154,5 +161,10 @@ export function reviewFacts(outDir, onlyBatch) {
   }
   mkdirSync(join(outDir, 'entries'), { recursive: true });
   writeJson(join(outDir, FACTS_FILE), computed.facts);
-  return { status: 0, lines: [...factLines(computed.facts, onlyBatch ?? null), `Facts: ${join(outDir, FACTS_FILE)}`] };
+  // The cross batch of earlier runs is gone; its removal records (entries/review-removed.json) stay.
+  const old = ['cross.json', 'cross.unpruned.json', 'cross.verdicts.json'].filter((name) => existsSync(join(outDir, 'entries', 'review', name)));
+  for (const name of old) rmSync(join(outDir, 'entries', 'review', name), { force: true });
+  const removed = old.length > 0 ? [`Removed the old cross batch: ${old.join(', ')}`] : [];
+  const processLine = assignProcessBatches(outDir);
+  return { status: 0, lines: [...factLines(computed.facts, onlyBatch ?? null), ...removed, processLine, `Facts: ${join(outDir, FACTS_FILE)}`] };
 }

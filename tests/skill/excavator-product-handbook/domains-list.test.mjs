@@ -25,12 +25,30 @@ The domains of the product:
 
 Orders and the archive live here (${cite('5')}).
 
+### Features
+
+| Feature | Purpose |
+| --- | --- |
+| Orders (F1) | Takes orders (${cite('5')}) |
+
+### Hand-overs
+
 - Orders (F1) hands work to Reminders (F3) (\`${C1}\`).
 - Archive (F2) is read by Admin tool (F4) (\`${C2}\`).
 
 ## Automatic work
 
 Reminders (F3) send mail (${cite('10')}).
+
+### Features
+
+| Feature | Purpose |
+| --- | --- |
+| Reminders (F3) | Sends mail (${cite('10')}) |
+
+### Hand-overs
+
+None.
 `;
 
 const goodList = () => ({
@@ -68,6 +86,34 @@ function rejects(name, mutate, expected, text = DOMAINS_MD) {
     expect(good.status, good.stdout + good.stderr).toBe(0);
   });
 }
+
+describe('the fixed level-3 headings of each domain (design D23)', () => {
+  const failsWith = (name, text, expected) => it(name, () => {
+    const run = newRun();
+    run.write('domains', text);
+    run.writeList(goodList());
+    const result = run.check('domains');
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stdout).toMatch(expected);
+  });
+  failsWith('a heading of its own', DOMAINS_MD.replace('### Hand-overs\n\n- Orders', '### Who hands what\n\n- Orders'), /a level-3 heading of the domain "Order handling" that is not one of the fixed headings: Who hands what/);
+  failsWith('the hand-overs missing', DOMAINS_MD.replace('### Hand-overs\n\nNone.\n', 'None.\n'), /the domain "Automatic work" has no level-3 heading "Hand-overs"/);
+  failsWith('the order turned round', DOMAINS_MD.replace('### Features\n\n| Feature | Purpose |\n| --- | --- |\n| Reminders', '### Main line\n\n1. one\n\n### Features\n\n| Feature | Purpose |\n| --- | --- |\n| Reminders'), /the level-3 heading "Features" of the domain "Automatic work" is out of order/);
+  it('passes with a last section of open questions, which is not a domain and has no level-3 headings', () => {
+    const run = newRun();
+    run.write('domains', `${DOMAINS_MD}\n## Points to confirm\n\n- Whether reminders also go to the archive is not settled by the chapters.\n`);
+    run.writeList(goodList());
+    const result = run.check('domains');
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  });
+  it('passes with the main line after the hand-overs', () => {
+    const run = newRun();
+    run.write('domains', `${DOMAINS_MD}\n### Main line\n\n1. Reminders (F3) send mail (${cite('10')}).\n`);
+    run.writeList(goodList());
+    const result = run.check('domains');
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  });
+});
 
 describe('domains.json: the passing case', () => {
   it('passes and records the sha256 of the file in the state record', () => {
@@ -131,7 +177,7 @@ describe('domains.json: the domains', () => {
   rejects('an empty name', (list) => { list.domains[0].name = '  '; }, /domains\[0\]: the name is empty/);
   rejects('a duplicated name', (list) => { list.domains[1].name = 'Order handling'; }, /domain "Order handling": the name is listed more than once/);
   rejects('a name that is not a level-2 heading', (list) => { list.domains[0].name = 'Order'; list.handovers = []; }, /domain "Order": the name is not exactly the text of a level-2 heading/);
-  rejects('a name that is a level-3 heading only', (list) => { list.domains[0].name = 'Sub part'; list.handovers = []; }, /domain "Sub part": the name is not exactly/, `${DOMAINS_MD}\n### Sub part\n\nMore (${cite('5')}).\n`);
+  rejects('a name that is a level-3 heading only', (list) => { list.domains[0].name = 'Main line'; list.handovers = []; }, /domain "Main line": the name is not exactly/, `${DOMAINS_MD}\n### Main line\n\nMore (${cite('5')}).\n`);
   rejects('a feature in no domain', (list) => { list.domains[0].features = ['F1', 'F2']; }, /features not in any domain: F5/);
   rejects('a feature in two domains', (list) => { list.domains[1].features.push('F1'); }, /feature F1 is listed more than once \("Order handling", "Automatic work"\)/);
   rejects('a feature id that is not in the map', (list) => { list.domains[1].features.push('F99'); }, /feature ids not in map\.json: F99/);

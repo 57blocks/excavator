@@ -14,20 +14,19 @@ afterEach(() => {
   while (cleanups.length > 0) cleanups.pop()();
 });
 
-/** A run with the facts written and b2 empty, b1 holding `items`, cross empty unless given. */
-function ready(items, { b2 = [], cross = [] } = {}) {
+/** A run with the facts written and b2 empty, b1 holding `items`, b2 empty unless given. */
+function ready(items, { b2 = [] } = {}) {
   const run = reviewRun(cleanups);
   expect(run.facts().status).toBe(0);
   run.writeBatch('b1', items);
   run.writeBatch('b2', b2);
-  run.writeBatch('cross', cross);
   return run;
 }
 
 /** `item` must be refused in batch b1 with a line that names `b1 item 0` and matches `expected`. */
-function refuses(name, over, expected, { b2, cross, batch = 'b1' } = {}) {
+function refuses(name, over, expected, { b2, batch = 'b1' } = {}) {
   it(name, () => {
-    const run = ready([goodItem(over)], { b2, cross });
+    const run = ready([goodItem(over)], { b2 });
     if (batch !== 'b1') {
       run.writeBatch('b1', []);
       run.writeBatch(batch, [goodItem(over)]);
@@ -64,7 +63,7 @@ describe('review render: the rules', () => {
   refuses('an empty title', { title: '  ' }, /title must be a non-empty text/);
   refuses('an unknown key', { extra: 1 }, /exactly the keys dimension, impact, features/);
   refuses('a feature that is not in the map', { features: ['F1', 'F9'] }, /features F9 are not in the map/);
-  refuses('a feature outside the batch', { features: ['F1', 'F3'] }, /features F3 are not in batch b1; an item across batches belongs to the cross batch/);
+  refuses('a feature outside the batch', { features: ['F1', 'F3'] }, /features F3 are not in batch b1\b(?!;)/);
   refuses('a cite that no listed chapter holds', { cites: [`${FORM}:7`, `${FORM}:99`] }, /cite "src\/forms\/order-form.js:99" does not occur in a chapter of the features it lists \(F1, F2\)/);
   refuses('a cite copied from a feature the item does not list', { features: ['F1', 'F2'], cites: [`${FORM}:7`, `${FORM}:11`] }, /cite "src\/forms\/order-form.js:11" does not occur/);
   refuses('a two-place dimension with one chapter line', { cites: [`${FORM}:7`] }, /a duplication item needs citations from 2 different chapter lines; its citations are on 1/);
@@ -77,17 +76,15 @@ describe('review render: the rules', () => {
   refuses('a word of advice', { consequence: 'The clerk should use one screen' }, /consequence: "should" is a word of advice/);
   refuses('a backtick', { title: 'Two `places` end an order' }, /title holds a backtick or a citation group/);
   refuses('two sentences', { situation: 'One screen ends it. Another ends it too' }, /situation holds more than one sentence/);
-  refuses('a cross item with features of one batch', { features: ['F1', 'F2'] }, /a cross item lists features of 1 batch \(b1\); it needs features of 2 or more batches/, { batch: 'cross' });
 
   it('a one-place dimension needs no second line', () => {
     const run = ready([goodItem({ dimension: 'complexity', cites: [`${FORM}:7`] })]);
     expect(run.render('b1').status).toBe(0);
   });
 
-  it('a cross item with features of two batches holds', () => {
-    const run = ready([], { cross: [goodItem({ features: ['F1', 'F3'], cites: [`${FORM}:7`, `${FORM}:11`] })] });
-    const result = run.render('cross');
-    expect(result.status, result.stdout).toBe(0);
+  it('the refusal of a feature outside a domain batch does not mention a cross batch', () => {
+    const run = ready([goodItem({ features: ['F1', 'F3'] })]);
+    expect(run.render('b1').stdout).not.toMatch(/cross/);
   });
 
   it('reports every refused item, not only the first', () => {
@@ -100,14 +97,14 @@ describe('review render: the rules', () => {
     const run = ready([goodItem()]);
     writeFileSync(join(run.out, 'entries', 'review', 'b2.json'), '{"items": 3}');
     expect(run.render('b2').lines[0]).toBe('b2: entries/review/b2.json must be an object with exactly the key "items", a list');
-    expect(run.render('cross').status).toBe(0);
-    writeFileSync(join(run.out, 'entries', 'review', 'cross.json'), 'nope');
-    expect(run.render('cross').lines[0]).toMatch(/^cross: entries\/review\/cross.json is not valid JSON/);
+    expect(run.render('b1').status).toBe(0);
+    writeFileSync(join(run.out, 'entries', 'review', 'b2.json'), 'nope');
+    expect(run.render('b2').lines[0]).toMatch(/^b2: entries\/review\/b2.json is not valid JSON/);
   });
 
   it('a batch that is not in the facts file, and a missing facts file, are refused', () => {
     const run = ready([goodItem()]);
-    expect(run.render('b7').lines[0]).toBe('b7 is not a batch; the batches are b1, b2, cross');
+    expect(run.render('b7').lines[0]).toBe('b7 is not a batch; the batches are b1, b2');
     const bare = reviewRun(cleanups);
     expect(bare.render().lines[0]).toMatch(/entries\/review-facts.json is missing; run review facts first/);
   });
@@ -116,29 +113,29 @@ describe('review render: the rules', () => {
 describe('review render: the chapter', () => {
   it('with no batch named, refuses while a batch file is missing and writes nothing', () => {
     const run = ready([goodItem()]);
-    rmSync(join(run.out, 'entries', 'review', 'cross.json'));
+    rmSync(join(run.out, 'entries', 'review', 'b2.json'));
     const result = run.render();
     expect(result.status).toBe(1);
-    expect(result.lines[0]).toMatch(/^cross: entries\/review\/cross.json is missing/);
+    expect(result.lines[0]).toMatch(/^b2: entries\/review\/b2.json is missing/);
     expect(existsSync(join(run.out, 'chapters', 'review.md'))).toBe(false);
   });
 
   it('writes fixed headings, a counts table, and one level-3 heading per item with the citation group on each field', () => {
     const run = ready(
       [goodItem(), goodItem({ dimension: 'complexity', impact: 'high', features: ['F1'], title: 'Sending takes many steps', situation: 'Creating an order takes 4 steps', consequence: 'A clerk needs several screens', cites: [`${FORM}:6`] })],
-      { b2: [goodItem({ dimension: 'dead-end', impact: 'low', features: ['F3'], title: 'A reminder cannot be stopped', situation: 'Sending a reminder is one step', consequence: 'Nobody can cancel it', cites: [`${FORM}:11`] })], cross: [goodItem({ dimension: 'redundancy', features: ['F1', 'F4'], title: 'Same code twice', situation: 'Both features run the same code', consequence: 'Two places change together', cites: [`${FORM}:12`] })] },
+      { b2: [goodItem({ dimension: 'dead-end', impact: 'low', features: ['F3'], title: 'A reminder cannot be stopped', situation: 'Sending a reminder is one step', consequence: 'Nobody can cancel it', cites: [`${FORM}:11`] }), goodItem({ dimension: 'redundancy', features: ['F4'], title: 'Same code twice', situation: 'The tool runs the same code', consequence: 'Two places change together', cites: [`${FORM}:12`] })] },
     );
     const result = run.render();
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines.slice(0, 3)).toEqual(['b1: ok (2 items)', 'b2: ok (1 items)', 'cross: ok (1 items)']);
+    expect(result.lines.slice(0, 2)).toEqual(['b1: ok (2 items)', 'b2: ok (2 items)']);
     const text = readFileSync(join(run.out, 'chapters', 'review.md'), 'utf-8');
     expect(text.startsWith('# Design problems\n\n## Counts by dimension and impact\n\n| Dimension | High | Medium | Low |\n| --- | --- | --- | --- |\n')).toBe(true);
     expect(text).toContain('| Duplication | 0 | 1 | 0 |');
     expect(text).toContain('| Complexity | 1 | 0 | 0 |');
     expect(text).toContain('| Dead end | 0 | 0 | 1 |');
     const dims = [...text.matchAll(/^## (.+)$/gm)].map((match) => match[1]);
-    expect(dims).toEqual(['Counts by dimension and impact', 'Duplication', 'Complexity', 'Redundancy', 'Dead end']);
-    expect(text).toContain('### Two places end an order\n\nImpact: Medium; Features: Orders (F1), Archive (F2) (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
+    expect(dims).toEqual(['Counts by dimension and impact', 'Duplication', 'Complexity', 'Redundancy', 'Dead end', 'Coverage of the comparison candidates']);
+    expect(text).toContain('### R1 Two places end an order\n\nImpact: Medium; Features: Orders (F1), Archive (F2) (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
     expect(text).toContain('Situation: Both features let the clerk close an order (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
     expect(text).toContain('Consequence: A clerk has to know which screen to use (`src/forms/order-form.js:7`; `src/forms/order-form.js:8`).');
   });
@@ -158,7 +155,7 @@ describe('review render: the chapter', () => {
     const run = ready([]);
     expect(run.render().status).toBe(0);
     const text = readFileSync(join(run.out, 'chapters', 'review.md'), 'utf-8');
-    expect(text.trimEnd().endsWith('None.')).toBe(true);
+    expect(text).toContain('None.\n\n## Coverage of the comparison candidates');
     expect(run.check('review').status).toBe(0);
   });
 

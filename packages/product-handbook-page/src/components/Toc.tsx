@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
 import { useText } from '../lib/text';
+import { useSpyPin } from '../lib/spy-pin';
 import { activeIndex, numberHeadings, spyLimit, wantsToc } from '../lib/toc';
 import type { TocItem } from '../lib/toc';
 
@@ -18,6 +19,7 @@ export function Toc({ root, onPresent }: { root: RefObject<HTMLElement | null>; 
   const [items, setItems] = useState<TocItem[]>([]);
   const [active, setActive] = useState(0);
   const headings = useRef<HTMLElement[]>([]);
+  const { pinned, pin } = useSpyPin(items.map((item) => item.id).join('|'));
 
   useEffect(() => {
     const element = root.current;
@@ -45,6 +47,7 @@ export function Toc({ root, onPresent }: { root: RefObject<HTMLElement | null>; 
     let frame = 0;
     const update = () => {
       frame = 0;
+      if (pinned.current) return;
       const bar = document.querySelector('.topbar')?.getBoundingClientRect().height ?? 60;
       setActive(activeIndex(headings.current.map((heading) => heading.getBoundingClientRect().top), spyLimit(bar, window.innerHeight)));
     };
@@ -64,6 +67,7 @@ export function Toc({ root, onPresent }: { root: RefObject<HTMLElement | null>; 
     const heading = headings.current[at];
     if (heading === undefined) return;
     heading.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    pin();
     heading.focus({ preventScroll: true });
     setActive(at);
   };

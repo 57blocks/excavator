@@ -1,6 +1,6 @@
 ## The prompt every cross chapter starts with
 
-The cross chapters (`domains`, `roles`, `notifications`, `topics`, `defects`, `remedies`) are each written by one `excavator-handbook-writer` subagent. The prompt of each is the block below followed by the block of that chapter, which the phase file of the chapter holds. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OPEN_QUESTIONS`, `$PROBLEMS` and `$NONE` as their values; never give a writer of these chapters the project's path in any other way.
+The cross chapters (`domains`, `roles`, `notifications`, `topics`, `defects`, `processes`, `remedies`) are each written by one `excavator-handbook-writer` subagent, except `processes`, which one subagent per business domain writes in parts. The prompt of each is the block below followed by the block of that chapter, which the phase file of the chapter holds. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OPEN_QUESTIONS`, `$PROBLEMS`, `$NONE`, `$D_FEATURES`, `$D_HANDOVERS` and `$D_MAIN_LINE` as their values; never give a writer of these chapters the project's path in any other way.
 
 **Every cross chapter.**
 
@@ -16,7 +16,7 @@ You write one chapter of a product handbook for readers who do not read code. Th
 
 **Plain words.** Keep labels, role names and state names as the chapters write them, in quotation marks when they are quoted there. No identifier with an underscore, no camel-case word, no path that starts with `/`, no file name with a source extension and no name followed by `(` in reader text. A cross chapter adds no fact the chapters do not state: where the chapters do not settle a point, say so in plain words, with no citation, in a last section `## $OPEN_QUESTIONS`, or leave it out.
 
-**Check before you reply.** Run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check "$OUT" <your chapter's name> --project "$PROJECT_ROOT" --no-record` (the path in this command is for the check only; never read it). Fix the chapter for every reason it prints and run it again, at most 4 runs. A citation the check refuses was copied wrong: copy it again from its chapter.
+**Check before you reply.** When the block of your chapter below gives its own check before you reply, run that one instead of this. Otherwise run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check "$OUT" <your chapter's name> --project "$PROJECT_ROOT" --no-record` (the path in this command is for the check only; never read it). Fix the chapter for every reason it prints and run it again, at most 4 runs. A citation the check refuses was copied wrong: copy it again from its chapter.
 
 Reply with one line: `<your chapter's name>: written`.
 ````

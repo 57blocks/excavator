@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // The shell of the page (openspec change handbook-page-domain-map, tasks 3.1 to 3.3): the routes, the groups (one per domain
-// when the checked list is usable, one per outline part otherwise), the references, the top bar with its popovers and the
-// phone menu, the side list, the breadcrumbs, previous and next, the view switch, the table of contents and the notices.
+// when the checked list is usable, one per outline part otherwise), the references, the top bar (brand, search, view switch), the
+// left list in its two states and the phone menu, the breadcrumbs, previous and next, the view switch, the table of contents and the notices.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { act } from 'react';
@@ -26,6 +26,7 @@ const SYSTEM = marked['page.nav.system'];
 const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
 const between = (html: string, from: string, to: string): string => html.slice(html.indexOf(from), html.indexOf(to, html.indexOf(from)));
 const side = (html: string): string => between(html, '<nav class="side"', '</nav>');
+const frameOf = (html: string): string => /<div class="frame" data-side="([a-z]+)"/.exec(html)?.[1] ?? '';
 const hrefs = (html: string): string[] => Array.from(html.matchAll(/<a [^>]*href="([^"]*)"/g), (match) => match[1]);
 const texts = (html: string): string[] => Array.from(html.matchAll(/<a [^>]*>(?:<[^>]*>)*([^<]*)(?:<small>[^<]*<\/small>)?<\/a>/g), (match) => match[1]);
 
@@ -57,6 +58,19 @@ describe('routes', () => {
     expect(routeHash({ name: 'domain', id: 'd1' }, 'technical')).toBe('#/technical/domain/d1');
     expect(routeHash({ name: 'domain', id: 'd1' }, null)).toBe('#/domain/d1');
     expect(routeHash({ name: 'home' }, null)).toBe('#/');
+  });
+
+  it('parses the architecture page with and without the view and builds it back', () => {
+    expect(parseHash('#/architecture')).toEqual({ name: 'architecture' });
+    expect(parseHash('#/technical/architecture')).toEqual({ name: 'architecture', view: 'technical' });
+    expect(parseHash('#/technical/architecture/x').name).toBe('not-found');
+    expect(parseHash('#/technical/architecture?q=1').name).toBe('not-found');
+    expect(routeHash({ name: 'architecture' }, 'technical')).toBe('#/technical/architecture');
+    expect(routeHash({ name: 'architecture' }, null)).toBe('#/architecture');
+    for (const hash of ['#/architecture', '#/technical/architecture', '#/product/architecture']) {
+      const route = parseHash(hash);
+      expect(parseHash(routeHash(bodyOf(route), route.view ?? null))).toEqual(route);
+    }
   });
 });
 
@@ -116,28 +130,35 @@ describe('the references', () => {
 });
 
 describe('the top bar', () => {
-  it('has the brand on two lines (the system chapter, then the view title), the map, the domains with colour and count, the references and the search button', () => {
+  it('holds the menu button, the brand (the system name only), the search button and the view switch, and nothing else', () => {
     const html = render(withDomains(), '#/technical/chapter/F1');
     const bar = between(html, '<header', '</header>');
-    expect(bar).toContain(`<a class="brand" href="#/technical/"><b>${d('System chapter')}</b><span>${d('Technical handbook')}</span></a>`.replace('href="#/technical/"', 'href="#/technical"'));
-    expect(bar).toContain(`data-nav="map">${marked['page.nav.map']}</a>`);
-    const domains = between(bar, 'id="pop-domains"', 'id="pop-refs"');
-    expect(texts(domains)).toEqual([d('Support'), d('Sales')]);
-    expect(domains).toContain('href="#/technical/domain/d1"');
-    expect(domains).toContain(`--c-fill:${STRATA[0].fill}`);
-    expect(domains).toMatch(/<small>1<\/small>/);
-    const refs = between(bar, 'id="pop-refs"', 'class="bar-end"');
-    expect(hrefs(refs)).toEqual(['#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
+    expect(bar).toContain(`<a class="brand" href="#/technical"><b>${d('System chapter')}</b></a>`);
+    expect(bar).not.toContain(d('Technical handbook'));
     expect(bar).toContain(`aria-label="${marked['page.search.open']}"`);
-    expect(bar).toContain(`>${marked['page.nav.domains']}</button>`);
+    expect(bar).toContain(`<span>${marked['page.search.open']}</span><kbd`);
+    expect(marked['page.search.open']).toBe(`${MARK}Search`);
+    const order = ['class="menu-btn"', 'class="brand"', 'class="search-btn"', 'data-part="view-switch"'].map((part) => bar.indexOf(part));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // The bar's links are the brand and the two views; its buttons are the menu and the search.
+    expect(hrefs(bar)).toEqual(['#/technical', '#/product/chapter/F1', '#/technical/chapter/F1']);
+    expect(Array.from(bar.matchAll(/<button/g))).toHaveLength(2);
+    expect(bar).not.toContain('data-nav=');
+    expect(bar).not.toContain('class="nav"');
+    expect(bar).not.toContain('class="pop');
+    expect(bar).not.toContain(marked['page.nav.problems']);
+    expect(bar).not.toContain(marked['page.nav.overview']);
   });
 
-  it('names the brand by the view title when there is no system chapter, and marks the map link on the home page only', () => {
+  it('names the brand by the view title when there is no system chapter, and has no second line', () => {
     const outline: Outline = { source: 'outline', problems: [], parts: [{ title: d('Features'), blocks: [{ block: 'F1', kind: 'chapter', title: d('Orders') }] }], unplaced: [] };
     const html = render(pageData({ outline }), '#/product');
-    expect(between(html, '<a class="brand"', '</a>')).toContain(`<b>${d('Handbook')}</b><span>${d('Handbook')}</span>`);
-    expect(between(html, 'data-nav="map"', '</a>')).toBe(`data-nav="map" aria-current="page">${marked['page.nav.map']}`.replace('data-nav="map" aria-current="page">', 'data-nav="map" aria-current="page">'));
-    expect(render(pageData(), '#/product/chapter/F1')).not.toContain('data-nav="map" aria-current');
+    expect(between(html, '<a class="brand"', '</a>')).toBe(`<a class="brand" href="#/product"><b>${d('Handbook')}</b>`);
+  });
+
+  it('has no search wording of the old long form, and the dialog says Search too', () => {
+    expect(marked['page.search.placeholder']).toBe(`${MARK}Search`);
   });
 
   it('has a skip link to the main region, and the page has the main region', () => {
@@ -146,115 +167,170 @@ describe('the top bar', () => {
     expect(html).toContain('<main id="main" tabindex="-1">');
   });
 
-  it('opens a popover on a click, with aria-expanded, and closes it on Escape, on a click outside and on a click on a link', () => {
-    const host = mount(<AppView data={withDomains()} route={parseHash('#/product/chapter/F1')} />);
-    const button = host.querySelector<HTMLElement>('[data-pop="pop-domains"]') as HTMLElement;
-    const panel = host.querySelector<HTMLElement>('#pop-domains') as HTMLElement;
-    expect(button.getAttribute('aria-expanded')).toBe('false');
-    expect(panel.hidden).toBe(true);
-    act(() => button.click());
-    expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect(panel.hidden).toBe(false);
-    act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
-    expect(button.getAttribute('aria-expanded')).toBe('false');
-    expect(panel.hidden).toBe(true);
-    expect(document.activeElement).toBe(button);
-    act(() => button.click());
-    act(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
-    expect(panel.hidden).toBe(true);
-    act(() => button.click());
-    act(() => { (panel.querySelector('a') as HTMLElement).click(); });
-    expect(panel.hidden).toBe(true);
-  });
-
-  it('keeps a click inside the panel from closing it, and opening the other popover closes the first', () => {
-    const host = mount(<AppView data={withDomains()} route={parseHash('#/product/chapter/F1')} />);
-    const domains = host.querySelector<HTMLElement>('[data-pop="pop-domains"]') as HTMLElement;
-    const refs = host.querySelector<HTMLElement>('[data-pop="pop-refs"]') as HTMLElement;
-    act(() => domains.click());
-    act(() => { (host.querySelector('#pop-domains') as HTMLElement).dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
-    expect((host.querySelector('#pop-domains') as HTMLElement).hidden).toBe(false);
-    act(() => { refs.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); refs.click(); });
-    expect((host.querySelector('#pop-domains') as HTMLElement).hidden).toBe(true);
-    expect((host.querySelector('#pop-refs') as HTMLElement).hidden).toBe(false);
-  });
-
   it('calls the search callback from the search button', () => {
     const calls: number[] = [];
     const host = mount(<AppView data={pageData()} route={parseHash('#/product')} onSearch={() => calls.push(1)} />);
     act(() => (host.querySelector('.search-btn') as HTMLElement).click());
     expect(calls).toEqual([1]);
   });
+});
 
-  it('has the phone menu behind a button: Map, the domains, the references; it closes on Escape and on a link', () => {
+describe('the phone menu', () => {
+  const open = (data: PageData, hash: string): { host: HTMLElement; menu: HTMLElement; button: HTMLElement } => {
+    const host = mount(<AppView data={data} route={parseHash(hash)} />);
+    const button = host.querySelector<HTMLElement>('.menu-btn') as HTMLElement;
+    act(() => button.click());
+    return { host, menu: host.querySelector('#menu') as HTMLElement, button };
+  };
+  const links = (root: Element): (string | null)[] => Array.from(root.querySelectorAll('a')).map((link) => link.getAttribute('href'));
+
+  it('is behind a button, closed at the start; it closes on Escape and on a click on a link', () => {
     const host = mount(<AppView data={withDomains()} route={parseHash('#/technical/chapter/F1')} />);
     const button = host.querySelector<HTMLElement>('.menu-btn') as HTMLElement;
     expect(host.querySelector('#menu')).toBeNull();
     expect(button.getAttribute('aria-expanded')).toBe('false');
     act(() => button.click());
-    const menu = host.querySelector('#menu') as HTMLElement;
     expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect(Array.from(menu.querySelectorAll('a')).map((link) => link.getAttribute('href'))).toEqual([
-      '#/technical', '#/technical/domain/d1', '#/technical/domain/d2',
-      '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage',
-    ]);
-    expect(Array.from(menu.querySelectorAll('h2')).map((heading) => heading.textContent)).toEqual([marked['page.nav.domains'], marked['page.nav.references']]);
+    expect(host.querySelector('#menu')).not.toBeNull();
     act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); });
     expect(host.querySelector('#menu')).toBeNull();
     act(() => button.click());
     act(() => (host.querySelector('#menu a') as HTMLElement).click());
     expect(host.querySelector('#menu')).toBeNull();
   });
+
+  it('shows the list of the current state: the global list on a page that is not a domain page, with the improvement suggestions entry before the architecture entry in the technical view', () => {
+    const data = { ...withDomains(), architecture: { technical: 'Text.' } };
+    const { menu } = open(data, '#/technical/data');
+    expect(menu.getAttribute('data-side')).toBe('global');
+    expect(links(menu)).toEqual(['#/technical', '#/technical/problems', '#/technical/remedies', '#/technical/architecture', '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
+    expect(menu.querySelector('a[aria-current="page"]')?.getAttribute('href')).toBe('#/technical/data');
+    expect(menu.querySelector('.side-group')).toBeNull();
+  });
+
+  it('shows the domain list on a domain page and on a feature page: the way back, every domain open with its features', () => {
+    for (const hash of ['#/technical/domain/d1', '#/technical/chapter/F2']) {
+      const { menu } = open(withDomains(), hash);
+      expect(menu.getAttribute('data-side'), hash).toBe('domain');
+      expect(links(menu), hash).toEqual(['#/technical', '#/technical/domain/d1', '#/technical/chapter/F2', '#/technical/domain/d2', '#/technical/chapter/F1']);
+      expect(Array.from(menu.querySelectorAll('details.side-group')).every((one) => (one as HTMLDetailsElement).open), hash).toBe(true);
+      expect(menu.querySelector('a[data-part="side-back"]')?.getAttribute('href'), hash).toBe('#/technical');
+    }
+    expect(open(withDomains(), '#/technical/domain/d1').menu.querySelector('a[aria-current="page"]')?.getAttribute('data-group-link')).toBe('d1');
+    expect(open(withDomains(), '#/technical/chapter/F2').menu.querySelector('a[aria-current="page"]')?.getAttribute('data-page')).toBe('chapter:F2');
+  });
 });
 
-describe('a reading page', () => {
-  it('lists, at the side, the group of a feature chapter with its colour, its name as a link to the domain page, and marks the current page', () => {
-    const html = render(withDomains(), '#/technical/chapter/F2');
-    const list = side(html);
-    expect(list).toContain(`aria-label="${d('Support')}"`);
-    expect(list).toContain(`data-c-fill`.replace('data-c-fill', `--c-fill:${STRATA[0].fill}`));
-    expect(list).toContain(`<a href="#/technical/domain/d1">${d('Support')}</a>`);
-    expect(hrefs(list)).toEqual(['#/technical/domain/d1', '#/technical/chapter/F2']);
-    expect(list).toMatch(/<a [^>]*href="#\/technical\/chapter\/F2"[^>]*aria-current="page"/);
-    // The other domain's feature is not in this list.
-    expect(list).not.toContain('chapter/F1');
-  });
+describe('the left list', () => {
+  const ARCH = { technical: 'Architecture text.' };
+  const withArch = (extra: Partial<PageData> = {}): PageData => withDomains({ architecture: ARCH, ...extra });
+  const keys = (html: string): string[] => Array.from(side(html).matchAll(/<a [^>]*href="([^"]*)"/g), (match) => match[1]);
+  const currents = (html: string): string[] => Array.from(side(html).matchAll(/<a [^>]*href="([^"]*)"[^>]*aria-current="page"/g), (match) => match[1]);
 
-  it('lists the references for every other page, with the current one marked, and no colour', () => {
-    const html = render(withDomains(), '#/technical/data');
-    const list = side(html);
-    expect(list).toContain(`aria-label="${marked['page.nav.references']}"`);
-    expect(hrefs(list)).toEqual(['#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
-    expect(list).toMatch(/<a [^>]*href="#\/technical\/data"[^>]*aria-current="page"/);
-    expect(list).not.toContain('--c-fill');
-    expect(side(render(withDomains(), '#/product/chapter/system'))).toContain('data-side="references"');
-  });
-
-  it('has a side list that is a details whose summary is the group name, open at the start on a wide screen only', () => {
-    const savedMedia = window.matchMedia;
-    const media = (wide: boolean) => ((query: string) => ({ matches: wide && query.includes('min-width'), media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
-    try {
-      window.matchMedia = media(true);
-      const wide = side(render(withDomains(), '#/product/chapter/F1'));
-      expect(wide).toMatch(/<details open=""><summary>/);
-      expect(wide).toContain(`${d('Sales')}</summary>`);
-      window.matchMedia = media(false);
-      expect(side(render(withDomains(), '#/product/chapter/F1'))).toContain('<details><summary>');
-    } finally {
-      window.matchMedia = savedMedia;
+  it('is in the frame next to main on every route, with its state on the nav and on the frame', () => {
+    for (const [hash, mode] of [['#/product', 'global'], ['#/product/problems', 'global'], ['#/product/remedies', 'global'], ['#/technical/architecture', 'global'], ['#/technical/chapter/system', 'global'], ['#/product/coverage', 'global'], ['#/product/nowhere', 'global'], ['#/product/domain/d1', 'domain'], ['#/product/chapter/F1', 'domain']] as const) {
+      const html = render(withArch(), hash);
+      expect(html, hash).toContain(`<nav class="side"`);
+      expect(side(html), hash).toContain(`data-side="${mode}"`);
+      expect(frameOf(html), hash).toBe(mode);
+      expect(html.indexOf('<nav class="side"'), hash).toBeLessThan(html.indexOf('<main'));
+      expect(html.indexOf('<div class="frame"'), hash).toBeLessThan(html.indexOf('<nav class="side"'));
     }
   });
 
-  it('has the breadcrumbs Map / group (a link to its domain page) / title for a feature, and Map / references / title for the others', () => {
+  it('is global on the home page: Overview, Problems, Improvement suggestions, then the reference pages by their groups, no domains and no features', () => {
+    const html = render(withDomains(), '#/product');
+    expect(keys(html)).toEqual(['#/product', '#/product/problems', '#/product/remedies', '#/product/chapter/system', '#/product/history', '#/product/coverage']);
+    expect(currents(html)).toEqual(['#/product']);
+    expect(texts(side(html)).slice(0, 3)).toEqual([marked['page.nav.overview'], marked['page.nav.problems'], marked['page.nav.remedies']]);
+    expect(side(html)).not.toContain('/domain/');
+    expect(side(html)).not.toContain('side-group');
+    expect(side(html)).not.toContain('/chapter/F');
+    expect(side(html)).not.toContain(marked['page.nav.architecture']);
+  });
+
+  it('marks the problems page, the architecture page and a reference page in the global state, and lists the architecture before the references', () => {
+    expect(currents(render(withArch(), '#/technical/problems'))).toEqual(['#/technical/problems']);
+    const architecture = render(withArch(), '#/technical/architecture');
+    expect(keys(architecture)).toEqual(['#/technical', '#/technical/problems', '#/technical/remedies', '#/technical/architecture', '#/technical/chapter/system', '#/technical/data', '#/technical/dictionaries', '#/technical/history', '#/technical/coverage']);
+    expect(currents(architecture)).toEqual(['#/technical/architecture']);
+    expect(texts(side(architecture))[3]).toBe(marked['page.nav.architecture']);
+    expect(currents(render(withArch(), '#/technical/remedies'))).toEqual(['#/technical/remedies']);
+    const data = render(withArch(), '#/technical/data');
+    expect(currents(data)).toEqual(['#/technical/data']);
+    expect(side(data)).not.toContain('--c-fill');
+    expect(currents(render(withArch(), '#/technical/coverage'))).toEqual(['#/technical/coverage']);
+    expect(currents(render(withArch(), '#/technical/chapter/system'))).toEqual(['#/technical/chapter/system']);
+  });
+
+  it('has the architecture entry in the technical view only, and not when the architecture text is empty or missing', () => {
+    expect(keys(render(withArch(), '#/product/problems'))).not.toContain('#/product/architecture');
+    expect(side(render(withArch(), '#/product'))).not.toContain(marked['page.nav.architecture']);
+    expect(side(render(withDomains({ architecture: { technical: '' } }), '#/technical'))).not.toContain(marked['page.nav.architecture']);
+    expect(side(render(withDomains(), '#/technical'))).not.toContain(marked['page.nav.architecture']);
+    expect(side(render(withArch(), '#/technical'))).toContain(`href="#/technical/architecture"`);
+  });
+
+  it('is global, without an entry marked, on the not-found page, and in a page with one view without the view in its addresses', () => {
+    const missing = render(withArch(), '#/technical/chapter/nope');
+    expect(frameOf(missing)).toBe('global');
+    expect(currents(missing)).toEqual([]);
+    expect(keys(render({ ...pageData({ views: ['technical'] }), architecture: ARCH }, '#/')).slice(0, 4)).toEqual(['#/', '#/problems', '#/remedies', '#/architecture']);
+  });
+
+  it('is global for a feature that is in no domain, and domain for one that is', () => {
+    const data = withDomains({ domains: { ...OK_DOMAINS, list: [OK_DOMAINS.list[1]] } });
+    expect(frameOf(render(data, '#/product/chapter/F2'))).toBe('global');
+    expect(currents(render(data, '#/product/chapter/F2'))).toEqual(['#/product/chapter/F2']);
+    expect(frameOf(render(data, '#/product/chapter/F1'))).toBe('domain');
+  });
+
+  it('is the domain list on a domain page: the way back, every domain a link to its page and open with its features, the current domain marked', () => {
+    const html = render(withDomains(), '#/technical/domain/d2');
+    const list = side(html);
+    expect(list).toContain(`aria-label="${marked['page.nav.domains']}"`);
+    expect(hrefs(list)).toEqual(['#/technical', '#/technical/domain/d1', '#/technical/chapter/F2', '#/technical/domain/d2', '#/technical/chapter/F1']);
+    expect(list).toMatch(/<a class="side-back" data-part="side-back" href="#\/technical">/);
+    expect(between(list, 'data-part="side-back"', '</a>')).toContain(marked['page.nav.overview']);
+    expect(list).toMatch(/<details class="side-group" data-group="d1" open=""/);
+    expect(list).toMatch(/<details class="side-group" data-group="d2" open=""/);
+    expect(list).toContain(`--c-fill:${STRATA[0].fill}`);
+    expect(list).toContain(`--c-fill:${STRATA[1].fill}`);
+    expect(currents(html)).toEqual(['#/technical/domain/d2']);
+    expect(list).toMatch(/<a [^>]*href="#\/technical\/domain\/d2"[^>]*data-group-link="d2"[^>]*aria-current="page"/);
+    expect(list).not.toContain('data-nav=');
+    expect(list).not.toContain('ref-group');
+  });
+
+  it('is the domain list on a feature page too, with the feature marked and not its domain', () => {
+    const html = render(withDomains(), '#/technical/chapter/F2');
+    expect(hrefs(side(html))).toEqual(['#/technical', '#/technical/domain/d1', '#/technical/chapter/F2', '#/technical/domain/d2', '#/technical/chapter/F1']);
+    expect(currents(html)).toEqual(['#/technical/chapter/F2']);
+  });
+
+  it('has the breadcrumbs Overview / domain (a link to its page) / title for a feature, and Overview / title for the others', () => {
     const feature = between(render(withDomains(), '#/product/chapter/F1'), '<nav class="crumbs"', '</nav>');
     expect(hrefs(feature)).toEqual(['#/product', '#/product/domain/d2']);
-    expect(texts(feature)).toEqual([marked['page.nav.map'], d('Sales')]);
+    expect(texts(feature)).toEqual([marked['page.nav.overview'], d('Sales')]);
     expect(feature).toContain(`<span aria-current="page">${d('Orders')}</span>`);
     expect(feature).toContain(`aria-label="${marked['page.crumbs.label']}"`);
     const reference = between(render(withDomains(), '#/product/chapter/system'), '<nav class="crumbs"', '</nav>');
     expect(hrefs(reference)).toEqual(['#/product']);
-    expect(reference).toContain(`<span>${marked['page.nav.references']}</span>`);
+    expect(texts(reference)).toEqual([marked['page.nav.overview']]);
     expect(reference).toContain(`<span aria-current="page">${SYSTEM}</span>`);
+    expect(reference).not.toContain(`<span>`);
+    const data = between(render(withDomains(), '#/technical/data'), '<nav class="crumbs"', '</nav>');
+    expect(Array.from(data.matchAll(/<span[^>]*>([^<]*)<\/span>/g)).map((match) => match[1]).filter((text) => text !== '')).toEqual([marked['md.data.heading']]);
+  });
+
+  it('starts the breadcrumbs of a domain page and of the problems page with Overview, linking home', () => {
+    const domain = between(render(withDomains(), '#/product/domain/d1'), '<nav class="crumbs"', '</nav>');
+    expect(hrefs(domain)).toEqual(['#/product']);
+    expect(texts(domain)).toEqual([marked['page.nav.overview']]);
+    expect(domain).toContain(`<span aria-current="page">${d('Support')}</span>`);
+    const problems = between(render(withDomains(), '#/product/problems'), '<nav class="crumbs"', '</nav>');
+    expect(hrefs(problems)).toEqual(['#/product']);
+    expect(texts(problems)).toEqual([marked['page.nav.overview']]);
   });
 
   it('follows the group order for previous and next of a feature, and the references order (the coverage page last) for the others', () => {
@@ -288,18 +364,15 @@ describe('a reading page', () => {
 });
 
 describe('the home and domain pages', () => {
-  it('show the title and the groups as links, and a fallback domain shows its name and features', () => {
+  it('show the title on the home page, and the domain page with its features as links; a fallback domain shows its name and features', () => {
     const home = render(withDomains(), '#/product');
-    expect(home).toContain(`<h1 class="home-title">${d('System chapter')}</h1>`);
-    const links = hrefs(between(home, '<main', '</main>'));
-    expect(links).toContain('#/product/domain/d1');
-    expect(links).toContain('#/product/domain/d2');
-    expect(links.slice(-3)).toEqual(['#/product/chapter/system', '#/product/history', '#/product/coverage']);
-    // The fallback page has the groups from the outline and the features of a group as links.
+    expect(home).toContain(`<h1 class="vh">${d('System chapter')}</h1>`);
+    expect(home).not.toContain('home-lead');
+    expect(home).toContain('data-part="open-domains" href="#/product/domain/d1"');
     const domain = render(pageData(), '#/product/domain/d1');
     expect(domain).toContain('data-domain="d1"');
-    expect(between(domain, '<main', '</main>')).toContain(d('Features'));
-    expect(hrefs(between(domain, '<h2>', '</main>'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2']);
+    expect(between(domain, 'data-part="domain-features"', '</section>')).toContain(marked['page.domain.features']);
+    expect(hrefs(between(domain, 'data-part="domain-features"', '</section>'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2']);
     expect(render(withDomains(), '#/product/domain/zzz')).toContain('data-view="not-found"');
   });
 });
@@ -317,6 +390,13 @@ describe('the view switch', () => {
   it('keeps the home page and a domain page', () => {
     expect(to('#/technical', 'product')).toBe('#/product');
     expect(to('#/technical/domain/d1', 'product', withDomains())).toBe('#/product/domain/d1');
+  });
+
+  it('keeps the architecture page only in a view that has it: the technical view with an architecture text', () => {
+    const data = withDomains({ architecture: { technical: 'Text.' } });
+    expect(to('#/technical/architecture', 'product', data)).toBe('#/product');
+    expect(to('#/technical/architecture', 'technical', data)).toBe('#/technical/architecture');
+    expect(to('#/product/architecture', 'technical', data)).toBe('#/technical/architecture');
   });
 
   it('goes home when the other view does not have the page (the data page in the product view), or the address names no page', () => {
@@ -368,6 +448,16 @@ describe('what each route is', () => {
     expect(bodyOf(parseHash('#/technical/chapter/F1'))).toEqual({ name: 'chapter', id: 'F1' });
   });
 
+  it('has the architecture page in the technical view with an architecture text, and nowhere else', () => {
+    const data = withDomains({ architecture: { technical: 'Text.' } });
+    expect(viewOf(data, parseHash('#/technical/architecture'), COVERAGE)).toBe('technical');
+    expect(viewOf(data, parseHash('#/product/architecture'), COVERAGE)).toBeNull();
+    expect(viewOf(withDomains(), parseHash('#/technical/architecture'), COVERAGE)).toBeNull();
+    expect(viewOf(withDomains({ architecture: { technical: '' } }), parseHash('#/technical/architecture'), COVERAGE)).toBeNull();
+    expect(viewOf({ ...pageData({ views: ['product'] }), architecture: { technical: 'Text.' } }, parseHash('#/architecture'), COVERAGE)).toBeNull();
+    expect(render(withDomains(), '#/technical/architecture')).toContain('data-view="not-found"');
+  });
+
   it('shows the not-found page for an address that names no page, and the document title says so', () => {
     const data = pageData();
     expect(render(data, '#/product/data')).toContain('data-view="not-found"');
@@ -381,6 +471,7 @@ describe('what each route is', () => {
     expect(documentTitle(data, parseHash('#/product/coverage'))).toBe(`${COVERAGE} - ${d('Handbook')}`);
     expect(documentTitle(data, parseHash('#/product'))).toBe(`${d('System chapter')} - ${d('Handbook')}`);
     expect(documentTitle(data, parseHash('#/product/domain/d2'))).toBe(`${d('Sales')} - ${d('Handbook')}`);
+    expect(documentTitle({ ...data, architecture: { technical: 'Text.' } }, parseHash('#/technical/architecture'))).toBe(`${marked['page.nav.architecture']} - ${d('Technical handbook')}`);
     expect(BOTH).toEqual(['product', 'technical']);
     expect(MARK).toBe('@@');
   });
@@ -524,6 +615,22 @@ describe('the stylesheet', () => {
     for (const name of ['--bg', '--surface', '--surface-2', '--text', '--text-2', '--text-3', '--line', '--line-strong', '--accent', '--accent-text', '--accent-bg', '--warn-bg', '--warn-text', '--scrim', '--shadow', '--radius', '--control-h', '--topbar-h']) {
       expect(css, name).toContain(`${name}:`);
     }
+  });
+
+  it('gives the folds of a feature page their own class: one hairline between folds, none above the first, the chevron rotated when open', () => {
+    // The shared list item class adds a top rule and padding; a fold that used it got two lines between neighbours.
+    expect(css).not.toMatch(/\.feature details\.item/);
+    expect(css).toContain('.feature details.fold + details.fold { border-top: 1px solid var(--line); }');
+    expect(css).not.toMatch(/details\.fold:first-of-type/);
+    expect(css).toContain('.feature details.fold[open] > summary .chev { transform: rotate(90deg);');
+  });
+
+  it('stretches the reading column below 1280px, where its width is auto: a centred auto-width block shrinks to its content in browsers that align blocks', () => {
+    expect(css).toContain('.read[data-toc="own"] .feature-layout > article { width: auto; max-width: none; justify-self: stretch; }');
+  });
+
+  it('shows the label of a problem on one line, on the feature page and on the problems page', () => {
+    expect(css).toContain('.feature details.fold[data-problem] > summary .t, .prob-summary { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1;');
   });
 
   it('has no all-caps label and no negative-spacing eyebrow', () => {

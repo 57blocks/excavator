@@ -79,7 +79,7 @@ describe('a domain page', () => {
     expect(page('#/product/domain/d3').querySelector('.ho-cites')).toBeNull();
   });
 
-  it('shows the body of the domain section by view under the columns, and nothing when there is none', () => {
+  it('shows the body of the domain section by view without its hand-over list, and nothing when there is none', () => {
     const host = page('#/product/domain/d1');
     const body = host.querySelector('.dom-body') as HTMLElement;
     expect(body.querySelector('h3')?.textContent).toBe(d('Notes'));
@@ -87,6 +87,19 @@ describe('a domain page', () => {
     expect(body.querySelector('.cite')).toBeNull();
     expect(page('#/technical/domain/d1').querySelector('.dom-body .cite')).not.toBeNull();
     expect(page('#/product/domain/d2').querySelector('.dom-body')).toBeNull();
+  });
+
+  it('orders a domain page with a usable list: title, intro, body, columns, domain nav, with no features list, the hand-over list hidden and the table and main line shown', () => {
+    const host = page('#/product/domain/d1');
+    const wrap = host.querySelector('.wrap.domain') as HTMLElement;
+    expect(Array.from(wrap.children).map((one) => (one.matches('nav.crumbs, .crumbs') ? 'crumbs' : one.tagName === 'H1' ? 'h1' : one.className.split(' ').find((name) => ['dom-lede', 'dom-body', 'dom-cols', 'chap-nav'].includes(name)) ?? one.className))).toEqual(['crumbs', 'h1', 'dom-lede', 'dom-body', 'dom-cols', 'chap-nav']);
+    expect(host.querySelector('[data-part="domain-features"]')).toBeNull();
+    const body = host.querySelector('.dom-body') as HTMLElement;
+    expect(body.querySelector('table')?.textContent).toContain(d('Runs services'));
+    expect(body.textContent).toContain(d('Start the services.'));
+    expect(body.textContent).not.toContain(d('Hands settings over to orders.'));
+    expect(body.querySelector('ul')).toBeNull();
+    expect(Array.from(body.querySelectorAll('h3')).map((one) => one.textContent)).toEqual([d('Notes'), d('Domain features'), d('Domain main line')]);
   });
 
   it('ends with the previous and the next domain, and has only one of them at an end', () => {
@@ -102,10 +115,18 @@ describe('a domain page', () => {
     expect(page('#/product/domain/d4').querySelector('[data-side="next"]')).toBeNull();
   });
 
-  it('lists the features of the group as links and has no columns when there is no usable list', () => {
+  it('has the features section and no columns when there is no usable list', () => {
     const host = page('#/product/domain/d1', domainData({ domains: { state: 'failed', list: [], handovers: [] } }));
     expect(host.querySelector('[data-column]')).toBeNull();
-    expect(Array.from(host.querySelectorAll('.plain-list a')).map((one) => one.getAttribute('href'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2', '#/product/chapter/F3', '#/product/chapter/F4']);
+    expect(host.querySelector('.dom-body')).toBeNull();
+    expect(Array.from(host.querySelectorAll('[data-part="domain-features"] a')).map((one) => one.getAttribute('href'))).toEqual(['#/product/chapter/F1', '#/product/chapter/F2', '#/product/chapter/F3', '#/product/chapter/F4']);
+  });
+
+  it('is in the frame with the left list in its domain state, this domain marked', () => {
+    const host = page('#/product/domain/d3');
+    expect(host.querySelector('.frame')?.getAttribute('data-side')).toBe('domain');
+    expect(host.querySelector('nav.side')?.getAttribute('data-side')).toBe('domain');
+    expect(host.querySelector('nav.side a[aria-current="page"]')?.getAttribute('data-group-link')).toBe('d3');
   });
 });
 
@@ -113,18 +134,40 @@ describe('the strip on a feature page', () => {
   const strip = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-part="handover-strip"]');
   const rows = (host: HTMLElement): [string | null, string | undefined][] => Array.from(strip(host)?.querySelectorAll('li') ?? []).map((li) => [li.getAttribute('data-direction'), li.querySelector('.strip-dir')?.textContent?.replace(/\s+/g, ' ')]);
 
-  it('lists the hand-overs that name the chapter, handed over or received from the point of view of its domain, and "from to" when it is neither end', () => {
+  it('lists the hand-overs that name the chapter in two columns from the point of view of its domain, received then handed over, and "from to" under them when it is neither end', () => {
     const host = page('#/product/chapter/F2');
     expect(rows(host)).toEqual([
-      ['in', `${marked['page.handover.in']} ${d('Platform')}`],
-      ['out', `${marked['page.handover.out']} ${d('Billing')}`],
+      ['in', d('Platform')],
+      ['out', d('Billing')],
       ['between', `${d('Billing')} ${marked['page.handover.between']} ${d('Support')}`],
     ]);
+    const column = (dir: string): HTMLElement => strip(host)?.querySelector(`[data-column="${dir}"]`) as HTMLElement;
+    expect(column('in').querySelector('.strip-col-name')?.textContent).toBe(marked['page.handover.in']);
+    expect(column('out').querySelector('.strip-col-name')?.textContent).toBe(marked['page.handover.out']);
+    expect(column('in').querySelector('.strip-n')?.textContent).toBe('1');
+    expect(column('in').querySelectorAll('li[data-direction="in"]')).toHaveLength(1);
+    expect(column('out').querySelectorAll('li[data-direction="out"]')).toHaveLength(1);
+    expect(strip(host)?.querySelector('.strip-between li[data-direction="between"]')).not.toBeNull();
     expect(strip(host)?.getAttribute('aria-label')).toBe(marked['page.strip.heading']);
     expect(strip(host)?.querySelector('li[data-direction="in"] a[href="#/product/domain/d1"]')).not.toBeNull();
     expect(strip(host)?.querySelector('li[data-direction="between"] a[href="#/product/domain/d4"]')).not.toBeNull();
-    expect(rows(page('#/product/chapter/F1'))).toEqual([['out', `${marked['page.handover.out']} ${d('Orders')}`]]);
-    expect(rows(page('#/product/chapter/F4'))).toEqual([['in', `${marked['page.handover.in']} ${d('Billing')}`]]);
+    // A column with no rows says so with the fixed text of the domain page, and has no count.
+    const one = page('#/product/chapter/F1');
+    expect(rows(one)).toEqual([['out', d('Orders')]]);
+    expect(one.querySelector('[data-column="in"] .muted')?.textContent).toBe(marked['page.domain.noneIn']);
+    expect(one.querySelector('[data-column="in"] .strip-n')).toBeNull();
+    expect(rows(page('#/product/chapter/F4'))).toEqual([['in', d('Billing')]]);
+    expect(page('#/product/chapter/F4').querySelector('[data-column="out"] .muted')?.textContent).toBe(marked['page.domain.noneOut']);
+  });
+
+  it('lists a domain once in its column, with the words of each of its hand-overs, and counts the hand-overs', () => {
+    const data = domainData();
+    data.domains = { ...data.domains, handovers: [...data.domains.handovers, { from: 'd1', to: 'd2', what: `${d('Limits reach')} (F2) too.`, features: ['F2'], cites: ['src/f.js:1-1'] }] };
+    const host = page('#/product/chapter/F2', data);
+    const column = host.querySelector('[data-part="handover-strip"] [data-column="in"]') as HTMLElement;
+    expect(column.querySelectorAll('li')).toHaveLength(1);
+    expect(column.querySelectorAll('li .strip-text')).toHaveLength(2);
+    expect(column.querySelector('.strip-n')?.textContent).toBe('2');
   });
 
   it('shows the cites in the technical view only', () => {
@@ -133,19 +176,26 @@ describe('the strip on a feature page', () => {
     expect(Array.from(technical.querySelectorAll('[data-part="handover-strip"] .ho-cites code')).map((one) => one.textContent)).toEqual(['src/b.js:4-9']);
   });
 
-  it('is after the head (the heading and its notice) and before the rest, between rules, with no box', () => {
+  it('is in the links block, the last of the page, under the hint line and the own section of the chapter, with no box and no heading of its own', () => {
     const article = page('#/product/chapter/F2').querySelector('article') as HTMLElement;
-    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'strip', 'tabs', 'panel', 'panel']);
+    expect(Array.from(article.children).map((one) => one.className)).toEqual(['prose', 'lede', 'sr-only', 'feature-problems', 'fblock', 'fblock', 'fblock']);
+    const links = article.querySelector('section[data-block="links"]') as HTMLElement;
+    expect(links).toBe(article.lastElementChild);
+    expect(links.querySelector('[data-part="links-hint"]')).not.toBeNull();
+    // The hint is right under the block's title; the chapter's own section comes before the strip.
+    const order = Array.from(links.children).map((one) => one.getAttribute('data-part') ?? one.className);
+    expect(order.filter((one) => one !== 'fsection')).toEqual(['panel-head', 'links-hint', 'handover-strip']);
+    expect(order.lastIndexOf('fsection')).toBeLessThan(order.indexOf('handover-strip'));
     expect(article.children[0].querySelector('h1')).not.toBeNull();
     expect(article.children[0].querySelector('p.note')).not.toBeNull();
-    expect(article.children[4].querySelector('h2')).not.toBeNull();
-    expect(article.children[1].querySelector('h1, h2, h3, h4, h5, h6')).toBeNull();
+    expect(links.querySelector('[data-part="handover-strip"] h1, [data-part="handover-strip"] h2, [data-part="handover-strip"] h3, [data-part="handover-strip"] h4')).toBeNull();
   });
 
   it('keeps the heading numbers: the first level-2 heading of the chapter is still h-0, with the strip in the page', () => {
     const host = page('#/product/chapter/F2');
-    expect(Array.from(host.querySelectorAll('article h2')).map((one) => [one.id, one.textContent])).toEqual([['h-0', d('Order entry first')], ['h-1', d('Order entry second')]]);
-    expect(host.querySelector('.toc')).toBeNull();
+    // The first section is the overview (an h3 for readers of the outline only); the second names no role and is a block with an h2.
+    expect(Array.from(host.querySelectorAll('article [id^="h-"]')).map((one) => [one.id, one.tagName, one.textContent])).toEqual([['h-0', 'H3', d('Order entry first')], ['h-1', 'H2', d('Order entry second')]]);
+    expect(host.querySelector('.toc')?.classList.contains('feature-nav')).toBe(true);
   });
 
   it('has none for a chapter no hand-over names, and none without a usable list', () => {

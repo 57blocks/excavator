@@ -8,6 +8,7 @@
  */
 
 import { FEATURE_HEADING_KEYS } from './chapter-lint.mjs';
+import { SERVER_STEPS_END } from './step-sides.mjs';
 
 const HEADING = /^(#{2,4})\s+(.*?)\s*#*\s*$/;
 const TOP_ITEM = /^(?:[-*]|\d+\.)\s+\S/;
@@ -77,6 +78,7 @@ export function chapterCounts(text, strings) {
     }
     if (h2 === section('operations')) {
       if (raw.trim() === strings['chapter.serverSteps']?.trim()) afterServerLine = true;
+      if (raw.trim() === SERVER_STEPS_END) afterServerLine = false;
       if (TOP_ITEM.test(raw)) {
         if (operation === null) outsideOperation += 1;
         else {

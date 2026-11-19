@@ -5,19 +5,26 @@ import { DataPage } from './components/DataPage';
 import { DictionariesPage } from './components/DictionariesPage';
 import { DomainPage } from './components/DomainPage';
 import { HistoryPage } from './components/HistoryPage';
-import { systemSections } from './components/Architecture';
+import { Architecture, systemSections } from './components/Architecture';
 import { HomePage } from './components/HomePage';
+import { ProblemsPage } from './components/ProblemsPage';
+import { ProcessesPage } from './components/ProcessesPage';
+import { RemediesPage } from './components/RemediesPage';
 import { Menu } from './components/Menu';
 import { NotFound } from './components/NotFound';
 import { Reading } from './components/Reading';
 import { SearchDialog } from './components/SearchDialog';
+import { SideList } from './components/SideList';
+import type { SideMode, SidePlace } from './components/SideList';
+import { DomainsIndex } from './components/DomainsIndex';
 import { TopBar } from './components/TopBar';
 import { LoaderContext, createLoader } from './lib/chunks';
-import { flatReferences, groupOfFeature, groupsOf, isFeatureId, named, referencesOf } from './lib/groups';
+import { flatReferences, groupsOf, isFeatureId, named, referencesOf } from './lib/groups';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
 import { ModelContext, buildModel } from './lib/model';
-import { contextOf, switchTarget, viewOf } from './lib/navigation';
+import { contextOf, hasArchitecture, switchTarget, viewOf } from './lib/navigation';
 import { bodyOf, pageOf, pagesOf } from './lib/pages';
+import { DOMAINS_CHAPTER } from './lib/search';
 import type { PageItem } from './lib/pages';
 import type { Route } from './lib/route';
 import { TextContext, makeText } from './lib/text';
@@ -42,7 +49,13 @@ function PageContent({ data, item, view }: { data: PageData; item: PageItem; vie
   }
 }
 
-/** The first line of the brand: the title of the system chapter when the outline has one, else the title of the view. */
+/** A page that only sends the reader to another address, replacing the one in the history. */
+function Redirect({ href }: { href: string }) {
+  useEffect(() => { window.location.replace(href); }, [href]);
+  return null;
+}
+
+/** The brand: the title of the system chapter when the outline has one, else the title of the view. */
 function brandOf(data: PageData, view: View): string {
   for (const part of data.outline.parts) {
     for (const block of part.blocks) if (block.block === 'system' && block.kind === 'chapter') return block.title;
@@ -57,7 +70,10 @@ function isTyping(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable || (target.getAttribute('contenteditable') ?? 'false') !== 'false';
 }
 
-/** The page for a route: the shell (bar, menu) around one view. Pure in its props, so a test can render any route to a string. */
+/** The page for a route: the shell (bar, menu, the frame with the left list) around one view. Pure in its props, so a test can render any route to a string. */
+/** Whether the outline places the domains chapter, whose page is the index of all the domains. */
+const hasDomainsIndex = (data: PageData): boolean => data.outline.parts.some((part) => part.blocks.some((block) => block.kind === 'chapter' && block.block === DOMAINS_CHAPTER));
+
 export function AppView({ data, route, onSearch = () => undefined }: { data: PageData; route: Route; onSearch?: () => void }) {
   const t = useMemo(() => makeText(data.ui.strings), [data.ui.strings]);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -107,33 +123,65 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
   useEffect(() => { setMenuOpen(false); }, [routeText]);
 
   let main = <NotFound />;
+  let mode: SideMode = 'global';
+  let place: SidePlace = { kind: 'none' };
   if (view !== null) {
     if (body.name === 'home') {
-      main = <HomePage title={brandOf(data, view)} lead={data.lead} groups={groups} references={references} architecture={view === 'technical' ? data.architecture.technical ?? '' : ''} sections={systemSections(data.search)} />;
+      place = { kind: 'home' };
+      // The button above the map opens the first domain's page, whose left list has every domain.
+      main = <HomePage title={brandOf(data, view)} groups={groups} />;
+    } else if (body.name === 'architecture') {
+      place = { kind: 'architecture' };
+      main = <Architecture source={data.architecture.technical ?? ''} sections={systemSections(data.search)} />;
     } else if (body.name === 'domain') {
       const group = groups.find((candidate) => candidate.id === body.id);
       if (group !== undefined) {
+        mode = 'domain';
+        place = { kind: 'domain', id: group.id };
         const at = groups.indexOf(group);
-        main = <DomainPage group={group} colour={colours[group.id]} mapLabel={t('page.nav.map')} previous={groups[at - 1]} next={groups[at + 1]} />;
+        main = <DomainPage group={group} colour={colours[group.id]} mapLabel={t('page.nav.overview')} previous={groups[at - 1]} next={groups[at + 1]} />;
       }
+    } else if (body.name === 'problems') {
+      place = { kind: 'problems' };
+      main = <ProblemsPage data={data} filters={body.filters} />;
+    } else if (body.name === 'remedies') {
+      place = { kind: 'remedies' };
+      main = <RemediesPage data={data} tab={body.tab} />;
+    } else if (body.name === 'processes') {
+      // There is no list of all the processes: the old address opens the index of the domains, where each domain lists its own.
+      main = <Redirect href={hasDomainsIndex(data) ? links.chapter(DOMAINS_CHAPTER) : links.home} />;
+    } else if (body.name === 'process') {
+      // A process page is read inside its domain: the left list is the domain's.
+      const domain = data.processes?.items.find((item) => item.id === body.id)?.domain;
+      if (domain !== undefined && groups.some((group) => group.id === domain)) {
+        mode = 'domain';
+        place = { kind: 'domain', id: domain };
+      }
+      main = <ProcessesPage id={body.id} />;
     } else {
       const item = pageOf(pagesOf(data, view, coverageTitle), route);
       if (item !== undefined) {
         const context = contextOf(data, view, coverageTitle, systemTitle, item.key);
         const group = context.kind === 'group' ? context.group : undefined;
         const trail = [
-          { label: t('page.nav.map'), href: links.home },
-          group === undefined ? { label: t('page.nav.references') } : { label: group.name, href: links.domain(group.id) },
+          { label: t('page.nav.overview'), href: links.home },
+          ...(group === undefined ? [] : [{ label: group.name, href: links.domain(group.id) }]),
           { label: named(item, systemTitle).title },
         ];
+        if (group !== undefined) mode = 'domain';
+        place = { kind: 'page', key: item.key, group: group === undefined ? null : group.id };
+        // With a usable list of domains the domains chapter is an index of them: their sections are on the domain pages.
+        const index = model.map && item.kind === 'chapter' && item.block === DOMAINS_CHAPTER;
         main = (
-          <Reading item={item} context={context} colour={group === undefined ? null : colours[group.id]} trail={trail} wide={WIDE.has(item.kind)} toc={!(item.kind === 'chapter' && isFeatureId(item.block))}>
-            <PageContent data={data} item={item} view={view} />
+          <Reading item={item} context={context} trail={trail} wide={WIDE.has(item.kind)} toc={index ? 'none' : item.kind === 'chapter' && isFeatureId(item.block) ? 'own' : 'scan'}>
+            {index ? <DomainsIndex title={model.titles[DOMAINS_CHAPTER] ?? named(item, systemTitle).title} groups={groups} /> : <PageContent data={data} item={item} view={view} />}
           </Reading>
         );
       }
     }
   }
+
+  const list = { mode, place, groups, references, architecture: hasArchitecture(data, current) };
 
   return (
     <TextContext.Provider value={t}>
@@ -144,11 +192,6 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
             <a className="skip" href="#main" onClick={(event) => { event.preventDefault(); const target = document.getElementById('main'); target?.focus(); target?.scrollIntoView(); }}>{t('page.skip')}</a>
             <TopBar
               brand={brandOf(data, current)}
-              viewTitle={data.titles[current] ?? ''}
-              groups={groups}
-              colours={colours}
-              references={references}
-              home={view !== null && body.name === 'home'}
               menuOpen={menuOpen}
               onMenu={() => setMenuOpen(!menuOpen)}
               onSearch={() => { openSearch(); onSearch(); }}
@@ -156,9 +199,12 @@ export function AppView({ data, route, onSearch = () => undefined }: { data: Pag
               current={current}
               switchTo={switchTo}
             />
-            {menuOpen && <Menu groups={groups} colours={colours} references={references} home={view !== null && body.name === 'home'} onNavigate={() => setMenuOpen(false)} />}
-            <main id="main" tabIndex={-1}>{main}</main>
-            {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} references={flatReferences(references)} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
+            {menuOpen && <Menu {...list} onNavigate={() => setMenuOpen(false)} />}
+            <div className="frame" data-side={mode}>
+              <SideList {...list} />
+              <main id="main" tabIndex={-1}>{main}</main>
+            </div>
+            {searchOpen && <SearchDialog groups={groups} colours={colours} items={data.search} chapters={data.chapters} references={flatReferences(references)} onClose={() => closeSearch(true)} onDone={() => closeSearch(false)} />}
           </div>
           </ModelContext.Provider>
         </LinksContext.Provider>
@@ -177,6 +223,11 @@ export function documentTitle(data: PageData, route: Route): string {
   let page: string;
   if (body.name === 'home') page = brandOf(data, view);
   else if (body.name === 'domain') page = groupsOf(data).find((group) => group.id === body.id)?.name ?? t('page.notFound.heading');
+  else if (body.name === 'problems') page = t('page.problems.title');
+  else if (body.name === 'remedies') page = t('page.nav.remedies');
+  else if (body.name === 'processes') page = t('page.nav.domains');
+  else if (body.name === 'process') page = data.processes?.items.find((item) => item.id === body.id)?.name ?? t('page.notFound.heading');
+  else if (body.name === 'architecture') page = t('page.nav.architecture');
   else page = pageOf(pagesOf(data, view, coverageTitle), route)?.title ?? t('page.notFound.heading');
   const title = data.titles[view];
   return title === undefined || title === '' || title === page ? page : `${page} - ${title}`;
@@ -192,12 +243,18 @@ function useDocument(data: PageData, route: Route): void {
   }, [route, data]);
 }
 
+/** Where a route is, without the filters of the problems page: a change of the filters alone keeps the reader's place. */
+export function placeOf(route: Route): string {
+  return JSON.stringify(route.name === 'problems' ? { ...route, filters: null } : route);
+}
+
 export function App({ data }: { data: PageData }) {
   const route = useRoute();
   useDocument(data, route);
+  const place = placeOf(route);
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [route]);
+  }, [place]);
   const loader = useMemo(() => createLoader(data.chunks), [data.chunks]);
   return <LoaderContext.Provider value={loader}><AppView data={data} route={route} /></LoaderContext.Provider>;
 }

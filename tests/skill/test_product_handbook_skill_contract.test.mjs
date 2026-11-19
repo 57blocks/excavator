@@ -40,7 +40,7 @@ function commandNames() {
 
 describe('the phase files', () => {
   it('are exactly the files the sections table and SKILL.md use', () => {
-    expect(FILES).toEqual(['SKILL.md', 'sections/cross.md', 'sections/data.md', 'sections/features.md', 'sections/history.md', 'sections/remedies.md', 'sections/review.md', 'sections/system.md', 'stages/cross-prompt.md', 'stages/map.md', 'stages/outline.md']);
+    expect(FILES).toEqual(['SKILL.md', 'sections/cross.md', 'sections/data.md', 'sections/features.md', 'sections/history.md', 'sections/processes.md', 'sections/remedies.md', 'sections/review.md', 'sections/system.md', 'stages/cross-prompt.md', 'stages/map.md', 'stages/outline.md']);
   });
 
   it('are ASCII only', () => {
@@ -125,7 +125,7 @@ describe('the design-problems phase', () => {
 
   it('runs the precondition, the facts, the status, the writers, the verifiers, the prune and the render in that order', () => {
     const text = review();
-    const order = ['--before review', 'review facts "$OUT"', 'review status', 'review reset', 'review render "$OUT" <batch>', 'review claims', 'review prune', 'review render "$OUT" --project', 'review summary'].map((needle) => text.indexOf(needle));
+    const order = ['--before review', 'review facts "$OUT"', 'review status', 'review reset', 'review render "$OUT" <batch>', 'The batch has <n> items', 'review prune', 'review render "$OUT" --project', 'review summary'].map((needle) => text.indexOf(needle));
     expect(order.every((at) => at > 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text).toContain('go back to Phase 5');
@@ -135,9 +135,10 @@ describe('the design-problems phase', () => {
   it('every review sub-command the text runs is one the script has', () => {
     const usage = readFileSync(join(skillDir, 'handbook.mjs'), 'utf-8');
     for (const file of ['sections/review.md', 'sections/remedies.md']) {
-      for (const match of TEXT[file].matchAll(/handbook\.mjs" review ([a-z]+)/g)) expect(usage, `${file}: review ${match[1]}`).toContain(`review ${match[1]}`);
+      for (const match of TEXT[file].matchAll(/handbook\.mjs" review ([a-z-]+)/g)) expect(usage, `${file}: review ${match[1]}`).toContain(`review ${match[1]}`);
     }
     expect(usage).toContain("'status', 'reset', 'skip', 'titles', 'summary'");
+    expect(usage).toContain('review candidates <out> <batch>');
   });
 
   it('the writer prompt defines the ten dimensions, the three impact rules, the file shape and the render loop', () => {
@@ -154,6 +155,41 @@ describe('the design-problems phase', () => {
     expect(writer).toMatch(/names, in the situation, the chapters in which you looked/);
   });
 
+  it('step 4 runs review candidates and pastes it into Your batch; the writer names the three reasons, the two keys and the two-sided form', () => {
+    const text = review();
+    const step4 = text.slice(text.indexOf('4. Write the batches'), text.indexOf('5. Write the comparison batches'));
+    expect(step4).toContain('handbook.mjs" review candidates "$OUT" <batch>');
+    const batchBlock = prompts(text).find((prompt) => prompt.startsWith('- Batch: `<batch>`'));
+    expect(batchBlock).toContain('- The comparison candidates of your batch, one per line (`none` when there is none):');
+    const [writer] = prompts(text);
+    expect(writer).toContain('"candidates": ["X3"]');
+    expect(writer).toContain('"dismissed": [{ "candidate": "X4", "reason": "different-subject" }]');
+    for (const reason of ['same', 'different-subject', 'not-in-chapters']) expect(writer, reason).toContain(`\`${reason}\``);
+    expect(writer).toContain('**Comparison candidates.**');
+    expect(writer).toContain('`<side>: <what that side\'s cited lines say>; <other side>: <...>`');
+    expect(writer).toMatch(/for `duplication`, `contradiction`, `inconsistency` and `access`/i);
+    expect(text).not.toMatch(/[^\x00-\x7F]/);
+  });
+
+  it('step 5 writes the comparison batches after the domain batches with their own block; the writer bounds the consequence and knows already-kept', () => {
+    const text = review();
+    const step5 = text.slice(text.indexOf('5. Write the comparison batches'), text.indexOf('6. Verify.'));
+    expect(step5).toContain('`wait`');
+    expect(step5).toContain('do steps 6 and 7 for the domain batches first');
+    expect(step5).toContain('handbook.mjs" review candidates "$OUT" <batch>');
+    expect(step5).toContain('**Your comparison batch**');
+    const block = prompts(text).find((prompt) => prompt.startsWith('- Batch: `<batch>`, a comparison batch.'));
+    expect(block).toContain('handbook.mjs" review candidate-lines "$OUT" <candidate id>');
+    expect(block).toContain('handbook.mjs" review titles "$OUT" --project "$PROJECT_ROOT"');
+    for (const source of ['dict', 'table', 'topic', 'code']) expect(block, source).toContain(`- \`${source}\`:`);
+    expect(block).toContain('<the output of review candidates>');
+    const [writer] = prompts(text);
+    expect(writer).toContain('`already-kept`');
+    expect(writer).toContain('never one step further');
+    expect(text).not.toMatch(/`cross`/);
+    expect(text).not.toContain('review facts "$OUT" cross');
+  });
+
   it('the verifier gets the claims output, searches the listed chapters only for an absence claim, and writes only the verdicts file; the writers are dispatched in the foreground', () => {
     const verifier = prompts(review()).find((prompt) => prompt.startsWith('You judge the items'));
     expect(verifier).toContain('Read no other file');
@@ -161,16 +197,83 @@ describe('the design-problems phase', () => {
     expect(verifier).toContain('a line found by the search never supports a claim that something exists');
     expect(verifier).toContain('`$OUT/entries/review/<batch>.verdicts.json`');
     expect(verifier).toMatch(/Do not rewrite/);
+    expect(verifier).toContain('handbook.mjs" review claims "$OUT" <batch> <index>');
+    expect(verifier).toMatch(/one at a time, from index 0 to the last/);
+    expect(review()).toContain("jq '.items | length' \"$OUT/entries/review/<batch>.json\"");
+    expect(review()).toContain('The batch has <n> items, index 0 to <n-1>.');
+    expect(review()).toMatch(/Write `\$OUT`, `\$LANGUAGE`, `\$PLUGIN_ROOT` and `<batch>` as their values in its prompt/);
+    expect(review()).not.toContain('pasted unchanged');
+    expect(review()).not.toContain('The items:');
     expect(review()).toContain('never dispatch in the background');
     expect(review()).toMatch(/Never make a third attempt/);
   });
 
-  it('remedies read the design problems when present and say what each recommendation addresses', () => {
+  it('remedies read the numbered tables, write the fixed structure and name the items each measure rests on', () => {
     const text = TEXT['sections/remedies.md'];
     expect(text).toContain('remedies-state "$OUT"');
-    expect(text).toContain('`$OUT/chapters/review.md` when that file exists');
-    expect(text).toMatch(/which defects or design problems it addresses/);
+    expect(text).toContain('handbook.mjs" remedies-inputs "$OUT"');
+    expect(text).toContain('`$OUT/chapters/review.md` and `$OUT/chapters/processes.md` only where an item sends you');
+    expect(text).toContain('`PROCESS P<n> <steps> <feature ids> <name>`');
+    expect(text).toMatch(/one level-2 heading per `PROCESS` line/);
+    expect(text).toContain('like `[P4, R12, D3]`');
+    for (const key of ['crossProcess', 'defectFixes', 'simplify', 'fix']) expect(text).toContain(`<chapter.remedies.${key}>`);
+    for (const type of ['merge-entrance', 'unify-rule', 'remove-step', 'automate', 'retire-old', 'fix']) expect(text).toContain(`<chapter.remedies.type.${type}>`);
+    expect(text).toContain('startswith("chapter.remedies.")');
+    expect(text).toMatch(/exactly one group per item/);
+    expect(text).toMatch(/never write an id that is not printed/);
     expect(text).toContain('STALE=yes');
+  });
+});
+
+describe('the process batches of the design problems', () => {
+  const text = () => TEXT['sections/review.md'];
+
+  it('writes the process batches after the domain batches, with their own block', () => {
+    expect(text()).toMatch(/a comparison batch or a process batch while a domain batch is not `done`/);
+    expect(text()).toContain('followed by the block **Your process batch**');
+    expect(text()).toContain('**Your process batch.**');
+  });
+
+  it('the process writer prints its processes, names the process on every item and keeps to the process dimensions', () => {
+    const block = text().slice(text().indexOf('**Your process batch.**'), text().indexOf('**The verifier.**'));
+    expect(block).toContain('handbook.mjs" review processes "$OUT" <batch>');
+    expect(block).toContain('review titles "$OUT" --project "$PROJECT_ROOT"');
+    for (const dimension of ['duplication', 'complexity', 'redundancy', 'manual', 'dead-end']) expect(block).toContain(`\`${dimension}\``);
+    expect(block).toMatch(/never from the business processes chapter/);
+    expect(text()).toContain('`process` (on an item: the business process it lies along');
+  });
+});
+
+describe('the business processes phase', () => {
+  const text = () => TEXT['sections/processes.md'];
+
+  it('gates on the chapters, dispatches one writer per part after the shared prompt, joins the parts and checks the chapter', () => {
+    const order = ['check "$OUT" --before processes --project "$PROJECT_ROOT"', '.chapters.processes', 'processes parts "$OUT" --project "$PROJECT_ROOT"', '**Every cross chapter**', 'processes check-part "$OUT" <part> --project "$PROJECT_ROOT"', 'processes reset "$OUT" <part>', 'processes skip "$OUT" <part>', 'processes join "$OUT" --project "$PROJECT_ROOT"', 'check "$OUT" processes --project "$PROJECT_ROOT"'].map((needle) => text().indexOf(needle));
+    expect(order.every((at) => at !== -1), JSON.stringify(order)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(text()).toContain('in the foreground');
+  });
+
+  it('the part writer prints its operations and the fixed text, writes no title and writes steps the check can parse', () => {
+    const [prompt] = prompts(text());
+    expect(prompt).toContain('handbook.mjs" processes facts "$OUT" <part>');
+    expect(prompt).toContain('startswith("chapter.processes.")');
+    expect(prompt).toContain('No level-1 heading');
+    expect(prompt).toContain('$OUT/entries/processes/<part>.md');
+    expect(prompt).toMatch(/The first step of every process is an operation of one of your features/);
+    expect(prompt).toContain('processes check-part "$OUT" <part> --project "$PROJECT_ROOT"');
+    expect(prompt).toContain('`<role>: **<operation>** (<feature title> (F<n>))`');
+    expect(prompt).toContain('`<chapter.processes.end>:');
+    expect(prompt).toMatch(/never judge a process/);
+    expect(prompt).toMatch(/never fill a gap with a step of your own/);
+  });
+
+  it('SKILL.md lists processes as an optional section that --review adds', () => {
+    const skill = TEXT['SKILL.md'];
+    expect(skill).toContain('`defects`, `processes`, `review`, `remedies`');
+    expect(skill).toContain('`sections/processes.md` (Phase 8a');
+    expect(skill).toMatch(/--review` - add the `processes` and `review` sections/);
+    expect(skill).not.toMatch(/the cross batch/);
   });
 });
 
@@ -199,7 +302,7 @@ describe('the dispatches', () => {
   });
 
   it('the cross chapters never give the writer the project: PROJECT_ROOT occurs only as the argument of the check', () => {
-    const files = ['stages/cross-prompt.md', 'sections/cross.md', 'sections/remedies.md', 'sections/review.md'];
+    const files = ['stages/cross-prompt.md', 'sections/cross.md', 'sections/processes.md', 'sections/remedies.md', 'sections/review.md'];
     for (const file of files) {
       for (const prompt of prompts(TEXT[file])) {
         const uses = Array.from(prompt.matchAll(/\$PROJECT_ROOT/g)).length;

@@ -95,8 +95,19 @@ export function reviewRun(cleanups, { extra = {} } = {}) {
   run.writeBatch = (batch, items) => run.writeJson(join(run.out, 'entries', 'review', `${batch}.json`), { items });
   run.facts = (...args) => runHandbook(['review', 'facts', run.out, ...args, '--project', run.root]);
   run.render = (...args) => runHandbook(['review', 'render', run.out, ...args, '--project', run.root]);
+  run.status = () => runHandbook(['review', 'status', run.out, '--project', run.root]);
+  run.prune = (batch) => runHandbook(['review', 'prune', run.out, batch, '--project', run.root]);
   run.readFacts = () => JSON.parse(readFileSync(join(run.out, 'entries', 'review-facts.json'), 'utf-8'));
   return run;
+}
+
+/** Writes entries/review-compare.json with `candidates` (`{ id, source, features, batch }`); the comparison batches follow from their `batch`. */
+export function writeCompare(run, candidates) {
+  run.writeJson(join(run.out, 'entries', 'review-compare.json'), {
+    format: 'x',
+    sources: ['dual', 'dict', 'table', 'topic', 'code'].map((source) => ({ source, computed: true, count: candidates.filter((entry) => entry.source === source).length })),
+    candidates: candidates.map((entry) => ({ facts: {}, places: [], ...entry })),
+  });
 }
 
 /** A batch-b1 item that holds: a duplication between F1 and F2, citing one line of each chapter. */

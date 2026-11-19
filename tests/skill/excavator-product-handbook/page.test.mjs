@@ -52,12 +52,13 @@ describe('page: the file and its data', () => {
     expect(policy).toBe("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'");
   });
 
-  it('has format /21, the keys in a fixed order, the ui table and the title of each view', () => {
+  it('has format /23, the keys in a fixed order, the ui table and the title of each view', () => {
     const run = make();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'chunks', 'language', 'languageTag', 'ui', 'views', 'titles', 'outline', 'chapters', 'coverage', 'history', 'domains', 'lead', 'architecture', 'search', 'technical']);
-    expect(data.format).toBe('excavator-product-handbook-page/21');
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'language', 'languageTag', 'ui', 'views', 'titles', 'outline', 'chapters', 'coverage', 'history', 'domains', 'problems', 'remedyDomains', 'processes', 'lead', 'architecture', 'search', 'technical']);
+    expect(data.processes).toBeNull();
+    expect(data.format).toBe('excavator-product-handbook-page/23');
     expect(data.chunks).toEqual({ parts: [], units: {} });
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');

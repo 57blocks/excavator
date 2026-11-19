@@ -7,6 +7,9 @@ export interface PageItem { block: string; kind: BlockKind | 'coverage'; title: 
 
 export const COVERAGE_BLOCK = 'coverage';
 
+/** The business-processes chapter: with usable processes data it has no page of its own (each process has one, and the domain pages list them). */
+export const PROCESSES_BLOCK = 'processes';
+
 /** The route key of a page: `chapter:<id>` for a chapter, the page's name for the others. */
 export function itemKey(kind: PageItem['kind'], block: string): string {
   return kind === 'chapter' ? `chapter:${block}` : kind;
@@ -17,12 +20,18 @@ export function itemOf(block: OutlineBlock): PageItem {
   return { block: block.block, kind: block.kind, title: block.title, key: itemKey(block.kind, block.block) };
 }
 
+/** Whether the page has process pages: the data holds usable processes. */
+export const hasProcesses = (data: PageData): boolean => data.processes !== null;
+
+/** Whether an outline block is left out of the lists: the business-processes chapter, with processes data (its processes are on the domain pages and have pages of their own). */
+export const isHidden = (data: PageData, block: OutlineBlock): boolean => hasProcesses(data) && block.kind === 'chapter' && block.block === PROCESSES_BLOCK;
+
 /** The key of the page a route shows; null for the home route, a domain route and an address that names no page. */
 export function routeKey(route: RouteBody): string | null {
   switch (route.name) {
     case 'chapter': return `chapter:${route.id}`;
     case 'data': case 'dictionaries': case 'history': case 'coverage': return route.name;
-    case 'home': case 'domain': case 'not-found': return null;
+    case 'home': case 'domain': case 'problems': case 'remedies': case 'architecture': case 'processes': case 'process': case 'not-found': return null;
   }
 }
 
@@ -34,8 +43,12 @@ export function bodyOfItem(item: PageItem): RouteBody {
   }
 }
 
-/** Whether a block is shown in `view`: the technical blocks (data, dictionaries) are not in the product view. */
+/** The chapters the problems page shows (its table, and the improvement suggestions page) instead of reference pages of their own. */
+export const PROBLEM_CHAPTERS: ReadonlySet<string> = new Set(['defects', 'review', 'remedies']);
+
+/** Whether a block is a page of the lists in `view`: the technical blocks (data, dictionaries) are not in the product view, and the problem chapters are not pages. */
 export function inView(block: OutlineBlock, view: View): boolean {
+  if (block.kind === 'chapter' && PROBLEM_CHAPTERS.has(block.block)) return false;
   return !((block.kind === 'data' || block.kind === 'dictionaries') && view !== 'technical');
 }
 
@@ -43,7 +56,7 @@ export function inView(block: OutlineBlock, view: View): boolean {
 export function pagesOf(data: PageData, view: View, coverageTitle: string): PageItem[] {
   const out: PageItem[] = [];
   for (const part of data.outline.parts) {
-    for (const block of part.blocks) if (inView(block, view)) out.push(itemOf(block));
+    for (const block of part.blocks) if (inView(block, view) && !isHidden(data, block)) out.push(itemOf(block));
   }
   out.push({ block: COVERAGE_BLOCK, kind: 'coverage', title: coverageTitle, key: 'coverage' });
   return out;

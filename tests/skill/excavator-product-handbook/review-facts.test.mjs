@@ -90,7 +90,7 @@ describe('review facts', () => {
     expect(run.facts('b9').status).toBe(1);
   });
 
-  it('batches follow the areas of the map, then cross, and are written to the facts file', () => {
+  it('batches follow the areas of the map and are written to the facts file', () => {
     const run = reviewRun(cleanups);
     const result = run.facts();
     const { batches, source } = run.readFacts();
@@ -98,20 +98,20 @@ describe('review facts', () => {
     expect(batches).toEqual([
       { id: 'b1', name: 'Order handling', features: ['F1', 'F2'] },
       { id: 'b2', name: 'Automatic work', features: ['F3', 'F4', 'F5'] },
-      { id: 'cross', name: 'cross', features: [] },
     ]);
-    expect(result.lines.slice(0, 4)).toEqual(['Batches: 2 (source: areas), then cross', 'BATCH\tb1\tOrder handling\tF1,F2', 'BATCH\tb2\tAutomatic work\tF3,F4,F5', 'BATCH\tcross\tcross\t']);
+    expect(result.lines.slice(0, 3)).toEqual(['Batches: 2 (source: areas)', 'BATCH\tb1\tOrder handling\tF1,F2', 'BATCH\tb2\tAutomatic work\tF3,F4,F5']);
   });
 
   it('batches follow domains.json when the domains chapter passed', () => {
-    const text = `${chapterText('Domains')}\n## Archive\n\n- Archived orders stay readable (${cite('9')}).\n`;
+    const section = (name, line) => `## ${name}\n\n### Features\n\n- ${line}\n\n### Hand-overs\n\nNone.\n`;
+    const text = `# Domains\n\n${section('Operations', `Orders are taken here (${cite('5')}).`)}\n${section('Archive', `Archived orders stay readable (${cite('9')}).`)}`;
     const run = reviewRun(cleanups, { extra: { domains: text } });
     run.writeJson(join(run.out, 'domains.json'), { domains: [{ name: 'Operations', features: ['F1', 'F3'] }, { name: 'Archive', features: ['F2', 'F4', 'F5'] }], handovers: [] });
     run.check('domains');
     run.facts();
     const { batches, source } = run.readFacts();
     expect(source).toBe('domains');
-    expect(batches.map((batch) => [batch.id, batch.name, batch.features])).toEqual([['b1', 'Operations', ['F1', 'F3']], ['b2', 'Archive', ['F2', 'F4', 'F5']], ['cross', 'cross', []]]);
+    expect(batches.map((batch) => [batch.id, batch.name, batch.features])).toEqual([['b1', 'Operations', ['F1', 'F3']], ['b2', 'Archive', ['F2', 'F4', 'F5']]]);
   });
 
   it('a domains chapter that did not pass is not used', () => {
@@ -129,6 +129,15 @@ describe('review facts', () => {
     const result = run.facts();
     expect(result.status).toBe(1);
     expect(result.lines).toEqual(['map.json is missing or has no features; write and check the map first']);
+  });
+
+  it('says candidates.json is not valid JSON, and writes nothing', () => {
+    const run = reviewRun(cleanups);
+    writeFileSync(join(run.out, 'candidates.json'), '{ nope');
+    const result = run.facts();
+    expect(result.status).toBe(1);
+    expect(result.lines).toHaveLength(1);
+    expect(result.lines[0]).toMatch(/^candidates\.json is not valid JSON \(.*\); write it again with handbook\.mjs candidates$/);
   });
 
   it('a feature without a chapter is listed as missing', () => {

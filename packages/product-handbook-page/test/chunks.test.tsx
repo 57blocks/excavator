@@ -9,15 +9,15 @@ import { act } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { splitPageData } from '../../../skills/excavator-product-handbook/lib/page-units.mjs';
+import { restorePageData, splitPageData } from '../../../skills/excavator-product-handbook/lib/page-units.mjs';
 import { AppView } from '../src/App';
 import { Cell, TableScroll } from '../src/components/Tables';
 import { Item, ItemList } from '../src/components/ui/ItemList';
-import { LoaderContext, assembleChapterTexts, assembleCoverage, assembleDictionaries, assembleHistory, createLoader, installPartRegistry } from '../src/lib/chunks';
+import { LoaderContext, assembleChapterTexts, assembleCoverage, assembleDictionaries, assembleHistory, assembleProblems, createLoader, installPartRegistry } from '../src/lib/chunks';
 import type { Loader, PartWindow, Piece } from '../src/lib/chunks';
 import { TextContext, makeText } from '../src/lib/text';
 import { parseHash } from '../src/lib/route';
-import type { DictionariesSection, History, PageData } from '../src/lib/types';
+import type { DictionariesSection, History, PageData, ProblemRow } from '../src/lib/types';
 import { cleanup, mount, settle } from './dom';
 import { MARK, chapter, d, marked, pageData, shipped } from './page-fixture';
 
@@ -315,5 +315,87 @@ describe('paging', () => {
     const second = mount(view(230));
     expect(second.querySelector('li.item')?.textContent).toBe('row 1');
     expect(second.querySelector('[data-part="pager"]')?.textContent).toContain('Page 1 of 2');
+  });
+});
+
+describe('the problems unit', () => {
+  const rows = (): ProblemRow[] => [
+    { id: 'd1', type: 'defect', level: 'P0', group: 'security', features: ['F1'], summary: d('summary'), texts: { product: d('product words'), technical: `${d('technical words')} \`src/a.js:3\`` }, cites: ['src/a.js:3'], source: { chapter: 'defects', line: 3 }, remedies: [] },
+    { id: 'q1', type: 'open', level: null, group: null, features: ['system'], summary: d('question'), texts: { product: d('open words') }, source: { chapter: 'system', line: 5 }, remedies: [] },
+  ];
+  const problemsData = () => pageData({ problems: { sources: { defects: { state: 'ok', count: 1 }, design: { state: 'missing', count: null }, open: { state: 'ok', count: 1, unmatched: [] } }, rows: rows(), remedies: null } });
+  const chunked = () => {
+    const { core, units } = splitPageData(problemsData()) as { core: PageData; units: () => Iterable<Listed> };
+    const listed = [...units()];
+    const unit = listed.find((one) => one.key === 'problems') as Listed;
+    core.chunks = { parts: ['part-0001'], units: { problems: ['part-0001'] } };
+    return { core, unit, listed };
+  };
+
+  it('the merge of the page gives the rows the script split out, key for key, and agrees with the script restore', () => {
+    const { core, unit, listed } = chunked();
+    expect(core.problems.rows.every((row) => !('texts' in row) && !('cites' in row))).toBe(true);
+    const merged = assembleProblems(core.problems.rows, unit.pieces);
+    expect(JSON.stringify(merged)).toBe(JSON.stringify(rows()));
+    expect(JSON.stringify((restorePageData(core, listed) as PageData).problems.rows)).toBe(JSON.stringify(merged));
+  });
+
+  it('the problems page shows the loading text, then the rows with their texts', async () => {
+    const { core, unit } = chunked();
+    const { loader } = fakeLoader(core, { 'part-0001': { problems: unit.pieces } });
+    const host = mount(page(core, '#/technical/problems', loader));
+    expect(host.textContent).toContain(LOADING);
+    expect(host.querySelectorAll('[data-problem]')).toHaveLength(0);
+    await wait();
+    expect(host.querySelectorAll('[data-problem]')).toHaveLength(2);
+    expect(host.textContent).not.toContain(LOADING);
+  });
+
+  it('a feature page shows the loading text in the problems block while the texts load, then the bodies; the summaries are there at once', async () => {
+    const { core, unit, listed } = chunked();
+    const chapterF1 = listed.find((one) => one.key === 'chapter:F1') as Listed;
+    core.chunks = { parts: ['part-0001', 'part-0002'], units: { 'chapter:F1': ['part-0001'], problems: ['part-0002'] } };
+    const parts: Record<string, Record<string, Piece[]>> = { 'part-0001': { 'chapter:F1': chapterF1.pieces }, 'part-0002': { problems: unit.pieces } };
+    // The part with the problems is held back until the test lets it go, so the loading state can be looked at.
+    const win = {} as PartWindow;
+    installPartRegistry(win);
+    let release: () => void = () => undefined;
+    const loader = createLoader(core.chunks, {
+      win,
+      insert: (src, onload) => {
+        const id = src.replace(/^.*\//, '').replace(/\.js$/, '');
+        const done = (): void => { win.__xvHandbookPart?.(id, parts[id]); onload(); };
+        if (id === 'part-0002') release = done; else setTimeout(done, 0);
+      },
+    });
+    const host = mount(page(core, '#/technical/chapter/F1', loader));
+    await wait();
+    const panel = host.querySelector('[data-block="problems"]') as HTMLElement;
+    expect(panel.querySelector('[data-part="chunk-loading"]')).not.toBeNull();
+    expect(panel.querySelector('details[data-problem="d1"] summary')?.textContent).toContain(d('summary'));
+    expect(panel.querySelector('#problem-d1')).toBeNull();
+    act(() => release());
+    await wait();
+    expect(panel.querySelector('[data-part="chunk-loading"]')).toBeNull();
+    expect(panel.querySelector('#problem-d1')?.textContent).toContain(d('technical words'));
+  });
+
+  it('a missing part is named in the issues tab of a feature page', async () => {
+    const { core, listed } = chunked();
+    const chapterF1 = listed.find((one) => one.key === 'chapter:F1') as Listed;
+    core.chunks = { parts: ['part-0001', 'part-0002'], units: { 'chapter:F1': ['part-0001'], problems: ['part-0002'] } };
+    const { loader } = fakeLoader(core, { 'part-0001': { 'chapter:F1': chapterF1.pieces } });
+    const host = mount(page(core, '#/product/chapter/F1', loader));
+    await wait();
+    await wait();
+    expect((host.querySelector('[data-block="problems"]') as HTMLElement).textContent).toContain('handbook-data/part-0002.js');
+  });
+
+  it('a missing part is named on the problems page', async () => {
+    const { core } = chunked();
+    const { loader } = fakeLoader(core, {});
+    const host = mount(page(core, '#/product/problems', loader));
+    await wait();
+    expect(host.textContent).toContain('handbook-data/part-0001.js');
   });
 });

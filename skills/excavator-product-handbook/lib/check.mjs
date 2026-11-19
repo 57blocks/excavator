@@ -1,5 +1,5 @@
 /**
- * check <out> [<chapter>...] [--before cross|review] --project <root>: the final check of the
+ * check <out> [<chapter>...] [--before cross|review|processes] --project <root>: the final check of the
  * Markdown chapters under <out>/chapters/, recorded in state.json (format /2), or the
  * gate that says whether the cross chapters may be written. Never changes a chapter.
  */
@@ -10,12 +10,17 @@ import { join } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
 import { CROSS_CHAPTERS, lintChapter } from './chapter-lint.mjs';
-import { domainsListReasons } from './domains-list.mjs';
+import { defectsReasons } from './defects-items.mjs';
+import { domainSubheadingReasons, domainsListReasons } from './domains-list.mjs';
 import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
 import { withStateLock } from './lock.mjs';
 import { projectFiles } from './project-files.mjs';
+import { processesReasons } from './processes-check.mjs';
+import { diskChapters, itemNumbers, readMapOrNull } from './item-numbers.mjs';
 import { remediesInputs } from './remedies-inputs.mjs';
+import { remediesReasons } from './remedies-check.mjs';
+import { uncoveredItems } from './remedies-coverage.mjs';
 import { loadStateV2, saveStateV2 } from './state-v2.mjs';
 import { loadUi } from './ui.mjs';
 
@@ -30,13 +35,24 @@ function featureIds(outDir) {
   return read.value.features.map((feature) => feature.id);
 }
 
+/**
+ * The reasons of a business-processes chapter `text`: the general chapter lint, then the process checks. Shared with
+ * `processes check-part`, which runs it on a part as it will sit in the joined chapter. `ctx`: `files`, `memberDirs`, `cache`.
+ */
+export function processesChapterReasons(outDir, text, { ids, strings, files, memberDirs = [], cache = new Map() }) {
+  return [
+    ...lintChapter(text, { kind: 'cross', name: 'processes', files, strings, memberDirs, cache }),
+    ...processesReasons(outDir, text, { featureIds: ids, strings }),
+  ];
+}
+
 function kindOf(name, ids) {
   if (name === 'system') return 'system';
   if (CROSS_CHAPTERS.includes(name)) return 'cross';
   return ids.includes(name) ? 'feature' : null;
 }
 
-/** The gate before cross chapters (`target` cross) or the design problems (`review`): the map exists and every feature has a passed chapter or one that failed twice. */
+/** The gate before cross chapters (`target` cross), the business processes (`processes`) or the design problems (`review`): the map exists and every feature has a passed chapter or one that failed twice. */
 function beforeGate(outDir, target) {
   const ids = featureIds(outDir);
   if (ids === null) {
@@ -48,17 +64,30 @@ function beforeGate(outDir, target) {
     const record = loaded.state.chapters[id];
     return !(record !== undefined && (record.status === 'passed' || (record.status === 'failed' && record.attempts >= 2)));
   });
-  const [ready, next] = target === 'review'
-    ? ['Design problems', 'Next: write and check these features before the design problems']
-    : ['Cross chapters', 'Next: write and check these features before the cross chapters'];
+  const [ready, next] = {
+    review: ['Design problems', 'Next: write and check these features before the design problems'],
+    processes: ['Business processes', 'Next: write and check these features before the business processes'],
+    cross: ['Cross chapters', 'Next: write and check these features before the cross chapters'],
+  }[target];
   if (missing.length === 0) return { status: 0, lines: [`${ready}: ready (${ids.length} features)`] };
   return { status: 1, lines: [...missing.map((id) => `missing: ${id}`), next] };
+}
+
+/** Information for the writer of the remedies chapter, never a reason: the items no list item names. */
+function notNamedLines({ design, defects }) {
+  const ids = (entries) => entries.map((entry) => entry.id).join(', ');
+  return [
+    ...(design.length > 0 ? [`  Not named: ${design.length} high design problems: ${ids(design)}`] : []),
+    ...(defects.length > 0 ? [`  Not named: ${defects.length} P0 defects: ${ids(defects)}`] : []),
+  ];
 }
 
 function checkChapters(outDir, names, root, record) {
   const dir = join(outDir, 'chapters');
   const available = existsSync(dir) ? readdirSync(dir).filter((file) => file.endsWith('.md')).map(stem).sort() : [];
-  const wanted = names.length > 0 ? [...new Set(names.map(stem))] : available;
+  // The remedies chapter is checked last: its ids are read from the defects, business-processes and design-problems chapters, which a call that checks them too has just recorded.
+  const asked = names.length > 0 ? [...new Set(names.map(stem))] : available;
+  const wanted = [...asked.filter((name) => name !== 'remedies'), ...asked.filter((name) => name === 'remedies')];
   const ui = loadUi(outDir);
   if (!ui.ok) return { status: 1, lines: ui.lines };
   const ids = featureIds(outDir) ?? [];
@@ -77,16 +106,25 @@ function checkChapters(outDir, names, root, record) {
     let reasons;
     let bytes = null;
     let listHash = null;
+    let notes = [];
     if (!existsSync(path)) reasons = ['the file does not exist'];
     else if (kind === null) reasons = [`unknown chapter: not system, a cross chapter or a feature id of map.json`];
     else {
       bytes = readFileSync(path);
       const chapterText = bytes.toString('utf-8');
-      reasons = lintChapter(chapterText, { kind, name, files, strings: ui.strings, memberDirs, cache });
+      reasons = name === 'processes'
+        ? processesChapterReasons(outDir, chapterText, { ids, strings: ui.strings, files, memberDirs, cache })
+        : lintChapter(chapterText, { kind, name, files, strings: ui.strings, memberDirs, cache });
       if (name === 'domains') {
         const list = domainsListReasons(outDir, chapterText, ids);
-        reasons = [...reasons, ...list.reasons];
+        reasons = [...reasons, ...domainSubheadingReasons(chapterText, ui.strings), ...list.reasons];
         listHash = list.hash;
+      }
+      if (name === 'defects') reasons = [...reasons, ...defectsReasons(outDir, chapterText, ids, ui.strings)];
+      if (name === 'remedies') {
+        const numbers = itemNumbers({ outDir, map: readMapOrNull(outDir), chapters: diskChapters(outDir, ['defects', 'processes', 'review'], state), strings: ui.strings });
+        reasons = [...reasons, ...remediesReasons(chapterText, { numbers, strings: ui.strings })];
+        if (reasons.length === 0) notes = notNamedLines(uncoveredItems(numbers, chapterText));
       }
     }
     const status = reasons.length === 0 ? 'passed' : 'failed';
@@ -102,6 +140,7 @@ function checkChapters(outDir, names, root, record) {
       state.chapters[name] = { status, attempts, reasons, sha256: hash, ...(name === 'domains' && status === 'passed' ? { json: listHash } : {}), ...(name === 'remedies' && status === 'passed' ? { inputs: remediesInputs(outDir) } : {}) };
     }
     lines.push(status === 'passed' ? `${label}: passed` : `${label}: failed${attempts === null ? '' : ` (attempt ${attempts})`}`);
+    lines.push(...notes);
     for (const reason of reasons) lines.push(`  - ${reason}`);
   }
   if (record) saveStateV2(outDir, state);
@@ -113,7 +152,7 @@ function checkChapters(outDir, names, root, record) {
 export function checkCommand(outDir, names, root, { before, record = true } = {}) {
   if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
   if (before !== undefined) {
-    if (before !== 'cross' && before !== 'review') throw new UsageError('--before takes cross or review');
+    if (!['cross', 'review', 'processes'].includes(before)) throw new UsageError('--before takes cross, review or processes');
     if (!record) throw new UsageError(`--no-record cannot be used with --before ${before}`);
     return beforeGate(outDir, before);
   }

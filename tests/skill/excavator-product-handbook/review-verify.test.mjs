@@ -22,7 +22,6 @@ function ready() {
   run.facts();
   run.writeBatch('b1', [goodItem(), second(), third()]);
   run.writeBatch('b2', []);
-  run.writeBatch('cross', []);
   run.claims = (batch) => runHandbook(['review', 'claims', run.out, batch]);
   run.prune = (batch) => runHandbook(['review', 'prune', run.out, batch, '--project', run.root]);
   run.writeVerdicts = (batch, verdicts) => run.writeJson(join(run.out, 'entries', 'review', `${batch}.verdicts.json`), { verdicts });
@@ -55,6 +54,23 @@ describe('review claims', () => {
     expect(result.stdout).not.toContain(run.out);
   });
 
+  it('with an index prints only that item exactly as the full output prints it, and refuses an index outside the items', () => {
+    const run = ready();
+    const full = run.claims('b1').lines;
+    const starts = full.map((line, at) => (line.startsWith('ITEM ') ? at : -1)).filter((at) => at >= 0);
+    for (const [n, start] of starts.entries()) {
+      const end = n + 1 < starts.length ? starts[n + 1] : full.length;
+      const one = runHandbook(['review', 'claims', run.out, 'b1', String(n)]);
+      expect(one.status).toBe(0);
+      expect(one.lines).toEqual(full.slice(start, end));
+    }
+    for (const bad of ['3', '-1', 'x', '1.5', '']) {
+      const refused = runHandbook(['review', 'claims', run.out, 'b1', bad]);
+      expect(refused.status, bad).toBe(2);
+      expect(refused.stderr).toContain('0 to 2');
+    }
+  });
+
   it('says so when a citation is on no line of the listed features, and a cite found in several lines lists all', () => {
     const run = ready();
     run.writeBatch('b1', [goodItem({ cites: [`${FORM}:5`, `${FORM}:99`] })]);
@@ -65,9 +81,9 @@ describe('review claims', () => {
 
   it('refuses a batch that does not exist or has no file', () => {
     const run = ready();
-    expect(run.claims('b9').lines[0]).toBe('b9 is not a batch; the batches are b1, b2, cross');
-    rmSync(join(run.out, 'entries', 'review', 'cross.json'));
-    expect(run.claims('cross').lines[0]).toMatch(/^cross: entries\/review\/cross.json is missing/);
+    expect(run.claims('b9').lines[0]).toBe('b9 is not a batch; the batches are b1, b2');
+    rmSync(join(run.out, 'entries', 'review', 'b2.json'));
+    expect(run.claims('b2').lines[0]).toMatch(/^b2: entries\/review\/b2.json is missing/);
   });
 });
 
@@ -117,7 +133,7 @@ describe('review prune: the result', () => {
     expect(run.readJson('entries/review-removed.json')).toEqual({ removed: [{ batch: 'b1', title: 'Sending takes many steps', dimension: 'complexity', features: ['F1'], reason: 'The line does not say it takes 4 steps.' }] });
     const text = readFileSync(join(run.out, 'chapters', 'review.md'), 'utf-8');
     expect(text).not.toContain('Sending takes many steps');
-    expect(text).toContain('### Archiving is slow');
+    expect(text).toContain('### R2 Archiving is slow');
     const checked = run.check('review');
     expect(checked.status, checked.stdout).toBe(0);
   });

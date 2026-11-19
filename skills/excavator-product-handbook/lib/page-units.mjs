@@ -16,6 +16,7 @@ export const DICTIONARIES_UNIT = 'dictionaries';
 export const DATA_UNIT = 'data';
 export const COVERAGE_UNIT = 'coverage';
 export const HISTORY_UNIT = 'history';
+export const PROBLEMS_UNIT = 'problems';
 export const chapterUnitKey = (id) => `chapter:${id}`;
 
 const tagged = (pieces, tag) => pieces.filter((piece) => Object.hasOwn(piece, tag)).map((piece) => piece[tag]);
@@ -23,6 +24,21 @@ const hasRecords = (section, ...lists) => section !== null && section !== undefi
 /** The texts of a unit as pieces tagged `tag`: `{ [tag]: { view, text } }`, in the key order of `texts`. */
 const textPieces = (texts, tag) => Object.entries(texts).map(([view, text]) => ({ [tag]: { view, text } }));
 const textsOf = (pieces, tag) => Object.fromEntries(tagged(pieces, tag).map(({ view, text }) => [view, text]));
+
+/** A problem row as the core keeps it: the full-text fields (`texts`, `cites`) are in the unit. */
+const slimRow = ({ texts: _texts, cites: _cites, ...row }) => row;
+/** The row with `texts` and `cites` put back after `summary`, in the key order the page data builds it in; every other key stays where it was. */
+function fullRow(row, piece) {
+  const out = {};
+  for (const [key, value] of Object.entries(row)) {
+    out[key] = value;
+    if (key === 'summary') {
+      out.texts = piece.texts;
+      if (Object.hasOwn(piece, 'cites')) out.cites = piece.cites;
+    }
+  }
+  return out;
+}
 
 const HISTORY_LISTS = ['years', 'apps', 'hotspots', 'coChange', 'tests'];
 
@@ -39,8 +55,10 @@ export function splitPageData(data) {
   const dataUnit = technical !== undefined && hasRecords(technical.data, 'tables', 'dropped');
   const dictionaryUnit = technical !== undefined && hasRecords(technical.dictionaries, 'dictionaries', 'mismatches');
   const historyUnit = data.history !== null && HISTORY_LISTS.some((list) => data.history[list].length > 0);
+  const problemsUnit = data.problems !== undefined && data.problems.rows.length > 0;
   const core = {
     ...data,
+    ...(problemsUnit ? { problems: { ...data.problems, rows: data.problems.rows.map(slimRow) } } : {}),
     chapters: data.chapters.map((chapter) => (withChapter.has(chapter.id) ? { ...chapter, texts: {} } : chapter)),
     ...(coverageUnit ? { coverage: {} } : {}),
     ...(historyUnit ? { history: { ...data.history, ...Object.fromEntries(HISTORY_LISTS.map((list) => [list, []])) } } : {}),
@@ -75,6 +93,9 @@ export function splitPageData(data) {
         ],
       };
     }
+    if (problemsUnit) {
+      yield { key: PROBLEMS_UNIT, pieces: data.problems.rows.map((row) => ({ problem: { id: row.id, texts: row.texts, ...(Object.hasOwn(row, 'cites') ? { cites: row.cites } : {}) } })) };
+    }
   }
   return { core, units };
 }
@@ -93,6 +114,11 @@ export function restorePageData(core, units) {
   if (coveragePieces !== undefined) restored.coverage = textsOf(coveragePieces, 'coverageText');
   const historyPieces = piecesOf.get(HISTORY_UNIT);
   if (historyPieces !== undefined) restored.history = { ...core.history, years: tagged(historyPieces, 'year'), apps: tagged(historyPieces, 'app'), hotspots: tagged(historyPieces, 'hotspot'), coChange: tagged(historyPieces, 'pair'), tests: tagged(historyPieces, 'test') };
+  const problemPieces = piecesOf.get(PROBLEMS_UNIT);
+  if (problemPieces !== undefined) {
+    const byId = new Map(tagged(problemPieces, 'problem').map((piece) => [piece.id, piece]));
+    restored.problems = { ...core.problems, rows: core.problems.rows.map((row) => (byId.has(row.id) ? fullRow(row, byId.get(row.id)) : row)) };
+  }
   if (core.technical !== undefined) {
     const { technical } = core;
     const dataPieces = piecesOf.get(DATA_UNIT);

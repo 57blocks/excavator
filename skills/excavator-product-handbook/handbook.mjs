@@ -5,7 +5,7 @@
  * project's source statically and never builds or runs it.
  *
  * Subcommands: candidates, applications, check-map, select, check-ui, data,
- * history, check, assemble, page, reply, sections, review. Run `handbook.mjs --help`
+ * history, check, assemble, page, reply, sections, review, processes. Run `handbook.mjs --help`
  * for the arguments of each.
  *
  * check-map and check hold <out>/state.json.lock while they run.
@@ -29,11 +29,15 @@ import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
-import { remediesState } from './lib/remedies-inputs.mjs';
+import { remediesInputsLines, remediesState } from './lib/remedies-inputs.mjs';
+import { processesFacts } from './lib/processes-facts.mjs';
+import { checkPart, joinParts, processesParts, resetPart } from './lib/processes-parts.mjs';
 import { replyLines } from './lib/reply.mjs';
+import { reviewCandidateLines, reviewCandidates, reviewCompare } from './lib/review-compare.mjs';
 import { reviewFacts } from './lib/review-facts.mjs';
+import { reviewProcessLines } from './lib/review-processes.mjs';
 import { renderReview } from './lib/review-render.mjs';
-import { resetBatch, reviewStatus, reviewSummary, reviewTitles } from './lib/review-status.mjs';
+import { compareStatusReport, resetBatch, reviewStatus, reviewSummary, reviewTitles } from './lib/review-status.mjs';
 import { pruneReview, reviewClaims } from './lib/review-verify.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
@@ -62,11 +66,11 @@ Commands:
       exit 1. No fuzzy matching. Changes no file.
   sections [<list>] [--review]
       Validate the --sections list (comma-separated: system, features, data, history, domains, roles, notifications, topics,
-      defects, review, remedies, outline; empty or absent is all but review) and print "SECTIONS=<the sections in fixed order>",
+      defects, processes, review, remedies, outline; empty or absent is all but processes and review) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the map stage file first, once, then each
-      section's file, once (the five cross chapters before review share one). --review adds review; whenever review
-      is selected, remedies and outline are selected too. A value that is not a section exits 1 and the
+      section's file, once (the five cross chapters before processes share one). --review adds processes and review; whenever review
+      is selected, processes, remedies and outline are selected too; whenever processes is selected, outline is. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
@@ -109,22 +113,51 @@ Commands:
       with the reason and counts the test files all the same.
   review facts <out> [<batch>]
       The whole-table facts the design-problems writers read: the batches (one per business domain when the domains
-      chapter passed, else one per area of the map, b1..bn, then cross), for every feature its operations, the steps of
+      chapter passed, else one per area of the map, b1..bn), for every feature its operations, the steps of
       each operation, its states and transitions, its server-side steps and its hand-overs counted from its chapter
       with the headings of <out>/ui.json (a section that is not recognized is not counted and is named), and the pairs
       of features whose chapters cite overlapping lines of one file (one pair for two features, with every such file;
       a file cited by more than 3 features is shared code and makes no pair), within a batch and across batches. Writes
-      <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it.
+      <out>/entries/review-facts.json and prints the facts; a batch name limits the printed pairs to those that touch it. It also removes the entries/review/cross*.json files
+      of an older run and says so. When the business processes chapter passed it also packs the processes, in order, into the
+      process batches p1..pn (consecutive processes whose steps add up to at most 60; a longer process is a batch alone),
+      writes them with the chapter's digest to <out>/entries/review-processes.json and prints "Process batches: <n> (<k> processes)"
+      (a different digest clears every p* batch first); without a passed chapter it removes that file and says "Process batches: none".
+  review processes <out> <batch>
+      For a process batch: per process in order a "PROCESS<TAB>P<n><TAB><name><TAB><features>" line and every non-empty line of its
+      section of chapters/processes.md as "processes.md:<line>: <text>". Exits 1 for another id, or when processes.md changed since
+      review facts.
+  review compare-facts <out> --project <root>
+      The comparison candidates (X1, X2, ...) from the artifacts in <out>, five sources in order: two implementations (a
+      feature whose route candidates lie in 2 or more application roots), dictionary mismatches, tables mentioned by 2 or
+      more applications, cross-cutting topic rows naming 2 or more features (rows resting only on problems lines are
+      counted and skipped) and code shared across batches. A source whose artifact is missing is printed as not computed
+      with its reason. Each candidate records its batch (two implementations: the domain batch of its feature; the others:
+      c-data-<n>, c-topics-<n> or c-code-<n>, at most 25 candidates each) and its places (file and line range). Writes
+      <out>/entries/review-compare.json, deletes the c-* batch files whose batch no longer exists or holds other
+      candidates than before, and prints SOURCE, SKIPPED and CANDIDATE lines.
+  review candidates <out> <batch>
+      The CANDIDATE lines of one batch, read from <out>/entries/review-compare.json alone, in the format of compare-facts;
+      one line "none" when the batch has none, or "none: <reason>" when the file is missing or does not parse.
+  review candidate-lines <out> <id>
+      One comparison candidate, read from <out>/entries/review-compare.json and the chapters: its CANDIDATE line, FACTS (its
+      facts as one JSON line), for a topic its TOPIC row, then for each feature of the candidate every chapter line
+      (<id>.md:<line>: <text>) that cites a place of the candidate. Exit 1 for an id that is not a candidate.
+  review compare-status <out> --project <root>
+      Where each comparison candidate of <out>/entries/review-compare.json stands: one COMPARE line per source (its
+      candidates and how many became items of a pruned batch, were dismissed in a batch file, or are not judged; or why
+      it was not computed), then one UNJUDGED line per candidate not judged (id, source, features, batch). Writes nothing.
   review render <out> [<batch>...] --project <root>
       Check the items of <out>/entries/review/<batch>.json against the chapters: fields and values, the features of
-      the batch (a cross item: features of 2 or more batches), each citation copied from a chapter of a listed feature,
+      the batch (any feature in a comparison batch, whose items must each list candidates), each citation copied from a chapter of a listed feature,
       two different chapter lines for duplication, contradiction, inconsistency and access, every number in a cited line
       or a fact of a listed feature, and the reader-text rules of the chapters. One line per refusal, exit 1. With
       batches named, only those are checked and nothing is written; with none named, every batch is checked and, when
       all pass, <out>/chapters/review.md is written.
-  review claims <out> <batch>
+  review claims <out> <batch> [<index>]
       Print each item of entries/review/<batch>.json (its index from 0, its fields) and, for each citation, the
-      chapter lines of the listed features that hold it: the whole input of the verifier of the batch.
+      chapter lines of the listed features that hold it; with an index, only that item. The verifier reads the
+      items one index at a time.
   review prune <out> <batch> --project <root>
       Read entries/review/<batch>.verdicts.json ({"verdicts": [{"index", "verdict": supported|unsupported, "reason"}]},
       one verdict for each item, exactly once), remove the unsupported items from the batch file, record them in
@@ -134,15 +167,43 @@ Commands:
   review status <out> --project <root>
       One line per batch: "<batch>", a state and the batch name, the state being write (no file, or a file that does
       not pass render; the reasons follow), verify (items to judge), prune (verdicts to apply, or a batch with no
-      item) or done (pruned). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
+      item), done (pruned) or wait (a comparison or process batch while a domain batch is not done). review reset <out> <batch> deletes a batch's file, verdicts, unpruned copy and removal
       records; review skip <out> <batch> does the same and leaves an empty batch. review titles <out> --project <root>
-      lists the items of the non-cross batches (batch, item, dimension, impact, features, title). review summary <out>
+      lists the items of the domain batches (batch, item, dimension, impact, features, title). review summary <out>
       prints "<batch> <name> kept=<n> removed=<m>" for each pruned batch.
+  remedies-inputs <out>
+      Print the items the remedies chapter may name, one line each and an indented "cites:" line after it: "DEFECT D<n> <level>
+      <category> <feature ids> <short title>" for each defect, "DESIGN R<n> <impact> <dimension> <feature ids> [P<n>] <title>" for each
+      design problem and, for each process a design problem names, "PROCESS P<n> <steps> <feature ids> <name>" with indented
+      design:, defects: and cites: lines, numbered the way check, assemble and the page number them. A source that is not available prints one line
+      saying so ("DESIGN none: review.md is missing").
   remedies-state <out> --project <root>
       Print STATUS (the recorded status of the remedies chapter or none), ATTEMPTS, FILE (yes or no) and STALE (yes
       when it passed and the digest of defects.md and review.md differs from the one recorded with it, or none was
       recorded and review.md exists).
-  check <out> [<chapter>...] [--before cross|review] [--no-record] --project <root>
+  processes facts <out> [<part>]
+      The reading list of the writer of the business processes, in map order, from map.json, the run's fixed text, the
+      feature chapters and domains.json: "OP<TAB><F><TAB><F>.md:<line><TAB><title>" for each level-3 heading of a feature
+      chapter's operations section, "UNREAD<TAB><F><TAB><reason>" for a feature with no chapter or no operations section,
+      "EDGE<TAB><F><TAB><G><TAB><F>.md:<line>" for each other map feature named in a list item of its hand-overs section,
+      "HANDOVER<TAB><from> -> <to>: <what>" for each hand-over of domains.json, and a last "Counts:" line. Exits 1 when
+      map.json is missing. Writes no file. With a part id (b1...bn, the groups of the design-problems domain batches) only the
+      OP and UNREAD lines of the part's features and of the features linked to them by an EDGE in either direction, the
+      EDGE lines with an end in the part, the HANDOVER lines from or to the part's name, and a Counts line of what was printed
+      ending in ", in part <id>".
+  processes check-part <out> <part> --project <root>
+      The reasons the part file entries/processes/<part>.md is refused, one line each (exit 1), or "<part>: passed": the
+      chapter checks of "check processes" run on the part as it will sit in the joined chapter (line numbers are the part's),
+      no level-1 heading, a process whose first step's feature is not a feature of the part, and "the part was not written".
+      An empty file passes. Records nothing.
+  processes parts <out> --project <root>
+      "<part><TAB><write|done><TAB><name><TAB><feature ids>" per part, the reasons of a write part indented below it.
+  processes reset <out> <part>  /  processes skip <out> <part>
+      Delete the part file ("cleared") / write an empty one ("emptied").
+  processes join <out> --project <root>
+      When every part is done, writes chapters/processes.md (the fixed title and the parts in order) and prints
+      "processes.md: joined <k> parts, <p> processes"; otherwise writes nothing, exits 1 and lists "<part><TAB><state><TAB><name>".
+  check <out> [<chapter>...] [--before cross|review|processes] [--no-record] --project <root>
       The final check of the Markdown chapters under <out>/chapters/ (system.md, <featureId>.md,
       the cross chapters; none named means every .md file there): each citation resolves, each
       fact line cites, paragraphs have at most 4 sentences, a feature chapter has a list or a
@@ -152,7 +213,9 @@ Commands:
       reasons in state.json (format /2); a state.json of another format exits 1 and asks for
       --fresh. --no-record prints the same without writing state.json. --before cross checks no
       chapter: it exits 0 when every feature has a passed chapter or one that failed twice;
-      --before review checks no chapter either and holds the same rule, and also needs a map.
+      --before review and --before processes check no chapter either and hold the same rule, and also need a map
+      (--before processes prints "Business processes: ready (<n> features)"). A processes chapter must write each step as a
+      numbered item whose first bold fragment is an operation title of the feature named by the first (F<n>) after it.
       Never changes a chapter.
   check-ui <out> [--language <name>] [--keep <file>]
       Run in English with no <out>/ui.json: copy the shipped English table
@@ -183,7 +246,7 @@ Commands:
   page <out> --project <root> [--views <list>]
       Write <out>/handbook.html: the same run, checked the same way, as one
       self-contained page (a home page with the map of the domains and their
-      hand-overs from a checked domains.json, else the outline's parts; a page per
+      upstream and downstream links from a checked domains.json, else the outline's parts; a page per
       domain and per chapter, search, a switch between the views when both are
       selected, the data, status dictionary and code health pages, a coverage page;
       light and dark; every fixed text from <out>/ui.json). Removes an earlier handbook.html
@@ -287,11 +350,31 @@ const COMMANDS = {
   review(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     const [sub, out, ...rest] = positionals;
-    if (!['facts', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary'].includes(sub)) throw new UsageError('review takes facts, render, claims, prune, status, reset, skip, titles or summary, then <out>');
+    if (!['facts', 'compare-facts', 'candidates', 'candidate-lines', 'compare-status', 'render', 'claims', 'prune', 'status', 'reset', 'skip', 'titles', 'summary', 'processes'].includes(sub)) throw new UsageError('review takes facts, compare-facts, candidates, candidate-lines, compare-status, render, claims, prune, status, reset, skip, titles, summary or processes, then <out>');
     if (out === undefined) throw new UsageError(`review ${sub} takes an <out> directory`);
     if (sub === 'facts') {
       if (rest.length > 1) throw new UsageError('review facts takes <out> and at most one batch');
       return report(reviewFacts(resolve(out), rest[0]));
+    }
+    if (sub === 'compare-facts') {
+      if (rest.length > 0) throw new UsageError('review compare-facts takes <out> and --project <root>');
+      return report(reviewCompare(resolve(out), projectRootOption(options.project)));
+    }
+    if (sub === 'candidates') {
+      if (rest.length !== 1) throw new UsageError('review candidates takes <out> and one batch');
+      return report(reviewCandidates(resolve(out), rest[0]));
+    }
+    if (sub === 'candidate-lines') {
+      if (rest.length !== 1) throw new UsageError('review candidate-lines takes <out> and one candidate id');
+      return report(reviewCandidateLines(resolve(out), rest[0]));
+    }
+    if (sub === 'compare-status') {
+      if (rest.length > 0) throw new UsageError('review compare-status takes <out> and --project <root>');
+      return report(compareStatusReport(resolve(out), projectRootOption(options.project)));
+    }
+    if (sub === 'processes') {
+      if (rest.length !== 1) throw new UsageError('review processes takes <out> and one process batch');
+      return report(reviewProcessLines(resolve(out), rest[0]));
     }
     if (sub === 'status') return report(reviewStatus(resolve(out), projectRootOption(options.project)));
     if (sub === 'titles') return report(reviewTitles(resolve(out), projectRootOption(options.project)));
@@ -301,10 +384,39 @@ const COMMANDS = {
       return report(resetBatch(resolve(out), rest[0], { empty: sub === 'skip' }));
     }
     if (sub === 'claims' || sub === 'prune') {
-      if (rest.length !== 1) throw new UsageError(`review ${sub} takes <out> and one batch`);
-      return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
+      if (rest.length !== 1 && !(sub === 'claims' && rest.length === 2)) throw new UsageError(`review ${sub} takes <out> and one batch${sub === 'claims' ? ' and, optionally, an item index' : ''}`);
+      return report(sub === 'claims' ? reviewClaims(resolve(out), rest[0], rest[1]) : pruneReview(resolve(out), projectRootOption(options.project), rest[0]));
     }
     return report(renderReview(resolve(out), projectRootOption(options.project), rest));
+  },
+  'remedies-inputs'(args) {
+    const { positionals } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('remedies-inputs takes exactly one <out> directory');
+    return report(remediesInputsLines(resolve(positionals[0])));
+  },
+  processes(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    const [sub, out, part] = positionals;
+    const takes = (count, usage) => {
+      if (positionals.length !== count + 1) throw new UsageError(`processes ${sub} takes ${usage}`);
+    };
+    if (sub === 'facts') {
+      if (positionals.length < 2 || positionals.length > 3) throw new UsageError('processes facts takes <out> and, optionally, one part');
+      return report(processesFacts(out, part ?? null));
+    }
+    if (sub === 'check-part') {
+      takes(2, '<out>, one part and --project <root>');
+      return report(checkPart(out, part, projectRootOption(options.project)));
+    }
+    if (sub === 'parts' || sub === 'join') {
+      takes(1, '<out> and --project <root>');
+      return report((sub === 'parts' ? processesParts : joinParts)(out, projectRootOption(options.project)));
+    }
+    if (sub === 'reset' || sub === 'skip') {
+      takes(2, '<out> and one part');
+      return report(resetPart(out, part, { empty: sub === 'skip' }));
+    }
+    throw new UsageError('processes takes facts, check-part, parts, reset, skip or join, then <out>');
   },
   'remedies-state'(args) {
     const { positionals } = parseArgs(args, ['project']);

@@ -1,13 +1,13 @@
 // openspec change handbook-design-review, task 4.1: the resume commands of the design-problems phase read the files
 // and decide each batch's state (write, verify, prune, done); reset and skip clear a batch; titles and summary print
-// what the cross writer and the user's report need; the cross batch reads only the pairs that span batches.
+// what the comparison writers and the user's report need.
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { runHandbook } from './helpers.mjs';
 import { FORM } from './md-run-fixture.mjs';
-import { goodItem, reviewRun } from './review-fixture.mjs';
+import { goodItem, reviewRun, writeCompare } from './review-fixture.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -31,13 +31,13 @@ function make() {
 describe('review status', () => {
   it('says write for batches without a file, verify for items to judge, prune for an empty batch, and the reasons of a refused file', () => {
     const run = make();
-    expect(run.status()).toEqual(['b1\twrite\tOrder handling', 'b2\twrite\tAutomatic work', 'cross\twrite\tcross']);
+    expect(run.status()).toEqual(['b1\twrite\tOrder handling', 'b2\twrite\tAutomatic work']);
     run.writeBatch('b1', [goodItem()]);
     run.writeBatch('b2', []);
-    run.writeBatch('cross', [goodItem({ dimension: 'slow' })]);
+    run.writeBatch('b2', [goodItem({ dimension: 'slow' })]);
     const lines = run.status();
-    expect(lines.slice(0, 3)).toEqual(['b1\tverify\tOrder handling', 'b2\tprune\tAutomatic work', 'cross\twrite\tcross']);
-    expect(lines[3]).toMatch(/^ {2}cross item 0: dimension "slow"/);
+    expect(lines.slice(0, 2)).toEqual(['b1\tverify\tOrder handling', 'b2\twrite\tAutomatic work']);
+    expect(lines[2]).toMatch(/^ {2}b2 item 0: dimension "slow"/);
   });
 
   it('follows a batch from verify through prune to done, and an empty batch needs no verdicts', () => {
@@ -84,12 +84,11 @@ describe('review reset and skip', () => {
   });
 });
 
-describe('review titles, summary and the cross pairs', () => {
-  it('titles lists the items of the non-cross batches that pass, one line each', () => {
+describe('review titles, summary and the pairs', () => {
+  it('titles lists the items of the domain batches that pass, one line each', () => {
     const run = make();
     run.writeBatch('b1', [goodItem()]);
     run.writeBatch('b2', [goodItem({ dimension: 'slow' })]);
-    run.writeBatch('cross', [goodItem()]);
     expect(run.titles()).toEqual(['b1\titem 0\tduplication\tmedium\tF1,F2\tTwo places end an order']);
     const empty = make();
     expect(empty.titles()).toEqual(['(no item in any batch)']);
@@ -104,13 +103,62 @@ describe('review titles, summary and the cross pairs', () => {
     expect(run.summary()).toEqual(['b1\tOrder handling\tkept=1\tremoved=1']);
   });
 
-  it('facts for the cross batch prints only the pairs that span batches', () => {
+  it('facts for a batch prints only the pairs that touch it', () => {
     const run = make();
-    const lines = runHandbook(['review', 'facts', run.out, 'cross']).lines.filter((line) => line.startsWith('PAIR'));
+    const lines = runHandbook(['review', 'facts', run.out, 'b2']).lines.filter((line) => line.startsWith('PAIR'));
     expect(lines.length).toBeGreaterThan(0);
-    expect(lines.every((line) => line.startsWith('PAIR\tacross'))).toBe(true);
+    const touching = run.readFacts().pairs.filter((pair) => pair.batches.includes('b2')).length;
+    expect(lines.length).toBe(touching);
     const all = runHandbook(['review', 'facts', run.out]).lines.filter((line) => line.startsWith('PAIR'));
     expect(all.length).toBeGreaterThanOrEqual(lines.length);
   });
 });
 
+
+describe('comparison batches in the batch list', () => {
+  const cand = (id, source, features, batch) => ({ id, source, features, batch });
+
+  it('status lists the domain batches then the comparison batches, which wait until every domain batch is done', () => {
+    const run = make();
+    writeCompare(run, [cand('X1', 'dict', ['F1'], 'c-data-1'), cand('X2', 'code', ['F1', 'F3'], 'c-code-1')]);
+    expect(run.status()).toEqual(['b1\twrite\tOrder handling', 'b2\twrite\tAutomatic work', 'c-data-1\twait\tc-data-1', 'c-code-1\twait\tc-code-1']);
+    run.writeBatch('b1', []);
+    run.writeBatch('b2', []);
+    expect(run.prune('b1').status).toBe(0);
+    expect(run.status().map((line) => line.split('\t')[1])).toEqual(['done', 'prune', 'wait', 'wait']);
+    expect(run.prune('b2').status).toBe(0);
+    expect(run.status().map((line) => line.split('\t')[1])).toEqual(['done', 'done', 'write', 'write']);
+    run.writeBatch('c-data-1', [goodItem({ features: ['F1', 'F3'], cites: [`${FORM}:7`, `${FORM}:11`], candidates: ['X1'] })]);
+    expect(run.status()[2]).toBe('c-data-1\tverify\tc-data-1');
+  });
+
+  it('titles lists only the items of the domain batches', () => {
+    const run = make();
+    writeCompare(run, [cand('X1', 'dict', ['F1'], 'c-data-1')]);
+    run.writeBatch('b1', [goodItem()]);
+    run.writeBatch('c-data-1', [goodItem({ candidates: ['X1'] })]);
+    expect(run.titles()).toEqual(['b1\titem 0\tduplication\tmedium\tF1,F2\tTwo places end an order']);
+  });
+
+  it('an output of an older run: facts removes the cross files and says so, status no longer lists cross, render and summary still work', () => {
+    const run = make();
+    const dir = join(run.out, 'entries', 'review');
+    for (const name of ['cross.json', 'cross.unpruned.json', 'cross.verdicts.json']) writeFileSync(join(dir, name), '{"items":[]}');
+    writeFileSync(join(run.out, 'entries', 'review-removed.json'), JSON.stringify({ removed: [{ batch: 'cross', index: 0, reason: 'old' }] }));
+    const result = runHandbook(['review', 'facts', run.out]);
+    expect(result.lines).toContain('Removed the old cross batch: cross.json, cross.unpruned.json, cross.verdicts.json');
+    for (const name of ['cross.json', 'cross.unpruned.json', 'cross.verdicts.json']) expect(existsSync(join(dir, name))).toBe(false);
+    expect(existsSync(join(run.out, 'entries', 'review-removed.json'))).toBe(true);
+    expect(runHandbook(['review', 'facts', run.out]).lines.some((line) => line.startsWith('Removed'))).toBe(false);
+    expect(run.status().some((line) => line.startsWith('cross'))).toBe(false);
+    run.writeBatch('b1', [goodItem()]);
+    run.writeBatch('b2', []);
+    run.writeJson(join(dir, 'b1.verdicts.json'), { verdicts: [{ index: 0, verdict: 'supported', reason: 'ok' }] });
+    expect(run.prune('b1').status).toBe(0);
+    expect(run.prune('b2').status).toBe(0);
+    expect(runHandbook(['review', 'render', run.out, '--project', run.root]).status).toBe(0);
+    expect(run.summary()).toEqual(['b1\tOrder handling\tkept=1\tremoved=0', 'b2\tAutomatic work\tkept=0\tremoved=0']);
+    expect(runHandbook(['review', 'compare-status', run.out, '--project', run.root]).status).toBe(0);
+    expect(existsSync(join(run.out, 'entries', 'review-removed.json'))).toBe(true);
+  });
+});

@@ -2,7 +2,7 @@
  * `review render <out> [<batch>...]` (openspec change handbook-design-review, D3): the items a writer wrote
  * to entries/review/<batch>.json are checked against the chapters they cite, and the chapter
  * chapters/review.md is generated from them. A writer names its own batch to validate it and nothing else is
- * written; with no batch named every batch of the facts file is validated and, when all pass, the chapter is
+ * written; with no batch named every batch (the domain batches of the facts file, then the comparison batches of the candidates file) is validated and, when all pass, the chapter is
  * written. Every refusal is one line naming the batch, the item (counted from 0) and the rule.
  */
 
@@ -14,23 +14,30 @@ import { citationGroups, specKey } from './chapter-cites.mjs';
 import { readerTextReasons } from './chapter-lint.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { isObject, readJson, writeTextAtomic } from './json-file.mjs';
-import { CROSS_BATCH, FACTS_FILE } from './review-batches.mjs';
+import { FACTS_FILE } from './review-batches.mjs';
+import { REVIEW_DIR, batchFile } from './review-files.mjs';
+import { processBatches } from './review-processes.mjs';
+import { candidateReasons } from './review-candidate-check.mjs';
+import { compareBatches } from './review-compare.mjs';
+import { compareSection } from './review-compare-status.mjs';
 import { loadUi } from './ui.mjs';
 import { adviceWordsOf } from './word-lists.mjs';
 
-export const REVIEW_DIR = 'entries/review';
+export { REVIEW_DIR, batchFile };
 export const DIMENSIONS = Object.freeze(['duplication', 'contradiction', 'complexity', 'redundancy', 'dead-end', 'inconsistency', 'manual', 'access', 'traceability', 'other']);
 export const IMPACTS = Object.freeze(['high', 'medium', 'low']);
 const TWO_PLACE = new Set(['duplication', 'contradiction', 'inconsistency', 'access']);
 const ITEM_KEYS = ['dimension', 'impact', 'features', 'title', 'situation', 'consequence', 'cites'];
+const PROCESS_DIMENSIONS = Object.freeze(['duplication', 'complexity', 'redundancy', 'manual', 'dead-end']);
+const PROCESS_ID = /^P[1-9][0-9]*$/;
+const CANDIDATE_ID = /^X[1-9][0-9]*$/;
+export const DISMISS_REASONS = Object.freeze(['same', 'different-subject', 'not-in-chapters', 'already-kept']);
 const WIDE_STOPS = String.fromCharCode(0x3002, 0xff01, 0xff1f);
 const LIST_MARKER = /^\s*(?:[-*]|\d+\.)\s+/;
 const STOP_END = new RegExp(`[.!?${WIDE_STOPS}]+$`);
 const range = (from, to) => `${String.fromCharCode(from)}-${String.fromCharCode(to)}`;
 const CJK = new RegExp(`[${range(0x3000, 0x303f)}${range(0x3040, 0x30ff)}${range(0x4e00, 0x9fff)}${range(0xff00, 0xffef)}]`);
 const CJK_END = new RegExp(`${CJK.source}$`);
-
-export const batchFile = (batch) => `${REVIEW_DIR}/${batch}.json`;
 
 const isStrings = (value) => Array.isArray(value) && value.every((entry) => typeof entry === 'string');
 const digitRuns = (text) => text.match(/\d+/g) ?? [];
@@ -67,6 +74,8 @@ export function reviewContext(outDir, root) {
     ok: true,
     outDir,
     facts,
+    // The domain batches of the facts file, then the comparison batches, then the process batches.
+    batches: [...facts.batches, ...compareBatches(outDir), ...processBatches(outDir)],
     map: mapRead.value,
     strings: ui.strings,
     advice: adviceWordsOf(ui.strings),
@@ -86,8 +95,14 @@ function factNumbers(entry) {
 function itemReasons(ctx, batch, item) {
   const reasons = [];
   const add = (reason) => reasons.push(reason);
-  if (!isObject(item) || Object.keys(item).length !== ITEM_KEYS.length || !ITEM_KEYS.every((key) => Object.hasOwn(item, key))) {
-    return [`the item must be an object with exactly the keys ${ITEM_KEYS.join(', ')}`];
+  if (!isObject(item) || !ITEM_KEYS.every((key) => Object.hasOwn(item, key)) || Object.keys(item).some((key) => key !== 'candidates' && key !== 'process' && !ITEM_KEYS.includes(key))) {
+    return [`the item must be an object with exactly the keys ${ITEM_KEYS.join(', ')} (and optionally candidates, and process in a process batch)`];
+  }
+  if (Object.hasOwn(item, 'candidates')) {
+    const list = item.candidates;
+    if (!isStrings(list) || list.some((id) => !CANDIDATE_ID.test(id)) || new Set(list).size !== list.length) {
+      add('candidates must be a list of distinct comparison candidate ids such as X3');
+    }
   }
   if (!DIMENSIONS.includes(item.dimension)) add(`dimension ${JSON.stringify(item.dimension)} is not one of ${DIMENSIONS.join(', ')}`);
   if (!IMPACTS.includes(item.impact)) add(`impact ${JSON.stringify(item.impact)} is not one of ${IMPACTS.join(', ')}`);
@@ -102,13 +117,22 @@ function itemReasons(ctx, batch, item) {
   if (unknown.length > 0) add(`features ${unknown.join(', ')} are not in the map`);
   if (new Set(item.features).size !== item.features.length) add('features lists a feature more than once');
   const known = item.features.filter((id) => ctx.ids.includes(id));
-  const batchOf = (id) => ctx.facts.features[id]?.batch ?? null;
-  if (batch.id === CROSS_BATCH) {
-    const spanned = new Set(known.map(batchOf));
-    if (spanned.size < 2) add(`a cross item lists features of ${spanned.size} batch${spanned.size === 1 ? ` (${[...spanned][0]})` : 'es'}; it needs features of 2 or more batches`);
+  if (batch.process !== true && Object.hasOwn(item, 'process')) add(`process is only for a process batch; ${batch.id} is not one`);
+  if (batch.process === true) {
+    if (Object.hasOwn(item, 'candidates')) add('a process batch item has no candidates');
+    if (!PROCESS_DIMENSIONS.includes(item.dimension)) add(`a process batch item has dimension ${PROCESS_DIMENSIONS.join(', ')}; this one is ${JSON.stringify(item.dimension)}`);
+    const process = typeof item.process === 'string' && PROCESS_ID.test(item.process) ? batch.processes.find((entry) => entry.id === item.process) : undefined;
+    if (!Object.hasOwn(item, 'process')) add(`a process batch item must name its process, one of ${batch.processes.map((entry) => entry.id).join(', ')}`);
+    else if (process === undefined) add(`process ${JSON.stringify(item.process)} is not a process of batch ${batch.id} (${batch.processes.map((entry) => entry.id).join(', ')})`);
+    else {
+      const outside = known.filter((id) => !process.features.includes(id));
+      if (outside.length > 0) add(`features ${outside.join(', ')} are not steps of process ${process.id} (${process.name}); its step features are ${process.features.join(', ')}`);
+    }
+  } else if (batch.compare === true) {
+    if (!Array.isArray(item.candidates) || item.candidates.length === 0) add('a comparison batch item must list the candidates it handles');
   } else {
     const outside = known.filter((id) => !batch.features.includes(id));
-    if (outside.length > 0) add(`features ${outside.join(', ')} are not in batch ${batch.id}; an item across batches belongs to the ${CROSS_BATCH} batch`);
+    if (outside.length > 0) add(`features ${outside.join(', ')} are not in batch ${batch.id}`);
   }
 
   // Where each cite occurs: a chapter line of one of the listed features.
@@ -151,13 +175,28 @@ function itemReasons(ctx, batch, item) {
 export function validateBatch(ctx, batch) {
   const read = readJson(join(ctx.outDir, batchFile(batch.id)));
   if (!read.ok) return { reasons: [`${batch.id}: ${batchFile(batch.id)} ${read.reason}`], items: [] };
-  if (!isObject(read.value) || Object.keys(read.value).length !== 1 || !Array.isArray(read.value.items)) {
+  if (!isObject(read.value) || !Array.isArray(read.value.items) || Object.keys(read.value).some((key) => key !== 'items' && key !== 'dismissed')) {
     return { reasons: [`${batch.id}: ${batchFile(batch.id)} must be an object with exactly the key "items", a list`], items: [] };
   }
   const reasons = [];
+  if (Object.hasOwn(read.value, 'dismissed')) {
+    const { dismissed } = read.value;
+    if (!Array.isArray(dismissed)) reasons.push(`${batch.id}: dismissed must be a list of { candidate, reason }`);
+    else {
+      dismissed.forEach((entry, at) => {
+        if (!isObject(entry) || Object.keys(entry).length !== 2 || !Object.hasOwn(entry, 'candidate') || !Object.hasOwn(entry, 'reason')) {
+          reasons.push(`${batch.id} dismissed ${at}: must be an object with exactly candidate and reason`);
+          return;
+        }
+        if (typeof entry.candidate !== 'string' || !CANDIDATE_ID.test(entry.candidate)) reasons.push(`${batch.id} dismissed ${at}: candidate ${JSON.stringify(entry.candidate)} is not a comparison candidate id such as X3`);
+        if (!DISMISS_REASONS.includes(entry.reason)) reasons.push(`${batch.id} dismissed ${at}: reason ${JSON.stringify(entry.reason)} is not one of ${DISMISS_REASONS.join(', ')}`);
+      });
+    }
+  }
   read.value.items.forEach((item, at) => {
     for (const reason of itemReasons(ctx, batch, item)) reasons.push(`${batch.id} item ${at}: ${reason}`);
   });
+  reasons.push(...candidateReasons(ctx.outDir, batch.id, read.value, `entries/review/${batch.id}.unpruned.json`));
   return { reasons, items: read.value.items };
 }
 
@@ -170,6 +209,14 @@ function cited(text, cites, wide) {
     : `${body} (${list}).`;
 }
 
+/** The items of `batches` (`[{ batch, items }]` in batch order) in the order the chapter lists them: dimension, impact, batch position, item position. */
+export function sortedReviewItems(batches) {
+  const flat = batches.flatMap(({ items }, position) => items.map((item, at) => ({ item, position, at })));
+  const rank = (list, value) => list.indexOf(value);
+  return flat.sort((x, y) => rank(DIMENSIONS, x.item.dimension) - rank(DIMENSIONS, y.item.dimension)
+    || rank(IMPACTS, x.item.impact) - rank(IMPACTS, y.item.impact) || x.position - y.position || x.at - y.at);
+}
+
 /** The text of chapters/review.md for `batches` (`[{ batch, items }]` in batch order). */
 export function reviewChapterText(ctx, batches) {
   const t = (key) => ctx.strings[`chapter.review.${key}`];
@@ -177,10 +224,9 @@ export function reviewChapterText(ctx, batches) {
   const wide = CJK.test(t('title'));
   const colon = wide ? String.fromCharCode(0xff1a) : ': ';
   const semicolon = wide ? String.fromCharCode(0xff1b) : '; ';
-  const flat = batches.flatMap(({ items }, position) => items.map((item, at) => ({ item, position, at })));
-  const rank = (list, value) => list.indexOf(value);
-  flat.sort((x, y) => rank(DIMENSIONS, x.item.dimension) - rank(DIMENSIONS, y.item.dimension)
-    || rank(IMPACTS, x.item.impact) - rank(IMPACTS, y.item.impact) || x.position - y.position || x.at - y.at);
+  const flat = sortedReviewItems(batches);
+  const processNames = new Map(processBatches(ctx.outDir).flatMap((batch) => batch.processes.map((entry) => [entry.id, entry.name])));
+  const processName = (id) => processNames.get(id) ?? '';
   const nameOf = (id) => `${ctx.map.features.find((feature) => feature.id === id)?.name ?? id} (${id})`;
   const out = [`# ${t('title')}`, '', `## ${t('counts')}`, ''];
   out.push(`| ${[t('field.dimension'), ...IMPACTS.map((impact) => t(`impact.${impact}`))].join(' | ')} |`);
@@ -192,17 +238,19 @@ export function reviewChapterText(ctx, batches) {
   out.push('');
   if (flat.length === 0) out.push(ctx.strings['chapter.none'], '');
   let current = null;
-  for (const { item } of flat) {
+  for (const [at, { item }] of flat.entries()) {
     if (item.dimension !== current) {
       current = item.dimension;
       out.push(`## ${t(`dimension.${current}`)}`, '');
     }
     const features = item.features.map(nameOf).join(wide ? String.fromCharCode(0x3001) : ', ');
-    out.push(`### ${item.title.trim()}`, '');
-    out.push(cited(`${t('field.impact')}${colon}${t(`impact.${item.impact}`)}${semicolon}${t('field.features')}${colon}${features}`, item.cites, wide), '');
+    out.push(`### R${at + 1} ${item.title.trim()}`, '');
+    const process = item.process === undefined || item.process === null ? '' : `${semicolon}${t('field.process')}${colon}${item.process} ${processName(item.process)}`.trimEnd();
+    out.push(cited(`${t('field.impact')}${colon}${t(`impact.${item.impact}`)}${semicolon}${t('field.features')}${colon}${features}${process}`, item.cites, wide), '');
     out.push(cited(`${t('field.situation')}${colon}${item.situation}`, item.cites, wide), '');
     out.push(cited(`${t('field.consequence')}${colon}${item.consequence}`, item.cites, wide), '');
   }
+  out.push(...compareSection(ctx, batches.map((entry) => entry.batch.id), { t, wide, nameOf }));
   return `${out.join('\n').trimEnd()}\n`;
 }
 
@@ -210,7 +258,7 @@ export function reviewChapterText(ctx, batches) {
 export function renderReview(outDir, root, named) {
   const ctx = reviewContext(outDir, root);
   if (!ctx.ok) return { status: 1, lines: ctx.lines };
-  const all = ctx.facts.batches;
+  const all = ctx.batches;
   const unknown = named.filter((id) => !all.some((batch) => batch.id === id));
   if (unknown.length > 0) return { status: 1, lines: [`${unknown.join(', ')} ${unknown.length === 1 ? 'is' : 'are'} not a batch; the batches are ${all.map((batch) => batch.id).join(', ')}`] };
   const wanted = named.length > 0 ? all.filter((batch) => named.includes(batch.id)) : all;

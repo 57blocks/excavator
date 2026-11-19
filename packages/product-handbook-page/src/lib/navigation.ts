@@ -6,6 +6,9 @@ import { routeHash } from './route';
 import type { Route } from './route';
 import type { PageData, View } from './types';
 
+/** Whether the technical view has a system architecture page: the view exists and the page data holds the architecture text. */
+export const hasArchitecture = (data: PageData, view: View): boolean => view === 'technical' && (data.architecture.technical ?? '') !== '';
+
 /** The view a route is shown in, or null when the page does not have it (a view it was not built with, a page the view does not have, a domain that is not there). */
 export function viewOf(data: PageData, route: Route, coverageTitle: string): View | null {
   const view = route.view ?? data.views[0];
@@ -13,12 +16,19 @@ export function viewOf(data: PageData, route: Route, coverageTitle: string): Vie
   const body = bodyOf(route);
   if (body.name === 'home') return view;
   if (body.name === 'domain') return groupsOf(data).some((group) => group.id === body.id) ? view : null;
+  if (body.name === 'problems' || body.name === 'remedies') return view;
+  // The address of the old list of processes opens the domains index, in the same view.
+  if (body.name === 'processes') return view;
+  if (body.name === 'process') return data.processes?.items.some((item) => item.id === body.id) ? view : null;
+  if (body.name === 'architecture') return hasArchitecture(data, view) ? view : null;
   return pageOf(pagesOf(data, view, coverageTitle), route) === undefined ? null : view;
 }
 
 /** The fragment that shows the same page in `view`; the home page when that view does not have the page (the data page in the product view). */
 export function switchTarget(data: PageData, route: Route, view: View, coverageTitle: string): string {
   const body = bodyOf(route);
+  if (body.name === 'problems' || body.name === 'remedies' || body.name === 'processes' || body.name === 'process') return routeHash(body, view);
+  if (body.name === 'architecture') return routeHash(hasArchitecture(data, view) ? body : { name: 'home' }, view);
   if (body.name === 'domain') return routeHash(groupsOf(data).some((group) => group.id === body.id) ? body : { name: 'home' }, view);
   const key = routeKey(body);
   const keep = key !== null && pagesOf(data, view, coverageTitle).some((item) => item.key === key);
@@ -28,12 +38,12 @@ export function switchTarget(data: PageData, route: Route, view: View, coverageT
 }
 
 /**
- * What a reading page sits in: its group (a feature chapter) or the references (every other page), with the pages of the side
+ * What a reading page sits in: its group (a feature chapter, with every group for the side list) or the references (every other page), with the pages of the side
  * list in order. `order` is the order previous and next follow: the features of every group in the groups' order (a group
  * feature chapter is listed once, in the first group that has it), or the references flattened.
  */
 export type Context =
-  | { kind: 'group'; group: Group; items: PageItem[]; order: { item: PageItem; group: Group }[] }
+  | { kind: 'group'; group: Group; groups: Group[]; items: PageItem[]; order: { item: PageItem; group: Group }[] }
   | { kind: 'references'; groups: ReferenceGroup[]; items: PageItem[]; order: { item: PageItem; group: null }[] };
 
 /** The context of the page `key` in `view`. */
@@ -43,7 +53,7 @@ export function contextOf(data: PageData, view: View, coverageTitle: string, sys
   if (group !== undefined) {
     const seen = new Set<string>();
     const order = groups.flatMap((one) => one.features.filter((item) => !seen.has(item.key) && seen.add(item.key)).map((item) => ({ item, group: one })));
-    return { kind: 'group', group, items: group.features, order };
+    return { kind: 'group', group, groups, items: group.features, order };
   }
   const references = referencesOf(data, view, coverageTitle, systemTitle);
   const items = flatReferences(references);

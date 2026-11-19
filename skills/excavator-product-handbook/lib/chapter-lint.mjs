@@ -9,6 +9,7 @@
 
 import { bannedFragments, outsideLabels } from './banned-words.mjs';
 import { chapterBlocks, splitRow } from './chapter-blocks.mjs';
+import { openQuestionsReasons } from './defects-items.mjs';
 import { citationGroups, resolveSpec, specKey } from './chapter-cites.mjs';
 import { sentencesOf } from './chapter-sentences.mjs';
 import { adviceWordsOf, wordsIn } from './word-lists.mjs';
@@ -19,10 +20,10 @@ const QUOTES = [/\u201c([^\u201d]+)\u201d/g, /"([^"]+)"/g, /\u300c([^\u300d]+)\u
 const quotedTexts = (text) => QUOTES.flatMap((pattern) => Array.from(text.matchAll(pattern), (match) => match[1]));
 
 export const MAX_SENTENCES = 4;
-export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'review', 'remedies']);
+export const CROSS_CHAPTERS = Object.freeze(['domains', 'roles', 'notifications', 'topics', 'defects', 'processes', 'review', 'remedies']);
 
-/** The cross chapters every run is expected to write; `review` is optional (written only with `--review`), so its absence is no gap. */
-export const EXPECTED_CROSS_CHAPTERS = Object.freeze(CROSS_CHAPTERS.filter((name) => name !== 'review'));
+/** The cross chapters every run is expected to write; `processes` and `review` are optional (written only with `--review` or their own section), so their absence is no gap. */
+export const EXPECTED_CROSS_CHAPTERS = Object.freeze(CROSS_CHAPTERS.filter((name) => name !== 'processes' && name !== 'review'));
 /** The fixed level-2 headings of a feature chapter, in order: the seven section names, then the two closing sections. */
 export const FEATURE_HEADING_KEYS = Object.freeze([
   'chapter.section.overview', 'chapter.section.screens', 'chapter.section.operations', 'chapter.section.rules',
@@ -97,6 +98,10 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
   const seenHeadings = [];
   let listOrTable = false;
 
+  // The counts table and the coverage section of the design-problems chapter are computed by the script: they carry no citation.
+  const computedSection = () => name === 'review' && lastLevelTwo !== null
+    && ['chapter.review.counts', 'chapter.review.compare.title'].some((key) => typeof strings[key] === 'string' && lastLevelTwo === strings[key]);
+
   const checkCitations = (line, source) => {
     for (const group of citationGroups(source)) {
       if (source[group.start] === '(' && CJK_BEFORE.test(source.slice(0, group.start).trimEnd())) {
@@ -143,8 +148,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       if (!block.header) {
         listOrTable = true;
         // The counts table of the design-problems chapter is computed by the script from its items: its rows carry no citation.
-        const computed = name === 'review' && typeof strings['chapter.review.counts'] === 'string' && lastLevelTwo === strings['chapter.review.counts'];
-        if (!computed && !inOpen && !isFixed(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
+        if (!computedSection() && !inOpen && !isFixed(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
       }
       continue;
     }
@@ -152,7 +156,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       listOrTable = true;
       checkCitations(block.line, block.text);
       checkReader(block.line, block.text);
-      if (!inOpen && !isFixed(block.text) && !endsWithColon(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
+      if (!inOpen && !computedSection() && !isFixed(block.text) && !endsWithColon(block.text) && citationGroups(block.text).length === 0) checkFact(block.line, block.text);
       continue;
     }
     // paragraph: each source line is checked for citations and reader text; sentences carry the fact and length rules
@@ -170,7 +174,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       });
       return line;
     };
-    if (isFixed(block.text)) continue;
+    if (isFixed(block.text) || computedSection()) continue;
     if (sentences.length > MAX_SENTENCES) add(block.line, `a paragraph of ${sentences.length} sentences; at most ${MAX_SENTENCES}`);
     if (inOpen) continue;
     sentences.forEach((sentence, k) => {
@@ -187,6 +191,7 @@ export function lintChapter(text, { kind, name, files, strings, memberDirs = [],
       const wanted = strings[key];
       if (!seenHeadings.some((heading) => (heading.level === 2 || heading.level === 3) && heading.text === wanted)) reasons.push(`missing the section "${wanted}"`);
     }
+    if (typeof strings['chapter.openQuestions'] === 'string') reasons.push(...openQuestionsReasons(text, strings['chapter.openQuestions'], strings['chapter.none']));
   }
   return reasons;
 }

@@ -2,6 +2,7 @@ import { jumpToHeading } from '../lib/heading-jump';
 import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import type { SearchItem } from '../lib/types';
+import { Breadcrumbs } from './Breadcrumbs';
 import { Markdown } from './Markdown';
 
 /** The level-2 sections of the system chapter, from the search index: the title and the number the heading has among the chapter's `h2` and `h3`. */
@@ -10,19 +11,21 @@ export function systemSections(items: SearchItem[]): { title: string; index: num
 }
 
 /**
- * The system architecture on the technical home page: the system chapter's section with its first diagram at the full width of
- * the page, then one line with a link to each level-2 section of the system chapter, which opens the chapter at that heading.
+ * The system architecture page (technical view): the breadcrumbs, the title, the architecture text of the system chapter with its
+ * first diagram at the full width of the page, then one line with a link to each level-2 section of the system chapter, which
+ * opens the chapter at that heading.
  */
 export function Architecture({ source, sections }: { source: string; sections: { title: string; index: number }[] }) {
   const t = useText();
   const nav = useLinks();
   return (
-    <section aria-labelledby="h-architecture" className="sec arch" data-part="architecture">
-      <h2 id="h-architecture">{t('page.home.architecture')}</h2>
-      <Markdown source={source} idPrefix="home-architecture" />
+    <div className="wrap arch" data-view="architecture" data-part="architecture">
+      <Breadcrumbs trail={[{ label: t('page.nav.overview'), href: nav.home }, { label: t('page.nav.architecture') }]} />
+      <h1 className="page-title">{t('page.nav.architecture')}</h1>
+      <Markdown source={source} idPrefix="architecture" />
       {sections.length > 0 && (
         <p className="arch-more">
-          <span>{t('page.home.architectureMore')}</span>
+          <span>{t('page.architecture.more')}</span>
           {sections.map((section) => (
             <a
               key={section.index}
@@ -37,6 +40,6 @@ export function Architecture({ source, sections }: { source: string; sections: {
           ))}
         </p>
       )}
-    </section>
+    </div>
   );
 }

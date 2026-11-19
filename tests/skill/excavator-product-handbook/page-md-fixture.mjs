@@ -69,15 +69,37 @@ The domains of the product (${cite('5')}).
 
 Orders and the archive live here (${cite('5')}).
 
+### Features
+
+- Orders (F1) takes orders (${cite('5')}).
+
+### Hand-overs
+
 - Orders (F1) hands work to Reminders (F3) (\`${C1}\`).
 
 ## Automatic work
 
 Reminders (F3) sends mail (\`${C2}\`).
 
+### Features
+
+- Reminders (F3) sends mail (\`${C2}\`).
+
+### Hand-overs
+
+None.
+
 ## Last words
 
 Closing line (${cite('10')}).
+
+### Features
+
+- Nothing is kept here (${cite('10')}).
+
+### Hand-overs
+
+None.
 `;
 
 export const domainsList = () => ({

@@ -4,7 +4,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 
 The `review` chapter lists what the chapters show to be badly designed, not wrongly coded: two features that do the same thing, two places with different rules, an operation of many steps, a state with no way out. It is optional and runs only because `$SECTIONS` holds `review`. It reads only the chapters already in `$OUT/chapters/`, never the project's code, and it gives no advice (the remedies, Phase 8c, do). Writers do not write Markdown: each writes the items of one batch of features to `$OUT/entries/review/<batch>.json`, a script checks every item against the chapters and writes the chapter, and one verifier per batch then judges each item against the chapter lines it cites; an item the verifier judges unsupported is removed, never reworded and never tried again.
 
-A batch is a business domain (when the domains chapter passed) or else an area of the map: `b1`, `b2` and so on, then the batch `cross` for the problems that span batches.
+A batch is a business domain (when the domains chapter passed) or else an area of the map: `b1`, `b2` and so on. The problems that span batches are found from comparison candidates that a script computes (two dictionaries under one key, a table several applications use, a row of the cross-cutting topics chapter, the same code cited by two features): the comparison batches `c-data-1`, `c-topics-1`, `c-code-1` and so on, at most 25 candidates each, written after every domain batch is done.
 
 1. Check that every feature has its chapter:
    ```bash
@@ -19,7 +19,13 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review facts "$OUT"
    ```
-   It writes `$OUT/entries/review-facts.json` and prints the `BATCH` lines (`<batch>`, its name, its feature ids), the `FEATURE` lines of every feature (its operations, the steps of each operation, its states and transitions, its server-side steps, its hand-overs; a section it could not recognize is named, not counted) and the `PAIR` lines (one line for two features whose chapters cite the same lines of one file, with every such file; a file cited by more than 3 features is shared code and is not listed, and one `Shared files` line counts them). Exit 1 or 2: show its message and stop.
+   It writes `$OUT/entries/review-facts.json` and prints the `BATCH` lines (`<batch>`, its name, its feature ids), the `FEATURE` lines of every feature (its operations, the steps of each operation, its states and transitions, its server-side steps, its hand-overs; a section it could not recognize is named, not counted) and the `PAIR` lines (one line for two features whose chapters cite the same lines of one file, with every such file; a file cited by more than 3 features is shared code and is not listed, and one `Shared files` line counts them). Its last line says how many process batches there are (`p1`, `p2` and so on, the business processes in groups); tell the user that line, in `$LANGUAGE`. When the business processes chapter has not passed there are none, and the design problems have no items along a process. Exit 1 or 2: show its message and stop.
+
+2a. Compute the comparison candidates:
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review compare-facts "$OUT" --project "$PROJECT_ROOT"
+   ```
+   It writes `$OUT/entries/review-compare.json`, which also says which comparison batches there are; its output is not shown to the user, and the writers of steps 4 and 5 get their batch's candidates from that file. Exit 1 or 2: show its message and stop.
 
 3. Find what each batch needs, from its files:
    ```bash
@@ -27,11 +33,12 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    ```
    It prints one line per batch, `<batch>`, a state and the batch name, with the reasons under a `write` batch whose file is refused:
    - `done`: pruned, nothing to do;
+   - `wait`: a comparison batch or a process batch while a domain batch is not `done`: step 5;
    - `prune`: its verdicts are written (or it has no item): step 7 applies them;
    - `verify`: its items pass the check and are not judged yet: step 6;
-   - `write`: no file, or a file the check refuses: step 4 (or 5 for `cross`). Clear the files of each such batch first, so that no verdict or removal of an earlier file is kept: `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review reset "$OUT" <batch>`.
+   - `write`: no file, or a file the check refuses: step 4 for `b1`, `b2` and so on, step 5 for a comparison batch or a process batch. Clear the files of each such batch first, so that no verdict or removal of an earlier file is kept: `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review reset "$OUT" <batch>`.
 
-4. Write the batches `b1`, `b2` and so on that are in the state `write`. Dispatch at most `$CONCURRENCY` writers in one message so they run concurrently, each an `excavator-handbook-writer` subagent in the foreground with the prompt **Every design-problems writer** followed by the block **Your batch**. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT` and `$PROBLEMS` as their values everywhere, fill in the block **Your batch** from the `BATCH` line of the batch, and leave the rest exactly as written, `<batch>` included, so that every writer of the run starts with the same text. Wait for every writer of the message to return before you send the next message; never dispatch in the background. As each returns, check its file:
+4. Write the batches `b1`, `b2` and so on that are in the state `write`. Dispatch at most `$CONCURRENCY` writers in one message so they run concurrently, each an `excavator-handbook-writer` subagent in the foreground with the prompt **Every design-problems writer** followed by the block **Your batch**. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT`, `$PROJECT_ROOT` and `$PROBLEMS` as their values everywhere, fill in the block **Your batch** from the `BATCH` line of the batch and, before you dispatch the writer, run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review candidates "$OUT" <batch>` and paste its output unchanged under the candidates line of the block, and leave the rest exactly as written, `<batch>` included, so that every writer of the run starts with the same text. Wait for every writer of the message to return before you send the next message; never dispatch in the background. As each returns, check its file:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review render "$OUT" <batch> --project "$PROJECT_ROOT"
    ```
@@ -40,18 +47,9 @@ A batch is a business domain (when the domains chapter passed) or else an area o
    - Exit 1 the second time: run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review skip "$OUT" <batch>`, which leaves the batch without items, and tell the user, in `$LANGUAGE`, that the batch has no design problems because its writer's items did not pass. Never make a third attempt.
    - Exit 2: show its message and stop.
 
-5. Write the batch `cross` when its state is `write`, after every other batch has a file that passed (after step 4 the state of each is `verify`, `prune` or `done`). Print what the writer reads, then dispatch one `excavator-handbook-writer` subagent in the foreground with the prompt **Every design-problems writer** followed by the block **Your batch: cross**, with the same substitutions as step 4 and the three outputs below pasted in the places the block names. Check it with `review render "$OUT" cross --project "$PROJECT_ROOT"` and follow step 4's rules for the result.
-   ```bash
-   jq -r 'if (.handovers | length) > 0 then .handovers[] | "\(.from) -> \(.to): \(.what) (\(.cites | join("; ")))" else empty end' "$OUT/domains.json" 2>/dev/null || true
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review facts "$OUT" cross | grep -E '^(BATCH|PAIR|Shared)'
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review titles "$OUT" --project "$PROJECT_ROOT"
-   ```
+5. Write the comparison batches and the process batches. They are in the state `wait` until every batch `b1`, `b2` and so on is `done`, so do steps 6 and 7 for the domain batches first, then run `review status` again: the comparison batches (`c-...`) and the process batches (`p1`, `p2` and so on) are then in the state `write` (or `verify`, `prune`, `done` in a run that resumes). Write those in the state `write` as step 4 says, with the same substitutions, the same dispatch rules and the same checks and retries; both kinds may go in the same messages. For a comparison batch the prompt is **Every design-problems writer** followed by the block **Your comparison batch**, filled in from the batch id, with the output of `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review candidates "$OUT" <batch>` put under its candidates line exactly as printed. For a process batch it is **Every design-problems writer** followed by the block **Your process batch**, filled in from the batch id and its name as `review status` prints them, and nothing else. Then do steps 6 and 7 for these batches, and go on to step 8.
 
-6. Verify. Run `review status` again. For each batch in the state `verify`, dispatch one `excavator-handbook-writer` subagent per batch in the foreground, at most `$CONCURRENCY` in one message, with the prompt **The verifier** followed by the line `The items:` and the output of this command pasted unchanged, and nothing else:
-   ```bash
-   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review claims "$OUT" <batch>
-   ```
-   The verifier writes `$OUT/entries/review/<batch>.verdicts.json`. Write `$OUT`, `$LANGUAGE` and `<batch>` as their values in its prompt; it reads nothing else, except that it searches the chapters of an item's listed features for a thing the item claims does not exist. As each returns, tell the user `Design problems <batch name>: judged`, in `$LANGUAGE`.
+6. Verify. Run `review status` again. For each batch in the state `verify`, count its items with `jq '.items | length' "$OUT/entries/review/<batch>.json"`, then dispatch one `excavator-handbook-writer` subagent per batch in the foreground, at most `$CONCURRENCY` in one message, with the prompt **The verifier** followed by the line `The batch has <n> items, index 0 to <n-1>.` with `<n>` and `<n-1>` written as numbers, and nothing else. Do not paste the items: the verifier prints them itself, one at a time. The verifier writes `$OUT/entries/review/<batch>.verdicts.json`. Write `$OUT`, `$LANGUAGE`, `$PLUGIN_ROOT` and `<batch>` as their values in its prompt; it reads nothing else, except that it searches the chapters of an item's listed features for a thing the item claims does not exist. As each returns, tell the user `Design problems <batch name>: judged`, in `$LANGUAGE`.
 
 7. Apply the verdicts of every batch in the state `verify` or `prune`, one at a time:
    ```bash
@@ -74,7 +72,7 @@ Never edit a batch file, a verdicts file or the chapter yourself.
 **Every design-problems writer.**
 
 ````text
-You write the design problems of one batch of features of a product handbook, for readers who do not read code. The handbook's chapters are written, in `$OUT/chapters/`: one `F<n>.md` for each feature. You read only those chapters, the files named below and the output of the commands named below; you never open, search or read the project's code or any other file. You write only the file `$OUT/entries/review/<batch>.json` (`<batch>` is your batch's id, given in the block **Your batch**) and nothing else anywhere.
+You write the design problems of one batch of features of a product handbook, for readers who do not read code. The handbook's chapters are written, in `$OUT/chapters/`: one `F<n>.md` for each feature. You read only those chapters, the files named below and the output of the commands named below; you never open, search or read the project's code or any other file. You write only the file `$OUT/entries/review/<batch>.json` (`<batch>` is your batch's id, given in the block that follows these instructions) and nothing else anywhere.
 
 **What a design problem is.** A design problem is something the chapters show the product does as designed, and that is badly designed for the people who use it. It is not a defect: do not restate a defect that the `$PROBLEMS` sections of the chapters of your batch list (this prints those sections, each line prefixed with its chapter, only so that you do not repeat them: `for f in <the chapter files of your batch>; do awk -v h="## $PROBLEMS" -v id="$(basename "$f" .md)" 'index($0, "## ") == 1 { on = ($0 == h) } on { print id ": " $0 }' "$f"; done`). Every item has exactly one dimension:
 - `duplication`: two features, or two screens, let the user do the same thing, each its own way; for example "Orders" and "Order import" both create an order;
@@ -103,17 +101,23 @@ You write the design problems of one batch of features of a product handbook, fo
   "title": "<one phrase>",
   "situation": "<what the chapters say, one sentence>",
   "consequence": "<what the user has to do or cannot do because of it, one sentence>",
-  "cites": ["<path>:<a>-<b>"]
-}] }
+  "cites": ["<path>:<a>-<b>"],
+  "candidates": ["X3"]
+}], "dismissed": [{ "candidate": "X4", "reason": "different-subject" }] }
 ```
 
+`candidates` (on an item: the comparison candidates the item handles) and `dismissed` (at the top level) are present only when your batch has comparison candidates. `process` (on an item: the business process it lies along, such as `"process": "P3"`) is present on every item of a process batch and on no other item. These are the only keys besides the ones shown.
+
 Rules, all checked by the script:
-- `features` are feature ids of your batch, at least one, each once; a problem that needs a feature of another batch is not yours (the batch `cross` covers it).
+- `features` are feature ids, at least one, each once: in a batch `b1`, `b2` and so on, ids of your batch only (a problem that needs a feature of another batch is not yours); in a comparison batch, any feature ids; in a process batch, features that are steps of the item's process.
 - `cites` are citations `<path>:<a>-<b>` (or `<path>:<n>`), each copied exactly, without backticks, from a line of a chapter of one of the listed features; never one you did not copy, and never changed. `duplication`, `contradiction`, `inconsistency` and `access` need citations from at least 2 different chapter lines.
 - `title`, `situation` and `consequence` are plain reader text in $LANGUAGE, with no backtick and no citation group (the script adds the citations). `situation` and `consequence` are one sentence each. No identifier with an underscore, no camel-case word, no path that starts with `/`, no file name with a source extension, no name followed by `(` and no word of advice ("should", "must", "better", "fix", "recommend" or their equivalents in $LANGUAGE). Keep labels as the chapters write them, in quotation marks. Name a feature as its chapter's title gives it, with its id in parentheses, for example "Leave requests (F12)".
+- For `duplication`, `contradiction`, `inconsistency` and `access` the situation is one sentence of two or more clauses, one for each side, in the form `<side>: <what that side's cited lines say>; <other side>: <...>`. Each clause names its feature (or the place of one feature) and holds only what the cited lines of that side say, never one summary of both sides. For example: "Orders (F3): a clerk creates an order on its form; Order import (F7): a clerk creates orders from an uploaded file".
 - A number in `title`, `situation` or `consequence` is a number that a cited chapter line holds, or a number of the facts of a listed feature; never a number you counted or computed yourself.
 
-**What a good item is.** The consequence names what a user has to do or cannot do (enter it twice, go to another screen, wait for an administrator, get stuck); "complex", "confusing" or "not user-friendly" are not consequences. A claim that something does not exist ("there is no way to ...") names, in the situation, the chapters in which you looked for it. Write only what the cited lines show; where the chapters do not settle a point, leave it out. Do not write the same problem twice.
+**Comparison candidates.** The script found the candidates of your batch (the `CANDIDATE` lines of the block that follows these instructions); you judge them. Each one gets exactly one conclusion: an item that lists it in `candidates`, or an entry in `dismissed` with one reason: `same` (the two sides state the same thing; nothing differs), `different-subject` (the two sides are about different things; for two implementations of one feature: the applications do different jobs of the feature and no job is done in both), `not-in-chapters` (the chapters do not show the two sides) or `already-kept` (a comparison batch only: an item of a domain batch, printed by `review titles`, already states this problem). The check refuses a batch that leaves a candidate of the batch without a conclusion, names a candidate of another batch, or lists a candidate on an item that does not list its feature. A candidate of source `dual` is one feature whose routes lie in two applications, with the route count of each: when the chapter shows the same job reachable in both, write one `duplication` item with that feature in `features` and the candidate in `candidates`, whose situation says which operations each application serves, as the chapter shows them. A candidate is evidence, not proof: read the chapter before you decide.
+
+**What a good item is.** The consequence names what a user has to do or cannot do (enter it twice, go to another screen, wait for an administrator, get stuck); "complex", "confusing" or "not user-friendly" are not consequences. The consequence states only what follows from the cited lines themselves, never one step further: not what happens to the record afterwards, not what a user then misses or gets wrong, not a state the lines do not name. When the lines show only that two sides differ, the consequence is what the user meets on each side (sees two different lists, gets two different answers), nothing more. A claim that something does not exist ("there is no way to ...") names, in the situation, the chapters in which you looked for it. Write only what the cited lines show; where the chapters do not settle a point, leave it out. Do not write the same problem twice.
 
 **Read what you need.** Print the facts of your batch (every feature's operations, steps, states, hand-overs and the pairs of features that cite the same lines): `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review facts "$OUT" <batch>`. Read every chapter of your batch's features in full, with `sed -n '<a>,<b>p'` on `$OUT/chapters/<id>.md`; read the chapters of another feature only where a hand-over or a pair sends you to them.
 
@@ -127,26 +131,46 @@ Reply with one line: `<batch>: written`.
 ````text
 - Batch: `<batch>` "<batch name>".
 - The features of the batch, whose chapters you read: <the feature ids of the BATCH line, each with its name, one per line>.
+- The comparison candidates of your batch, one per line (`none` when there is none):
+<the output of review candidates>
 ````
 
-**Your batch: cross.**
+**Your comparison batch.**
 
 ````text
-- Batch: `cross`. Your problems span two or more batches: every item lists features of at least 2 batches, and the check refuses one that does not. The batches and their features:
-<the BATCH lines, one per line>
-- You read only these three things, and the passages of the chapters that they point to (find a cited line with `grep -n` in `$OUT/chapters/`, read it with `sed -n`). Skip the `$PROBLEMS` command of the instructions: your job is not a batch's own problems.
-  1. The hand-overs between business domains (the domains chapter's list, one per line; empty when there is none):
-<the first command's output>
-  2. The pairs of features of different batches whose chapters cite the same lines of one file (`PAIR` lines, `across`, one line for two features with every such file; code that more than 3 features cite is not listed, the `Shared` line counts it): they show shared code, which is evidence of the same thing done in two places but not proof; open both chapters before you write an item:
-<the second command's output>
-  3. The problems the batches found, each with its batch, item, dimension, impact, features and title, so that you do not write them again:
-<the third command's output>
+- Batch: `<batch>`, a comparison batch. Your job is its comparison candidates, listed below; every item you write lists in `candidates` the candidates it handles (the check refuses an item that lists none), and its `features` may be feature ids of any batch. Skip the `$PROBLEMS` command and the paragraph **Read what you need** of the instructions above; read instead:
+  1. For each candidate, what it rests on: `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review candidate-lines "$OUT" <candidate id>`. It prints the candidate, its facts as one JSON line (for a topic, the row of the cross-cutting topics chapter) and, for each of its features, the chapter lines that cite the same places, each with its chapter and line number. The output of one candidate can be long: when it comes back cut, print it again in parts, `| sed -n '1,100p'`, then `'101,200p'` and so on, until you have read all of it. Read more of a chapter around a printed line with `sed -n '<a>,<b>p' "$OUT/chapters/<id>.md"` when you need its context; read no other file.
+  2. The problems the domain batches kept, each with its batch, item, dimension, impact, features and title: `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review titles "$OUT" --project "$PROJECT_ROOT"` (the path is for the check only; never read it). Do not write one of them again: a candidate that one of them already states is dismissed with `already-kept`.
+- What each source is:
+  - `dict`: two dictionaries (lists of values, such as statuses or offices) under one key in two applications, with the count and the first values that only one side has. When the chapters show both lists used for the same thing, the item is usually a `contradiction` (the two sides give different answers for one question) or an `inconsistency`; when no chapter line is printed for it, dismiss it with `not-in-chapters`.
+  - `table`: one table that two or more applications read or write, with the mentions of each. It is a problem only when the chapters show the sides treating the same records differently (different rules, different fields, one side changing what the other takes as fixed); a table the sides share without such a difference is dismissed with `same`.
+  - `topic`: one row of the cross-cutting topics chapter that names two or more features; the row often says itself how they differ. Write the item from the feature chapters' lines, not from the row: the row is where to look, and the check takes citations only from the chapters of the item's features.
+  - `code`: two features of different domain batches whose chapters cite the same lines of code: evidence of the same job done in two places (`duplication`) or of one rule described two ways (`contradiction`), not proof. Shared code that both features merely call is `different-subject`.
+- The candidates of your batch, one per line:
+<the output of review candidates>
+````
+
+**Your process batch.**
+
+````text
+- Batch: `<batch>` "<batch name>", a process batch. Your job is the design problems along the business processes of your batch: what the chain of steps as a whole does badly for the people who go through it, which no single feature chapter shows. Every item you write has `process`, the id of one process of your batch (`P<n>`); its `dimension` is one of `duplication`, `complexity`, `redundancy`, `manual`, `dead-end`; its `features` are features whose operations are steps of that process; the check refuses any other. Skip the paragraph **Read what you need** of the instructions above; read instead:
+  1. Your processes, each a `PROCESS` line (its id, name and the features of its steps) followed by its steps and its end-state line, each prefixed with its line in the business processes chapter: `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review processes "$OUT" <batch>`. When the output comes back cut, print it again in pieces, `| sed -n '1,150p'`, then `'151,300p'` and so on.
+  2. For each step, the operation's section in its feature chapter: `grep -n '^### ' "$OUT/chapters/<feature id>.md"` finds the heading that the step's bold text copies; read it with `sed -n '<a>,<b>p'`. An item's citations come from these feature chapters, never from the business processes chapter: the check takes citations only from the chapters of the item's features.
+  3. The problems the domain batches kept, each with its batch, item, dimension, impact, features and title: `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review titles "$OUT" --project "$PROJECT_ROOT"` (the path is for the check only; never read it). Do not write one of them again.
+  For the `$PROBLEMS` command, the chapter files of your batch are those of the features in your `PROCESS` lines.
+- What to look for along one process:
+  - `duplication`: two steps, in two features, do the same job for the same piece of business (the same record created, checked or approved twice);
+  - `redundancy`: a later step asks the user for information an earlier step of the same process already holds, as the two chapters show;
+  - `complexity`: the process passes through more features, roles or hand-overs for one piece of business than the other processes of your batch; say which steps, and never write a count of steps you computed yourself;
+  - `manual`: between two steps a person does by hand what the chapters show the product holds the information for (copies a value, sends a message, starts the next step);
+  - `dead-end`: the process stops at a state that the chapters show no operation takes up, or a step that turns back (a rejection, a cancellation) leaves the record where no step of any process picks it up.
+- A process that shows no such problem gets no item; an empty `items` list is the right answer when none of your processes shows one.
 ````
 
 **The verifier.**
 
 ````text
-You judge the items of one batch of design problems of a product handbook against the chapter lines they cite. Your whole input is the list of items at the end of this prompt: each item with its fields, and under each citation the chapter lines that hold it. Read no other file and run no other command than the search below and the one that writes your answer; never open the project. You write only `$OUT/entries/review/<batch>.verdicts.json` and nothing else anywhere.
+You judge the items of one batch of design problems of a product handbook against the chapter lines they cite. The last line of this prompt says how many items the batch has. Print the items one at a time, from index 0 to the last, with `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" review claims "$OUT" <batch> <index>`: each prints one item with its fields and, under each citation, the chapter lines that hold it. Judge every item. Read no other file and run no other command than this one, the search below and the one that writes your answer; never open the project. You write only `$OUT/entries/review/<batch>.verdicts.json` and nothing else anywhere.
 
 For each item, decide `supported` or `unsupported`:
 - `supported` only when all three hold: the cited chapter lines say what the situation says; the consequence follows from the situation (nothing in it is added from outside the lines); and the item describes a design problem, not only a defect of the code restated in other words (a check that is missing, a failure that answers success, a value that is wrong);
@@ -156,7 +180,7 @@ A claim that something does not exist (no record, no other way in, nobody else c
 
 Judge only what the lines show, and for a claim that something does not exist, what the search finds. Do not rewrite, correct or improve an item, and do not judge whether the problem is important. When you cannot tell, the verdict is `unsupported`.
 
-Write the file in this exact shape, one verdict for each item of the list, once each, `index` being the number after `ITEM`, and a reason of one line in $LANGUAGE for every verdict, supported ones too:
+Write the file in this exact shape, one verdict for each item of the batch, once each, `index` being the number after `ITEM`, and a reason of one line in $LANGUAGE for every verdict, supported ones too:
 
 ```json
 { "verdicts": [{ "index": 0, "verdict": "supported", "reason": "<one line>" }] }

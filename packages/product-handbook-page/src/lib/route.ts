@@ -1,13 +1,21 @@
 /**
  * The page's routes live in the URL fragment so the back button and shared links work: `#/` (the home page, the
  * map), `#/domain/<id>` (a domain page), `#/chapter/<block>` (a chapter written as Markdown), `#/data` and `#/dictionaries` (technical view only),
- * `#/history` and `#/coverage`. A page that has both views puts the view in front of each (`#/technical/chapter/F1`);
+ * `#/history`, `#/coverage` and `#/architecture` (technical view only), and `#/problems` (the problems page; a query after `?`
+ * holds its filters: `?domain=d1&feature=F7&type=defect&level=P0&q=text`, and `row=r12` opens that row) `#/processes` and `#/processes/P4` (the business processes and one of them), and `#/remedies` (the improvement suggestions page, `?tab=<group>` for the tab; the
+ * old address `#/problems/remedies` still parses to it, its query ignored). A page that has both views puts the view in front of each (`#/technical/chapter/F1`);
  * a page with one view has no prefix, and a fragment without one is the first view. Parsing never throws: a fragment
  * that names no route is `not-found`.
  */
 
 import { VIEWS } from './types';
 import type { View } from './types';
+
+/** The filters of the problems page, one value each; a value is a string as written, and one the data does not know matches nothing. */
+export interface ProblemFilters { domain?: string; feature?: string; type?: string; level?: string; q?: string; row?: string }
+
+/** The filter keys in the order the address writes them; `row` names a row to open and is no filter. */
+export const FILTER_KEYS = ['domain', 'feature', 'type', 'level', 'q', 'row'] as const;
 
 export type RouteBody =
   | { name: 'home' }
@@ -17,6 +25,11 @@ export type RouteBody =
   | { name: 'dictionaries' }
   | { name: 'history' }
   | { name: 'coverage' }
+  | { name: 'architecture' }
+  | { name: 'problems'; filters: ProblemFilters }
+  | { name: 'remedies'; tab?: string }
+  | { name: 'processes' }
+  | { name: 'process'; id: string }
   | { name: 'not-found'; hash: string };
 
 /** A route with the view its fragment names, when it names one. */
@@ -30,14 +43,51 @@ function decode(part: string): string | null {
   }
 }
 
+/** The number of a process: `P` and a number. */
+const PROCESS_ID = /^P\d+$/;
+
 const SINGLE: Record<string, RouteBody> = {
   data: { name: 'data' },
   dictionaries: { name: 'dictionaries' },
   history: { name: 'history' },
   coverage: { name: 'coverage' },
+  architecture: { name: 'architecture' },
 };
 
-function parseBody(rest: string[], hash: string): RouteBody {
+/** The filters a query holds: the first value of each known key; an unknown key, an empty value and an undecodable one are ignored. */
+export function parseFilters(query: string): ProblemFilters {
+  const filters: ProblemFilters = {};
+  for (const pair of query.split('&')) {
+    const at = pair.indexOf('=');
+    if (at < 0) continue;
+    const key = decode(pair.slice(0, at));
+    const value = decode(pair.slice(at + 1));
+    if (key === null || value === null || value === '') continue;
+    if ((FILTER_KEYS as readonly string[]).includes(key) && filters[key as keyof ProblemFilters] === undefined) filters[key as keyof ProblemFilters] = value;
+  }
+  return filters;
+}
+
+function parseBody(rest: string[], hash: string, query: string | null): RouteBody {
+  if (rest.length >= 1 && rest[0] === 'problems') {
+    if (rest.length === 1) return { name: 'problems', filters: parseFilters(query ?? '') };
+    // The old address of the remedies tab: its filters are ignored.
+    if (rest.length === 2 && rest[1] === 'remedies') return { name: 'remedies' };
+    return { name: 'not-found', hash };
+  }
+  if (rest.length === 1 && rest[0] === 'remedies') {
+    // The tab of the page is the one query key it has; any other query is no address of it.
+    if (query === null) return { name: 'remedies' };
+    const pairs = query.split('&').map((pair) => pair.split('='));
+    const tab = pairs.length === 1 && pairs[0][0] === 'tab' && pairs[0].length === 2 ? decode(pairs[0][1]) : null;
+    return tab === null || tab === '' ? { name: 'not-found', hash } : { name: 'remedies', tab };
+  }
+  if (query !== null) return { name: 'not-found', hash };
+  if (rest.length >= 1 && rest[0] === 'processes') {
+    if (rest.length === 1) return { name: 'processes' };
+    const id = rest.length === 2 ? decode(rest[1]) : null;
+    return id !== null && PROCESS_ID.test(id) ? { name: 'process', id } : { name: 'not-found', hash };
+  }
   if (rest.length === 0) return { name: 'home' };
   if (rest.length === 1 && Object.prototype.hasOwnProperty.call(SINGLE, rest[0])) return SINGLE[rest[0]];
   if (rest.length === 2 && (rest[0] === 'chapter' || rest[0] === 'domain')) {
@@ -50,7 +100,10 @@ function parseBody(rest: string[], hash: string): RouteBody {
 /** The route of `location.hash` (with or without the leading `#`). */
 export function parseHash(hash: string): Route {
   const text = hash.startsWith('#') ? hash.slice(1) : hash;
-  const parts = (text === '' ? '/' : text).split('/');
+  const queryAt = text.indexOf('?');
+  const path = queryAt < 0 ? text : text.slice(0, queryAt);
+  const query = queryAt < 0 ? null : text.slice(queryAt + 1);
+  const parts = (path === '' ? '/' : path).split('/');
   if (parts[0] !== '') return { name: 'not-found', hash };
   let rest = parts.slice(1).filter((part, at, all) => !(part === '' && at === all.length - 1));
   let view: View | undefined;
@@ -58,7 +111,7 @@ export function parseHash(hash: string): Route {
     view = rest[0] as View;
     rest = rest.slice(1);
   }
-  const body = parseBody(rest, hash);
+  const body = parseBody(rest, hash, query);
   return view === undefined ? body : { ...body, view };
 }
 
@@ -70,13 +123,26 @@ function segments(route: RouteBody): string[] {
     case 'dictionaries': return ['dictionaries'];
     case 'history': return ['history'];
     case 'coverage': return ['coverage'];
+    case 'architecture': return ['architecture'];
+    case 'problems': return ['problems'];
+    case 'remedies': return ['remedies'];
+    case 'processes': return ['processes'];
+    case 'process': return ['processes', encodeURIComponent(route.id)];
     case 'home': return [];
     case 'not-found': return [];
   }
 }
 
+/** The query of the filters: the keys in a fixed order, an empty value left out; '' when there is none. */
+function queryOf(filters: ProblemFilters): string {
+  const pairs = FILTER_KEYS.flatMap((key) => { const value = filters[key]; return value === undefined || value === '' ? [] : [`${key}=${encodeURIComponent(value)}`]; });
+  return pairs.length === 0 ? '' : `?${pairs.join('&')}`;
+}
+
 /** The fragment of a route; `prefix` is the view to put in front, null for a page with one view. */
 export function routeHash(route: RouteBody, prefix: View | null): string {
   const parts = prefix === null ? segments(route) : [prefix, ...segments(route)];
-  return parts.length === 0 ? '#/' : `#/${parts.join('/')}`;
+  const base = parts.length === 0 ? '#/' : `#/${parts.join('/')}`;
+  if (route.name === 'remedies' && route.tab !== undefined) return `${base}?tab=${encodeURIComponent(route.tab)}`;
+  return route.name === 'problems' ? `${base}${queryOf(route.filters)}` : base;
 }

@@ -22,3 +22,12 @@ export function splitHead(source: string, notices: readonly string[]): { head: s
   }
   return { head: lines.slice(0, end).join('\n'), rest: lines.slice(end).join('\n') };
 }
+
+/** The Markdown with its level-1 heading line (the first non-blank line, when it is one) emptied, not removed: the rest is untouched, so headings keep their numbers and every other line keeps its line number (the anchors of the improvement suggestions are line numbers). */
+export function withoutTitle(source: string): string {
+  const lines = source.split('\n');
+  let at = 0;
+  while (at < lines.length && lines[at].trim() === '') at += 1;
+  if (at >= lines.length || !/^# /.test(lines[at])) return source;
+  return [...lines.slice(0, at), '', ...lines.slice(at + 1)].join('\n');
+}
