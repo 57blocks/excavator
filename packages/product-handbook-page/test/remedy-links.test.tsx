@@ -203,7 +203,7 @@ describe('the address of a row', () => {
   });
 
   it('keeps the items and the rows clear of the sticky top bar when scrolled to', () => {
-    const css = readFileSync(join(process.cwd(), 'src/index.css'), 'utf-8');
+    const css = readFileSync(join(__dirname, '../src/index.css'), 'utf-8');
     expect(css).toMatch(/\[id\^="remedy-"\][^{]*\{[^}]*scroll-margin-top: calc\(var\(--topbar-h\)/);
     expect(css).toMatch(/\.prob \{[^}]*scroll-margin-top: calc\(var\(--topbar-h\)/);
   });
@@ -292,7 +292,7 @@ describe('a link of a row to a suggestion under a process', () => {
   });
 
   it('keeps the suggestions of a process clear of the top bar when scrolled to (the same margin as on the remedies page)', () => {
-    const css = readFileSync(join(process.cwd(), 'src/index.css'), 'utf-8');
+    const css = readFileSync(join(__dirname, '../src/index.css'), 'utf-8');
     expect(css).toMatch(/\[id\^="remedy-"\][^{]*\{[^}]*scroll-margin-top: calc\(var\(--topbar-h\)/);
   });
 });
@@ -328,11 +328,11 @@ describe('the category word of a suggestion', () => {
     const host = mount(<App data={page()} />);
     const row = expand(host, 'd1');
     expect(row.querySelector('[data-field="group"]')?.textContent).toContain(fixed('page.defects.category.security'));
-    const shipped = Object.keys(JSON.parse(readFileSync(join(process.cwd(), '../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')).strings).filter((key) => key.startsWith('page.defects.category.')).map((key) => key.slice('page.defects.category.'.length)).sort();
-    const source = readFileSync(join(process.cwd(), '../../skills/excavator-product-handbook/lib/defects-items.mjs'), 'utf-8');
+    const shipped = Object.keys(JSON.parse(readFileSync(join(__dirname, '../../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')).strings).filter((key) => key.startsWith('page.defects.category.')).map((key) => key.slice('page.defects.category.'.length)).sort();
+    const source = readFileSync(join(__dirname, '../../../skills/excavator-product-handbook/lib/defects-items.mjs'), 'utf-8');
     const words = (/DEFECT_CATEGORIES = Object\.freeze\(\[([^\]]*)\]/.exec(source)?.[1] ?? '').split(',').map((word) => word.trim().replace(/'/g, '')).filter(Boolean).sort();
     expect(shipped).toEqual(words);
-    const own = readFileSync(join(process.cwd(), 'src/lib/problems.ts'), 'utf-8');
+    const own = readFileSync(join(__dirname, '../src/lib/problems.ts'), 'utf-8');
     const ours = (/DEFECT_CATEGORIES: readonly string\[\] = \[([^\]]*)\]/.exec(own)?.[1] ?? '').split(',').map((word) => word.trim().replace(/'/g, '')).filter(Boolean).sort();
     expect(ours).toEqual(words);
   });

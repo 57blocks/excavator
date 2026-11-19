@@ -265,7 +265,7 @@ describe('citations on the process page', () => {
   it('are the chip of the chapter pages, inside the page that styles that chip so a long path wraps', () => {
     const html = decode(render(page, '#/technical/processes/P1'));
     expect(html).toContain('class="cite"');
-    const css = readFileSync(join(process.cwd(), 'src/index.css'), 'utf-8');
+    const css = readFileSync(join(__dirname, '../src/index.css'), 'utf-8');
     expect(css).toMatch(/\.processes code\.cite[^{]*\{[^}]*overflow-wrap: anywhere/);
     expect(css).toMatch(/\.processes code\.cite > \*/);
   });
