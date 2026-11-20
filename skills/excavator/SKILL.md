@@ -436,8 +436,8 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    it has to search the disk and may find another installed copy of the
    skill, whose addenda can be older or missing.
 
-   > Produce a semantic patch for each fact node below: a `summary` and
-   > `tags` describing what it does, from reading its source at the given
+   > Produce a semantic patch for each fact node below: a `summary`, a
+   > `displayName` and `tags` describing what it does, from reading its source at the given
    > `filePath`/`lineRange`. Copy each `nodeId` VERBATIM from the list — do
    > NOT invent a node, an edge, a layer, or an id that is not in this list.
    > Project root: `$PROJECT_ROOT`
@@ -448,9 +448,11 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    > <filtered {id, type, name, filePath, lineRange} list>
    > ```
    > Write output to: `$DATA_DIR/intermediate/semantic-patch-batch-<batchIndex>.json`
-   > as `{ "patches": [{ "nodeId": "<copied verbatim>", "summary": "...", "tags": ["..."] }] }`.
+   > as `{ "patches": [{ "nodeId": "<copied verbatim>", "summary": "...", "displayName": "...", "tags": ["..."] }] }`.
+   > Write the `displayName` as your agent definition's Display Name section says:
+   > 2 to 8 words, at most 60 characters, for a reader who does not read code.
    >
-   > Write every model-owned `summary` and `tags` value in English regardless
+   > Write every model-owned `summary`, `displayName`, and `tags` value in English regardless
    > of the analyzer's configured output language. Preserve source-owned
    > identifiers and literals verbatim. The deterministic writer owns the
    > cache-level `contentLanguage: "en"` marker; do not emit that field.
@@ -468,7 +470,7 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    content hash — attach both deterministically (`filePath` from the fact
    node id's own entry, `semanticSourceHash` from that file's CURRENT
    `contentHash` in `source-manifest.json`) before calling
-   `apply-semantic-patches.mjs`, which re-validates every `nodeId` against
+   `apply-semantic-patches.mjs` (the patch's `summary`, `displayName` and `tags` pass through hydration unchanged; the commit gate rejects a patch whose `displayName` is missing or malformed, recorded as a semantic gap), which re-validates every `nodeId` against
    the real fact-graph id set one more time and NEVER commits an unmappable
    one (recorded as a semantic gap instead):
 
@@ -826,11 +828,11 @@ For each batch, dispatch a subagent using the `excavator-file-analyzer` agent de
 > Project: `<projectName>` — `<projectDescription>`
 > Languages: `<languages from Phase 1>`
 >
-> Write every model-owned `summary`, `tags`, and `languageNotes` value in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim.
+> Write every model-owned `summary`, `displayName`, `tags`, and `languageNotes` value in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim.
 
 Dispatch prompt template (fill in batch-specific values from `batches.json[i]`):
 
-> Analyze these files and produce GraphNode and GraphEdge objects.
+> Analyze these files and produce GraphNode and GraphEdge objects; every GraphNode carries a `displayName` (2 to 8 words, at most 60 characters) written as your agent definition's Display Name section says.
 > Project root: `$PROJECT_ROOT`
 > Project: `<projectName>`
 > Languages: `<languages>`

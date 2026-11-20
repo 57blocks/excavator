@@ -1370,7 +1370,7 @@ describe('/excavator-chat — reuse-before-generation runtime protocol', () => {
     expect(skill.match(/--node-id 'function:src\/article\.ts:favorite\(\)'/g)).toHaveLength(2);
     expect(skill).toContain('every needed id as a separate `--node-id` argument');
     expect(skill).toContain('Never concatenate ids into a command string, evaluate them as shell/code');
-    expect(skill).toContain('write the model-owned `summary` and `tags` in **English**');
+    expect(skill).toContain('write the model-owned `summary`, `displayName` and `tags` in **English**');
     expect(skill).toContain('semantic cache entry, summary, layer description, domain result, or English retrieval expression can select where to inspect, but is not evidence by itself');
     expect(skill).toContain('which calls `finalizeVerifiedAnswerLanguage` with `evidenceVerified: true`');
     expect(skill.indexOf('finalizeVerifiedAnswerLanguage')).toBeGreaterThan(

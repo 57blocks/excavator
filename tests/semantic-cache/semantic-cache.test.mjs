@@ -283,9 +283,9 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
     );
     const chatSkill = readFileSync(join(process.cwd(), 'skills/excavator-chat/SKILL.md'), 'utf-8');
 
-    expect(phaseF2).toContain('Write every model-owned `summary` and `tags` value in English');
+    expect(phaseF2).toContain('Write every model-owned `summary`, `displayName`, and `tags` value in English');
     expect(phaseF2).not.toContain('$LANGUAGE_DIRECTIVE');
-    expect(chatSkill).toContain('write the model-owned `summary` and `tags` in **English**');
+    expect(chatSkill).toContain('write the model-owned `summary`, `displayName` and `tags` in **English**');
   });
 });
 
