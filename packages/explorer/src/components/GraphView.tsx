@@ -585,6 +585,7 @@ function useLayerDetailTopology(): LayerDetailTopology & {
         position: { x: 0, y: 0 },
         data: {
           label: node.name ?? node.filePath?.split("/").pop() ?? node.id,
+          displayName: node.displayName,
           nodeType: node.type,
           summary: node.summary,
           complexity: node.complexity,
@@ -964,6 +965,7 @@ function buildCustomFlowNode(
     position: { x: 0, y: 0 },
     data: {
       label: node.name ?? node.filePath?.split("/").pop() ?? node.id,
+      displayName: node.displayName,
       nodeType: node.type,
       summary: node.summary,
       complexity: node.complexity,

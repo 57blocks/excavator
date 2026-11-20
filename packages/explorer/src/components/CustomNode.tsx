@@ -3,6 +3,7 @@ import { Handle, Position } from "@xyflow/react";
 import type { NodeProps, Node } from "@xyflow/react";
 import type { NodeType } from "@understand-anything/core/types";
 import { useI18n } from "../contexts/I18nContext";
+import { nodeTitles } from "../excavator/nodeTitle";
 
 // Color maps keyed by NodeType — must be kept in sync with core NodeType union.
 const typeColors: Record<NodeType, string> = {
@@ -73,6 +74,8 @@ const complexityColors: Record<string, string> = {
 
 export interface CustomNodeData extends Record<string, unknown> {
   label: string;
+  /** Excavator: shown as the main title, with `label` (the code name) beneath, when present. */
+  displayName?: string;
   nodeType: string;
   summary: string;
   complexity: string;
@@ -139,7 +142,8 @@ function CustomNodeComponent({
     extraClass += " ring-1 ring-gold-dim/50";
   }
 
-  const name = data.label ?? "unnamed";
+  const titles = nodeTitles({ name: data.label ?? "unnamed", displayName: data.displayName });
+  const name = titles.title;
   const truncatedName =
     name.length > 24 ? name.slice(0, 22) + "..." : name;
 
@@ -180,9 +184,14 @@ function CustomNodeComponent({
           </div>
         </div>
 
-        <div className="text-sm font-heading text-text-primary truncate" title={data.label}>
+        <div className="text-sm font-heading text-text-primary truncate" title={name}>
           {truncatedName}
         </div>
+        {titles.subtitle !== null && (
+          <div className="text-[10px] font-mono text-text-muted truncate" title={titles.subtitle}>
+            {titles.subtitle}
+          </div>
+        )}
 
         <div className="text-[11px] text-text-secondary mt-1 line-clamp-2 leading-tight">
           {data.summary}

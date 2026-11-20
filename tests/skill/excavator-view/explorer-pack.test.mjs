@@ -197,6 +197,29 @@ describe('the semantic product of a full analysis', () => {
     expect(manifest.rows.find((row) => row.key === 'semantics')).toEqual({ key: 'semantics', status: 'merged', reason: "3 nodes; 0 entries for ids the graph lacks; 1 layers replace the graph's" });
   });
 
+  it('takes a node\'s displayName from its entry, and blanks it with a contradicted summary', () => {
+    writeFull({
+      entries: {
+        'file:src/a.js': { summary: 'Runs the job.', displayName: 'Job entry point', tags: ['entry'], semanticSourceHash: HASH_A, verification: 'verified' },
+        'function:src/a.js:run': { summary: 'Opens a socket.', displayName: 'Open billing socket', tags: [], semanticSourceHash: HASH_A, verification: 'contradicted' },
+      },
+      layers: [ALL_LAYER],
+    });
+    const { data, html } = pack();
+    expect(nodeOf(data, 'file:src/a.js').displayName).toBe('Job entry point');
+    expect(nodeOf(data, 'function:src/a.js:run')).toMatchObject({ summary: '', displayName: '' });
+    expect(pageContent(html)).not.toContain('Open billing socket');
+  });
+
+  it('blanks a displayName the graph itself marks contradicted, with no semantic cache', () => {
+    const value = graph();
+    Object.assign(value.nodes.find((n) => n.id === 'function:src/b.js:load'), { summary: 'Opens a socket.', displayName: 'Open billing socket', verification: 'contradicted' });
+    writeGraph(value);
+    const { data, html } = pack();
+    expect(nodeOf(data, 'function:src/b.js:load')).toMatchObject({ summary: '', displayName: '', verification: 'contradicted' });
+    expect(pageContent(html)).not.toContain('Open billing socket');
+  });
+
   it('blanks a summary the graph itself marks contradicted, with or without a semantic cache, and keeps the verdict', () => {
     const contradictedGraph = () => {
       const value = graph();

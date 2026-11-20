@@ -59,6 +59,8 @@ export interface GraphNode {
   filePath?: string;
   lineRange?: [number, number];
   summary: string;
+  /** Excavator: a short English name for a reader who does not read code; absent or empty when the node has none (or its verdict was contradicted). */
+  displayName?: string;
   tags: string[];
   complexity: "simple" | "moderate" | "complex";
   languageNotes?: string;

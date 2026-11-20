@@ -3,6 +3,7 @@ import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
 import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
+import { nodeTitles } from "../excavator/nodeTitle";
 
 // Badge color classes keyed by NodeType — must be kept in sync with core NodeType union.
 const typeBadgeColors: Record<NodeType, string> = {
@@ -395,7 +396,14 @@ export default function NodeInfo() {
       </div>
 
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-heading text-text-primary">{node.name}</h2>
+        <div className="min-w-0">
+          <h2 className="text-lg font-heading text-text-primary">{nodeTitles(node).title}</h2>
+          {nodeTitles(node).subtitle !== null && (
+            <div className="text-[11px] font-mono text-text-muted truncate" title={node.name}>
+              {nodeTitles(node).subtitle}
+            </div>
+          )}
+        </div>
         <button
           onClick={() => setFocusNode(focusNodeId === node.id ? null : node.id)}
           className={`text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded transition-colors ${

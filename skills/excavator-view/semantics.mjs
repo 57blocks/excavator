@@ -2,13 +2,13 @@
  * semantics.mjs
  *
  * Reads the Full-mode semantic files into the one payload the page merges into
- * its nodes (openspec: changes/viewer-app, design D11): summaries and tags
+ * its nodes (openspec: changes/viewer-app, design D11): summaries, display names and tags
  * from `semantic-cache.json`, layers from `semantic-graph.json`. Freshness is
  * judged here and never on the page, with the same two functions the rest of
  * the plugin uses (`isCanonicalSemanticCache`, `isFresh`) against the content
  * hash `source-manifest.json` records for the node's file:
  *   - an entry that is not fresh is left out of the payload and counted;
- *   - an entry a verifier contradicted keeps its verdict and loses its summary,
+ *   - an entry a verifier contradicted keeps its verdict and loses its summary and displayName,
  *     so the text is not in the page at all;
  *   - `semanticSourceHash` and `languageAudit` are not copied.
  * The layers are inlined only when the semantic graph was made from the same
@@ -111,13 +111,14 @@ function readCurrentHashes(dataDir) {
   return { hashes };
 }
 
-/** One payload row: the fields the page reads, a contradicted summary blanked. */
+/** One payload row: the fields the page reads, a contradicted summary and its displayName blanked. */
 function payloadEntry(id, entry) {
   const verification = typeof entry.verification === 'string' && entry.verification !== '' ? entry.verification : null;
   const row = {
     id,
     summary: verification === CONTRADICTED ? '' : entry.summary,
     tags: Array.isArray(entry.tags) ? entry.tags.filter((tag) => typeof tag === 'string') : [],
+    displayName: verification === CONTRADICTED || typeof entry.displayName !== 'string' ? '' : entry.displayName,
   };
   if (verification !== null) row.verification = verification;
   return row;
