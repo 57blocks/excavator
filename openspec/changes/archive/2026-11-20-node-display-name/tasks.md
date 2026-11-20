@@ -48,4 +48,4 @@
 ## 9. 门与合并
 
 - [x] 9.1 本地只跑受影响范围（`git grep -l` 找读这些模块的测试，一条 vitest 命令）+ `pnpm --filter @excavator/core test` 若动到 core + `openspec validate --all --strict`；全量交 CI gate
-- [ ] 9.2 PR 用 `--merge` 指向 `main`，评审按 `REVIEW.md`
+- [x] 9.2 PR 用 `--merge` 指向 `main`，评审按 `REVIEW.md`
