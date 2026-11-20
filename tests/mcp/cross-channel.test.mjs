@@ -22,7 +22,7 @@ function make() {
   const service = createProjectService(fixture.root);
   const filePath = 'src/missing.ts';
   const hash = fixture.manifest.entries.find((entry) => entry.path === filePath).contentHash;
-  const fields = { summary: 'Loads a local value.', tags: ['load'], semanticSourceHash: hash,
+  const fields = { summary: 'Loads a local value.', displayName: 'Load local value', tags: ['load'], semanticSourceHash: hash,
     model: 'host-model', generatedAt: '2026-09-16T01:00:00.000Z' };
   return { fixture, service, filePath, hash, fields };
 }

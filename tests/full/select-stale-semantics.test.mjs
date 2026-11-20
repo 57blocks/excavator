@@ -24,9 +24,10 @@ function canonicalCache(entries) {
 }
 
 function auditedEntry(summary, semanticSourceHash) {
-  const fields = { summary };
+  const fields = { summary, displayName: 'Fixture node' };
   return {
     summary,
+    displayName: 'Fixture node',
     semanticSourceHash,
     languageAudit: auditSemanticCacheFields({ fields }),
   };

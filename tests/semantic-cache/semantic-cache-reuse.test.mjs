@@ -45,7 +45,7 @@ import { readKnowledgeGraph, writeKnowledgeGraph } from '../../skills/excavator/
 // Exact cache identity frozen by acceptance-oracle.md. Planner expectations
 // keep these fixture values explicit; the disk integration below separately
 // imports the existing writer to exercise its real CAS gate.
-const SEMANTIC_CACHE_VERSION = '2.0.0';
+const SEMANTIC_CACHE_VERSION = '3.0.0';
 const CANONICAL_CONTENT_LANGUAGE = 'en';
 const CLI_PATH = resolve(process.cwd(), 'skills/excavator/semantic-cache-reuse.mjs');
 
@@ -97,6 +97,7 @@ const SOURCE_BY_PATH = Object.freeze({
 function canonicalEntry(semanticSourceHash, overrides = {}) {
   const fields = {
     summary: 'Returns a local value.',
+    displayName: 'Return local value',
     tags: ['value'],
     semanticSourceHash,
     model: 'oracle-seed-model',
@@ -359,6 +360,7 @@ async function makeIntegrationProject({ seedNodeIds = [ID.A, ID.B, ID.S, ID.T] }
       filePath,
       fields: {
         summary,
+        displayName: 'Return local value',
         tags: ['local', 'value'],
         semanticSourceHash,
         model: 'integration-seed-model',
@@ -736,6 +738,7 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     const fixture = makeFixture();
     const misleadingFields = {
       summary: 'Sends an email before saving.',
+      displayName: 'Return local value',
       tags: ['email', 'save'],
       semanticSourceHash: H(SAME),
       model: 'oracle-misleading-model',
@@ -811,6 +814,7 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     const beforeSha = sha(fixture.semanticCache);
     const generator = vi.fn(async (item) => ({
       summary: 'Loads a local value.',
+      displayName: 'Return local value',
       tags: ['value'],
       semanticSourceHash: item.currentContentHash,
       model: 'oracle-generated-model',
@@ -941,6 +945,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(evidence.nodeRangeHash).not.toBe(item.currentContentHash);
         return {
           summary: 'OwnerA.save returns 10 from its verified node-local range.',
+          displayName: 'Return local value',
           tags: ['OwnerA', 'save'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-range-model',
@@ -1018,6 +1023,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(returnValue).toMatch(/^\d+$/);
         return {
           summary: `${owner}.save returns ${returnValue} from the verified local source.`,
+          displayName: 'Return local value',
           tags: [owner, 'save'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-generate-model',
@@ -1149,6 +1155,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(evidence.source).toBe(LOAD);
         return {
           summary: 'load returns three from the verified local source.',
+          displayName: 'Return local value',
           tags: ['load', 'value'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-overlap-model',
@@ -1256,6 +1263,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(evidence.source).toContain('return 10');
         return {
           summary: 'OwnerA.save returns 10 from the verified local source.',
+          displayName: 'Return local value',
           tags: ['OwnerA', 'save'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-drift-model',

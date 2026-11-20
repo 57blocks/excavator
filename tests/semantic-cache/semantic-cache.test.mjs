@@ -58,6 +58,7 @@ function sha256(content) {
 function validFields(overrides = {}) {
   return {
     summary: 'Creates a new order for the given user from validated cart items.',
+    displayName: 'Create order',
     tags: ['order', 'creation'],
     semanticSourceHash: HASH_V1,
     model: 'test-model-1',
@@ -76,7 +77,7 @@ describe('semantic-cache — cacheable write then reuse on second lookup', () =>
       projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
     });
     expect(result).toMatchObject({ ok: true, status: 'committed' });
-    expect(result.languageAudit).toMatchObject({ status: 'accepted', inspected: 3, rejected: [] });
+    expect(result.languageAudit).toMatchObject({ status: 'accepted', inspected: 4, rejected: [] });
 
     // Second, independent read (simulating a later question about the same node).
     const cache = await readSemanticCache(root);
@@ -355,7 +356,7 @@ describe('semantic-cache — field whitelist', () => {
     // `verification` (openspec: changes/full-semantic-isolation) is an
     // additive extension: the Summary-Verifier's verdict about THIS entry's
     // own summary, redirected here instead of onto a knowledge-graph node.
-    expect(CACHEABLE_FIELDS).toEqual(['summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification']);
+    expect(CACHEABLE_FIELDS).toEqual(['summary', 'displayName', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification']);
   });
 
   it('rejects a disallowed field (a cross-file conclusion) and writes nothing', async () => {
