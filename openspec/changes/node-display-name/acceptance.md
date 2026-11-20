@@ -43,3 +43,14 @@
 - 判据 3 只抽了 30 个，只覆盖一种语言的一个语料。
 - 名称的业务措辞质量（是否足够“产品化”）没有量化判据，只核对了不说错。
 - 图模式路径（GraphNode 直接写名称）只有单元测试，真实运行走的是 Full 的补丁路径。
+
+## 评审第一轮之后
+
+评审（0 Important、2 Nit、1 Pre-existing）与自查后的改动，每处先写用例、在改动前的代码上为红：
+
+- MCP `recall` 与 Chat 的语义缓存命中规则读 `displayName`（proposal 承诺过，任务清单漏列）。
+- `WRITER_FIELDS`：可缓存字段去掉 `verification`。Full 补丁、MCP `semantic_commit` 的 schema、项目服务与 `semantic_plan` 的约束都用它；调用方自带的核验结论被拒绝，不写缓存。这一处是评审指出的既有问题：MCP 原来就接受调用方的结论，本变更之后它会让名称也绕过核验。
+- `semantic_plan` 的复用行带 `displayName`：复用的节点不会再生成，不带就拿不到名称。
+- 文件分析器的节点字段清单在冻结的上游前缀里，不能改；追加的 Display Name 一节写明它把 `displayName` 加进必填字段、`name` 仍是代码名。
+
+变异：调用方结论放行、写入字段含 `verification`、复用行丢名称、recall 不读名称，4 处全部至少使一条用例变红。受影响范围 164 个文件、3,531 条用例通过。
