@@ -1,9 +1,11 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import type { NodeProps, Node } from "@xyflow/react";
 import type { NodeType } from "@understand-anything/core/types";
 import { useI18n } from "../contexts/I18nContext";
 import { nodeTitles } from "../excavator/nodeTitle";
+import { translatorOf } from "../excavator/nameTranslations";
+import { useDashboardStore } from "../store";
 
 // Color maps keyed by NodeType — must be kept in sync with core NodeType union.
 const typeColors: Record<NodeType, string> = {
@@ -105,6 +107,8 @@ function CustomNodeComponent({
   const textColor = typeTextColors[knownType] ?? typeTextColors.file;
   const complexityColor = complexityColors[data.complexity] ?? complexityColors.simple;
   const { t } = useI18n();
+  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const translate = useMemo(() => translatorOf(nameTranslations), [nameTranslations]);
 
   if (import.meta.env.DEV && !(knownType in typeColors)) {
     console.warn(`[CustomNode] Unknown node type "${data.nodeType}" — using "file" colors`);
@@ -142,7 +146,7 @@ function CustomNodeComponent({
     extraClass += " ring-1 ring-gold-dim/50";
   }
 
-  const titles = nodeTitles({ name: data.label ?? "unnamed", displayName: data.displayName });
+  const titles = nodeTitles({ name: data.label ?? "unnamed", displayName: data.displayName }, translate);
   const name = titles.title;
   const truncatedName =
     name.length > 24 ? name.slice(0, 22) + "..." : name;
@@ -184,7 +188,10 @@ function CustomNodeComponent({
           </div>
         </div>
 
-        <div className="text-sm font-heading text-text-primary truncate" title={name}>
+        <div
+          className="text-sm font-heading text-text-primary truncate"
+          title={titles.original === null ? name : `${name}\nEnglish: ${titles.original}`}
+        >
           {truncatedName}
         </div>
         {titles.subtitle !== null && (

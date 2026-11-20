@@ -5,6 +5,8 @@ import { useDashboardStore } from "../store";
 
 export interface FlowNodeData extends Record<string, unknown> {
   label: string;
+  /** Excavator: the English name when `label` is its translation; shown on hover. */
+  original?: string | null;
   summary: string;
   entryPoint?: string;
   entryType?: string;
@@ -36,7 +38,10 @@ function FlowNode({ data }: NodeProps<FlowFlowNode>) {
           {data.entryPoint}
         </div>
       )}
-      <div className="text-xs font-semibold text-text-primary mb-1 truncate">
+      <div
+        className="text-xs font-semibold text-text-primary mb-1 truncate"
+        title={data.original ? `English: ${data.original}` : undefined}
+      >
         {data.label}
       </div>
       <div className="text-[10px] text-text-secondary line-clamp-2">

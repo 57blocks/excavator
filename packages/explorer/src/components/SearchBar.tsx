@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import { nodeTitles } from "../excavator/nodeTitle";
+import { translatorOf } from "../excavator/nameTranslations";
 
 const typeBadgeColors: Record<string, string> = {
   file: "text-node-file border border-node-file/30 bg-node-file/10",
@@ -30,6 +31,8 @@ export default function SearchBar() {
   const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
   const searchMode = useDashboardStore((s) => s.searchMode);
   const setSearchMode = useDashboardStore((s) => s.setSearchMode);
+  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const translate = useMemo(() => translatorOf(nameTranslations), [nameTranslations]);
   const { t } = useI18n();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -167,10 +170,10 @@ export default function SearchBar() {
 
                 {/* Node name */}
                 <span className="text-sm text-text-primary truncate flex-1">
-                  {nodeTitles(node).title}
-                  {nodeTitles(node).subtitle !== null && (
+                  {nodeTitles(node, translate).title}
+                  {nodeTitles(node, translate).subtitle !== null && (
                     <span className="ml-2 text-[11px] font-mono text-text-muted">
-                      {nodeTitles(node).subtitle}
+                      {nodeTitles(node, translate).subtitle}
                     </span>
                   )}
                 </span>

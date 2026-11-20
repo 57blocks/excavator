@@ -61,6 +61,7 @@ function Dashboard({ accessToken }: { accessToken: string }) {
   const setGraph = useDashboardStore((s) => s.setGraph);
   const setDomainGraph = useDashboardStore((s) => s.setDomainGraph);
   const setDiffOverlay = useDashboardStore((s) => s.setDiffOverlay);
+  const setNameTranslations = useDashboardStore((s) => s.setNameTranslations);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [graphIssues, setGraphIssues] = useState<GraphIssue[]>([]);
   const [graphFreshness, setGraphFreshness] =
@@ -188,6 +189,16 @@ function Dashboard({ accessToken }: { accessToken: string }) {
       })
       .catch(() => {});
   }, [setDiffOverlay]);
+
+  // Excavator: the name table, present only when the page was packed with `--language`.
+  useEffect(() => {
+    readInlineFile("name-translations.json")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: unknown) => {
+        if (data) setNameTranslations(data);
+      })
+      .catch(() => {});
+  }, [setNameTranslations]);
 
   useEffect(() => {
     readInlineFile("domain-graph.json")
