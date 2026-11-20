@@ -27,7 +27,7 @@ const pageDir = () => pageDirOf(project);
 const plan = (...extra) => runTranslations('plan', project.root, '--language', 'fr', ...extra);
 const check = (...extra) => runTranslations('check', project.root, '--language', 'fr', ...extra);
 const table = () => readJson(tablePath(pageDir(), 'fr'));
-const merged = () => Object.values(table().entries).map((entry) => entry.en).sort();
+const merged = () => Object.values(table().entries).filter((entry) => entry.text !== undefined).map((entry) => entry.en).sort();
 
 // One answer per displayed name: the good ones pass, each bad one fails for one reason (the comment says which).
 const ANSWERS = {
@@ -219,6 +219,44 @@ describe('the second round', () => {
     expect(run.json.merged).toBe(DISPLAYED.length - 1);
     expect(run.json.retry).toHaveLength(1);
     expect(readBatch(run.json.retry[0]).items.map((item) => item.en)).toEqual(['Billing']);
+  });
+});
+
+describe('refusals are remembered', () => {
+  it('writes a round-2 failure to the table as a refusal under the hash, and a following plan lists nothing for it', () => {
+    const planned = plan();
+    answerBatch(planned.json.batches[0], (en) => (en === 'Handle GET request' ? 'Traiter la requete' : `${en} fr`));
+    const first = check();
+    expect(first.json.retry).toHaveLength(1);
+    answerBatch(first.json.retry[0], () => 'Traiter la requete'); // still no GET
+    const second = check();
+    expect(second.json.finalEnglish).toBe(1);
+    expect(table().entries[sha256('Handle GET request')]).toEqual({ en: 'Handle GET request', refused: 'lost-code-token' });
+    expect(table().entries[sha256('Billing')]).toEqual({ en: 'Billing', text: 'Billing fr' });
+    const again = plan();
+    expect(again.json.missing).toBe(0);
+    expect(again.json.batches).toEqual([]);
+    expect(existsSync(workDir(pageDir(), 'fr'))).toBe(false);
+  });
+
+  it('records a round-2 no-result under its own reason', () => {
+    const planned = plan();
+    answerBatch(planned.json.batches[0], () => 'x');
+    check(); // round 1: 'x' fails the code-token and length rules for some names, passes for others
+    const before = Object.keys(table().entries).length;
+    const second = check(); // round 2 is never answered
+    expect(second.json.failed['no-result']).toBeGreaterThan(0);
+    const refused = Object.values(table().entries).filter((entry) => entry.refused !== undefined);
+    expect(refused).toHaveLength(second.json.finalEnglish);
+    expect(refused.every((entry) => entry.refused === 'no-result' && entry.text === undefined)).toBe(true);
+    expect(Object.keys(table().entries).length).toBe(before + refused.length);
+  });
+
+  it('does not record a round-1 failure as a refusal', () => {
+    const planned = plan();
+    answerBatch(planned.json.batches[0], (en) => (en === 'Billing' ? '' : `${en} fr`));
+    check();
+    expect(table().entries[sha256('Billing')]).toBeUndefined();
   });
 });
 

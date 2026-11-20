@@ -44,8 +44,30 @@ describe('plan lists what the page shows', () => {
     expect(entry.result).toBe(join(workDir(pageDirOf(project), 'fr'), 'result-001.json'));
     const batch = readJson(entry.batch);
     expect(batch).toMatchObject({ format: 'excavator-view-translation-batch/1', language: 'fr', round: 1 });
-    expect(batch.items[0]).toEqual({ key: '1', hash: sha256('Billing'), en: 'Billing' });
+    expect(batch.items[0]).toEqual({ key: '1', hash: sha256('Billing'), en: 'Billing', keep: [] });
     expect(batch.items.map((item) => item.key)).toEqual(DISPLAYED.map((_, i) => String(i + 1)));
+  });
+
+  it('gives each item the code tokens its translation has to keep, as an array that may be empty', () => {
+    writeTranslatableProducts(project);
+    const items = readBatch(plan('--language', 'fr').json.batches[0]).items;
+    const keepOf = (en) => items.find((item) => item.en === en).keep;
+    expect(keepOf('Validate OAuth2 token')).toEqual(['OAuth2']);
+    expect(keepOf('Handle GET request')).toEqual(['GET']);
+    expect(keepOf('Run `make build`')).toEqual(['make build']);
+    expect(keepOf('Billing')).toEqual([]);
+  });
+
+  it('does not list a name that has a refusal record, and writes no batch when only refused names were missing', () => {
+    writeTranslatableProducts(project);
+    writeTable(pageDirOf(project), 'fr', DISPLAYED.map((en) => ({ en, text: `${en} fr` })));
+    const path = tablePath(pageDirOf(project), 'fr');
+    const table = readJson(path);
+    table.entries[sha256('Billing')] = { en: 'Billing', refused: 'too-long' };
+    writeFileSync(path, JSON.stringify(table));
+    const run = plan('--language', 'fr');
+    expect(run.json).toMatchObject({ missing: 0, batches: [] });
+    expect(existsSync(workDir(pageDirOf(project), 'fr'))).toBe(false);
   });
 
   it('lists only the names the table does not have', () => {

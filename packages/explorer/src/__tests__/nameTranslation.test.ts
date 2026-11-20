@@ -23,7 +23,7 @@ const node = (over: Partial<GraphNode>): GraphNode => ({
   ...over,
 });
 
-const counts = { names: 12, translated: 3, english: 9, identical: 0, mismatched: 0, unused: 0 };
+const counts = { names: 12, translated: 3, english: 9, identical: 0, mismatched: 0, unused: 0, refused: 0 };
 const table = (names: Record<string, string>, over: Partial<NameTranslations> = {}): NameTranslations => ({
   language: "fr",
   names,
@@ -48,8 +48,16 @@ describe("parseNameTranslations", () => {
     { language: "zh", names: { A: 1 }, counts },
     { language: "zh", names: {} },
     { language: "zh", names: {}, counts: { ...counts, translated: "3" } },
+    { language: "zh", names: {}, counts: { ...counts, refused: undefined } },
   ])("reads %j as no translation", (raw) => {
     expect(parseNameTranslations(raw)).toBeNull();
+  });
+});
+
+describe("parseNameTranslations and the refused count", () => {
+  it("accepts a table whose counts carry refused", () => {
+    const raw = { language: "zh", names: {}, counts: { ...counts, refused: 2 } };
+    expect(parseNameTranslations(raw)).toEqual(raw);
   });
 });
 
@@ -143,6 +151,24 @@ describe("overviewLine", () => {
     expect(overviewLine(table({}, { language: "zh", counts: { ...counts, translated: 3, english: 9, identical: 1 } }))).toBe(
       "Names machine-translated to zh: 3 translated, 9 kept in English, 1 identical to English",
     );
+  });
+});
+
+describe("overviewLine and refused names", () => {
+  it("adds the number refused by the check when there are any", () => {
+    expect(overviewLine(table({}, { language: "zh", counts: { ...counts, translated: 3, english: 9, refused: 2 } }))).toBe(
+      "Names machine-translated to zh: 3 translated, 9 kept in English, 2 refused by the check",
+    );
+  });
+
+  it("puts identical before refused when both are there", () => {
+    expect(
+      overviewLine(table({}, { language: "zh", counts: { ...counts, translated: 3, english: 9, identical: 1, refused: 2 } })),
+    ).toBe("Names machine-translated to zh: 3 translated, 9 kept in English, 1 identical to English, 2 refused by the check");
+  });
+
+  it("says nothing about refusals when there are none", () => {
+    expect(overviewLine(table({}, { language: "zh" }))).not.toContain("refused");
   });
 });
 

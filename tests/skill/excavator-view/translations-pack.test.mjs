@@ -53,7 +53,7 @@ const BAD = [
   { en: 'Charge a customer', text: 'Facturer', key: sha256('something else') }, // the key is not the English's hash
 ];
 const UNUSED = [{ en: 'A name no node uses', text: 'Un nom' }];
-const COUNTS = { names: DISPLAYED.length, translated: 3, english: DISPLAYED.length - 3, identical: 1, mismatched: 2, unused: 1 };
+const COUNTS = { names: DISPLAYED.length, translated: 3, english: DISPLAYED.length - 3, identical: 1, mismatched: 2, unused: 1, refused: 0 };
 
 describe('English and no language (negative checks: the page is as it was)', () => {
   const same = (a, b) => {
@@ -159,7 +159,7 @@ describe('another language', () => {
     expect(packed.data[KEY]).toEqual({
       language: 'zh',
       names: {},
-      counts: { names: DISPLAYED.length, translated: 0, english: DISPLAYED.length, identical: 0, mismatched: 0, unused: 0 },
+      counts: { names: DISPLAYED.length, translated: 0, english: DISPLAYED.length, identical: 0, mismatched: 0, unused: 0, refused: 0 },
     });
     expect(packed.manifest.translation).toEqual({ language: 'zh', counts: packed.data[KEY].counts });
   });
@@ -194,6 +194,49 @@ describe('another language', () => {
     const first = pack({ language: 'zh' });
     expect(first.data[KEY]).toBeDefined();
     expect(pack({ language: 'zh' }).html).toBe(first.html);
+  });
+});
+
+describe('refused entries', () => {
+  const refuse = (en, over = {}) => ({ en, refused: 'lost-code-token', ...over });
+  const writeRaw = (entries) => {
+    writeTable(pageDirOf(project), 'zh', GOOD);
+    const path = tablePath(pageDirOf(project), 'zh');
+    const table = readJson(path);
+    for (const [key, entry] of entries) table.entries[key] = entry;
+    writeFileSync(path, JSON.stringify(table));
+  };
+
+  it('counts a refused entry in refused and english, not in mismatched, and leaves the name out of names', () => {
+    writeRaw([[sha256('Shipping'), refuse('Shipping')]]);
+    const { data } = pack({ language: 'zh' });
+    const { counts, names } = data[KEY];
+    expect(names).not.toHaveProperty('Shipping');
+    expect(counts).toMatchObject({ translated: 3, refused: 1, mismatched: 0, unused: 0 });
+    expect(counts.translated + counts.english).toBe(counts.names);
+    expect(counts.english).toBe(DISPLAYED.length - 3);
+  });
+
+  it('counts a refused entry whose English no name shows as unused', () => {
+    writeRaw([[sha256('Nobody shows this'), refuse('Nobody shows this')]]);
+    expect(pack({ language: 'zh' }).data[KEY].counts).toMatchObject({ refused: 0, unused: 1, mismatched: 0 });
+  });
+
+  it('counts a refused entry whose key is not the hash of its English as mismatched', () => {
+    writeRaw([[sha256('something else'), refuse('Shipping')]]);
+    expect(pack({ language: 'zh' }).data[KEY].counts).toMatchObject({ refused: 0, mismatched: 1 });
+  });
+
+  it('takes an entry that has a text as a translation even when it also names a refusal (a refusal has no text)', () => {
+    writeRaw([[sha256('Shipping'), refuse('Shipping', { text: 'Expedition' })]]);
+    const { counts, names } = pack({ language: 'zh' }).data[KEY];
+    expect(names.Shipping).toBe('Expedition');
+    expect(counts).toMatchObject({ translated: 4, refused: 0, mismatched: 0 });
+  });
+
+  it('carries refused into the manifest counts', () => {
+    writeRaw([[sha256('Shipping'), refuse('Shipping')]]);
+    expect(pack({ language: 'zh' }).manifest.translation.counts.refused).toBe(1);
   });
 });
 

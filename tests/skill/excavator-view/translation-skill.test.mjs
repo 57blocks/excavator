@@ -17,6 +17,13 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const CJK = new RegExp(`[${String.fromCharCode(0x2e80)}-${String.fromCharCode(0x9fff)}${String.fromCharCode(0xf900)}-${String.fromCharCode(0xfaff)}]`, 'u');
 
 describe('agent excavator-view-translator', () => {
+  it('tells the translator that every item has keep and that each string of it must appear character for character', () => {
+    const text = flat(agent);
+    expect(text).toContain('`keep`');
+    expect(text).toMatch(/every string in `keep` must appear in the translation character for character/i);
+    expect(agent).toMatch(/"keep": \[/);
+  });
+
   it('exists with the name of its file, a description, tools Read and Write only, and no model', () => {
     expect(existsSync(agentPath)).toBe(true);
     const front = /^---\n([\s\S]*?)\n---\n/.exec(agent);
@@ -115,6 +122,14 @@ describe('SKILL.md', () => {
 
   it('keeps the reply language English whatever --language says', () => {
     expect(flat(skill)).toMatch(/`--language` .*does not change .*(language you write|reply)/i);
+  });
+
+  it('says a name refused twice is recorded in the table and not sent again until its English changes', () => {
+    const text = flat(skill);
+    expect(text).toMatch(/refused twice/i);
+    expect(text).toMatch(/recorded in the (translation )?table/i);
+    expect(text).toMatch(/until its English changes/i);
+    expect(text).toMatch(/deleting its table entry, or the table/i);
   });
 
   it('keeps no source or analysis step and no model other than the translator', () => {
