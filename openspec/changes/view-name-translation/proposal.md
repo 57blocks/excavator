@@ -24,7 +24,7 @@
 
 ### Modified Capabilities
 
-- `report-viewer`：`/excavator-view skill` 加 `--language` 与翻译步骤、回复的第六行；`离线仪表盘` 的副本改动清单加上译名显示，并写明译名是“只改形状”的唯一例外；新增「名称按所选语言显示」要求。
+- `report-viewer`：`/excavator-view skill` 加 `--language` 与翻译步骤、回复的第六行；`离线仪表盘` 的副本改动清单加上译名显示，页面数据多一个译名表（图与领域图的数据不变）；新增「名称按所选语言显示」要求。
 - `canonical-semantic-language`：新增「查看页译名是表现层」要求，写明译文表不是持久化语义、不被任何检索或核验读取。
 
 ## Impact
