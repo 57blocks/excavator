@@ -265,7 +265,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       const semanticCacheText = Object.entries(cache.entries ?? {}).flatMap(([nodeId, entry]) => {
         const node = nodeById.get(nodeId);
         if (!node || !manifestPaths.has(node.filePath) || !isFresh(entry, hashByPath.get(node.filePath), cache)) return [];
-        const haystack = `${entry.summary} ${(entry.tags ?? []).join(' ')}`.toLowerCase();
+        const haystack = `${entry.summary} ${entry.displayName ?? ''} ${(entry.tags ?? []).join(' ')}`.toLowerCase();
         const hits = lowered.filter((t) => haystack.includes(t)).length;
         return hits ? [{ nodeId, path: node.filePath, symbol: node.name, score: hits }] : [];
       }).slice(0, 200);

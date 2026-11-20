@@ -369,7 +369,7 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.jsonl` does not
    // fill in nodeId -> filePath from the knowledge-graph nodes you already matched
    "
    ```
-   Only a hash-fresh entry's `summary`/`tags` text may feed retrieval — a stale or missing entry is simply not a candidate (never partially trusted).
+   Only a hash-fresh entry's `summary`/`displayName`/`tags` text may feed retrieval — a stale or missing entry is simply not a candidate (never partially trusted).
 5. Merge all four lists with `mergeCandidates` (weights an exact id/symbol/path match highest, then source-search, semantic-cache, BM25 — see `$PLUGIN_ROOT/skills/excavator/retrieve.mjs`'s own doc comment for the exact rationale), then keep the first 20 ranked candidates as the recall pool. Keep the other evidence locations available for direct source checking, but do not turn them into traversal seeds:
    ```bash
    node --input-type=module -e "
