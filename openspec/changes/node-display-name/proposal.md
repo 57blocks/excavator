@@ -26,7 +26,7 @@
 
 **不做：**
 
-- 不存第二种语言。`displayName` 与 `summary` 一样只存英文（见 `canonical-semantic-language`）；查看页不翻译它。
+- 不存第二种语言。`displayName` 与 `summary` 一样只存英文（见 `canonical-semantic-language`）。导出查看页时按所选语言翻译显示，是下一个变更的事，本变更的查看页照英文显示。
 - 不为前后端接口、页面单独建名称。接口用处理函数的 `displayName`，页面用页面文件的 `displayName`，由以后的查看页变更取用。
 - 领域图、设计图、文档图的节点已有各自的名称，不在本变更内。
 - 导览、手册、explain、onboard、diff 暂不改，以后按需取用。
