@@ -11,6 +11,7 @@ export interface NameTranslationCounts {
   identical: number;
   mismatched: number;
   unused: number;
+  refused: number;
 }
 
 export interface NameTranslations {
@@ -22,7 +23,7 @@ export interface NameTranslations {
 /** The translation of an English name, or null when the table has none. */
 export type Translate = (english: string) => string | null;
 
-const COUNT_KEYS: (keyof NameTranslationCounts)[] = ["names", "translated", "english", "identical", "mismatched", "unused"];
+const COUNT_KEYS: (keyof NameTranslationCounts)[] = ["names", "translated", "english", "identical", "mismatched", "unused", "refused"];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -53,7 +54,9 @@ export function domainTitle(name: string, translate?: Translate): { label: strin
 
 /** The one line of the project overview that says the names were machine-translated. */
 export function overviewLine(table: NameTranslations): string {
-  const { translated, english, identical } = table.counts;
-  const base = `Names machine-translated to ${table.language}: ${translated} translated, ${english} kept in English`;
-  return identical > 0 ? `${base}, ${identical} identical to English` : base;
+  const { translated, english, identical, refused } = table.counts;
+  let line = `Names machine-translated to ${table.language}: ${translated} translated, ${english} kept in English`;
+  if (identical > 0) line += `, ${identical} identical to English`;
+  if (refused > 0) line += `, ${refused} refused by the check`;
+  return line;
 }

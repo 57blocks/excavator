@@ -13,6 +13,9 @@
  *              { format, language, entries: { <sha256 of the English>: { en, text } } }
  *   taken      an entry is used only when its key is the SHA-256 of its own `en`, `en` is a displayed name and
  *              `text` is a non-empty string; every other entry is counted as mismatched or unused
+ *   refused    `{ en, refused: <reason> }` under the hash of its `en`, with no `text`: the check refused every translation
+ *              of that name; it is not a translation and not mismatched, `plan` does not list the name again, and the
+ *              page keeps it in English (counted as `refused`)
  */
 
 import { createHash } from 'node:crypto';
@@ -105,22 +108,35 @@ function soundEntry(key, entry) {
   return { en: entry.en, text: entry.text };
 }
 
-/** The table's sound entries by English text; `mismatched` counts the others. */
+/** The English of an entry that records a refusal (key is the hash of its `en`, a non-empty `refused`, no `text`), else null. */
+function refusedEnglish(key, entry) {
+  if (!isObject(entry) || typeof entry.en !== 'string' || hashName(entry.en) !== key) return null;
+  if (typeof entry.refused !== 'string' || entry.refused.trim() === '' || 'text' in entry) return null;
+  return entry.en;
+}
+
+/** The table's sound entries by English text, the English texts of its refusal records, and how many entries are neither. */
 export function soundEntries(entries) {
   const byEnglish = new Map();
+  const refused = new Set();
   let mismatched = 0;
   for (const key of Object.keys(entries)) {
     const sound = soundEntry(key, entries[key]);
-    if (sound === null) mismatched += 1;
-    else byEnglish.set(sound.en, sound.text);
+    if (sound !== null) {
+      byEnglish.set(sound.en, sound.text);
+      continue;
+    }
+    const english = refusedEnglish(key, entries[key]);
+    if (english === null) mismatched += 1;
+    else refused.add(english);
   }
-  return { byEnglish, mismatched };
+  return { byEnglish, refused, mismatched };
 }
 
-/** The names of `names` the table does not translate (no sound entry for their English text). */
+/** The names of `names` the table neither translates nor records a refusal for. */
 export function missingNames(names, entries) {
-  const { byEnglish } = soundEntries(entries);
-  return names.filter((name) => !byEnglish.has(name));
+  const { byEnglish, refused } = soundEntries(entries);
+  return names.filter((name) => !byEnglish.has(name) && !refused.has(name));
 }
 
 /**
@@ -131,7 +147,7 @@ export function missingNames(names, entries) {
 export function nameTranslationsFor({ pageDir, name, names }) {
   const table = readTable(pageDir, name);
   const entries = table.state === 'ok' ? table.entries : {};
-  const { byEnglish, mismatched } = soundEntries(entries);
+  const { byEnglish, refused, mismatched } = soundEntries(entries);
   const shown = new Set(names);
   // Null prototype: an English name such as `__proto__` is an entry like any other.
   const translations = Object.create(null);
@@ -143,8 +159,9 @@ export function nameTranslationsFor({ pageDir, name, names }) {
     if (text === english) identical += 1;
   }
   const translated = Object.keys(translations).length;
-  const unused = [...byEnglish.keys()].filter((english) => !shown.has(english)).length;
-  const counts = { names: names.length, translated, english: names.length - translated, identical, mismatched, unused };
+  const unused = [...byEnglish.keys(), ...refused].filter((english) => !shown.has(english)).length;
+  const refusedShown = names.filter((english) => refused.has(english) && !byEnglish.has(english)).length;
+  const counts = { names: names.length, translated, english: names.length - translated, identical, mismatched, unused, refused: refusedShown };
   const value = { language: name, names: translations, counts };
   let row;
   if (table.state === 'unreadable') row = { key: NAME_TRANSLATIONS_KEY, status: 'unreadable', reason: table.reason };

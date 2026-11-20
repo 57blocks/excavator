@@ -52,7 +52,7 @@ Then check what they wrote. Every command runs in a new shell, so write the plug
 node "<the plugin root printed above>/skills/excavator-view/translations.mjs" check "<project root>" --language "<lang>"            # add --out <path> only when the user gave it
 ```
 
-`check` prints one JSON line: `merged` (translations added to the table), `failed` (a count for each reason a translation was refused), `retry` (batches written for the refused ones) and `finalEnglish` (names that stay English for good). If `retry` lists entries, dispatch `excavator-view-translator` once for each of them the same way, in the foreground, and run `check` again. Do this once: a name refused a second time stays English and is counted in the reply, and no third round is run. `check` deletes the work directory when nothing is left to retry.
+`check` prints one JSON line: `merged` (translations added to the table), `failed` (a count for each reason a translation was refused), `retry` (batches written for the refused ones) and `finalEnglish` (names that stay English for good). If `retry` lists entries, dispatch `excavator-view-translator` once for each of them the same way, in the foreground, and run `check` again. Do this once: a name refused a second time stays English and is counted in the reply, and no third round is run. A name refused twice is recorded in the translation table as refused and is not sent again until its English changes; deleting its table entry, or the table, sends it again. `check` deletes the work directory when nothing is left to retry.
 
 The subagent writes only its result file; only `check` writes the table. A name the table has no translation for shows in English on the page, and the reply's sixth line counts it.
 

@@ -22,7 +22,8 @@
  * length plus 10), lost-code-token (a code token of the English is not in the text) or, for a result file that is absent
  * or not a JSON object, no-result. A key the batch does not have is reported once per batch as extra-key and fails no
  * item. Passing items are merged into the table. Round-1 failures are written as round-2 batch files; round-2 failures
- * are final and stay English. When nothing is left to retry the work directory is deleted.
+ * are final and stay English: the table records each as { en, refused: <reason> } so a later `plan` does not list it.
+ * Batch items carry `keep` (the English's code tokens); `check` computes the tokens itself and ignores it. When nothing is left to retry the work directory is deleted.
  *
  * English (`en`, `english`, `en-*`) prints {"language":"en","english":true} and touches no file.
  * Deterministic and model-free; it never reads or runs the project's code.
@@ -106,7 +107,7 @@ const workDirOf = (pageDir, name) => join(tableDirOf(pageDir), `work-${name}`);
 function writeBatches(workDir, items, round, language, first) {
   const written = [];
   for (let start = 0, number = first; start < items.length; start += BATCH_SIZE, number += 1) {
-    const slice = items.slice(start, start + BATCH_SIZE).map(({ hash, en }, i) => ({ key: String(i + 1), hash, en }));
+    const slice = items.slice(start, start + BATCH_SIZE).map(({ hash, en }, i) => ({ key: String(i + 1), hash, en, keep: codeTokens(en) }));
     const batch = join(workDir, batchName(number));
     writeFileSync(batch, `${JSON.stringify({ format: BATCH_FORMAT, language, round, items: slice }, null, 2)}\n`);
     written.push({ batch, result: join(workDir, resultName(number)) });
@@ -204,7 +205,7 @@ export function checkTranslations({ root: rootArg, language, out = null }) {
     if (!isObject(result)) {
       for (const item of items) {
         bump(failed, 'no-result');
-        failures.push({ hash: hashName(item.en), en: item.en });
+        failures.push({ hash: hashName(item.en), en: item.en, reason: 'no-result' });
       }
       continue;
     }
@@ -216,14 +217,16 @@ export function checkTranslations({ root: rootArg, language, out = null }) {
         : { reason: 'missing-key' };
       if (verdict.reason) {
         bump(failed, verdict.reason);
-        failures.push({ hash: hashName(item.en), en: item.en });
+        failures.push({ hash: hashName(item.en), en: item.en, reason: verdict.reason });
       } else {
         passed.set(item.en, verdict.text);
       }
     }
   }
 
-  if (passed.size > 0) mergeIntoTable(pageDir, lang.name, passed);
+  // A round-2 failure is final: the table records the refusal so the next plan does not list the name again.
+  const refused = round >= 2 ? new Map(failures.map(({ en, reason }) => [en, reason])) : new Map();
+  if (passed.size > 0 || refused.size > 0) mergeIntoTable(pageDir, lang.name, passed, refused);
 
   const last = Math.max(...all.map((entry) => entry.number));
   const retry = round === 1 && failures.length > 0 ? writeBatches(workDir, failures, 2, batches[0].content.language, last + 1) : [];
@@ -232,11 +235,12 @@ export function checkTranslations({ root: rootArg, language, out = null }) {
   return { language: lang.name, merged: passed.size, failed, retry, finalEnglish };
 }
 
-/** Adds the passing translations to the table (a new one when there is none), sorted by key, through a temporary file and a rename. */
-function mergeIntoTable(pageDir, name, passed) {
+/** Adds the passing translations and the final refusals to the table (a new one when there is none), sorted by key, through a temporary file and a rename. */
+function mergeIntoTable(pageDir, name, passed, refused) {
   const table = readTable(pageDir, name);
   if (table.state === 'unreadable') throw new Error(`the translation table is unreadable, so it is not overwritten: ${table.reason}`);
   const entries = table.state === 'ok' ? { ...table.entries } : {};
+  for (const [en, reason] of refused) entries[hashName(en)] = { en, refused: reason };
   for (const [en, text] of passed) entries[hashName(en)] = { en, text };
   const sorted = {};
   for (const key of Object.keys(entries).sort()) sorted[key] = entries[key];
