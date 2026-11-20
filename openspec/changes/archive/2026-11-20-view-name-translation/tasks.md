@@ -31,4 +31,4 @@
 ## 6. 门与合并
 
 - [x] 6.1 本地只跑受影响范围 + explorer 包测试 + `typecheck` + `check-refs` + `openspec validate --all --strict`；全量交 CI gate
-- [ ] 6.2 版本号升一位次版本；PR 用 `--merge` 指向 `main`，评审按 `REVIEW.md`
+- [x] 6.2 版本号升一位次版本；PR 用 `--merge` 指向 `main`，评审按 `REVIEW.md`
