@@ -30,7 +30,8 @@ export function mentions(paths, pattern = FORBIDDEN) {
   return paths
     .flatMap((path) => (statSync(path).isDirectory() ? filesUnder(path) : [path]))
     .filter((path) => pattern.test(readFileSync(path, 'utf-8')))
-    .map((path) => path.slice(repoRoot.length + 1));
+    // Repository files are named relative to the root; any other path (a temporary directory) stays absolute.
+    .map((path) => (path.startsWith(`${repoRoot}/`) ? path.slice(repoRoot.length + 1) : path));
 }
 
 const at = (...parts) => join(repoRoot, ...parts);
