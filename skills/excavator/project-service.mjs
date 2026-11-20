@@ -398,10 +398,6 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
         gaps: [{ kind: 'node-path-mismatch', nodeId, filePath }], error: { code: 'node-path-mismatch' },
       });
       assertSourcePath(root, filePath, start.snapshot);
-      const foreign = Object.keys(fields ?? {}).filter((key) => !WRITER_FIELDS.includes(key));
-      if (foreign.length) return finish(start, 'rejected-fields', { ok: false, status: 'rejected-fields', rejectedFields: foreign }, {
-        error: { code: 'rejected-fields', retryable: false },
-      });
       const result = await commitSemanticCacheEntry({ projectRoot: root, nodeId, filePath, fields,
         verifyNodePath: true, onlyIfNotFresh: true });
       return finish(start, result.ok ? 'ok' : result.status, result, {

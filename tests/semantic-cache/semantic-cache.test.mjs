@@ -368,6 +368,13 @@ describe('semantic-cache — field whitelist', () => {
     expect(existsSync(join(root, '.excavator', 'semantic-cache.json'))).toBe(false);
   });
 
+  it('rejects a writer-declared verification verdict and writes nothing', async () => {
+    const fields = validFields({ verification: 'verified' });
+    const result = await commitSemanticCacheEntry({ projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields });
+    expect(result).toEqual({ ok: false, status: 'rejected-fields', rejectedFields: ['verification'] });
+    expect(existsSync(join(root, '.excavator', 'semantic-cache.json'))).toBe(false);
+  });
+
   it('rejects answer text disguised as a field', async () => {
     const fields = validFields({ answer: 'Here is the full answer to your question...' });
     const result = await commitSemanticCacheEntry({ projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields });

@@ -84,8 +84,8 @@ export const CACHEABLE_FIELDS = Object.freeze([
 ]);
 
 /** The fields a semantic writer (Full patches, Chat, MCP `semantic_commit`) may send. `verification`
- *  is left out: it is the Summary-Verifier's verdict, written only by `apply-verification`, so a writer
- *  cannot mark its own summary checked. */
+ *  is left out: it is the Summary-Verifier's verdict, written only by `apply-verification`, and
+ *  `commitSemanticCacheEntry` rejects it, so a writer cannot mark its own summary checked. */
 export const WRITER_FIELDS = Object.freeze(CACHEABLE_FIELDS.filter((key) => key !== 'verification'));
 
 const REAL_FS = Object.freeze({
@@ -397,6 +397,12 @@ export async function commitSemanticCacheEntry({
     // Field whitelist — checked before touching the lock at all: a rejected
     // write is a no-op, not a partially-started one.
     const validation = validateCacheableFields(fields);
+    // A writer never sends the Summary-Verifier's verdict (apply-verification writes it
+    // separately), so no writer can mark its own summary and name verified.
+    const verifierOwned = Object.keys(fields ?? {}).filter((key) => CACHEABLE_FIELDS.includes(key) && !WRITER_FIELDS.includes(key));
+    if (verifierOwned.length) {
+      return { ok: false, status: 'rejected-fields', rejectedFields: [...validation.rejectedFields, ...verifierOwned] };
+    }
     const displayNameStatus = checkDisplayName(fields?.displayName);
     const onlyDisplayNameBad = validation.rejectedFields.length === 1
       && validation.rejectedFields[0] === 'displayName';
