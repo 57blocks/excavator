@@ -88,6 +88,7 @@ export function planSemanticCacheReuse({
         filePath,
         reason,
         summary: entry.summary,
+        displayName: entry.displayName,
         tags: Array.isArray(entry.tags) ? [...entry.tags] : [],
       });
       continue;

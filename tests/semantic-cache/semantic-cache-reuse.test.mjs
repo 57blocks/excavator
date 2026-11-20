@@ -7,7 +7,7 @@
 //     manifestEntries: Array<{ path: string, contentHash: string }>,
 //     semanticCache: { version: string, contentLanguage?: string, entries: object },
 //   }) -> {
-//     reuse: Array<{ nodeId, filePath, reason: 'fresh', summary, tags }>,
+//     reuse: Array<{ nodeId, filePath, reason: 'fresh', summary, displayName, tags }>,
 //     generate: Array<{ nodeId, filePath, currentContentHash,
 //                       reason: 'missing'|'stale'|'noncanonical-language' }>,
 //     unavailable: Array<{ nodeId, filePath: string|null,
@@ -148,8 +148,8 @@ function makeFixture() {
 function expectedMatrix(fixture) {
   return {
     reuse: [
-      { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: fixture.semanticCache.entries[ID.A].summary, tags: ['value'] },
-      { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: fixture.semanticCache.entries[ID.B].summary, tags: ['value'] },
+      { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: fixture.semanticCache.entries[ID.A].summary, displayName: 'Return local value', tags: ['value'] },
+      { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: fixture.semanticCache.entries[ID.B].summary, displayName: 'Return local value', tags: ['value'] },
     ],
     generate: [
       { nodeId: ID.S, filePath: PATH.S, currentContentHash: H(SHARED_1), reason: 'stale' },
@@ -762,8 +762,8 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     });
     expect(plan).toEqual({
       reuse: [
-        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', tags: ['value'] },
-        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: misleadingFields.summary, tags: misleadingFields.tags },
+        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', displayName: 'Return local value', tags: ['value'] },
+        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: misleadingFields.summary, displayName: 'Return local value', tags: misleadingFields.tags },
       ],
       generate: [],
       unavailable: [],
@@ -836,8 +836,8 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     });
     expect(firstPlan).toEqual({
       reuse: [
-        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', tags: ['value'] },
-        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: 'Returns a local value.', tags: ['value'] },
+        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', displayName: 'Return local value', tags: ['value'] },
+        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: 'Returns a local value.', displayName: 'Return local value', tags: ['value'] },
       ],
       generate: [{ nodeId: ID.M, filePath: PATH.M, currentContentHash: H(LOAD), reason: 'missing' }],
       unavailable: [],
@@ -993,6 +993,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
           filePath: PATH.B,
           reason: 'fresh',
           summary: 'save returns one from the local source.',
+          displayName: 'Return local value',
           tags: ['local', 'value'],
         }],
         generate: [
@@ -1118,6 +1119,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
             filePath: PATH.B,
             reason: 'fresh',
             summary: 'save returns one from the local source.',
+            displayName: 'Return local value',
             tags: ['local', 'value'],
           },
           {
@@ -1125,6 +1127,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
             filePath: PATH.A,
             reason: 'fresh',
             summary: 'save returns one from the local source.',
+            displayName: 'Return local value',
             tags: ['local', 'value'],
           },
         ],
@@ -1421,6 +1424,7 @@ describe('semantic-cache reuse CLI — current disk inputs and zero writes', () 
         filePath: evilPath,
         reason: 'fresh',
         summary: 'Returns a local value.',
+        displayName: 'Return local value',
         tags: ['value'],
       }]);
       expect(firstPlan.counts).toEqual({ requested: 1, reuse: 1, generate: 0, unavailable: 0 });
