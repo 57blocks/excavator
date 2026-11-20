@@ -202,6 +202,7 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
   - 界面上显示的产品名与报问题链接改为 Excavator；
   - 图里没有层时，结构图顶层按副本自己的目录分组（目录过于集中时按副本自己的连接聚类）显示，界面上称「分组」而不称「层」；
   - 显示我们图里有而副本原本不显示或显示错的数据：节点摘要的核验结论、`mentions` 边、边的证据（文件与行号）、覆盖记录与缺口记录；
+  - 节点有显示名（`displayName`）时，节点卡片以它为主标题、代码名为副标题，搜索也匹配它；没有时照副本只显示代码名；
   - 产物视图与顶栏的改动（见「离线仪表盘的产物视图」）。
   - 打开页面时默认的视角是 Overview；有领域图时默认的模式是 Domain，没有领域图时照副本是 Structural；
   - 主题：增加两个按颜色命名的预设 Light Violet 与 Dark Violet，以及每组强调色里的 Violet，默认是 Light Violet 配 Violet（样式表里 JavaScript 应用主题之前的回退值也是 Light Violet）；主题由顶栏 Theme 按钮打开的下拉菜单切换；原有预设与强调色保留；用户在主题选择里选过的主题仍优先于默认，但选择存在页面自己的键下，副本原来那个键里存的选择（Light Violet 成为默认之前存下的，或别的副本页面存下的）不再读；仪表盘自己写死的金色强调（边、分组边框、搜索命中标记、选中边的标签）改为跟随当前强调色，导出的独立 SVG 例外；主题名与界面 MUST NOT 出现公司名；
@@ -214,7 +215,8 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
   - 完整分析的语义产物按下列规则并进图：
     - 语义缓存的条目只取打包时仍然新鲜的：条目的 `semanticSourceHash` 等于 `source-manifest.json` 里该文件当前的 `contentHash`；不新鲜的条目不进页面，只在打包结果里计数；
     - 节点的摘要先取语义条目的（非空时），再取节点自己的；标签先取语义条目的（有标签时），再取节点自己的；
-    - 核验结论为 `contradicted` 的摘要为空，结论来自语义条目或节点自己都一样；这条摘要的原文 MUST NOT 出现在页面里；
+    - 节点的显示名先取语义条目的（非空时），再取节点自己的；
+    - 核验结论为 `contradicted` 的摘要与显示名都为空，结论来自语义条目或节点自己都一样；它们的原文 MUST NOT 出现在页面里；
     - 层取语义图的 `layers`（与知识图同一 facts digest 且至少有一层时），否则用知识图自己的；
   - 节点带上语义条目的核验结论（`verification`），条目没有结论（例如文件节点）时不写；
   - 知识图记下的项目名是分析时临时快照目录的名字（`excavator-snapshot-<种类>-<6 位>`）时，页面用项目根目录的名字，别的名字原样；
@@ -277,6 +279,10 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
 #### Scenario: 旧键里的主题选择不再读
 - **WHEN** 浏览器在副本原来的主题键里存着 Dark Violet，在页面自己的键里没有存过，打开 `explorer.html`
 - **THEN** 主题是 Light Violet；在 Theme 下拉里选 Dark Violet 后再打开，主题是 Dark Violet
+
+#### Scenario: 节点显示名称
+- **WHEN** 打包一个做过完整分析的项目，节点 `rejectRequest` 的新鲜语义条目带 `displayName: "Reject request and restore quota"`，另一个节点没有语义条目
+- **THEN** 前者的卡片主标题是 `Reject request and restore quota`、副标题是 `rejectRequest`，搜索 `restore quota` 能找到它；后者照副本只显示代码名
 
 ### Requirement: 离线仪表盘的产物视图
 
