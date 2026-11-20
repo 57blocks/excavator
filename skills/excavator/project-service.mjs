@@ -8,7 +8,7 @@ import { syncFactGraph } from './sync-fact-graph.mjs';
 import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, readSourceIndex } from './source-index-store.mjs';
 import { KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 import { bm25Search, boundedBFS, boundedShortestPath, mergeCandidates, oneHop } from './retrieve.mjs';
-import { CACHEABLE_FIELDS, isFresh, commitSemanticCacheEntry } from './semantic-cache.mjs';
+import { WRITER_FIELDS, isFresh, commitSemanticCacheEntry } from './semantic-cache.mjs';
 import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
 
 const LIMITS = Object.freeze({ terms: 12, termLength: 80, exactIds: 20, candidates: 50, offset: 500,
@@ -381,7 +381,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       const gaps = plan.unavailable.map((item) => ({ kind: item.reason, nodeId: item.nodeId, filePath: item.filePath }));
       for (const item of generate) if (!item.evidence.complete) gaps.push({ kind: 'evidence-truncated', nodeId: item.nodeId });
       return finish(start, 'ok', { ...plan, generate, constraints: {
-        contentLanguage: 'en', cacheable: [...CACHEABLE_FIELDS],
+        contentLanguage: 'en', cacheable: [...WRITER_FIELDS],
         rule: 'Only node-local semantics after reading complete current local source; cross-file conclusions and answers stay outside cache.',
       } }, { gaps, budget: { maxEvidenceChars: chars }, boundary: {
         truncated: generate.some((x) => !x.evidence.complete),
@@ -398,6 +398,10 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
         gaps: [{ kind: 'node-path-mismatch', nodeId, filePath }], error: { code: 'node-path-mismatch' },
       });
       assertSourcePath(root, filePath, start.snapshot);
+      const foreign = Object.keys(fields ?? {}).filter((key) => !WRITER_FIELDS.includes(key));
+      if (foreign.length) return finish(start, 'rejected-fields', { ok: false, status: 'rejected-fields', rejectedFields: foreign }, {
+        error: { code: 'rejected-fields', retryable: false },
+      });
       const result = await commitSemanticCacheEntry({ projectRoot: root, nodeId, filePath, fields,
         verifyNodePath: true, onlyIfNotFresh: true });
       return finish(start, result.ok ? 'ok' : result.status, result, {

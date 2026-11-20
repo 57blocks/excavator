@@ -31,7 +31,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { CACHEABLE_FIELDS, commitSemanticCacheEntry } from './semantic-cache.mjs';
+import { WRITER_FIELDS, commitSemanticCacheEntry } from './semantic-cache.mjs';
 import { collectFactNodeIds } from './semantic-graph.mjs';
 import { createGapCollector } from './fact-graph-resolve.mjs';
 import { compareGaps } from './coverage-ledger.mjs';
@@ -39,7 +39,6 @@ import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-stor
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
-const PATCH_FIELDS = Object.freeze(CACHEABLE_FIELDS.filter((key) => key !== 'verification'));
 
 async function resolveCore(root) {
   const require = createRequire(resolve(root, 'package.json'));
@@ -111,10 +110,10 @@ export async function applySemanticPatches({
       continue;
     }
 
-    // Take fields by the single cacheable list; absent optional fields stay absent.
-    // `verification` is the Summary-Verifier's verdict, never the writer's own.
+    // Take the writer fields (the cacheable list without the verifier's verdict); absent
+    // optional fields stay absent.
     const fields = {};
-    for (const key of PATCH_FIELDS) {
+    for (const key of WRITER_FIELDS) {
       if (Object.hasOwn(patch, key) && patch[key] !== undefined) fields[key] = patch[key];
     }
     const result = await commit({ projectRoot, nodeId, filePath: patch.filePath, fields,

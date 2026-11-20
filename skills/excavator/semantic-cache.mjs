@@ -83,6 +83,11 @@ export const CACHEABLE_FIELDS = Object.freeze([
   'summary', 'displayName', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification',
 ]);
 
+/** The fields a semantic writer (Full patches, Chat, MCP `semantic_commit`) may send. `verification`
+ *  is left out: it is the Summary-Verifier's verdict, written only by `apply-verification`, so a writer
+ *  cannot mark its own summary checked. */
+export const WRITER_FIELDS = Object.freeze(CACHEABLE_FIELDS.filter((key) => key !== 'verification'));
+
 const REAL_FS = Object.freeze({
   existsSync, mkdirSync, readFileSync, writeFileSync, renameSync,
   openSync, writeSync, closeSync, unlinkSync,

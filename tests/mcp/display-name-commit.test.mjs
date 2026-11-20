@@ -6,6 +6,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 import { IDS, makeMcpFixture } from './fixture.mjs';
+import { createProjectService } from '../../skills/excavator/project-service.mjs';
 
 const SERVER_PATH = resolve(process.cwd(), 'skills/excavator/mcp-server.mjs');
 const cleanup = [];
@@ -53,4 +54,31 @@ describe('semantic_commit displayName', () => {
     }
     expect(rejected).toBe(true);
   }, 30_000);
+
+  it('rejects a commit that declares its own verification', async () => {
+    const { client, fields } = await setup();
+    let rejected = false;
+    try {
+      const result = await client.callTool({ name: 'semantic_commit', arguments: {
+        nodeId: IDS.missing, filePath: 'src/missing.ts',
+        fields: { ...fields, displayName: 'Load local value', verification: 'verified' },
+      } });
+      rejected = result.isError === true;
+    } catch {
+      rejected = true;
+    }
+    expect(rejected).toBe(true);
+  }, 30_000);
+
+  it('the project service refuses a caller verdict without writing', async () => {
+    const fixture = makeMcpFixture();
+    cleanup.push(fixture.cleanup);
+    const before = fixture.readCacheBytes();
+    const hash = fixture.manifest.entries.find((e) => e.path === 'src/missing.ts').contentHash;
+    const result = await createProjectService(fixture.root).semanticCommit({ nodeId: IDS.missing, filePath: 'src/missing.ts',
+      fields: { summary: 'Loads a local value.', displayName: 'Load local value', tags: ['load'],
+        semanticSourceHash: hash, verification: 'verified' } });
+    expect(result.status).toBe('rejected-fields');
+    expect(fixture.readCacheBytes()).toEqual(before);
+  });
 });

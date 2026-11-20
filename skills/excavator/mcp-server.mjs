@@ -15,7 +15,7 @@ const sourcePath = z.string().min(1).max(600);
 const terms = z.array(z.string().min(1).max(80)).max(12);
 const ids = z.array(nodeId).max(20);
 
-/** Keys must equal CACHEABLE_FIELDS; a test pins that. */
+/** Keys must equal WRITER_FIELDS (no caller-declared `verification`); a test pins that. */
 export const semanticCommitFields = z.object({
   summary: z.string().min(1).max(4_000),
   displayName: z.string().min(1).max(60),
@@ -23,7 +23,6 @@ export const semanticCommitFields = z.object({
   semanticSourceHash: z.string().min(1).max(128),
   model: z.string().min(1).max(160).optional(),
   generatedAt: z.string().datetime().optional(),
-  verification: z.enum(['verified', 'unverified', 'dirty', 'contradicted']).optional(),
 }).strict();
 
 function toolResult(result, isError = false) {

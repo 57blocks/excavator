@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import {
   CACHEABLE_FIELDS,
   SEMANTIC_CACHE_VERSION,
+  WRITER_FIELDS,
   commitSemanticCacheEntry,
   freshnessOf,
   isCanonicalSemanticCache,
@@ -147,18 +148,35 @@ describe('one field list (oracle 5)', () => {
     expect(CACHEABLE_FIELDS).toContain('displayName');
   });
 
-  it('semantic_plan constraints.cacheable is the same set as CACHEABLE_FIELDS', async () => {
+  it('WRITER_FIELDS is CACHEABLE_FIELDS without the verifier-owned verification', () => {
+    expect([...WRITER_FIELDS].sort()).toEqual(CACHEABLE_FIELDS.filter((key) => key !== 'verification').sort());
+  });
+
+  it('semantic_plan constraints.cacheable is the same set as WRITER_FIELDS', async () => {
     const fixture = makeMcpFixture();
     try {
       const plan = await createProjectService(fixture.root).semanticPlan({ nodeIds: [IDS.missing] });
       expect(plan.data.constraints.cacheable).toContain('displayName');
-      expect([...plan.data.constraints.cacheable].sort()).toEqual([...CACHEABLE_FIELDS].sort());
+      expect([...plan.data.constraints.cacheable].sort()).toEqual([...WRITER_FIELDS].sort());
     } finally {
       fixture.cleanup();
     }
   });
 
-  it('the semantic_commit fields schema has the same keys as CACHEABLE_FIELDS', () => {
-    expect(Object.keys(mcpServer.semanticCommitFields.shape).sort()).toEqual([...CACHEABLE_FIELDS].sort());
+  it('the semantic_commit fields schema has the same keys as WRITER_FIELDS', () => {
+    expect(Object.keys(mcpServer.semanticCommitFields.shape).sort()).toEqual([...WRITER_FIELDS].sort());
+  });
+});
+
+describe('reuse carries the name (node-display-name)', () => {
+  it('a fresh entry reused by semantic_plan comes with its displayName', async () => {
+    const fixture = makeMcpFixture();
+    try {
+      const plan = await createProjectService(fixture.root).semanticPlan({ nodeIds: [IDS.a] });
+      expect(plan.data.reuse).toHaveLength(1);
+      expect(plan.data.reuse[0].displayName).toBe('Return local value');
+    } finally {
+      fixture.cleanup();
+    }
   });
 });
