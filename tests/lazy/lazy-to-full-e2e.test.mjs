@@ -148,6 +148,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
         nodeId: runNode.id,
         filePath: 'src/a.ts',
         summary: 'Runs the app entry point.',
+        displayName: 'Run app entry',
         tags: ['entrypoint'],
         semanticSourceHash: hashOf('src/a.ts'),
       }],
@@ -190,6 +191,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
         nodeId: helperNode.id,
         filePath: 'src/b.ts',
         summary: 'Says hi.',
+        displayName: 'Say hi',
         semanticSourceHash: hashOf('src/b.ts'),
       }],
     });

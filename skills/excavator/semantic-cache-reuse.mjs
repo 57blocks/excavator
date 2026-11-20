@@ -39,7 +39,7 @@ async function resolveCore(root) {
  *   semanticCache: { version: string, contentLanguage?: string, entries?: Record<string, object> },
  * }} args
  * @returns {{
- *   reuse: Array<{ nodeId: string, filePath: string, reason: 'fresh', summary: string, tags: string[] }>,
+ *   reuse: Array<{ nodeId: string, filePath: string, reason: 'fresh', summary: string, displayName: string, tags: string[] }>,
  *   generate: Array<{ nodeId: string, filePath: string, currentContentHash: string|null, reason: 'missing'|'stale'|'noncanonical-language' }>,
  *   unavailable: Array<{ nodeId: string, filePath: string|null, reason: 'unknown-node'|'path-not-in-manifest' }>,
  *   counts: { requested: number, reuse: number, generate: number, unavailable: number },
@@ -88,6 +88,7 @@ export function planSemanticCacheReuse({
         filePath,
         reason,
         summary: entry.summary,
+        displayName: entry.displayName,
         tags: Array.isArray(entry.tags) ? [...entry.tags] : [],
       });
       continue;

@@ -680,7 +680,7 @@ section instead of the node/edge construction rules above:
   own reading.
 - For each id, read the source at its `filePath`/`lineRange` and write ONE
   patch: `{"nodeId": "<copied verbatim from the list>", "summary": "...",
-  "tags": ["..."]}`. Do not invent a `nodeId` that is not in the list, and do
+  "displayName": "...", "tags": ["..."]}`. Do not invent a `nodeId` that is not in the list, and do
   not add a node, an edge, a layer, or any field this shape does not have — an
   unmappable `nodeId` becomes a semantic gap downstream, not a fact anchor,
   which means your invented id is simply discarded, not merged.
@@ -696,6 +696,36 @@ section instead of the node/edge construction rules above:
   changes (a flat patch list keyed by an existing id, instead of a
   self-contained node/edge graph).
 
+## Display Name
+
+Every node you write carries a `displayName`, in both output modes: a field of
+each patch in Semantic Patch Mode, a `displayName` (string) field of each
+GraphNode in the GraphNode mode. It is a short name a person can read in a list
+of nodes, written in the same read of the source as the `summary` and `tags`,
+not rewritten from the summary. It is required for every node, including a node
+whose `summary` is terse.
+
+This adds `displayName` to the Required fields for every node above: a GraphNode
+without it is incomplete. `name` stays the code name (the filename, or the
+function or class name) and is never replaced by the display name. The GraphNode
+examples above predate this field; every node you write has it all the same.
+
+Writing rules:
+
+- Write for a reader who does not read code: say what the node is or does in the
+  product, not how it does it.
+- Functions and methods get verb phrases (`Approve refund request`, `List
+  offices`). Files, classes and configuration get noun phrases (`Refund approval
+  list page`, `Billing service`).
+- 2 to 8 words, at most 60 characters, sentence case (a capital first letter,
+  the rest lower case except proper names), no full stop, one line.
+- When the code name is already a good name, reuse it: `approveRefund` becomes
+  `Approve refund`. Do not change a name only to make it different.
+- A purely technical node (a utility function, a build or tool configuration)
+  gets its technical name, written plainly (`Date formatting helper`), never an
+  invented business meaning: if the source shows no product purpose, the name
+  does not claim one.
+
 ## Canonical Storage Language
 
-Write every model-owned `summary`, `tags`, and `languageNotes` value in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim. This fixed storage rule overrides any earlier conditional language directive.
+Write every model-owned `summary`, `displayName`, `tags`, and `languageNotes` value in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim. This fixed storage rule overrides any earlier conditional language directive.

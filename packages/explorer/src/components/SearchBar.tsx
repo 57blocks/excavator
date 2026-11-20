@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
+import { nodeTitles } from "../excavator/nodeTitle";
 
 const typeBadgeColors: Record<string, string> = {
   file: "text-node-file border border-node-file/30 bg-node-file/10",
@@ -166,7 +167,12 @@ export default function SearchBar() {
 
                 {/* Node name */}
                 <span className="text-sm text-text-primary truncate flex-1">
-                  {node.name}
+                  {nodeTitles(node).title}
+                  {nodeTitles(node).subtitle !== null && (
+                    <span className="ml-2 text-[11px] font-mono text-text-muted">
+                      {nodeTitles(node).subtitle}
+                    </span>
+                  )}
                 </span>
 
                 {/* Relevance bar */}

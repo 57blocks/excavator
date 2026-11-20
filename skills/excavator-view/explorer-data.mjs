@@ -38,6 +38,7 @@
  * graph's facts) is merged into the graph by one rule
  * (openspec: changes/retire-view-html, spec report-viewer): a node's summary is its entry's when
  * that is not empty, empty when the entry was contradicted, else the node's own; its
+ * display name follows the summary's rule (entry's, else the node's own, empty when contradicted); its
  * tags are the entry's when there are any, else the node's own; its `verification` is the
  * entry's verdict when it has one (the copy shows it beside the summary); the semantic layers
  * replace the graph's when there is at least one. Entries for ids the graph lacks are
@@ -168,21 +169,31 @@ const CONTRADICTED = 'contradicted';
 const nonEmpty = (value) => typeof value === 'string' && value !== '';
 const tagList = (value) => (Array.isArray(value) ? value.filter((tag) => typeof tag === 'string') : []);
 
-/** One node's summary, tags and verdict after its semantic entry, entry first, then the node's own; no verdict when neither has one. */
+/** One node's summary, display name, tags and verdict after its semantic entry, entry first, then the node's own; no verdict when neither has one. */
 function mergedText(node, entry) {
   const ownSummary = nonEmpty(node.summary) ? node.summary : '';
+  const ownName = nonEmpty(node.displayName) ? node.displayName : '';
   const ownTags = tagList(node.tags);
   const entryTags = tagList(entry.tags);
   const tags = entryTags.length > 0 ? entryTags : ownTags;
   const verification = nonEmpty(entry.verification) ? entry.verification : nonEmpty(node.verification) ? node.verification : null;
   const verdict = verification === null ? {} : { verification };
-  if (verification === CONTRADICTED) return { summary: '', tags, ...verdict };
-  return { summary: nonEmpty(entry.summary) ? entry.summary : ownSummary, tags, ...verdict };
+  if (verification === CONTRADICTED) return { summary: '', displayName: '', tags, ...verdict };
+  return {
+    summary: nonEmpty(entry.summary) ? entry.summary : ownSummary,
+    displayName: nonEmpty(entry.displayName) ? entry.displayName : ownName,
+    tags,
+    ...verdict,
+  };
 }
 
-/** Blanks, in place, the summary of every node whose verdict is contradicted, whichever source the verdict came from. */
+/** Blanks, in place, the summary and displayName of every node whose verdict is contradicted, whichever source the verdict came from. */
 function blankContradicted(graph) {
-  for (const node of graph.nodes) if (node.verification === CONTRADICTED) node.summary = '';
+  for (const node of graph.nodes) {
+    if (node.verification !== CONTRADICTED) continue;
+    node.summary = '';
+    if ('displayName' in node) node.displayName = '';
+  }
 }
 
 /** Merges the semantic product into the graph in place; the row says what it gave. */

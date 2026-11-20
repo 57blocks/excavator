@@ -60,6 +60,7 @@ function pushString(fields, fieldPath, value) {
 function cacheFields(fields) {
   const out = [];
   pushString(out, 'summary', fields?.summary);
+  pushString(out, 'displayName', fields?.displayName);
   if (Array.isArray(fields?.tags)) {
     fields.tags.forEach((tag, index) => pushString(out, `tags[${index}]`, tag));
   }

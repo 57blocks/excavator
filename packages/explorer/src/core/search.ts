@@ -14,6 +14,8 @@ export interface SearchOptions {
 const FUSE_OPTIONS: IFuseOptions<GraphNode> = {
   keys: [
     { name: "name", weight: 0.4 },
+    // Excavator: the display name is searched like the code name.
+    { name: "displayName", weight: 0.4 },
     { name: "tags", weight: 0.3 },
     { name: "summary", weight: 0.2 },
     { name: "languageNotes", weight: 0.1 },

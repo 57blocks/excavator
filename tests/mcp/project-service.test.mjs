@@ -163,7 +163,7 @@ describe('shared deterministic project service', () => {
     const { fixture, service } = fixtureService();
     const beforeCache = fixture.readCacheBytes();
     const beforeGraph = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')));
-    const fields = { summary: 'New but redundant description.', tags: ['redundant'],
+    const fields = { summary: 'New but redundant description.', displayName: 'Redundant description', tags: ['redundant'],
       semanticSourceHash: fixture.manifest.entries.find((e) => e.path === 'src/same-a.ts').contentHash,
       model: 'caller', generatedAt: '2026-09-16T01:00:00.000Z' };
     const result = await service.semanticCommit({ nodeId: IDS.a, filePath: 'src/same-a.ts', fields });
@@ -175,7 +175,7 @@ describe('shared deterministic project service', () => {
   it('rejects forged node/path, stale hash, and Chinese model prose without changing facts', async () => {
     const { fixture, service } = fixtureService();
     const beforeGraph = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')));
-    const fields = { summary: 'Loads a local value.', tags: ['load'],
+    const fields = { summary: 'Loads a local value.', displayName: 'Load local value', tags: ['load'],
       semanticSourceHash: fixture.manifest.entries.find((e) => e.path === 'src/missing.ts').contentHash,
       model: 'caller', generatedAt: '2026-09-16T01:00:00.000Z' };
     expect((await service.semanticCommit({ nodeId: IDS.missing, filePath: 'src/same-a.ts', fields })).status).toBe('unavailable');

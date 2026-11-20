@@ -7,7 +7,7 @@
 //     manifestEntries: Array<{ path: string, contentHash: string }>,
 //     semanticCache: { version: string, contentLanguage?: string, entries: object },
 //   }) -> {
-//     reuse: Array<{ nodeId, filePath, reason: 'fresh', summary, tags }>,
+//     reuse: Array<{ nodeId, filePath, reason: 'fresh', summary, displayName, tags }>,
 //     generate: Array<{ nodeId, filePath, currentContentHash,
 //                       reason: 'missing'|'stale'|'noncanonical-language' }>,
 //     unavailable: Array<{ nodeId, filePath: string|null,
@@ -45,7 +45,7 @@ import { readKnowledgeGraph, writeKnowledgeGraph } from '../../skills/excavator/
 // Exact cache identity frozen by acceptance-oracle.md. Planner expectations
 // keep these fixture values explicit; the disk integration below separately
 // imports the existing writer to exercise its real CAS gate.
-const SEMANTIC_CACHE_VERSION = '2.0.0';
+const SEMANTIC_CACHE_VERSION = '3.0.0';
 const CANONICAL_CONTENT_LANGUAGE = 'en';
 const CLI_PATH = resolve(process.cwd(), 'skills/excavator/semantic-cache-reuse.mjs');
 
@@ -97,6 +97,7 @@ const SOURCE_BY_PATH = Object.freeze({
 function canonicalEntry(semanticSourceHash, overrides = {}) {
   const fields = {
     summary: 'Returns a local value.',
+    displayName: 'Return local value',
     tags: ['value'],
     semanticSourceHash,
     model: 'oracle-seed-model',
@@ -147,8 +148,8 @@ function makeFixture() {
 function expectedMatrix(fixture) {
   return {
     reuse: [
-      { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: fixture.semanticCache.entries[ID.A].summary, tags: ['value'] },
-      { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: fixture.semanticCache.entries[ID.B].summary, tags: ['value'] },
+      { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: fixture.semanticCache.entries[ID.A].summary, displayName: 'Return local value', tags: ['value'] },
+      { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: fixture.semanticCache.entries[ID.B].summary, displayName: 'Return local value', tags: ['value'] },
     ],
     generate: [
       { nodeId: ID.S, filePath: PATH.S, currentContentHash: H(SHARED_1), reason: 'stale' },
@@ -359,6 +360,7 @@ async function makeIntegrationProject({ seedNodeIds = [ID.A, ID.B, ID.S, ID.T] }
       filePath,
       fields: {
         summary,
+        displayName: 'Return local value',
         tags: ['local', 'value'],
         semanticSourceHash,
         model: 'integration-seed-model',
@@ -736,6 +738,7 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     const fixture = makeFixture();
     const misleadingFields = {
       summary: 'Sends an email before saving.',
+      displayName: 'Return local value',
       tags: ['email', 'save'],
       semanticSourceHash: H(SAME),
       model: 'oracle-misleading-model',
@@ -759,8 +762,8 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     });
     expect(plan).toEqual({
       reuse: [
-        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', tags: ['value'] },
-        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: misleadingFields.summary, tags: misleadingFields.tags },
+        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', displayName: 'Return local value', tags: ['value'] },
+        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: misleadingFields.summary, displayName: 'Return local value', tags: misleadingFields.tags },
       ],
       generate: [],
       unavailable: [],
@@ -811,6 +814,7 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     const beforeSha = sha(fixture.semanticCache);
     const generator = vi.fn(async (item) => ({
       summary: 'Loads a local value.',
+      displayName: 'Return local value',
       tags: ['value'],
       semanticSourceHash: item.currentContentHash,
       model: 'oracle-generated-model',
@@ -832,8 +836,8 @@ describe('semantic-cache reuse — future planner and simulated execution contra
     });
     expect(firstPlan).toEqual({
       reuse: [
-        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', tags: ['value'] },
-        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: 'Returns a local value.', tags: ['value'] },
+        { nodeId: ID.B, filePath: PATH.B, reason: 'fresh', summary: 'Returns a local value.', displayName: 'Return local value', tags: ['value'] },
+        { nodeId: ID.A, filePath: PATH.A, reason: 'fresh', summary: 'Returns a local value.', displayName: 'Return local value', tags: ['value'] },
       ],
       generate: [{ nodeId: ID.M, filePath: PATH.M, currentContentHash: H(LOAD), reason: 'missing' }],
       unavailable: [],
@@ -941,6 +945,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(evidence.nodeRangeHash).not.toBe(item.currentContentHash);
         return {
           summary: 'OwnerA.save returns 10 from its verified node-local range.',
+          displayName: 'Return local value',
           tags: ['OwnerA', 'save'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-range-model',
@@ -988,6 +993,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
           filePath: PATH.B,
           reason: 'fresh',
           summary: 'save returns one from the local source.',
+          displayName: 'Return local value',
           tags: ['local', 'value'],
         }],
         generate: [
@@ -1018,6 +1024,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(returnValue).toMatch(/^\d+$/);
         return {
           summary: `${owner}.save returns ${returnValue} from the verified local source.`,
+          displayName: 'Return local value',
           tags: [owner, 'save'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-generate-model',
@@ -1112,6 +1119,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
             filePath: PATH.B,
             reason: 'fresh',
             summary: 'save returns one from the local source.',
+            displayName: 'Return local value',
             tags: ['local', 'value'],
           },
           {
@@ -1119,6 +1127,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
             filePath: PATH.A,
             reason: 'fresh',
             summary: 'save returns one from the local source.',
+            displayName: 'Return local value',
             tags: ['local', 'value'],
           },
         ],
@@ -1149,6 +1158,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(evidence.source).toBe(LOAD);
         return {
           summary: 'load returns three from the verified local source.',
+          displayName: 'Return local value',
           tags: ['load', 'value'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-overlap-model',
@@ -1256,6 +1266,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
         expect(evidence.source).toContain('return 10');
         return {
           summary: 'OwnerA.save returns 10 from the verified local source.',
+          displayName: 'Return local value',
           tags: ['OwnerA', 'save'],
           semanticSourceHash: item.currentContentHash,
           model: 'integration-drift-model',
@@ -1362,7 +1373,7 @@ describe('/excavator-chat — reuse-before-generation runtime protocol', () => {
     expect(skill.match(/--node-id 'function:src\/article\.ts:favorite\(\)'/g)).toHaveLength(2);
     expect(skill).toContain('every needed id as a separate `--node-id` argument');
     expect(skill).toContain('Never concatenate ids into a command string, evaluate them as shell/code');
-    expect(skill).toContain('write the model-owned `summary` and `tags` in **English**');
+    expect(skill).toContain('write the model-owned `summary`, `displayName` and `tags` in **English**');
     expect(skill).toContain('semantic cache entry, summary, layer description, domain result, or English retrieval expression can select where to inspect, but is not evidence by itself');
     expect(skill).toContain('which calls `finalizeVerifiedAnswerLanguage` with `evidenceVerified: true`');
     expect(skill.indexOf('finalizeVerifiedAnswerLanguage')).toBeGreaterThan(
@@ -1413,6 +1424,7 @@ describe('semantic-cache reuse CLI — current disk inputs and zero writes', () 
         filePath: evilPath,
         reason: 'fresh',
         summary: 'Returns a local value.',
+        displayName: 'Return local value',
         tags: ['value'],
       }]);
       expect(firstPlan.counts).toEqual({ requested: 1, reuse: 1, generate: 0, unavailable: 0 });

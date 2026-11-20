@@ -369,7 +369,7 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.jsonl` does not
    // fill in nodeId -> filePath from the knowledge-graph nodes you already matched
    "
    ```
-   Only a hash-fresh entry's `summary`/`tags` text may feed retrieval — a stale or missing entry is simply not a candidate (never partially trusted).
+   Only a hash-fresh entry's `summary`/`displayName`/`tags` text may feed retrieval — a stale or missing entry is simply not a candidate (never partially trusted).
 5. Merge all four lists with `mergeCandidates` (weights an exact id/symbol/path match highest, then source-search, semantic-cache, BM25 — see `$PLUGIN_ROOT/skills/excavator/retrieve.mjs`'s own doc comment for the exact rationale), then keep the first 20 ranked candidates as the recall pool. Keep the other evidence locations available for direct source checking, but do not turn them into traversal seeds:
    ```bash
    node --input-type=module -e "
@@ -443,7 +443,7 @@ node "$PLUGIN_ROOT/skills/excavator/semantic-cache-reuse.mjs" "$PROJECT_ROOT" \
 The planner reads the current fact graph, source manifest, and semantic cache for this invocation, then returns `reuse[]`, `generate[]`, `unavailable[]`, and conserving `counts`:
 
 - `reuse[]` is seed/context only. Recheck current facts or source before using any related claim. Never send a reused node to the generator or semantic-cache writer, and never restamp or rewrite its entry.
-- `generate[]` is the only semantic generation loop. Treat each generate item as frozen for this turn. For each item, first read the containing file's complete bytes and confirm their SHA-256 equals that item's `currentContentHash`; this whole-file comparison is the file-level freshness authority. If it does not match, stop processing that item and re-plan. Once it matches, keep that verified file snapshot fixed and extract the node's full local source range from the same snapshot using its `filePath`/`lineRange` in `knowledge-graph.jsonl` (a file node uses the whole file). Do not compare a node-range hash to `currentContentHash` and do not reread a different snapshot for generation. Then write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
+- `generate[]` is the only semantic generation loop. Treat each generate item as frozen for this turn. For each item, first read the containing file's complete bytes and confirm their SHA-256 equals that item's `currentContentHash`; this whole-file comparison is the file-level freshness authority. If it does not match, stop processing that item and re-plan. Once it matches, keep that verified file snapshot fixed and extract the node's full local source range from the same snapshot using its `filePath`/`lineRange` in `knowledge-graph.jsonl` (a file node uses the whole file). Do not compare a node-range hash to `currentContentHash` and do not reread a different snapshot for generation. Then write the model-owned `summary`, `displayName` and `tags` in **English**, regardless of the user's question language. The `displayName` is a short name for a reader who does not read code: what the node is or does in the product, not how; a verb phrase for a function or method (`Approve refund request`), a noun phrase for a file, class or configuration (`Billing service`); 2 to 8 words, at most 60 characters, sentence case, no full stop; reuse the code name when it is already a good name; a purely technical node gets its technical name, never an invented business meaning. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
 - `unavailable[]` is a visible degraded result. Report each unavailable node id and its `unknown-node` or `path-not-in-manifest` reason; never generate or write semantics for it.
 
 An all-fresh plan means zero generator calls, zero semantic-cache writer calls, and a byte-identical `semantic-cache.json`, including every existing entry's model, `generatedAt`, and audit. For an overlapping question, preserve every `reuse[]` intersection entry byte-for-byte and generate/commit only the `generate[]` difference. A repeated plan after that commit should reuse the newly fresh entries without another write.
@@ -468,6 +468,7 @@ const result = await commitSemanticCacheEntry({
   onlyIfNotFresh: true,
   fields: {
     summary: '<one paragraph about ONLY this node\'s own responsibility>',
+    displayName: '<2 to 8 words, at most 60 characters, no full stop>',
     tags: ['<short local tags>'],
     semanticSourceHash: plannedSemanticSourceHash,
     model: '<this model id>',
@@ -478,7 +479,7 @@ console.log(JSON.stringify(result));
 "
 ```
 
-`result.ok === false` (noncanonical language, a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the verified summary generated for THIS answer remains available for this answer, but the cache entry was not committed. Recheck or qualify affected claims if current evidence moved after planning.
+`result.ok === false` (noncanonical language, a missing or malformed `displayName`, a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the verified summary generated for THIS answer remains available for this answer, but the cache entry was not committed. Recheck or qualify affected claims if current evidence moved after planning.
 
 **(d) Seeds are re-verified before they enter the answer.** A semantic-cache or domain hit from step (b)/(c) only ever SEEDS which nodes/files to look at — it is never itself the evidence for a claim in the final answer. Before a conclusion derived from such a hit goes into the answer, re-check it against the fact graph's edges/nodes or the current source text (via SourceSnapshot/Grep on the project root). If it does not hold up, drop or qualify the claim; do not present an unverified cached seed as a checked fact. Once this and the global **Evidence verification gate** are complete, the **Answer language** command of step 8 selects the answer language; never choose it early merely because retrieval used English expressions.
 

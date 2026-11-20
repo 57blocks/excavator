@@ -142,13 +142,13 @@ export function factGraphJsonl({ factsDigest, nodes }) {
 }
 
 /** A semantic-cache entry with the language audit the writer records, so the plugin's own gate accepts it. */
-export function semanticEntry({ summary, tags = [], semanticSourceHash, verification }) {
-  const fields = { summary, tags, semanticSourceHash, ...(verification === undefined ? {} : { verification }) };
+export function semanticEntry({ summary, displayName = 'Fixture node', tags = [], semanticSourceHash, verification }) {
+  const fields = { summary, displayName, tags, semanticSourceHash, ...(verification === undefined ? {} : { verification }) };
   return { ...fields, languageAudit: auditSemanticCacheFields({ fields }) };
 }
 
 export function semanticCache(entries, extra = {}) {
-  return { version: '2.0.0', contentLanguage: 'en', entries, ...extra };
+  return { version: '3.0.0', contentLanguage: 'en', entries, ...extra };
 }
 
 export function semanticGraph({ factDigest, layers = [], extra = {} }) {

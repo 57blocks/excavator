@@ -6,7 +6,7 @@
  * one model pass:
  *
  *   prepare — pick the nodes whose summaries are checkable, cut them into
- *             batches of `{id, filePath, lineRange, summary}`, and write a
+ *             batches of `{id, filePath, lineRange, summary, displayName}`, and write a
  *             manifest that records HOW they were picked (`full` or
  *             `sample:<n>`). Nodes whose `filePath` escapes the project root
  *             are refused here and counted: the batch is a read instruction
@@ -227,6 +227,7 @@ export function prepareVerification({ graph, sample = null, batchSize = DEFAULT_
       filePath: node.filePath,
       lineRange: [node.lineRange[0], node.lineRange[1]],
       summary: node.summary,
+      displayName: typeof node.displayName === 'string' ? node.displayName : '',
     });
   }
 
@@ -349,6 +350,7 @@ export function prepareSemanticVerification({
       filePath: node.filePath,
       lineRange: [node.lineRange[0], node.lineRange[1]],
       summary: entry.summary,
+      displayName: typeof entry.displayName === 'string' ? entry.displayName : '',
     });
   }
 

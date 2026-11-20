@@ -55,7 +55,7 @@ describe('apply-semantic-patches.mjs', () => {
     const { committed, total, gaps } = await applySemanticPatches({
       projectRoot: root,
       factNodeIds,
-      patches: [{ nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs the fixture.', tags: ['entrypoint'], semanticSourceHash: hash }],
+      patches: [{ nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs the fixture.', displayName: 'Run the fixture', tags: ['entrypoint'], semanticSourceHash: hash }],
     });
 
     expect(total).toBe(1);
@@ -104,7 +104,7 @@ describe('apply-semantic-patches.mjs', () => {
       projectRoot: root,
       factNodeIds,
       patches: [
-        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'ok', semanticSourceHash: hash },
+        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'ok', displayName: 'Run fixture', semanticSourceHash: hash },
         { nodeId: 'function:src/a.ts:ghost', filePath: 'src/a.ts', summary: 'nope', semanticSourceHash: hash },
       ],
     });

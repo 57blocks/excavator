@@ -432,6 +432,7 @@ export const GraphNodeSchema = z.object({
   filePath: z.string().optional(),
   lineRange: z.tuple([z.number(), z.number()]).optional(),
   summary: z.string(),
+  displayName: z.string().optional(),
   tags: z.array(z.string()),
   complexity: z.enum(["simple", "moderate", "complex"]),
   languageNotes: z.string().optional(),

@@ -154,6 +154,7 @@ async function main() {
             filePath: commitCandidate.filePath,
             fields: {
               summary: `${SMOKE_TAG} runner-image mcp-smoke wrote this entry; safe to ignore or delete.`,
+              displayName: 'Runner image smoke entry',
               tags: ['smoke-test'],
               semanticSourceHash: commitCandidate.semanticSourceHash,
               model: 'excavator-runner-image-smoke',

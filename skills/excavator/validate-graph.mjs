@@ -72,6 +72,7 @@ import { basename, dirname, extname, isAbsolute, join, resolve, sep } from 'node
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { compareGaps } from './coverage-ledger.mjs';
+import { checkDisplayName } from './semantic-cache.mjs';
 import { readKnowledgeGraph, writeKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -824,6 +825,14 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: 
     if (!node.name) issues.push(`Node[${i}] '${node.id}' missing name`);
     if (typeof node.summary !== 'string') issues.push(`Node[${i}] '${node.id}' missing summary`);
     if (!Array.isArray(node.tags)) issues.push(`Node[${i}] '${node.id}' missing tags`);
+    // This path does not pass the semantic-cache commit gate, so the name is checked here: a
+    // malformed one is an issue, an absent one only a warning (older graphs have none).
+    const displayNameCheck = checkDisplayName(node.displayName);
+    if (displayNameCheck === 'display-name-shape') {
+      issues.push(`Node[${i}] '${node.id}' displayName is malformed (${displayNameCheck})`);
+    } else if (displayNameCheck === 'display-name-missing' && typeof node.summary === 'string' && node.summary.trim() !== '') {
+      warnings.push(`Node '${node.id}' has a summary but no displayName (${displayNameCheck})`);
+    }
     if (seenIds.has(node.id)) {
       issues.push(`Duplicate node ID '${node.id}' at indices ${seenIds.get(node.id)} and ${i}`);
     } else {

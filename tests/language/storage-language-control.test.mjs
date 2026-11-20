@@ -23,13 +23,13 @@ describe('/excavator has one canonical semantic storage language', () => {
 
   it('requires English at every code semantic generation dispatch', () => {
     expect(skill).toContain('Write every model-owned project description in English');
-    expect(skill).toContain('Write every model-owned `summary`, `tags`, and `languageNotes` value in English');
+    expect(skill).toContain('Write every model-owned `summary`, `displayName`, `tags`, and `languageNotes` value in English');
     expect(skill).toContain('Write every model-owned layer name and description in English');
 
     expect(read('agents/excavator-project-scanner.md'))
       .toContain('Write the model-owned project description in English');
     expect(read('agents/excavator-file-analyzer.md'))
-      .toContain('Write every model-owned `summary`, `tags`, and `languageNotes` value in English');
+      .toContain('Write every model-owned `summary`, `displayName`, `tags`, and `languageNotes` value in English');
     expect(read('agents/excavator-architecture-analyzer.md'))
       .toContain('Write every model-owned layer `name` and `description` in English');
     expect(read('agents/excavator-domain-analyzer.md'))

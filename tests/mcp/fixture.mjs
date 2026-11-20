@@ -29,6 +29,7 @@ const FILES = Object.freeze({
 function entry(contentHash, summary = 'Returns a local value.') {
   const fields = {
     summary,
+    displayName: 'Return local value',
     tags: ['value'],
     semanticSourceHash: contentHash,
     model: 'fixture-host',
@@ -63,7 +64,7 @@ export function makeMcpFixture({ escapedDataDir = false } = {}) {
   const noncanonical = entry(hashByPath.get('src/noncanonical.ts'));
   noncanonical.summary = '\u79fb\u9664\u672c\u5730\u6761\u76ee\u3002';
   const cache = {
-    version: '2.0.0',
+    version: '3.0.0',
     contentLanguage: 'en',
     entries: {
       [IDS.a]: entry(hashByPath.get('src/same-a.ts')),

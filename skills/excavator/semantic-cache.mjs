@@ -60,7 +60,7 @@ import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-stor
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
 
-export const SEMANTIC_CACHE_VERSION = '2.0.0';
+export const SEMANTIC_CACHE_VERSION = '3.0.0';
 export const CANONICAL_CONTENT_LANGUAGE = 'en';
 export const SEMANTIC_CACHE_FILE = 'semantic-cache.json';
 export const SEMANTIC_LOCK_FILE = 'semantic.lock';
@@ -80,8 +80,13 @@ export const DEFAULT_LOCK_TTL_MS = 30_000;
  *  verdict beside the cached summary it checked, without ever touching
  *  `knowledge-graph.jsonl`. */
 export const CACHEABLE_FIELDS = Object.freeze([
-  'summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification',
+  'summary', 'displayName', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification',
 ]);
+
+/** The fields a semantic writer (Full patches, Chat, MCP `semantic_commit`) may send. `verification`
+ *  is left out: it is the Summary-Verifier's verdict, written only by `apply-verification`, and
+ *  `commitSemanticCacheEntry` rejects it, so a writer cannot mark its own summary checked. */
+export const WRITER_FIELDS = Object.freeze(CACHEABLE_FIELDS.filter((key) => key !== 'verification'));
 
 const REAL_FS = Object.freeze({
   existsSync, mkdirSync, readFileSync, writeFileSync, renameSync,
@@ -216,6 +221,27 @@ export async function currentSourceHashFor(projectRoot, filePath, { fsImpl = REA
 // Field whitelist.
 // ---------------------------------------------------------------------------
 
+export const DISPLAY_NAME_MAX_CHARS = 60;
+export const DISPLAY_NAME_MIN_WORDS = 2;
+export const DISPLAY_NAME_MAX_WORDS = 8;
+
+/**
+ * Shape check for a node's `displayName`: a string, non-empty after trimming,
+ * single line, at most 60 characters, 2 to 8 whitespace-separated words.
+ * @param {unknown} value
+ * @returns {'ok'|'display-name-missing'|'display-name-shape'}
+ */
+export function checkDisplayName(value) {
+  if (value === undefined || value === null) return 'display-name-missing';
+  if (typeof value !== 'string') return 'display-name-shape';
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > DISPLAY_NAME_MAX_CHARS) return 'display-name-shape';
+  if (/[\r\n]/.test(value)) return 'display-name-shape';
+  const words = trimmed.split(/\s+/).length;
+  if (words < DISPLAY_NAME_MIN_WORDS || words > DISPLAY_NAME_MAX_WORDS) return 'display-name-shape';
+  return 'ok';
+}
+
 /** @param {object} fields @returns {{ ok: boolean, rejectedFields: string[] }} */
 export function validateCacheableFields(fields) {
   const keys = Object.keys(fields ?? {});
@@ -229,6 +255,9 @@ export function validateCacheableFields(fields) {
     && !rejectedFields.includes('tags')
   ) {
     rejectedFields.push('tags');
+  }
+  if (checkDisplayName(fields?.displayName) !== 'ok' && !rejectedFields.includes('displayName')) {
+    rejectedFields.push('displayName');
   }
   return { ok: rejectedFields.length === 0, rejectedFields };
 }
@@ -339,7 +368,7 @@ function atomicWriteJson(finalPath, data, fsImpl) {
  *   maxLockAttempts?: number, fsImpl?: object,
  * }} args
  * @returns {Promise<{ ok: boolean, status: string, [key: string]: any }>}
- *   `status` is one of: 'committed' | 'rejected-fields' | 'noncanonical-language' | 'missing-source-hash'
+ *   `status` is one of: 'committed' | 'rejected-fields' | 'display-name-missing' | 'display-name-shape' | 'noncanonical-language' | 'missing-source-hash'
  *   | 'invalid-args' | 'lock-held' | 'manifest-missing' | 'path-not-in-manifest'
  *   | 'stale-hash' | 'node-path-mismatch' | 'graph-missing' | 'already-fresh' | 'io-error'.
  */
@@ -368,8 +397,20 @@ export async function commitSemanticCacheEntry({
     // Field whitelist — checked before touching the lock at all: a rejected
     // write is a no-op, not a partially-started one.
     const validation = validateCacheableFields(fields);
-    if (!validation.ok) {
+    // A writer never sends the Summary-Verifier's verdict (apply-verification writes it
+    // separately), so no writer can mark its own summary and name verified.
+    const verifierOwned = Object.keys(fields ?? {}).filter((key) => CACHEABLE_FIELDS.includes(key) && !WRITER_FIELDS.includes(key));
+    if (verifierOwned.length) {
+      return { ok: false, status: 'rejected-fields', rejectedFields: [...validation.rejectedFields, ...verifierOwned] };
+    }
+    const displayNameStatus = checkDisplayName(fields?.displayName);
+    const onlyDisplayNameBad = validation.rejectedFields.length === 1
+      && validation.rejectedFields[0] === 'displayName';
+    if (!validation.ok && !(onlyDisplayNameBad && displayNameStatus !== 'ok')) {
       return { ok: false, status: 'rejected-fields', rejectedFields: validation.rejectedFields };
+    }
+    if (displayNameStatus !== 'ok') {
+      return { ok: false, status: displayNameStatus, rejectedFields: ['displayName'] };
     }
     let languageAudit = auditSemanticCacheFields({ fields });
     if (!isAcceptedLanguageAudit(languageAudit)) {

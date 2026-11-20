@@ -66,11 +66,11 @@ describe('semantics product', () => {
     expect(payloadIds(packed)).toEqual(['knowledge-graph']);
   });
 
-  it('inlines fresh entries with only id, summary, tags and verification, and notes that it records no revision', () => {
+  it('inlines fresh entries with only id, summary, tags, displayName and verification, and notes that it records no revision', () => {
     writeFull({
       entries: {
-        'file:src/a.js': { summary: 'Entry point of the app.', tags: ['entry'], semanticSourceHash: HASH_A, verification: 'verified' },
-        'function:src/b.js:load': { summary: 'Loads the data.', tags: ['io', 'data'], semanticSourceHash: HASH_B },
+        'file:src/a.js': { summary: 'Entry point of the app.', displayName: 'App entry point', tags: ['entry'], semanticSourceHash: HASH_A, verification: 'verified' },
+        'function:src/b.js:load': { summary: 'Loads the data.', displayName: 'Load the data', tags: ['io', 'data'], semanticSourceHash: HASH_B },
       },
       layers: [{ id: 'layer:core', name: 'Core', description: 'The core.', nodeIds: ['file:src/a.js', 'file:src/b.js'] }],
     });
@@ -79,8 +79,8 @@ describe('semantics product', () => {
     expect(payloadIds(packed)).toEqual(['knowledge-graph', 'semantics']);
     expect(payloadOf(packed)).toEqual({
       entries: [
-        { id: 'file:src/a.js', summary: 'Entry point of the app.', tags: ['entry'], verification: 'verified' },
-        { id: 'function:src/b.js:load', summary: 'Loads the data.', tags: ['io', 'data'] },
+        { id: 'file:src/a.js', summary: 'Entry point of the app.', tags: ['entry'], displayName: 'App entry point', verification: 'verified' },
+        { id: 'function:src/b.js:load', summary: 'Loads the data.', tags: ['io', 'data'], displayName: 'Load the data' },
       ],
       layers: [{ id: 'layer:core', name: 'Core', description: 'The core.', nodeIds: ['file:src/a.js', 'file:src/b.js'] }],
     });
@@ -113,14 +113,17 @@ describe('semantics product', () => {
   it('keeps a contradicted entry\'s verdict and blanks its summary, so the text is nowhere in the page', () => {
     writeFull({
       entries: {
-        'function:src/a.js:run': { summary: CONTRADICTED_TEXT, tags: ['network'], semanticSourceHash: HASH_A, verification: 'contradicted' },
+        'function:src/a.js:run': { summary: CONTRADICTED_TEXT, displayName: 'Open billing socket', tags: ['network'], semanticSourceHash: HASH_A, verification: 'contradicted' },
         'file:src/a.js': { summary: 'Entry point.', semanticSourceHash: HASH_A, verification: 'verified' },
       },
     });
     const packed = pack();
-    expect(payloadOf(packed).entries.find((e) => e.id === 'function:src/a.js:run')).toEqual({ id: 'function:src/a.js:run', summary: '', tags: ['network'], verification: 'contradicted' });
+    expect(payloadOf(packed).entries.find((e) => e.id === 'function:src/a.js:run')).toEqual({ id: 'function:src/a.js:run', summary: '', tags: ['network'], displayName: '', verification: 'contradicted' });
+    expect(payloadText(packed, 'semantics')).not.toContain('Open billing socket');
     expect(pageContent(packed.html)).not.toContain(CONTRADICTED_TEXT);
     expect(payloadText(packed, 'semantics')).not.toContain(CONTRADICTED_TEXT);
+    expect(payloadText(packed, 'semantics')).not.toContain('Open billing socket');
+    expect(pageContent(packed.html)).not.toContain('Open billing socket');
   });
 
   it('counts the inlined entries by verdict, with no verdict as unchecked, and the layers', () => {
