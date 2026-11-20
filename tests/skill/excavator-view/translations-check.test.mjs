@@ -48,15 +48,15 @@ const PASSING = ['Billing', 'Run `make build`', 'pick', 'receipt', 'validate'];
 const FAILING = DISPLAYED.filter((name) => !PASSING.includes(name));
 
 describe('one result file, each reason', () => {
-  it('puts each bad answer under its reason, keeps it out of the table, merges the good ones, and reports an extra key once', () => {
+  it('puts each bad answer under its reason, keeps it out of the table and merges the good ones', () => {
     const planned = plan();
-    answerBatch(planned.json.batches[0], (en) => ANSWERS[en], { 99: 'stray' });
+    answerBatch(planned.json.batches[0], (en) => ANSWERS[en]);
     const run = check();
     expect(run.status).toBe(0);
     expect(run.json.language).toBe('fr');
     expect(run.json.merged).toBe(PASSING.length);
     expect(run.json.failed).toEqual({
-      'missing-key': 1, empty: 1, 'lost-code-token': 2, 'multi-line': 1, 'too-long': 1, 'not-string': 1, 'extra-key': 1,
+      'missing-key': 1, empty: 1, 'lost-code-token': 2, 'multi-line': 1, 'too-long': 1, 'not-string': 1,
     });
     expect(run.json.finalEnglish).toBe(0);
     expect(merged()).toEqual([...PASSING].sort());
@@ -152,6 +152,32 @@ describe('one result file, each reason', () => {
   });
 });
 
+describe('a key the batch lacks', () => {
+  it('fails every item of the batch with extra-key and merges nothing of it', () => {
+    const planned = plan();
+    answerBatch(planned.json.batches[0], (en) => `${en} fr`, { 99: 'stray' });
+    const run = check();
+    expect(run.json.merged).toBe(0);
+    expect(run.json.failed).toEqual({ 'extra-key': DISPLAYED.length });
+    expect(existsSync(tablePath(pageDir(), 'fr'))).toBe(false);
+    expect(readBatch(run.json.retry[0]).items.map((item) => item.en)).toEqual(DISPLAYED);
+  });
+
+  it('fails a shifted numbering even when every text would pass', () => {
+    const planned = plan();
+    const batch = readBatch(planned.json.batches[0]);
+    const shifted = {};
+    batch.items.forEach((item, i) => {
+      shifted[String(i)] = `${item.en} fr`;
+    });
+    writeFileSync(planned.json.batches[0].result, JSON.stringify(shifted));
+    const run = check();
+    expect(run.json.merged).toBe(0);
+    expect(run.json.failed).toEqual({ 'extra-key': DISPLAYED.length });
+    expect(existsSync(tablePath(pageDir(), 'fr'))).toBe(false);
+  });
+});
+
 describe('the second round', () => {
   it('writes the failures as round-2 batch files, numbered after the existing ones, and prints them as retry', () => {
     const planned = plan();
@@ -201,6 +227,8 @@ describe('the second round', () => {
     expect(second.json.failed).toEqual({ 'no-result': FAILING.length });
     expect(second.json.finalEnglish).toBe(FAILING.length);
     expect(existsSync(workDir(pageDir(), 'fr'))).toBe(false);
+    // no-result is not a refusal: a later plan lists those names again.
+    expect(plan().json.missing).toBe(FAILING.length);
   });
 
   it('deletes the work directory at once when every answer passes', () => {
@@ -239,17 +267,27 @@ describe('refusals are remembered', () => {
     expect(existsSync(workDir(pageDir(), 'fr'))).toBe(false);
   });
 
-  it('records a round-2 no-result under its own reason', () => {
+  it('does not record a round-2 no-result as a refusal; the name is listed again by the next plan', () => {
     const planned = plan();
-    answerBatch(planned.json.batches[0], () => 'x');
-    check(); // round 1: 'x' fails the code-token and length rules for some names, passes for others
+    answerBatch(planned.json.batches[0], (en) => (en === 'Billing' ? 'Facturation' : undefined));
+    check();
     const before = Object.keys(table().entries).length;
     const second = check(); // round 2 is never answered
-    expect(second.json.failed['no-result']).toBeGreaterThan(0);
-    const refused = Object.values(table().entries).filter((entry) => entry.refused !== undefined);
-    expect(refused).toHaveLength(second.json.finalEnglish);
-    expect(refused.every((entry) => entry.refused === 'no-result' && entry.text === undefined)).toBe(true);
-    expect(Object.keys(table().entries).length).toBe(before + refused.length);
+    expect(second.json.failed['no-result']).toBe(DISPLAYED.length - 1);
+    expect(Object.values(table().entries).filter((entry) => entry.refused !== undefined)).toEqual([]);
+    expect(Object.keys(table().entries).length).toBe(before);
+    expect(plan().json.missing).toBe(DISPLAYED.length - 1);
+  });
+
+  it('still records every other round-2 reason as refused, beside a no-result that is not', () => {
+    const planned = plan();
+    answerBatch(planned.json.batches[0], () => undefined);
+    const first = check();
+    answerBatch(first.json.retry[0], (en) => (en === 'Billing' ? '' : en === 'pick' ? 'Choisir' : undefined)); // empty; passes; the rest missing-key
+    const second = check();
+    expect(second.json.failed).toEqual({ empty: 1, 'missing-key': DISPLAYED.length - 2 });
+    expect(table().entries[sha256('Billing')]).toEqual({ en: 'Billing', refused: 'empty' });
+    expect(Object.values(table().entries).filter((entry) => entry.refused === 'missing-key')).toHaveLength(DISPLAYED.length - 2);
   });
 
   it('does not record a round-1 failure as a refusal', () => {

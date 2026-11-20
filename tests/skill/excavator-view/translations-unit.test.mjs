@@ -15,7 +15,7 @@ import { writeTemplate } from './plugin-fixture.mjs';
 import { DISPLAYED, sha256, writeTranslatableProducts } from './translation-fixture.mjs';
 
 describe('normalizeLanguage', () => {
-  it.each(['en', 'EN', ' english ', 'English', 'en-GB', 'en-us', 'EN-AU'])('%j is English', (raw) => {
+  it.each(['en', 'EN', ' english ', 'English', 'en-GB', 'en-us', 'EN-AU', 'en_US', 'EN_gb'])('%j is English', (raw) => {
     expect(normalizeLanguage(raw)).toEqual({ english: true });
   });
 
@@ -54,6 +54,19 @@ describe('hashName and codeTokens', () => {
     expect(codeTokens('Update Header values')).toEqual([]);
     expect(codeTokens('Update HEADER values')).toEqual(['HEADER']); // two capitals in a row make any word a code token
     expect(codeTokens('Posting a message')).toEqual([]);
+  });
+
+  it('treats identifiers joined by underscore or dot as one code token', () => {
+    expect(codeTokens('Read user_id')).toEqual(['user_id']);
+    expect(codeTokens('Upgrade to payment_v2')).toEqual(['payment_v2']);
+    expect(codeTokens('Load config.yaml now')).toEqual(['config.yaml']);
+    expect(codeTokens('Sign in to Node.js')).toEqual(['Node.js']);
+    expect(codeTokens('Sign in to Node.js.')).toEqual(['Node.js']);
+    expect(codeTokens('Sign in.')).toEqual([]);
+  });
+
+  it('still splits at hyphens', () => {
+    expect(codeTokens('Sign-in page')).toEqual([]);
   });
 
   it('lists each token once', () => {
