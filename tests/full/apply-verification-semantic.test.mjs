@@ -80,6 +80,24 @@ describe('apply-verification.mjs — prepareSemanticVerification', () => {
   });
 });
 
+describe('apply-verification.mjs — displayName in the verifier batch', () => {
+  it('carries each candidate\'s displayName beside its summary', () => {
+    const factNodes = [
+      { id: 'function:a.ts:run', filePath: 'a.ts', lineRange: [1, 3] },
+      { id: 'function:a.ts:stop', filePath: 'a.ts', lineRange: [5, 7] },
+    ];
+    const semanticCache = { entries: {
+      'function:a.ts:run': { summary: 'Runs things.', displayName: 'Run the job', semanticSourceHash: 'h1' },
+      'function:a.ts:stop': { summary: 'Stops things.', displayName: 'Stop the job', semanticSourceHash: 'h1' },
+    } };
+    const { batches } = prepareSemanticVerification({ factNodes, semanticCache, classifyPath: okClassifier });
+    const candidates = batches.flatMap((batch) => batch.nodes);
+    expect(candidates).toHaveLength(2);
+    for (const candidate of candidates) expect(candidate).toHaveProperty('displayName');
+    expect(candidates.find((c) => c.id === 'function:a.ts:run').displayName).toBe('Run the job');
+  });
+});
+
 describe('apply-verification.mjs — applySemanticVerification', () => {
   it('writes verdicts into semantic-cache entries, never into a knowledge-graph node', () => {
     const semanticCache = {

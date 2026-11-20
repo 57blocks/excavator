@@ -70,6 +70,14 @@ function gapOf(graph, kind) {
   return (graph.gaps ?? []).find(g => g.kind === kind);
 }
 
+describe('apply-verification graph-mode batch', () => {
+  it('carries a node\'s displayName into the candidate', () => {
+    const graph = graphOf([node('function:src/app.ts:a', { displayName: 'Do the thing' })]);
+    const { batches } = prepareVerification({ graph, classifyPath: allOk });
+    expect(batches[0].nodes[0]).toMatchObject({ id: 'function:src/app.ts:a', displayName: 'Do the thing' });
+  });
+});
+
 describe('apply-verification fails closed', () => {
   it('marks nothing verified when no verdicts came back', () => {
     const graph = graphOf([node('function:src/app.ts:a'), node('function:src/app.ts:b')]);
