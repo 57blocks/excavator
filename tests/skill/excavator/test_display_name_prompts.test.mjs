@@ -46,6 +46,13 @@ describe('excavator-file-analyzer writes displayName', () => {
     expect(nodeMode).toContain('`displayName` (string)');
   });
 
+  it('adds displayName to the required node fields and the examples written above it', () => {
+    const section = analyzer.slice(analyzer.indexOf('## Display Name'));
+    expect(section).toContain('adds `displayName` to the Required fields for every node above');
+    expect(section).toContain('`name` stays the code name');
+    expect(section).toContain('The GraphNode examples above predate this field');
+  });
+
   it('puts displayName under the canonical storage language', () => {
     expect(analyzer).toContain('Write every model-owned `summary`, `displayName`, `tags`, and `languageNotes` value in English');
   });

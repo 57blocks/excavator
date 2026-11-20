@@ -705,6 +705,11 @@ of nodes, written in the same read of the source as the `summary` and `tags`,
 not rewritten from the summary. It is required for every node, including a node
 whose `summary` is terse.
 
+This adds `displayName` to the Required fields for every node above: a GraphNode
+without it is incomplete. `name` stays the code name (the filename, or the
+function or class name) and is never replaced by the display name. The GraphNode
+examples above predate this field; every node you write has it all the same.
+
 Writing rules:
 
 - Write for a reader who does not read code: say what the node is or does in the
