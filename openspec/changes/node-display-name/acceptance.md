@@ -54,3 +54,7 @@
 - 文件分析器的节点字段清单在冻结的上游前缀里，不能改；追加的 Display Name 一节写明它把 `displayName` 加进必填字段、`name` 仍是代码名。
 
 变异：调用方结论放行、写入字段含 `verification`、复用行丢名称、recall 不读名称，4 处全部至少使一条用例变红。受影响范围 164 个文件、3,531 条用例通过。
+
+## 评审第二轮之后
+
+评审（0 Important、0 Nit、1 Pre-existing）指出 Chat 直接调用 `commitSemanticCacheEntry`，仍能带上自己的 `verification`。核对改到这个提交函数里：带 `verification` 的写入整条拒绝为 `rejected-fields`，覆盖 Full 补丁、MCP 与 Chat；读取已存条目的校验不变（已存条目合法地带着核验结论）。先写的用例在改动前为红；去掉这处核对的变异使 2 条用例变红。受影响范围 164 个文件、3,532 条用例通过。
