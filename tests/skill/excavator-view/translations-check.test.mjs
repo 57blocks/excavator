@@ -279,7 +279,7 @@ describe('refusals are remembered', () => {
     expect(plan().json.missing).toBe(DISPLAYED.length - 1);
   });
 
-  it('still records every other round-2 reason as refused, beside a no-result that is not', () => {
+  it('records only a checked text as refused: empty is recorded, missing-key is not and is listed again', () => {
     const planned = plan();
     answerBatch(planned.json.batches[0], () => undefined);
     const first = check();
@@ -287,7 +287,24 @@ describe('refusals are remembered', () => {
     const second = check();
     expect(second.json.failed).toEqual({ empty: 1, 'missing-key': DISPLAYED.length - 2 });
     expect(table().entries[sha256('Billing')]).toEqual({ en: 'Billing', refused: 'empty' });
-    expect(Object.values(table().entries).filter((entry) => entry.refused === 'missing-key')).toHaveLength(DISPLAYED.length - 2);
+    expect(Object.values(table().entries).filter((entry) => entry.refused !== undefined)).toHaveLength(1);
+    expect(plan().json.missing).toBe(DISPLAYED.length - 2);
+  });
+
+  it('does not record a round-2 extra-key failure: the whole batch is listed again by the next plan', () => {
+    const planned = plan();
+    answerBatch(planned.json.batches[0], () => undefined);
+    const first = check();
+    const batch = readBatch(first.json.retry[0]);
+    const shifted = {};
+    batch.items.forEach((item, i) => {
+      shifted[String(i)] = `${item.en} fr`;
+    });
+    writeFileSync(first.json.retry[0].result, JSON.stringify(shifted));
+    const second = check();
+    expect(second.json.failed).toEqual({ 'extra-key': DISPLAYED.length });
+    expect(existsSync(tablePath(pageDir(), 'fr'))).toBe(false); // nothing passed, nothing refused: no table
+    expect(plan().json.missing).toBe(DISPLAYED.length);
   });
 
   it('does not record a round-1 failure as a refusal', () => {

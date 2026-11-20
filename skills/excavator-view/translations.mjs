@@ -22,7 +22,8 @@
  * length plus 10), lost-code-token (a code token of the English is not in the text) or, for a result file that is absent
  * or not a JSON object, no-result. A key the batch does not have fails every item of that batch with extra-key and nothing of it is merged. Passing items are merged into the table. Round-1 failures are written as round-2 batch files; round-2 failures
  * are final and stay English: the table records each as { en, refused: <reason> } so a later `plan` does not list it,
- * except no-result, which is not recorded and is listed again.
+ * but only when the reason judges a written text (CHECKED_TEXT_REASONS); no-result, extra-key and missing-key are not
+ * recorded and the name is listed again.
  * Batch items carry `keep` (the English's code tokens); `check` computes the tokens itself and ignores it. When nothing is left to retry the work directory is deleted.
  *
  * English (`en`, `english`, `en-*`, `en_*`) prints {"language":"en","english":true} and touches no file.
@@ -137,6 +138,9 @@ export function planTranslations({ root: rootArg, language, out = null }) {
   return { language: lang.name, english: false, total: names.length, missing: missing.length, batches };
 }
 
+/** The reasons that judge a written text; only these are recorded as refusals. */
+const CHECKED_TEXT_REASONS = new Set(['not-string', 'empty', 'multi-line', 'too-long', 'lost-code-token']);
+
 /** { reason } for the first rule an answer breaks for its English text, or { text } (trimmed) when it passes. */
 function reasonFor(english, answer) {
   if (typeof answer !== 'string') return { reason: 'not-string' };
@@ -232,8 +236,9 @@ export function checkTranslations({ root: rootArg, language, out = null }) {
   }
 
   // A round-2 failure is final: the table records the refusal so the next plan does not list the name again.
-  // no-result (the subagent wrote nothing usable) is not a refusal: the name stays English for this export and is listed again.
-  const refused = round >= 2 ? new Map(failures.filter(({ reason }) => reason !== 'no-result').map(({ en, reason }) => [en, reason])) : new Map();
+  // A refusal means a translation was written and the check refused it. no-result, extra-key and missing-key judge no
+  // written text for the name, so they are not recorded: the name stays English for this export and is listed again.
+  const refused = round >= 2 ? new Map(failures.filter(({ reason }) => CHECKED_TEXT_REASONS.has(reason)).map(({ en, reason }) => [en, reason])) : new Map();
   if (passed.size > 0 || refused.size > 0) mergeIntoTable(pageDir, lang.name, passed, refused);
 
   const last = Math.max(...all.map((entry) => entry.number));
