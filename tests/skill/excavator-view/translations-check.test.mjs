@@ -291,6 +291,26 @@ describe('refusals are remembered', () => {
     expect(plan().json.missing).toBe(DISPLAYED.length - 2);
   });
 
+  it('records every reason that judges a written text in round 2, each under its own reason', () => {
+    const planned = plan();
+    answerBatch(planned.json.batches[0], () => undefined);
+    const first = check();
+    answerBatch(first.json.retry[0], (en) => ANSWERS[en]);
+    check();
+    const refused = Object.fromEntries(
+      Object.values(table().entries).filter((entry) => entry.refused !== undefined).map((entry) => [entry.en, entry.refused]),
+    );
+    expect(refused).toEqual({
+      'Dispatch a parcel': 'empty',
+      'Handle GET request': 'lost-code-token',
+      Shipping: 'multi-line',
+      'Start the application': 'too-long',
+      'Validate OAuth2 token': 'lost-code-token',
+      capture: 'not-string',
+    });
+    expect(plan().json.missing).toBe(1); // Charge a customer: missing-key is not a refusal
+  });
+
   it('does not record a round-2 extra-key failure: the whole batch is listed again by the next plan', () => {
     const planned = plan();
     answerBatch(planned.json.batches[0], () => undefined);
