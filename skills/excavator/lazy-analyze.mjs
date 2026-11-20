@@ -371,7 +371,7 @@ export function validateFactGraphIntegrity({ nodes, edges, coverage }) {
  *  filePath/lineRange/owner/anchorSource/complexity) are NOT in this list —
  *  those are always refreshed from the fresh fact projection. */
 const SEMANTIC_NODE_FIELDS = Object.freeze([
-  'summary', 'tags', 'verification', 'languageNotes', 'domainMeta', 'knowledgeMeta', 'figmaMeta',
+  'summary', 'displayName', 'tags', 'verification', 'languageNotes', 'domainMeta', 'knowledgeMeta', 'figmaMeta',
 ]);
 
 function edgeKey(e) {
