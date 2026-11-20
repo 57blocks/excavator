@@ -2,7 +2,7 @@
 /**
  * reply.mjs
  *
- * Prints the five lines `/excavator-view` replies with, read from the page
+ * Prints the five lines (six, with a translation) `/excavator-view` replies with, read from the page
  * `pack.mjs` wrote (openspec: changes/report-viewer, design D7;
  * changes/retire-view-html, design D2-D3):
  *
@@ -11,6 +11,7 @@
  *   Issues: <N>
  *   Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>
  *   Source: <embedded (N files) | not embedded>
+ *   Translation: <language> <translated>/<names> names (<english> in English)     only when the page holds a name table
  *
  *   node reply.mjs <explorer.html>
  *
@@ -56,18 +57,27 @@ export function issuesLine(manifest) {
   return `Issues: not counted; knowledge graph ${stateWords(manifest).get('knowledge-graph') ?? 'not run'}`;
 }
 
-/** The five reply lines for a page at `path` of `bytes` bytes. */
+/** The translation line when the manifest records a name table (`pack.mjs --language`), else null. */
+function translationLine(manifest) {
+  const t = manifest.translation;
+  if (!t || typeof t.language !== 'string' || !t.counts) return null;
+  return `Translation: ${t.language} ${t.counts.translated}/${t.counts.names} names (${t.counts.english} in English)`;
+}
+
+/** The reply lines for a page at `path` of `bytes` bytes: five, and a sixth when the page holds a name table. */
 export function replyLines(path, bytes, manifest) {
   const states = stateWords(manifest);
   const source = manifest.source && manifest.source.embedded
     ? `embedded (${manifest.source.counts.embedded} files)`
     : 'not embedded';
+  const translation = translationLine(manifest);
   return [
     `Explorer: ${path}`,
     `Size: ${(bytes / BYTES_PER_MB).toFixed(1)} MB`,
     issuesLine(manifest),
     `Products: ${PRODUCT_WORDS.map(([name, word]) => `${word} ${states.get(name) ?? 'not run'}`).join('; ')}`,
     `Source: ${source}`,
+    ...(translation === null ? [] : [translation]),
   ];
 }
 

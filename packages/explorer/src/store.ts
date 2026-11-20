@@ -9,6 +9,7 @@ import type {
 } from "@understand-anything/core/types";
 import type { ReactFlowInstance } from "@xyflow/react";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
+import { parseNameTranslations, translatorOf, type NameTranslations } from "./excavator/nameTranslations";
 import type { ProductView } from "./excavator/productViews";
 import { sourceNodeId, type SourceTarget } from "./excavator/views/sourceNode";
 
@@ -115,6 +116,10 @@ interface DashboardStore {
   searchQuery: string;
   searchResults: SearchResult[];
   searchEngine: SearchEngine | null;
+  /** Excavator: the page's name table when it was packed with `--language`; null shows the English names (openspec: changes/view-name-translation). */
+  nameTranslations: NameTranslations | null;
+  /** Reads the page's `name-translations.json` data; data that is not that shape leaves the English names. */
+  setNameTranslations: (raw: unknown) => void;
   searchMode: "fuzzy" | "semantic";
   setSearchMode: (mode: "fuzzy" | "semantic") => void;
 
@@ -334,6 +339,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   searchQuery: "",
   searchResults: [],
   searchEngine: null,
+  nameTranslations: null,
   searchMode: "fuzzy",
 
   navigationLevel: "overview",
@@ -407,7 +413,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
 
   setGraph: (loaded) => {
     const { graph, layerSource } = withDerivedGroups(loaded);
-    const searchEngine = new SearchEngine(graph.nodes);
+    const searchEngine = new SearchEngine(graph.nodes, translatorOf(get().nameTranslations));
     const query = get().searchQuery;
     const searchResults = query.trim() ? searchEngine.search(query) : [];
     const { viewMode, domainGraph, activeDomainId } = get();
@@ -568,6 +574,18 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       expandedContainers: new Set(),
       pendingFocusContainer: null,
     }),
+
+  setNameTranslations: (raw) => {
+    const nameTranslations = parseNameTranslations(raw);
+    const { graph, searchQuery } = get();
+    if (!graph) {
+      set({ nameTranslations });
+      return;
+    }
+    // The search index holds the translated names, so a table that arrives after the graph rebuilds it and the query's results.
+    const searchEngine = new SearchEngine(graph.nodes, translatorOf(nameTranslations));
+    set({ nameTranslations, searchEngine, searchResults: searchQuery.trim() ? searchEngine.search(searchQuery) : [] });
+  },
 
   setFocusNode: (nodeId) =>
     set({

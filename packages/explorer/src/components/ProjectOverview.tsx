@@ -1,11 +1,13 @@
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import { coverageRows } from "../excavator/ourData";
+import { overviewLine } from "../excavator/nameTranslations";
 
 export default function ProjectOverview() {
   const graph = useDashboardStore((s) => s.graph);
   const layerSource = useDashboardStore((s) => s.layerSource);
   const startTour = useDashboardStore((s) => s.startTour);
+  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
   const { t } = useI18n();
 
   if (!graph) {
@@ -63,6 +65,9 @@ export default function ProjectOverview() {
       {/* Project name */}
       <h2 className="font-heading text-2xl text-text-primary mb-1">{project.name}</h2>
       <p className="text-sm text-text-secondary leading-relaxed mb-6">{project.description}</p>
+      {nameTranslations !== null && (
+        <p className="text-[11px] text-text-muted mb-6 -mt-4">{overviewLine(nameTranslations)}</p>
+      )}
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3 mb-6">

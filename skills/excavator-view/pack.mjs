@@ -6,10 +6,14 @@
  * (openspec: changes/report-viewer, capability `report-viewer`, design D2-D3;
  * changes/viewer-explorer, design D4; changes/retire-view-html, design D1-D4).
  *
- *   node pack.mjs <projectRoot> [--source] [--no-source] [--out <path>]
+ *   node pack.mjs <projectRoot> [--source] [--no-source] [--out <path>] [--language <lang>]
  *
  * Source text goes into the page only under `--source`; without it (or with `--no-source`)
  * every referenced file is not embedded on request (openspec: changes/view-source-opt-in).
+ *
+ * `--language` (not English) adds the page's name table (`name-translations.json`, translation-names.mjs): the translations
+ * the table beside the page holds for the names the page shows, read only, never written; English or no `--language`
+ * leaves the data and the manifest exactly as they are without the option (openspec: changes/view-name-translation).
  *
  * Writes `<projectRoot>/.excavator/explorer.html` (or `--out`, under any name) through
  * a temporary file and a rename, so a failure leaves an existing page untouched, and
@@ -50,8 +54,9 @@ import { countIssues, loadValidateGraph, VALIDATOR_PATH } from './explorer-valid
 import { assembleExplorerPage, EXPLORER_TEMPLATE_PATH } from './page-assembly.mjs';
 import { collectProducts } from './products.mjs';
 import { collectSources, summarizeSources } from './sources.mjs';
+import { NAME_TRANSLATIONS_KEY, displayedNames, nameTranslationsFor, normalizeLanguage } from './translation-names.mjs';
 
-const USAGE = 'Usage: node pack.mjs <projectRoot> [--source] [--no-source] [--out <path>]\n';
+const USAGE = 'Usage: node pack.mjs <projectRoot> [--source] [--no-source] [--out <path>] [--language <lang>]\n';
 const EXPLORER_MANIFEST_VERSION = 2;
 export const EXPLORER_FILE = 'explorer.html';
 
@@ -62,7 +67,7 @@ function pluginPath(relative) {
 
 /** The command line embeds no source unless `--source` is given; the last of `--source` and `--no-source` wins. `packProject` keeps its own default for its callers. */
 function parseArgs(argv) {
-  const options = { root: null, noSource: true, out: null };
+  const options = { root: null, noSource: true, out: null, language: undefined };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--no-source') options.noSource = true;
@@ -70,6 +75,9 @@ function parseArgs(argv) {
     else if (arg === '--out') {
       options.out = argv[++i];
       if (!options.out) throw new Error(`--out needs a path\n${USAGE}`);
+    } else if (arg === '--language') {
+      options.language = argv[++i];
+      if (options.language === undefined) throw new Error(`--language needs a value\n${USAGE}`);
     } else if (arg.startsWith('--')) throw new Error(`unknown option ${arg}\n${USAGE}`);
     else if (options.root === null) options.root = arg;
     else throw new Error(`unexpected argument ${arg}\n${USAGE}`);
@@ -104,9 +112,15 @@ function resultProduct(entry) {
  * The page's data and its manifest (what the copy is given, and what the reply says about it:
  * each product's state, the embedded source count and the issue count).
  */
-function packExplorer({ root, dataDir, snapshotRevision, products, sources, templatePath, validatorPath, partChars }) {
+function packExplorer({ root, dataDir, snapshotRevision, products, sources, templatePath, validatorPath, partChars, translation }) {
   const validateGraph = loadValidateGraph(validatorPath);
   const { data, rows } = buildExplorerData({ root, dataDir, snapshotRevision, products, sources });
+  // The name table is read from the table beside the page, for the names this very data shows; the graphs are not touched.
+  const names = translation ? nameTranslationsFor({ pageDir: translation.pageDir, name: translation.name, names: displayedNames(data) }) : null;
+  if (names) {
+    data[NAME_TRANSLATIONS_KEY] = names.value;
+    rows.push(names.row);
+  }
   const issues = data[GRAPH_KEY] ? countIssues(validateGraph, data[GRAPH_KEY]) : null;
   // The data is cut into compressed parts first: no value is ever written as one string, and the part sizes give each key's JSON size.
   const chunks = chunkExplorerData(data, { partChars });
@@ -118,6 +132,7 @@ function packExplorer({ root, dataDir, snapshotRevision, products, sources, temp
     issues,
     keys,
     rows,
+    ...(names ? { translation: { language: names.value.language, counts: names.value.counts } } : {}),
   };
   return { page: assembleExplorerPage({ templatePath, chunks, manifest }), issues, keys, rows };
 }
@@ -125,15 +140,19 @@ function packExplorer({ root, dataDir, snapshotRevision, products, sources, temp
 /**
  * Pack the project and write the page.
  * @param {string} rootArg
- * @param {{ noSource?: boolean, out?: string|null, explorerTemplate?: string, explorerValidator?: string, partChars?: number }} [options]
+ * @param {{ noSource?: boolean, out?: string|null, language?: string, explorerTemplate?: string, explorerValidator?: string, partChars?: number }} [options]
+ *   `language` is a language name as the user gave it (English or absent: no name table; a name that is not allowed throws before anything is read),
  *   `explorerTemplate` replaces the built template, `explorerValidator` the built validator, `partChars` the limit of
  *   characters in one data part (the tests use small ones)
  */
 export function packProject(rootArg, options = {}) {
   const noSource = options.noSource === true;
+  // A language name that is not allowed stops the pack before anything is read.
+  const language = options.language === undefined ? { english: true } : normalizeLanguage(options.language);
   const root = bindProjectRoot(rootArg);
   const dataDir = assertDataDir(root);
   const out = options.out ? resolve(options.out) : join(dataDir, EXPLORER_FILE);
+  const translation = language.english ? null : { name: language.name, pageDir: dirname(out) };
 
   const snapshot = resolveSourceSnapshot(root);
   const products = collectProducts(dataDir, snapshot.revision);
@@ -149,6 +168,7 @@ export function packProject(rootArg, options = {}) {
     templatePath: options.explorerTemplate ?? pluginPath(EXPLORER_TEMPLATE_PATH),
     validatorPath: options.explorerValidator ?? pluginPath(VALIDATOR_PATH),
     partChars: options.partChars,
+    translation,
   });
   writeAtomic(out, explorer.page);
 
@@ -166,7 +186,7 @@ export function packProject(rootArg, options = {}) {
 
 function main(argv) {
   const options = parseArgs(argv);
-  const result = packProject(options.root, { noSource: options.noSource, out: options.out });
+  const result = packProject(options.root, { noSource: options.noSource, out: options.out, language: options.language });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

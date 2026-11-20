@@ -18,12 +18,13 @@ describe("nodeTitles (Excavator: displayName as the card title)", () => {
     expect(nodeTitles(node({ displayName: "Approve refund request" }))).toEqual({
       title: "Approve refund request",
       subtitle: "approveRefund",
+      original: null,
     });
   });
 
   it("shows the code name alone when there is no displayName or it is blank", () => {
-    expect(nodeTitles(node({}))).toEqual({ title: "approveRefund", subtitle: null });
-    expect(nodeTitles(node({ displayName: "  " }))).toEqual({ title: "approveRefund", subtitle: null });
+    expect(nodeTitles(node({}))).toEqual({ title: "approveRefund", subtitle: null, original: null });
+    expect(nodeTitles(node({ displayName: "  " }))).toEqual({ title: "approveRefund", subtitle: null, original: null });
   });
 });
 

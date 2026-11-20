@@ -5,6 +5,8 @@ import { useDashboardStore } from "../store";
 
 export interface StepNodeData extends Record<string, unknown> {
   label: string;
+  /** Excavator: the English name when `label` is its translation; shown on hover. */
+  original?: string | null;
   summary: string;
   filePath?: string;
   stepId: string;
@@ -34,7 +36,10 @@ function StepNode({ data }: NodeProps<StepFlowNode>) {
         <span className="text-[9px] font-mono text-accent/60 shrink-0">
           {data.order}
         </span>
-        <span className="text-[11px] font-medium text-text-primary truncate">
+        <span
+          className="text-[11px] font-medium text-text-primary truncate"
+          title={data.original ? `English: ${data.original}` : undefined}
+        >
           {data.label}
         </span>
       </div>

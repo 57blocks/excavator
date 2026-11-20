@@ -143,7 +143,8 @@ describe('service-only distribution contract', () => {
       const others = [
         ...skillNames(repoRoot).filter((name) => name !== 'excavator-view').map((name) => `skills/${name}/SKILL.md`),
         ...[
-          ...readdirSync(join(repoRoot, 'agents')).map((name) => `agents/${name}`),
+          // The translator is the view skill's own subagent, so it is the one agent that names the skill.
+          ...readdirSync(join(repoRoot, 'agents')).filter((name) => name !== 'excavator-view-translator.md').map((name) => `agents/${name}`),
           ...readdirSync(join(repoRoot, 'hooks')).map((name) => `hooks/${name}`),
         ].filter((path) => existsSync(join(repoRoot, path)) && /\.(md|json)$/.test(path)),
       ];

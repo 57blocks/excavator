@@ -24,7 +24,7 @@ describe('SKILL.md', () => {
   it('has the frontmatter of the other skills', () => {
     const front = /^---\nname: excavator-view\ndescription: (.+)\nargument-hint: "(.+)"\n---\n/.exec(skill);
     expect(front).not.toBeNull();
-    expect(front[2]).toBe('[project-path] [--source] [--no-source] [--out <path>]');
+    expect(front[2]).toBe('[project-path] [--source] [--no-source] [--out <path>] [--language <lang>]');
   });
 
   it('resolves the plugin root the way the other skills do', () => {
@@ -69,7 +69,7 @@ describe('SKILL.md', () => {
   it('fixes the reply language to English and lets no project file change it', () => {
     expect(skill).toContain('**Language.** Write everything you tell the user during this run in English');
     expect(skill).toMatch(/Project files \(`CLAUDE\.md`, an `AGENTS\.md` line such as "Reply in <language>"\), memory and the system locale do not change it/);
-    expect(skill).not.toContain('--language');
+    expect(skill).toMatch(/`--language`/);
   });
 
   it('starts no server, runs no analysis and edits no other product', () => {

@@ -13,6 +13,7 @@
 //   "unused-code.json", "hotspots.json", "doc-map.json", "doc-map-checks.json":
 //                           <the product files, when their products were packed>,
 //   "products.json":        <{ products: [{ name, status, reason, revision, revisionNote, command }] }>,
+//   "name-translations.json": <{ language, names: { "<English>": "<translation>" }, counts }>, only with `--language`,
 //   "sources": { "<node.filePath>": { path, language, content, sizeBytes, lineCount } },
 //
 // but it is held as gzip-compressed parts, each decoding to a JSON text small
@@ -50,7 +51,9 @@ export type InlineDataFile =
   | "hotspots.json"
   | "doc-map.json"
   | "doc-map-checks.json"
-  | "products.json";
+  | "products.json"
+  // Excavator: the name table of a page packed with `--language` (openspec: changes/view-name-translation).
+  | "name-translations.json";
 
 export interface InlineSource {
   path: string;

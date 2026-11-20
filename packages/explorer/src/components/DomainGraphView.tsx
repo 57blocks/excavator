@@ -17,6 +17,7 @@ import type { FlowFlowNode } from "./FlowNode";
 import StepNode from "./StepNode";
 import type { StepFlowNode } from "./StepNode";
 import { useDashboardStore } from "../store";
+import { domainTitle, translatorOf, type Translate } from "../excavator/nameTranslations";
 import { useI18n } from "../contexts/I18nContext";
 import { mergeElkPositions, nodesToElkInput } from "../utils/layout";
 import { applyElkLayout } from "../utils/elk-layout";
@@ -38,7 +39,7 @@ interface BuiltGraph {
   dims: Map<string, { width: number; height: number }>;
 }
 
-function buildDomainOverview(graph: KnowledgeGraph): BuiltGraph {
+function buildDomainOverview(graph: KnowledgeGraph, translate?: Translate): BuiltGraph {
   const dims = new Map<string, { width: number; height: number }>();
   const domainNodes = graph.nodes.filter((n) => n.type === "domain");
 
@@ -52,8 +53,10 @@ function buildDomainOverview(graph: KnowledgeGraph): BuiltGraph {
 
   const rfNodes: DomainClusterFlowNode[] = domainNodes.map((node) => {
     const meta = getDomainMeta(node);
+    const title = domainTitle(node.name, translate);
     const data = {
-      label: node.name,
+      label: title.label,
+      original: title.original,
       summary: node.summary,
       entities: meta?.entities as string[] | undefined,
       flowCount: flowCountMap.get(node.id) ?? 0,
@@ -90,6 +93,7 @@ function buildDomainOverview(graph: KnowledgeGraph): BuiltGraph {
 function buildDomainDetail(
   graph: KnowledgeGraph,
   domainId: string,
+  translate?: Translate,
 ): BuiltGraph {
   // Find flows for this domain
   const flowIds = new Set(
@@ -121,13 +125,15 @@ function buildDomainDetail(
 
   const flowRfNodes: FlowFlowNode[] = flowNodes.map((node) => {
     const meta = getDomainMeta(node);
+    const title = domainTitle(node.name, translate);
     dims.set(node.id, { width: 260, height: 120 });
     return {
       id: node.id,
       type: "flow-node" as const,
       position: { x: 0, y: 0 },
       data: {
-        label: node.name,
+        label: title.label,
+        original: title.original,
         summary: node.summary,
         entryPoint: meta?.entryPoint as string | undefined,
         entryType: meta?.entryType as string | undefined,
@@ -137,13 +143,15 @@ function buildDomainDetail(
     };
   });
   const stepRfNodes: StepFlowNode[] = stepNodes.map((node) => {
+    const title = domainTitle(node.name, translate);
     dims.set(node.id, { width: 200, height: 90 });
     return {
       id: node.id,
       type: "step-node" as const,
       position: { x: 0, y: 0 },
       data: {
-        label: node.name,
+        label: title.label,
+        original: title.original,
         summary: node.summary,
         filePath: node.filePath,
         stepId: node.id,
@@ -168,6 +176,7 @@ function DomainGraphViewInner() {
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const activeDomainId = useDashboardStore((s) => s.activeDomainId);
   const clearActiveDomain = useDashboardStore((s) => s.clearActiveDomain);
+  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
   const { t } = useI18n();
 
   // Build structural nodes/edges/dims synchronously; only the layout call
@@ -175,11 +184,12 @@ function DomainGraphViewInner() {
   // effect.
   const built = useMemo<BuiltGraph | null>(() => {
     if (!domainGraph) return null;
+    const translate = translatorOf(nameTranslations);
     if (activeDomainId) {
-      return buildDomainDetail(domainGraph, activeDomainId);
+      return buildDomainDetail(domainGraph, activeDomainId, translate);
     }
-    return buildDomainOverview(domainGraph);
-  }, [domainGraph, activeDomainId]);
+    return buildDomainOverview(domainGraph, translate);
+  }, [domainGraph, activeDomainId, nameTranslations]);
 
   const [layout, setLayout] = useState<{ nodes: Node[]; edges: Edge[] }>({
     nodes: [],

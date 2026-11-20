@@ -4,6 +4,7 @@ import { useI18n } from "../contexts/I18nContext";
 import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
 import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
 import { nodeTitles } from "../excavator/nodeTitle";
+import { translatorOf } from "../excavator/nameTranslations";
 
 // Badge color classes keyed by NodeType — must be kept in sync with core NodeType union.
 const typeBadgeColors: Record<NodeType, string> = {
@@ -299,6 +300,7 @@ export default function NodeInfo() {
   const focusNodeId = useDashboardStore((s) => s.focusNodeId);
   const viewMode = useDashboardStore((s) => s.viewMode);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
+  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
 
   const activeGraph = viewMode === "domain" && domainGraph ? domainGraph : graph;
   const node = activeGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
@@ -316,6 +318,9 @@ export default function NodeInfo() {
       </div>
     );
   }
+
+  // Excavator: the title, with the English original when the name table translated it.
+  const titles = nodeTitles(node, translatorOf(nameTranslations));
 
   const allEdges = activeGraph?.edges ?? [];
   const connections = allEdges.filter(
@@ -397,10 +402,13 @@ export default function NodeInfo() {
 
       <div className="flex items-center justify-between mb-2">
         <div className="min-w-0">
-          <h2 className="text-lg font-heading text-text-primary">{nodeTitles(node).title}</h2>
-          {nodeTitles(node).subtitle !== null && (
+          <h2 className="text-lg font-heading text-text-primary">{titles.title}</h2>
+          {titles.original !== null && (
+            <div className="text-[11px] text-text-muted">English: {titles.original} · machine translation</div>
+          )}
+          {titles.subtitle !== null && (
             <div className="text-[11px] font-mono text-text-muted truncate" title={node.name}>
-              {nodeTitles(node).subtitle}
+              {titles.subtitle}
             </div>
           )}
         </div>
