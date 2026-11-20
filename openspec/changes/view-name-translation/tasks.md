@@ -5,21 +5,21 @@
 
 ## 2. 列名称与核对
 
-- [ ] 2.1 `skills/excavator-view/translations.mjs`：语言名规范化；`plan` 列出待译名称并分批；`check` 按 design 第 4 条核对、合并进翻译表（临时文件加改名）
+- [x] 2.1 `skills/excavator-view/translations.mjs`：语言名规范化；`plan` 列出待译名称并分批；`check` 按 design 第 4 条核对、合并进翻译表（临时文件加改名）
 - [ ] 2.2 提交：`feat(view): list and check name translations`
 
 ## 3. 翻译子代理与 skill
 
-- [ ] 3.1 `agents/excavator-view-translator.md`：只有 Read、Write；输入一个批文件，输出一个结果文件；写法规则照 design 第 3 条
-- [ ] 3.2 `skills/excavator-view/SKILL.md`：`--language`；给了非英文语言时，打包前跑 `plan`、按批派子代理（前台）、跑 `check`、失败条目重派一次
-- [ ] 3.3 `check-refs` 与 plugin manifest 认得新 agent
+- [x] 3.1 `agents/excavator-view-translator.md`：只有 Read、Write；输入一个批文件，输出一个结果文件；写法规则照 design 第 3 条
+- [x] 3.2 `skills/excavator-view/SKILL.md`：`--language`；给了非英文语言时，打包前跑 `plan`、按批派子代理（前台）、跑 `check`、失败条目重派一次
+- [x] 3.3 `check-refs` 与 plugin manifest 认得新 agent
 - [ ] 3.4 提交：`feat(view): translate names with a dedicated subagent`
 
 ## 4. 打包、页面与回复
 
-- [ ] 4.1 `pack.mjs`：`--language` 读翻译表，按哈希与原文取用，manifest 记计数；不给或英文时字节不变
-- [ ] 4.2 `packages/explorer`：卡片、详情、领域图、概览、搜索按 design 第 5 条；重新构建模板
-- [ ] 4.3 `reply.mjs`：第六行
+- [x] 4.1 `pack.mjs`：`--language` 读翻译表，按哈希与原文取用，manifest 记计数；不给或英文时字节不变
+- [x] 4.2 `packages/explorer`：卡片、详情、领域图、概览、搜索按 design 第 5 条；重新构建模板
+- [x] 4.3 `reply.mjs`：第六行
 - [ ] 4.4 提交：`feat(view): show translated names with their English originals`
 
 ## 5. 验收
