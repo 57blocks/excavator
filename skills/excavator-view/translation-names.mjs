@@ -5,7 +5,7 @@
  * language rule, the names the page shows, the translation table beside the page and what the packer takes from it.
  * No model call, no network; it reads the table and writes nothing (the writing is `translations.mjs`).
  *
- *   language   trimmed and lower-cased; `en`, `english` and `en-*` are English; any other name may hold only
+ *   language   trimmed and lower-cased; `en`, `english`, `en-*` and `en_*` are English; any other name may hold only
  *              letters of any script, digits, `-` and `_`, because it is the table's file name
  *   names      every non-empty display name of the page's knowledge graph (after the semantic merge, so a
  *              contradicted or stale one is already empty) and every domain, flow and step name of the domain graph
@@ -37,7 +37,7 @@ const own = (table, key) => (Object.prototype.hasOwnProperty.call(table, key) ? 
 /** `{ english: true }` or `{ english: false, name }`; throws a message naming the allowed characters for anything else. */
 export function normalizeLanguage(raw) {
   const name = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
-  if (name === 'en' || name === 'english' || name.startsWith('en-')) return { english: true };
+  if (name === 'en' || name === 'english' || name.startsWith('en-') || name.startsWith('en_')) return { english: true };
   if (name === '' || !LANGUAGE_NAME.test(name)) {
     throw new Error(`the language name may hold only letters, digits, "-" and "_" (it is the translation table's file name); got ${JSON.stringify(raw ?? null)}`);
   }
@@ -48,18 +48,20 @@ export function normalizeLanguage(raw) {
 export const hashName = (english) => createHash('sha256').update(english, 'utf-8').digest('hex');
 
 /**
- * What a translation has to keep word for word: words with a digit or two capitals in a row (`OAuth2`, `CORS`, `S3`),
- * the HTTP verbs as whole words and the text inside backticks. Each once, in order of appearance.
+ * What a translation has to keep word for word: words (letters and digits, joined by `_` or `.`) that hold `_` or `.`
+ * (`user_id`, `config.yaml`, `Node.js`), a digit or two capitals in a row (`OAuth2`, `CORS`, `S3`), the HTTP verbs as
+ * whole words and the text inside backticks. A hyphen splits words and a trailing dot is not part of one. Each once,
+ * in order of appearance.
  */
 export function codeTokens(english) {
   const found = [];
-  for (const match of english.matchAll(/`([^`]+)`|[A-Za-z0-9]+/g)) {
+  for (const match of english.matchAll(/`([^`]+)`|[A-Za-z0-9]+(?:[_.][A-Za-z0-9]+)*/g)) {
     if (match[1] !== undefined) {
       found.push(match[1]);
       continue;
     }
     const word = match[0];
-    if (/[0-9]/.test(word) || /[A-Z]{2}/.test(word) || HTTP_VERBS.has(word)) found.push(word);
+    if (/[0-9_.]/.test(word) || /[A-Z]{2}/.test(word) || HTTP_VERBS.has(word)) found.push(word);
   }
   return [...new Set(found)];
 }

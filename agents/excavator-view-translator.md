@@ -50,7 +50,7 @@ Every key of the batch appears exactly once, and no other key does. Write the fi
 
 - Write for a reader who does not read code. Use the plain words of the target language for the thing the name says, not a transliteration of programming vocabulary when a common word exists.
 - Every string in `keep` must appear in the translation character for character, with the same case and spelling; a translation that loses one is refused. `keep` lists the tokens of the rule below, so check your phrase against it before you write it.
-- Keep every code token verbatim, character for character: words with a digit or two capitals in a row (`OAuth2`, `CORS`, `PKCE`, `S3`), the HTTP verbs `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, and everything inside backticks. A translation that loses one is refused.
+- Keep every code token verbatim, character for character: identifiers joined by `_` or `.` (`user_id`, `config.yaml`, `Node.js`), words with a digit or two capitals in a row (`OAuth2`, `CORS`, `PKCE`, `S3`), the HTTP verbs `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, and everything inside backticks. A translation that loses one is refused.
 - One short phrase on a single line: no explanation, no added words about what the name might mean, no trailing punctuation, no quotes around it, no line break. Stay about as short as the English name; a translation longer than 60 characters is refused.
 - Translate a word you do not know literally, from its parts; never invent a meaning for it. A proper name (a product, a protocol, a person) may stay as it is.
 - Keep the grammatical form of the name: a verb phrase stays a verb phrase, a noun phrase stays a noun phrase.

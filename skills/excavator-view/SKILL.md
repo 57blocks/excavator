@@ -17,7 +17,7 @@ Write one HTML file that shows the products already in `.excavator/`, and open i
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory), `--source`: put the source text of the files the products name into the file (without it the page holds no source text; `--no-source` says the same explicitly), `--out <path>`: write the page there instead of `.excavator/explorer.html`, and `--language <lang>`: show the names of nodes, domains, flows and steps in that language, with the English original beside each (`en`, `english` and `en-...` mean English, which is also what no `--language` means). The language name is trimmed and lower-cased, may hold only letters, digits, `-` and `_`, and is the file name of the translation table. The table is written beside the page, so `--out` moves it too.
+`$ARGUMENTS` may contain the project path (default: the current working directory), `--source`: put the source text of the files the products name into the file (without it the page holds no source text; `--no-source` says the same explicitly), `--out <path>`: write the page there instead of `.excavator/explorer.html`, and `--language <lang>`: show the names of nodes, domains, flows and steps in that language, with the English original beside each (`en`, `english`, `en-...` and `en_...` mean English, which is also what no `--language` means). The language name is trimmed and lower-cased, may hold only letters, digits, `-` and `_`, and is the file name of the translation table. The table is written beside the page, so `--out` moves it too.
 
 ---
 
@@ -25,7 +25,7 @@ Write one HTML file that shows the products already in `.excavator/`, and open i
 
 **Language.** Write everything you tell the user during this run in English: each line between commands and the final reply. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-**Names in another language.** Do this only when the user gave `--language <lang>` and the language is not English. For no `--language`, for `en`, `english` and `en-...`, this step does nothing: run no `translations.mjs` command, dispatch no subagent, create no file, and go on to Step 2.
+**Names in another language.** Do this only when the user gave `--language <lang>` and the language is not English. For no `--language`, for `en`, `english`, `en-...` and `en_...`, this step does nothing: run no `translations.mjs` command, dispatch no subagent, create no file, and go on to Step 2.
 
 The names on the page come from the analysis in English. `plan` lists the ones the table lacks, a subagent translates them, `check` tests what it wrote and merges the good ones into the table; Step 2 then reads the table and makes no model call.
 

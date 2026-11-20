@@ -20,12 +20,12 @@
  * `check` reads the batch and result files of the latest round in the work directory. Every item passes or gets one
  * reason: missing-key, not-string, empty, multi-line, too-long (more than 60 code points, or more than twice the English
  * length plus 10), lost-code-token (a code token of the English is not in the text) or, for a result file that is absent
- * or not a JSON object, no-result. A key the batch does not have is reported once per batch as extra-key and fails no
- * item. Passing items are merged into the table. Round-1 failures are written as round-2 batch files; round-2 failures
- * are final and stay English: the table records each as { en, refused: <reason> } so a later `plan` does not list it.
+ * or not a JSON object, no-result. A key the batch does not have fails every item of that batch with extra-key and nothing of it is merged. Passing items are merged into the table. Round-1 failures are written as round-2 batch files; round-2 failures
+ * are final and stay English: the table records each as { en, refused: <reason> } so a later `plan` does not list it,
+ * except no-result, which is not recorded and is listed again.
  * Batch items carry `keep` (the English's code tokens); `check` computes the tokens itself and ignores it. When nothing is left to retry the work directory is deleted.
  *
- * English (`en`, `english`, `en-*`) prints {"language":"en","english":true} and touches no file.
+ * English (`en`, `english`, `en-*`, `en_*`) prints {"language":"en","english":true} and touches no file.
  * Deterministic and model-free; it never reads or runs the project's code.
  */
 
@@ -210,7 +210,14 @@ export function checkTranslations({ root: rootArg, language, out = null }) {
       continue;
     }
     const keys = new Set(items.map((item) => item.key));
-    if (Object.keys(result).some((key) => !keys.has(key))) bump(failed, 'extra-key');
+    if (Object.keys(result).some((key) => !keys.has(key))) {
+      // The keys must match the batch one to one: a shifted numbering would pair names with another name's text.
+      for (const item of items) {
+        bump(failed, 'extra-key');
+        failures.push({ hash: hashName(item.en), en: item.en, reason: 'extra-key' });
+      }
+      continue;
+    }
     for (const item of items) {
       const verdict = Object.prototype.hasOwnProperty.call(result, item.key)
         ? reasonFor(item.en, result[item.key])
@@ -225,7 +232,8 @@ export function checkTranslations({ root: rootArg, language, out = null }) {
   }
 
   // A round-2 failure is final: the table records the refusal so the next plan does not list the name again.
-  const refused = round >= 2 ? new Map(failures.map(({ en, reason }) => [en, reason])) : new Map();
+  // no-result (the subagent wrote nothing usable) is not a refusal: the name stays English for this export and is listed again.
+  const refused = round >= 2 ? new Map(failures.filter(({ reason }) => reason !== 'no-result').map(({ en, reason }) => [en, reason])) : new Map();
   if (passed.size > 0 || refused.size > 0) mergeIntoTable(pageDir, lang.name, passed, refused);
 
   const last = Math.max(...all.map((entry) => entry.number));
