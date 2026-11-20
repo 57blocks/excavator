@@ -8,7 +8,7 @@ import { syncFactGraph } from './sync-fact-graph.mjs';
 import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, readSourceIndex } from './source-index-store.mjs';
 import { KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 import { bm25Search, boundedBFS, boundedShortestPath, mergeCandidates, oneHop } from './retrieve.mjs';
-import { isFresh, commitSemanticCacheEntry } from './semantic-cache.mjs';
+import { CACHEABLE_FIELDS, isFresh, commitSemanticCacheEntry } from './semantic-cache.mjs';
 import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
 
 const LIMITS = Object.freeze({ terms: 12, termLength: 80, exactIds: 20, candidates: 50, offset: 500,
@@ -381,7 +381,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       const gaps = plan.unavailable.map((item) => ({ kind: item.reason, nodeId: item.nodeId, filePath: item.filePath }));
       for (const item of generate) if (!item.evidence.complete) gaps.push({ kind: 'evidence-truncated', nodeId: item.nodeId });
       return finish(start, 'ok', { ...plan, generate, constraints: {
-        contentLanguage: 'en', cacheable: ['summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification'],
+        contentLanguage: 'en', cacheable: [...CACHEABLE_FIELDS],
         rule: 'Only node-local semantics after reading complete current local source; cross-file conclusions and answers stay outside cache.',
       } }, { gaps, budget: { maxEvidenceChars: chars }, boundary: {
         truncated: generate.some((x) => !x.evidence.complete),

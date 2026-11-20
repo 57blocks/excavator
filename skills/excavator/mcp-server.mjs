@@ -15,6 +15,17 @@ const sourcePath = z.string().min(1).max(600);
 const terms = z.array(z.string().min(1).max(80)).max(12);
 const ids = z.array(nodeId).max(20);
 
+/** Keys must equal CACHEABLE_FIELDS; a test pins that. */
+export const semanticCommitFields = z.object({
+  summary: z.string().min(1).max(4_000),
+  displayName: z.string().min(1).max(60),
+  tags: z.array(z.string().min(1).max(80)).max(20).optional(),
+  semanticSourceHash: z.string().min(1).max(128),
+  model: z.string().min(1).max(160).optional(),
+  generatedAt: z.string().datetime().optional(),
+  verification: z.enum(['verified', 'unverified', 'dirty', 'contradicted']).optional(),
+}).strict();
+
 function toolResult(result, isError = false) {
   return {
     content: [{ type: 'text', text: JSON.stringify(result) }],
@@ -70,13 +81,9 @@ export function createMcpServer(projectRoot) {
     z.object({ nodeIds: z.array(nodeId).min(1).max(20),
       maxEvidenceChars: z.number().int().min(1).max(4_000).optional(), expectedRevision: revision }).strict(),
     (args) => service.semanticPlan(args));
-  register('semantic_commit', 'Conditionally commit caller-written English node-local summary/tags through the shared locked CAS writer.',
+  register('semantic_commit', 'Conditionally commit caller-written English node-local summary, displayName (2-8 words, at most 60 characters) and tags through the shared locked CAS writer.',
     z.object({ nodeId, filePath: sourcePath, expectedRevision: revision,
-      fields: z.object({ summary: z.string().min(1).max(4_000), tags: z.array(z.string().min(1).max(80)).max(20).optional(),
-        semanticSourceHash: z.string().min(1).max(128), model: z.string().min(1).max(160).optional(),
-        generatedAt: z.string().datetime().optional(),
-        verification: z.enum(['verified', 'unverified', 'dirty', 'contradicted']).optional(),
-      }).strict() }).strict(), (args) => service.semanticCommit(args));
+      fields: semanticCommitFields }).strict(), (args) => service.semanticCommit(args));
 
   return server;
 }
