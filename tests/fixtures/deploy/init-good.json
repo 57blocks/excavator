@@ -24,6 +24,7 @@
     "excavator:excavator-project-scanner",
     "excavator:excavator-summary-verifier",
     "excavator:excavator-tour-verifier",
+    "excavator:excavator-view-translator",
     "excavator:skopo-researcher",
     "claude",
     "Explore",
