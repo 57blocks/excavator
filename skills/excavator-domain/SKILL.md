@@ -135,7 +135,7 @@ Keep these lines; Phase 4 dispatches from them. Tell the user how many areas the
    node "$PLUGIN_ROOT/skills/excavator-domain/merge-domain-areas.mjs" "$PROJECT_ROOT"
    ```
 
-   It writes the merged graph to `$DATA_DIR/intermediate/domain-analysis.json` and the coverage report to `$DATA_DIR/reports/domain-coverage.json`, and prints one line per area, the module buckets, and one `silent-zero` line per module that has entry points but no flow and was not declared skipped.
+   It writes the merged graph to `$DATA_DIR/intermediate/domain-analysis.json` and the coverage report to `$DATA_DIR/reports/domain-coverage.json`, and prints one line per area, the module buckets, one `silent-zero` line per module that has entry points but no flow and was not declared skipped, and one `silent-zero-part` line per part of a split module whose area cited none of its entry-point files.
 
    If it exits 3, some areas were `missing` or rejected (`rejected-stale`: the output does not carry this run's token, for example an earlier file copied into place; `rejected-parse`: not JSON). Dispatch a fresh subagent for each of those areas once, exactly as in step 2, then run the merge again. If it still exits 3, continue with what was accepted and tell the user which areas are missing. Never write or copy an area's output yourself.
 
@@ -147,7 +147,7 @@ Keep these lines; Phase 4 dispatches from them. Tell the user how many areas the
 
    Only if two ids clearly name the same business area, write `$DATA_DIR/intermediate/domain-areas/aliases.json` as `{"domain:<duplicate>": "domain:<kept>"}` and run the merge again with `--aliases "$DATA_DIR/intermediate/domain-areas/aliases.json"`. The script applies only entries whose two ends are existing domains and reports the rest under `aliasesRejected`. Do not re-dispatch any analyzer for this.
 
-5. Report to the user, from the merge output: the number of areas accepted, domains, flows and steps; the module buckets `covered`, `declared-skip`, `silent-zero` and `no-candidates`; every `silent-zero` module; and how many entry-point files no step cites. These are the gaps of this run. Do not describe the coverage as complete while `silent-zero` is above 0.
+5. Report to the user, from the merge output: the number of areas accepted, domains, flows and steps; the module buckets `covered`, `declared-skip`, `silent-zero` and `no-candidates`; every `silent-zero` module and `silent-zero-part`; and how many entry-point files no step cites. These are the gaps of this run. Do not describe the coverage as complete while either is above 0.
 
 ### Phase 4.5: Anchor Steps
 

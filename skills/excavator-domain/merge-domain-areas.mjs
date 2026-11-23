@@ -30,11 +30,15 @@
  *
  * Coverage. A step is located by its `filePath` when that is a file of a
  * module, else by its `nodeIds` through the graph nodes the area contexts
- * carried. A filePath that is absolute or escapes the root is never located.
+ * carried. A filePath that is absolute or escapes the root is never located,
+ * not even through its nodeIds.
  * Each module lands in exactly one bucket: covered (a flow has a step in
  * it), declared-skip (no flow, its area listed it in skippedModules with a
  * reason), silent-zero (no flow, not declared, has entry points) or
- * no-candidates (no flow, not declared, no entry point).
+ * no-candidates (no flow, not declared, no entry point). A module split
+ * into parts is covered when any part is; each area also names the parts
+ * it holds that have entry points, no cited file and no declared skip
+ * (silentZeroParts), so an area that returned nothing for its part shows.
  *
  * Usage:
  *   node merge-domain-areas.mjs <projectRoot>
@@ -251,7 +255,7 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
       else if (fileModule.has(rel)) file = rel;
       else pathState = 'outside-modules';
     }
-    if (file === null && Array.isArray(node.nodeIds)) {
+    if (file === null && pathState !== 'outside-root' && Array.isArray(node.nodeIds)) {
       file = node.nodeIds.map((id) => nodeFiles.get(id)).find((f) => f && fileModule.has(f)) ?? null;
     }
     if (file !== null) { steps.located += 1; stepFile.set(node.id, file); continue; }
@@ -309,7 +313,8 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
   const uncited = candidates.filter((f) => !citedFiles.has(f));
 
   const statusOf = new Map(modules.map((m) => [m.path, m.status]));
-  const areas = manifest.areas.map(({ areaId }) => {
+  const candidateSet = new Set(candidates);
+  const areas = manifest.areas.map(({ areaId, modules: held = [] }) => {
     const result = areaResults.find((r) => r.areaId === areaId) ?? { status: 'missing' };
     const paths = manifest.modules.filter((m) => m.areas.includes(areaId)).map((m) => m.path);
     const row = {
@@ -319,6 +324,12 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
       entryPoints: manifest.modules.filter((m) => m.areas.includes(areaId)).reduce((n, m) => n + m.entryPoints, 0),
       ...(result.status === 'accepted' ? countTypes(result.graph) : { domains: 0, flows: 0, steps: 0 }),
       silentZeroModules: paths.filter((p) => statusOf.get(p) === 'silent-zero').sort(compare),
+      silentZeroParts: held
+        .filter(({ path, part, files = [] }) => part
+          && !declared.has(path)
+          && files.some((f) => candidateSet.has(f))
+          && !files.some((f) => citedFiles.has(f)))
+        .map(({ path, part }) => ({ path, part })),
     };
     if (result.reason) row.reason = result.reason;
     return row;
@@ -332,6 +343,8 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
     buckets,
     steps,
     candidateFiles: { total: candidates.length, cited: candidates.length - uncited.length, uncited },
+    silentZeroParts: areas.reduce((n, a) => n + a.silentZeroParts.length, 0),
+    split: manifest.counts ?? null,
     areas,
     modules,
     merge: { ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason },
@@ -418,7 +431,8 @@ async function main() {
   for (const area of coverage.areas) {
     out.push(
       `${area.areaId} ${area.status}${area.reason ? ` (${area.reason})` : ''} domains=${area.domains} flows=${area.flows} ` +
-      `steps=${area.steps} modules=${area.modules.length} silent-zero=${area.silentZeroModules.length}`,
+      `steps=${area.steps} modules=${area.modules.length} silent-zero=${area.silentZeroModules.length}` +
+      `${area.silentZeroParts.length ? ` silent-zero-parts=${area.silentZeroParts.length}` : ''}`,
     );
   }
   const b = coverage.buckets;
@@ -430,6 +444,9 @@ async function main() {
   out.push(`totals domains=${coverage.totals.domains} flows=${coverage.totals.flows} steps=${coverage.totals.steps}`);
   for (const module of coverage.modules.filter((m) => m.status === 'silent-zero')) {
     out.push(`silent-zero ${module.path} entryPoints=${module.entryPoints} areas=${module.areas.join(',')}`);
+  }
+  for (const area of coverage.areas) {
+    for (const { path, part } of area.silentZeroParts) out.push(`silent-zero-part ${path} part=${part.index}/${part.of} area=${area.areaId}`);
   }
   out.push(`coverage report: ${coveragePath}`);
   process.stdout.write(`${out.join('\n')}\n`);

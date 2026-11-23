@@ -214,6 +214,43 @@ describe('computeCoverage', () => {
     expect(area2.silentZeroModules).toEqual(['web/legacy', 'web/pages']);
   });
 
+  it('never places a step whose filePath escapes the root, even when its node ids resolve', () => {
+    const a = analysis({
+      areaId: 'area-001', token: T,
+      domains: [{ id: 'domain:orders', flows: [{ name: 'f', files: [{ filePath: '../api/orders/service.js', nodeIds: ['function:api/lib/db.js:insert'] }] }] }],
+    });
+    const { graph } = mergeAreas({ accepted: [{ areaId: 'area-001', graph: a }] });
+    const nodeFiles = new Map([['function:api/lib/db.js:insert', 'api/lib/db.js']]);
+    const report = computeCoverage({ manifest, areaResults: [{ areaId: 'area-001', status: 'accepted', graph: a }], merged: graph, nodeFiles });
+    expect(report.steps).toEqual({ total: 1, located: 0, unlocated: 0, fileOutsideRoot: 1, fileOutsideModules: 0 });
+    expect(report.modules.find((m) => m.path === 'api/lib').status).toBe('no-candidates');
+  });
+
+  it('names a part of a split module that its area left without flows, though another part is covered', () => {
+    const split = {
+      token: T,
+      counts: { testFilesExcluded: 2, graphOnlyFiles: 1 },
+      areas: [
+        { areaId: 'area-001', modules: [{ path: 'api/big', part: { index: 1, of: 2 }, files: ['api/big/a.js'] }] },
+        { areaId: 'area-002', modules: [{ path: 'api/big', part: { index: 2, of: 2 }, files: ['api/big/b.js'] }] },
+      ],
+      modules: [
+        { path: 'api/big', files: ['api/big/a.js', 'api/big/b.js'], entryPoints: 2, candidateFiles: ['api/big/a.js', 'api/big/b.js'], areas: ['area-001', 'area-002'] },
+      ],
+    };
+    const a = analysis({ areaId: 'area-001', token: T, domains: [{ id: 'domain:big', flows: [{ name: 'f', files: ['api/big/a.js'] }] }] });
+    const b = analysis({ areaId: 'area-002', token: T, domains: [] });
+    const results = [{ areaId: 'area-001', status: 'accepted', graph: a }, { areaId: 'area-002', status: 'accepted', graph: b }];
+    const { graph } = mergeAreas({ accepted: results.map(({ areaId, graph: g }) => ({ areaId, graph: g })) });
+    const report = computeCoverage({ manifest: split, areaResults: results, merged: graph });
+    expect(report.modules[0].status).toBe('covered');
+    expect(report.areas.find((x) => x.areaId === 'area-001').silentZeroParts).toEqual([]);
+    expect(report.areas.find((x) => x.areaId === 'area-002').silentZeroParts).toEqual([{ path: 'api/big', part: { index: 2, of: 2 } }]);
+    expect(report.silentZeroParts).toBe(1);
+    // The split's own counts reach the report, which outlives the manifest.
+    expect(report.split).toEqual({ testFilesExcluded: 2, graphOnlyFiles: 1 });
+  });
+
   it('reports a module with no entry point and no flow as no-candidates', () => {
     const a = analysis({ areaId: 'area-001', token: T, domains: [{ id: 'domain:orders', flows: [{ name: 'f', files: ['api/orders/routes.js'] }] }] });
     const results = [{ areaId: 'area-001', status: 'accepted', graph: a }, { areaId: 'area-002', status: 'accepted', graph: analysis({ areaId: 'area-002', token: T, domains: [] }) }];
