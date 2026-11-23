@@ -85,6 +85,13 @@ describe('planSemanticBatches', () => {
     expect(batches.map((b) => b.nodes.length)).toEqual([40, 1]);
   });
 
+  it('closes a batch before it would hold more lines to read than the cap', () => {
+    const nodes = [fn('a.js', 'f1', 1, 600), fn('a.js', 'f2', 601, 1200), fn('b.js', 'f3', 1, 600)];
+    const { batches } = plan(nodes, { 'a.js': 1200, 'b.js': 600 });
+    expect(batches.map((b) => b.nodes.map((n) => n.name))).toEqual([['f1', 'f2'], ['f3']]);
+    expect(batches.map((b) => b.sourceLines)).toEqual([1200, 600]);
+  });
+
   it('counts lines a class and its methods share only once', () => {
     const nodes = [
       { id: 'class:a.js:A', type: 'class', name: 'A', filePath: 'a.js', lineRange: [1, 1000] },
