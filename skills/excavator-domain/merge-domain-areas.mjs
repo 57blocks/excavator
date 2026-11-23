@@ -49,7 +49,9 @@
  * (fallbackMissing, fallbackInvalid). Every such flow is listed in `choices`
  * with the analyzer's `domainMeta.domainReason`, and `support` counts the
  * flows that end in a support domain, naming those that got there without a
- * choice.
+ * choice that carries a reason. A claim the merge did not follow (ignored or
+ * invalid) is removed from the merged flow node, so the graph never shows a
+ * domain the flow is not under; the report keeps the invalid value.
  *
  * Conservation. checkConservation compares every accepted area's flow ids,
  * step ids and `flow_step` edges (through that area's renames) with the
@@ -201,7 +203,7 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
     edgesDuplicate: 0,
     flowHoming: {
       homedByStep: 0, homedByDeclared: 0, unplaced: 0, unplacedFlows: [], unplacedAreas: {},
-      byModule: 0, byChoice: 0, fallbackMissing: 0, fallbackInvalid: 0, choicesIgnored: 0, choices: [],
+      byModule: 0, byChoice: 0, fallbackMissing: 0, fallbackInvalid: 0, choicesIgnored: 0, choicesWithoutReason: 0, choices: [],
       support: { total: 0, chosen: 0, unchosen: 0, unchosenFlows: [] },
     },
   };
@@ -298,31 +300,35 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
 
       const chosen = flow.domainMeta?.domain;
       let domainId = moduleDomain;
-      let byChoice = false;
+      let reasoned = false;
+      const dropClaim = () => {
+        if (isObject(flow.domainMeta)) { delete flow.domainMeta.domain; delete flow.domainMeta.domainReason; }
+      };
       if (!chooses(home)) {
         fh.byModule += 1;
-        if (chosen !== undefined) fh.choicesIgnored += 1;
+        if (chosen !== undefined) { fh.choicesIgnored += 1; dropClaim(); }
       } else {
         const row = { flow: flow.id, module: home, moduleDomain };
         if (typeof chosen === 'string' && kindOf.has(chosen)) {
           domainId = chosen;
-          byChoice = true;
           fh.byChoice += 1;
           Object.assign(row, { domain: chosen, by: 'choice' });
           const reason = flow.domainMeta?.domainReason;
-          if (typeof reason === 'string' && reason.trim()) row.reason = reason.trim();
+          if (typeof reason === 'string' && reason.trim()) { row.reason = reason.trim(); reasoned = true; }
+          else fh.choicesWithoutReason += 1;
         } else if (chosen === undefined || chosen === null || chosen === '') {
           fh.fallbackMissing += 1;
           Object.assign(row, { domain: moduleDomain, by: 'fallback', fallback: 'missing' });
         } else {
           fh.fallbackInvalid += 1;
           Object.assign(row, { domain: moduleDomain, by: 'fallback', fallback: 'invalid', chosen });
+          dropClaim();
         }
         fh.choices.push(row);
       }
       if (kindOf.get(domainId) === 'support') {
         fh.support.total += 1;
-        if (byChoice) fh.support.chosen += 1;
+        if (reasoned) fh.support.chosen += 1;
         else { fh.support.unchosen += 1; fh.support.unchosenFlows.push(flow.id); }
       }
       homed.push({ source: domainId, target: flow.id, type: 'contains_flow', direction: 'forward', weight: 1 });
@@ -562,6 +568,7 @@ export function computeCoverage({
       byChoice: homing?.byChoice ?? 0,
       fallback: { missing: homing?.fallbackMissing ?? 0, invalid: homing?.fallbackInvalid ?? 0 },
       choicesIgnored: homing?.choicesIgnored ?? 0,
+      choicesWithoutReason: homing?.choicesWithoutReason ?? 0,
       support: homing?.support ?? { total: 0, chosen: 0, unchosen: 0, unchosenFlows: [] },
       choices: homing?.choices ?? [],
     },
@@ -570,6 +577,29 @@ export function computeCoverage({
     modules,
     merge: { ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason },
   };
+}
+
+/**
+ * The stdout lines on how flow domains were decided: one count line, then one
+ * line per flow of a choose module that has no valid choice with a reason,
+ * written `support-unchosen` when it ended in a support domain, else
+ * `fallback`. The reason is missing, invalid or no-reason.
+ */
+export function homingLines(coverage) {
+  const f = coverage.flows;
+  const lines = [
+    `flows domain module=${f.byModule} choice=${f.byChoice} fallback=${f.fallback.missing + f.fallback.invalid} ` +
+    `choices-ignored=${f.choicesIgnored} choices-without-reason=${f.choicesWithoutReason} ` +
+    `support=${f.support.total} support-chosen=${f.support.chosen} support-unchosen=${f.support.unchosen}`,
+  ];
+  const unchosen = new Set(f.support.unchosenFlows);
+  for (const row of f.choices) {
+    if (row.by === 'choice' && row.reason !== undefined) continue;
+    const reason = row.by === 'fallback' ? row.fallback : 'no-reason';
+    if (row.by === 'choice' && !unchosen.has(row.flow)) continue;
+    lines.push(`${unchosen.has(row.flow) ? 'support-unchosen' : 'fallback'} ${row.flow} module=${row.module} reason=${reason}`);
+  }
+  return lines;
 }
 
 function parseArgs(argv) {
@@ -710,15 +740,7 @@ export async function runMerge({
   lines.push(`plan status=${coverage.plan.status} business=${coverage.plan.businessDomains} support=${coverage.plan.supportDomains}`);
   lines.push(`flows homed step=${coverage.flows.homedByStep} declared=${coverage.flows.homedByDeclared} unplaced=${coverage.flows.unplaced}`);
   for (const id of merge.flowHoming.unplacedFlows) lines.push(`unplaced ${id} area=${merge.flowHoming.unplacedAreas[id]}`);
-  const f = coverage.flows;
-  lines.push(
-    `flows domain module=${f.byModule} choice=${f.byChoice} fallback=${f.fallback.missing + f.fallback.invalid} ` +
-    `support=${f.support.total} support-chosen=${f.support.chosen} support-unchosen=${f.support.unchosen}`,
-  );
-  const unchosen = new Set(f.support.unchosenFlows);
-  for (const row of f.choices.filter((r) => r.by === 'fallback')) {
-    lines.push(`${unchosen.has(row.flow) ? 'support-unchosen' : 'fallback'} ${row.flow} module=${row.module} reason=${row.fallback}`);
-  }
+  lines.push(...homingLines(coverage));
   lines.push(conservation.ok ? 'conservation ok' : `conservation FAILED missing=${conservation.missing.length} extra=${conservation.extra.length}`);
   for (const module of coverage.modules.filter((m) => m.status === 'silent-zero')) {
     lines.push(`silent-zero ${module.path} entryPoints=${module.entryPoints} areas=${module.areas.join(',')}`);
@@ -766,4 +788,4 @@ if (isCliEntry()) {
   }
 }
 
-export default { acceptOutput, mergeAreas, checkConservation, computeCoverage, locateStep, runMerge, MODULE_BUCKETS };
+export default { acceptOutput, mergeAreas, checkConservation, computeCoverage, homingLines, locateStep, runMerge, MODULE_BUCKETS };

@@ -38,7 +38,7 @@
 
 ### Requirement: 流程挂接与守恒
 
-合并 SHALL 先求每条流程的起始模块：按 `flow_step` 权重找第一个能定位到模块的步骤所在模块；没有可定位步骤时，若流程的 `domainMeta.module` 是本区持有的模块则取它；否则记为 `unplaced`，流程与步骤保留、不生成 `contains_flow`，并在报告中计数。起始模块是单一业务域模块（不在 `mixed` 里、归在业务域）时，流程 SHALL 挂到该模块的域，流程写的 `domainMeta.domain` SHALL 被忽略并计入 `choicesIgnored`。起始模块在 `mixed` 里或归在支撑域时，流程 SHALL 挂到它的 `domainMeta.domain`（必须是规划里的域 id），并在覆盖报告 `flows.choices` 里记下选择与 `domainMeta.domainReason`；没写或写了清单外的值时 SHALL 回落到起始模块的域，按 `missing`/`invalid` 计数并逐条打印。覆盖报告 SHALL 给出 `flows.support`：挂在支撑域的流程数、其中经分析器选择的数、未经选择回落进支撑域的数与这些流程的 id。合并 SHALL 检查守恒：每个已接受区的流程 id、步骤 id 与 `flow_step` 边（按改名映射后）在合并结果中各出现恰好一次；不守恒时退出码 SHALL 为 4，且 MUST NOT 写出合并结果。
+合并 SHALL 先求每条流程的起始模块：按 `flow_step` 权重找第一个能定位到模块的步骤所在模块；没有可定位步骤时，若流程的 `domainMeta.module` 是本区持有的模块则取它；否则记为 `unplaced`，流程与步骤保留、不生成 `contains_flow`，并在报告中计数。起始模块是单一业务域模块（不在 `mixed` 里、归在业务域）时，流程 SHALL 挂到该模块的域，流程写的 `domainMeta.domain` SHALL 被忽略并计入 `choicesIgnored`，合并后的流程节点 MUST NOT 保留未被采用的 `domainMeta.domain` 或 `domainMeta.domainReason`。起始模块在 `mixed` 里或归在支撑域时，流程 SHALL 挂到它的 `domainMeta.domain`（必须是规划里的域 id），并在覆盖报告 `flows.choices` 里记下选择与 `domainMeta.domainReason`；没写理由的选择 SHALL 计入 `choicesWithoutReason`；没写或写了清单外的值时 SHALL 回落到起始模块的域，按 `missing`/`invalid` 计数并逐条打印，清单外的值只记在报告里、从合并后的流程节点上删掉。覆盖报告 SHALL 给出 `flows.support`：挂在支撑域的流程数、其中经分析器选择且写了理由的数、其余（回落或选择没写理由）的数与这些流程的 id，后者逐条打印 `support-unchosen`。合并 SHALL 检查守恒：每个已接受区的流程 id、步骤 id 与 `flow_step` 边（按改名映射后）在合并结果中各出现恰好一次；不守恒时退出码 SHALL 为 4，且 MUST NOT 写出合并结果。
 
 #### Scenario: 首个步骤决定域
 - **WHEN** 一条流程的第一个步骤在 `modules/orders`、第二个在 `modules/payments`，规划把两者分到不同的业务域，两者都不是混合模块
@@ -51,6 +51,14 @@
 #### Scenario: 支撑目录里没有选择
 - **WHEN** 一条流程起始于归在支撑域的 `jobs/cmd`，没有写 `domainMeta.domain`
 - **THEN** 该流程挂在 `jobs/cmd` 的支撑域下，回落计数 `missing` 加一，`flows.support.unchosen` 加一并列出该流程
+
+#### Scenario: 选了支撑域却没写理由
+- **WHEN** 一条流程起始于归在支撑域的 `jobs/cmd`，选了该支撑域但没写 `domainMeta.domainReason`
+- **THEN** 该流程挂在该支撑域下，`choicesWithoutReason` 加一，`flows.support.unchosen` 加一并打印 `support-unchosen <flow> module=jobs/cmd reason=no-reason`
+
+#### Scenario: 选了清单外的域
+- **WHEN** 一条需选域流程写了 `domain:nowhere`
+- **THEN** 该流程回落到起始模块的域，`flows.choices` 记下 `chosen: domain:nowhere`，合并后的流程节点上没有 `domainMeta.domain`
 
 #### Scenario: 合并丢了一个步骤
 - **WHEN** 合并结果比输入少一个步骤

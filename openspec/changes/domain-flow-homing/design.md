@@ -56,12 +56,12 @@
 
 起始模块 `m` 的求法不变（首个可定位步骤所在模块，否则本区持有的声明模块，否则 `unplaced`）。然后：
 
-- `m` 不需选域 → 挂 `plan.modules[m]`，`domainBy: module`；流程若写了 `domainMeta.domain` 则计入 `choicesIgnored`（不改变挂接）。
-- `m` 需选域，`domainMeta.domain` 是规划里的域 id → 挂该域，`domainBy: choice`；
-- `m` 需选域，没写 → 挂 `plan.modules[m]`，`domainBy: fallback`，原因 `missing`；
-- `m` 需选域，写了清单外的值 → 同上回落，原因 `invalid`，记下所写的值。
+- `m` 不需选域 → 挂 `plan.modules[m]`，`by: module`；流程若写了 `domainMeta.domain` 则计入 `choicesIgnored`（不改变挂接），并从合并后的流程节点上删掉 `domain`/`domainReason`，图里不留未被采用的域。
+- `m` 需选域，`domainMeta.domain` 是规划里的域 id → 挂该域，`by: choice`；没写 `domainReason` 的计入 `choicesWithoutReason`；
+- `m` 需选域，没写 → 挂 `plan.modules[m]`，`by: fallback`，原因 `missing`；
+- `m` 需选域，写了清单外的值 → 同上回落，原因 `invalid`，所写的值只记在报告里，从合并后的流程节点上删掉。
 
-覆盖报告 `flows` 增加：`byModule`、`byChoice`、`fallback: {missing, invalid}`、`choicesIgnored`、`choices`（每条需选域流程一行：`{flow, module, moduleDomain, domain, by, reason?, chosen?}`，`reason` 取分析器的 `domainMeta.domainReason`）、`support: {total, chosen, unchosen, unchosenFlows}`。`support.total` 是挂在支撑域的流程数；`chosen` 是分析器明确选了支撑域的；`unchosen` 是回落进支撑域的。打印 `flows domain module=… choice=… fallback=… support=… support-chosen=… support-unchosen=…`，并为每条回落流程打印一行：回落进支撑域的写 `support-unchosen <flow> module=<m> reason=<missing|invalid>`，其余写 `fallback <flow> module=<m> reason=…`。`flows.choices` 的一行为 `{flow, module, moduleDomain, domain, by, reason?, fallback?, chosen?}`：`fallback` 是 `missing`/`invalid`，`chosen` 是非法时所写的值。
+覆盖报告 `flows` 增加：`byModule`、`byChoice`、`fallback: {missing, invalid}`、`choicesIgnored`、`choicesWithoutReason`、`choices`（每条需选域流程一行：`{flow, module, moduleDomain, domain, by, reason?, chosen?}`，`reason` 取分析器的 `domainMeta.domainReason`）、`support: {total, chosen, unchosen, unchosenFlows}`。`support.total` 是挂在支撑域的流程数；`chosen` 是分析器选了支撑域且写了理由的；`unchosen` 是其余的（回落进支撑域，或选了支撑域却没写理由），没写理由的不算判定过非业务。打印 `flows domain module=… choice=… fallback=… choices-ignored=… choices-without-reason=… support=… support-chosen=… support-unchosen=…`，并为每条回落流程打印一行：回落进支撑域的写 `support-unchosen <flow> module=<m> reason=<missing|invalid>`，其余写 `fallback <flow> module=<m> reason=…`；选了支撑域却没写理由的写 `support-unchosen <flow> module=<m> reason=no-reason`。打印由导出的 `homingLines(coverage)` 生成。`flows.choices` 的一行为 `{flow, module, moduleDomain, domain, by, reason?, fallback?, chosen?}`：`fallback` 是 `missing`/`invalid`，`chosen` 是非法时所写的值。
 
 `homedByStep`/`homedByDeclared`/`unplaced` 保持原义（起始模块怎么求出来的），新计数描述的是域怎么定的，两组正交。守恒与四个桶不受挂接影响。
 

@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  acceptOutput, mergeAreas, computeCoverage, checkConservation, runMerge, EXIT_NOT_CONSERVED,
+  acceptOutput, mergeAreas, computeCoverage, checkConservation, runMerge, homingLines, EXIT_NOT_CONSERVED,
 } from '../../skills/excavator-domain/merge-domain-areas.mjs';
 import { PLAN_FORMAT, moduleSetDigest } from '../../skills/excavator-domain/plan-domains.mjs';
 import { HANDLERS, HANDLER_MODULES, writeMultiModuleProject } from '../fixtures/domain-areas/multi-module.mjs';
@@ -405,6 +405,35 @@ describe('homing flows of mixed and support modules on the analyzer\'s choice', 
     expect(coverage.flows.choices).toHaveLength(6);
   });
 
+  it('keeps no claim on a merged flow that the merge did not follow', () => {
+    const { graph } = run();
+    const meta = (id) => graph.nodes.find((n) => n.id === id).domainMeta;
+    expect(meta('flow:create-order').domain).toBeUndefined();
+    expect(meta('flow:vacuum').domain).toBeUndefined();
+    expect(meta('flow:v1-issue-invoice')).toMatchObject({ domain: 'domain:billing', domainReason: 'Issues an invoice.' });
+    expect(area.nodes.find((n) => n.id === 'flow:vacuum').domainMeta.domain).toBe('domain:nowhere');
+  });
+
+  it('prints one line per flow the analyzer left without a valid, reasoned choice', () => {
+    const { graph, merge } = run();
+    const coverage = computeCoverage({ manifest, areaResults: [{ areaId: 'area-001', status: 'accepted', graph: area }], merged: graph, merge, plan, planStatus: 'reused' });
+    expect(homingLines(coverage)).toEqual([
+      'flows domain module=1 choice=3 fallback=3 choices-ignored=1 choices-without-reason=0 support=3 support-chosen=1 support-unchosen=2',
+      'fallback flow:v1-cancel-order module=legacy/routes reason=missing',
+      'support-unchosen flow:vacuum module=jobs/cmd reason=invalid',
+      'support-unchosen flow:purge module=jobs/cmd reason=missing',
+    ]);
+  });
+
+  it('does not count a support choice without a reason as judged non-business', () => {
+    const bare = analysis({ areaId: 'area-001', token: T, domains: [{ id: 'x', flows: [{ name: 'quiet', files: ['jobs/cmd/rotate.js'], domain: 'domain:infra' }] }] });
+    const r = mergeAreas({ accepted: accepted(bare), plan, manifest });
+    expect(r.merge.flowHoming).toMatchObject({ byChoice: 1, choicesWithoutReason: 1 });
+    expect(r.merge.flowHoming.support).toEqual({ total: 1, chosen: 0, unchosen: 1, unchosenFlows: ['flow:quiet'] });
+    const coverage = computeCoverage({ manifest, areaResults: [{ areaId: 'area-001', status: 'accepted', graph: bare }], merged: r.graph, merge: r.merge, plan, planStatus: 'reused' });
+    expect(homingLines(coverage)).toContain('support-unchosen flow:quiet module=jobs/cmd reason=no-reason');
+  });
+
   it('moves a flow only through the choice: without it the jobs flow stays in the support domain', () => {
     const bare = JSON.parse(JSON.stringify(area));
     for (const node of bare.nodes) if (node.domainMeta) { delete node.domainMeta.domain; delete node.domainMeta.domainReason; }
@@ -709,7 +738,7 @@ describe('multi-module fixture end to end', () => {
       byModule: HANDLERS.length, byChoice: 0, fallback: { missing: others, invalid: 0 }, choicesIgnored: 0,
       support: { total: others, chosen: 0, unchosen: others },
     });
-    expect(stdout).toContain(`flows domain module=${HANDLERS.length} choice=0 fallback=${others} support=${others} support-chosen=0 support-unchosen=${others}`);
+    expect(stdout).toContain(`flows domain module=${HANDLERS.length} choice=0 fallback=${others} choices-ignored=0 choices-without-reason=0 support=${others} support-chosen=0 support-unchosen=${others}`);
     expect(stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(others);
     expect(coverage.conservation).toMatchObject({ ok: true, missing: [], extra: [] });
     expect(coverage.modules.find((m) => m.path === HANDLER_MODULES[0]).domain).toBe('domain:commerce');
