@@ -124,6 +124,10 @@ For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skil
 # Extract business domain knowledge (domains, flows, steps)
 /excavator:excavator-domain
 
+# Find how the project's runtime units talk to each other (HTTP, RPC, messages, realtime events, external systems),
+# every call site quoted and checked, paired by address, with visible gaps (no advice)
+/excavator:excavator-relations
+
 # Analyze a Karpathy-pattern LLM wiki knowledge base
 /excavator:excavator-knowledge ~/path/to/wiki
 
