@@ -268,6 +268,7 @@ interface RouteMount {
 - **入口点不是节点**：`recall` 不能用路由字符串直接命中入口点。处理函数节点照旧可检索。
 - **记录流进 `factsDigest`**：升级后事实摘要变化，已有的域图按新鲜度规则判为过期。这是预期的：升级后本来就要重跑下游。
 - **React 的「经处理者挂载」**依赖处理者能解析到文件或声明；`withAuthLazy(() => import(...))` 这种包装靠「值里任意位置的 `import()`」拿模块。别的懒加载写法落 `unresolved` 处理者，路由仍在，只是前缀可能落 `prefix-unresolved`。
+- **CommonJS 解构导入的处理者不解析**：`const { listOrders } = require('./orders'); app.get('/o', listOrders)` 的处理者落 `unresolved`（实现 unused-code 时在夹具里观察到），入口点仍在，但这个处理者不成为 unused-code 的根。ES `import { listOrders }` 能解析。`go-multirepo` 的 Express 处理者全是内联，不受影响。
 
 ## 验收 oracle（动手前写死）
 
