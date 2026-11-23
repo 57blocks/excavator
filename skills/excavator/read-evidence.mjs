@@ -129,21 +129,26 @@ export function checkReadEvidence({ evidence, node, lines }) {
   return { ok: true };
 }
 
-const LINE_REFERENCE = /\blines?\s+\d+/i;
-const FILE_LINE_REFERENCE = /[\w.-]+\.[A-Za-z][\w]*:\d+/;
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
- * True when `text` transcribes the node's anchor instead of describing the
- * code: a line reference (`line 12`, `lines 12-31`), a `<file>.<ext>:<n>`
- * reference, or the node's own path when the path has a directory. A file at
- * the project root may name itself; its name is not a location.
+ * True when `text` transcribes the node's own anchor instead of describing
+ * the code: the node's file name followed by a line number (`create.js:120`,
+ * `create.js line 12`, `create.js lines 12-31`), or the node's own path when
+ * the path has a directory. Only the node's own file counts: `address line 2`
+ * or `smtp.example.com:587` describe the domain, not the anchor, and a file at
+ * the project root may name itself.
  *
  * @param {unknown} text
  * @param {{ filePath?: string }} node
  */
 export function citesAnchor(text, node) {
   if (typeof text !== 'string') return false;
-  if (LINE_REFERENCE.test(text) || FILE_LINE_REFERENCE.test(text)) return true;
   const filePath = node?.filePath;
-  return typeof filePath === 'string' && filePath.includes('/') && text.includes(filePath);
+  if (typeof filePath !== 'string' || filePath.length === 0) return false;
+  if (filePath.includes('/') && text.includes(filePath)) return true;
+  const base = escapeRegExp(filePath.slice(filePath.lastIndexOf('/') + 1));
+  return new RegExp(`(?:^|[^\\w.-])${base}(?::\\d+|\\W{0,3}\\s*lines?\\s+\\d+)`, 'i').test(text);
 }

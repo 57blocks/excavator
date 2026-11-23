@@ -154,20 +154,23 @@ describe('applySemanticPatches refuses a patch without read evidence', () => {
 
 describe('citesAnchor', () => {
   const node = { filePath: 'src/orders/create.js' };
-  it('finds a line reference', () => {
+  it('finds the node\'s own file name with a line number', () => {
     expect(citesAnchor('Validates the order; implemented in create.js lines 12-31.', node)).toBe(true);
-    expect(citesAnchor('See line 40 for the retry.', node)).toBe(true);
-  });
-  it('finds a file:line reference', () => {
-    expect(citesAnchor('Called from create.js:120 on submit.', node)).toBe(true);
+    expect(citesAnchor('Validates the order (create.js line 12).', node)).toBe(true);
+    expect(citesAnchor('Validates the order at create.js:120.', node)).toBe(true);
   });
   it('finds the node\'s own path when it has a directory', () => {
     expect(citesAnchor('Order creation as part of the orders service in src/orders/create.js.', node)).toBe(true);
   });
-  it('lets a summary name a file at the project root, or say line without a number', () => {
-    expect(citesAnchor('Declares the scripts of package.json.', { filePath: 'package.json' })).toBe(false);
+  it('lets a summary use line numbers and host ports of the domain', () => {
+    expect(citesAnchor('Formats address line 2 of the postal address.', node)).toBe(false);
+    expect(citesAnchor('Address Line 2 Formatter', node)).toBe(false);
+    expect(citesAnchor('Sends mail through smtp.example.com:587.', node)).toBe(false);
+    expect(citesAnchor('Skips the header on line 1 of the uploaded CSV.', node)).toBe(false);
     expect(citesAnchor('Reads the input line by line and counts the lines.', node)).toBe(false);
-    expect(citesAnchor('Sums the totals of 3 lines items.', node)).toBe(false);
+  });
+  it('lets a file at the project root name itself', () => {
+    expect(citesAnchor('Declares the scripts of package.json.', { filePath: 'package.json' })).toBe(false);
   });
 });
 
@@ -191,8 +194,8 @@ describe('applySemanticPatches refuses a summary that cites its own anchor', () 
   afterEach(() => rmSync(root, { recursive: true, force: true }));
 
   for (const [label, fields] of [
-    ['a templated summary', { summary: 'Run as part of the fixture service; implemented in src/a.ts lines 1-4.' }],
-    ['a display name with a line number', { displayName: 'Run at line 1' }],
+    ['a templated summary', { summary: 'Run as part of the fixture service; implemented in a.ts lines 1-4.' }],
+    ['a display name with its own file and line', { displayName: 'Run at a.ts:1' }],
   ]) {
     it(`never commits ${label}, even with valid evidence, and records a gap`, async () => {
       const { committed, gaps, results } = await applySemanticPatches({

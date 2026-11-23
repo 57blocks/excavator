@@ -18,7 +18,7 @@
 
 - **F2 按要读的源码行分批。** 新脚本 `plan-semantic-batches.mjs` 取代 F2 里的 `compute-batches.mjs`：从 `stale-semantics.json` 的 `plan.generate` 出发，给每个节点算出要读的行（`readRange`：有 `lineRange` 用它；没有的用文件前 300 行），按路径顺序装批，每批不超过 40 个节点、要读的行（同一文件内取并集）不超过 1,500 行；单个节点超过上限时独占一批并标出。脚本为每批写一个输入文件，节点清单由脚本给出，不再由编排者拼。
 - **补丁带读过的行。** 每个补丁 SHALL 带 `evidence: {line, quote}`：`line` 在节点的 `readRange` 里，多行节点不能是第一行（声明行，凭名字就猜得到），`quote` 是该行上原样的一段文字。提交脚本读源码核对，不合格的补丁不提交，记为 semantic gap。
-- **summary 不写自己的锚点。** summary 或 `displayName` 里出现行号引用（`line 12`、`lines 12-31`、`a.ts:12`）或节点自己带目录的路径时，不提交，记为 semantic gap。
+- **summary 不写自己的锚点。** summary 或 `displayName` 里出现节点自己的文件名加行号（`a.ts:12`、`a.ts lines 12-31`）或节点自己带目录的路径时，不提交，记为 semantic gap。
 - **判定带读过的行。** 核验代理的 `verified` 与 `contradicted` 判定 SHALL 带同样形状的 `evidence`，按同一规则对节点的 `lineRange` 核对；不合格的判定不写入缓存，计入可见的计数与 gap：逐批提交时该 id 保持未判、重跑再选，收尾时记为 `unverified`。`unverified` 不需要依据。
 - 文件分析代理与核验代理的定义、SKILL.md 的 F2/F4、预估附录与基准报告脚本跟着改。
 

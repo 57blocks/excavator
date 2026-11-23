@@ -34,11 +34,15 @@ Phase F2 SHALL 由确定性脚本从 `plan.generate` 装批，MUST NOT 由编排
 
 ### Requirement: summary 不转写自己的锚点
 
-语义补丁的 `summary` 或 `displayName` 含行号引用（`line N`、`lines N-M`、`<文件名>:<N>`），或含节点自己带目录的 `filePath` 时，提交脚本 MUST NOT 提交，SHALL 记为 `semantic-patch-cites-anchor` gap。
+语义补丁的 `summary` 或 `displayName` 含节点自己的文件名紧跟行号（`<文件名>:<N>`、`<文件名> line N`、`<文件名> lines N-M`），或含节点自己带目录的 `filePath` 时，提交脚本 MUST NOT 提交，SHALL 记为 `semantic-patch-cites-anchor` gap。别的文件、主机端口或业务里的行号（如 `address line 2`）SHALL NOT 触发。
 
 #### Scenario: 模板 summary
-- **WHEN** summary 是「Handles X as part of the Y service; implemented in src/y/f.js lines 10-40」
+- **WHEN** 节点在 `src/y/f.js`，summary 是「Handles X as part of the Y service; implemented in f.js lines 10-40」
 - **THEN** 不提交，记一条 `semantic-patch-cites-anchor` gap
+
+#### Scenario: 业务里的行号
+- **WHEN** summary 是「Formats address line 2」或「Sends mail through smtp.example.com:587」
+- **THEN** 照常提交
 
 ### Requirement: 核验判定带读过的行
 

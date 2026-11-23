@@ -696,8 +696,9 @@ section instead of the node/edge construction rules above:
   signature or file, without reading its lines, has no evidence to give; do
   not write one.
 - Do not put the node's file path or any line number in `summary` or
-  `displayName`. The script drops a patch whose text names `line <n>`,
-  `<file>:<n>` or the node's path; its location is already in the graph.
+  `displayName`. The script drops a patch whose text names the node's own
+  file with a line number (`<file>:<n>`, `<file> lines <n>-<m>`) or the
+  node's path; its location is already in the graph.
 - Do not include `filePath`, `lineRange`, `type`, `owner`, `complexity`, or a
   content hash — the deterministic layer attaches those itself from the fact
   graph and `source-manifest.json`; adding them here would be redundant at

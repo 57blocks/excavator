@@ -57,9 +57,10 @@ AGENTS.md 的范围闸：能由 skill/prompt 可靠完成的不写进代码。�
 
 `citesAnchor(text, node)` 对 summary 与 `displayName` 各查一次，命中任一即拒：
 
-- `\blines?\s+\d+`（`line 12`、`lines 12-31`）；
-- `<文件名>.<扩展名>:<数字>`（`orders.js:120`）；
+- 节点自己的文件名后面紧跟行号：`create.js:120`、`create.js line 12`、`create.js lines 12-31`；
 - 节点自己的 `filePath`，且它含 `/`（带目录的路径；根目录下的文件名不算，文件节点的 summary 提到自己的名字是正常的）。
+
+只认节点自己的文件：`address line 2`、`smtp.example.com:587`、`header on line 1` 说的是业务，不是锚点（第 1 轮审查指出，最初的版本按任意 `line N` 与任意 `<文件>:<数字>` 拒，会误拒这些）。
 
 命中记为 `semantic-patch-cites-anchor` gap。只查形式，与 D2 互补：D2 管「读没读」，D3 管观察到的那种模板残留。
 
