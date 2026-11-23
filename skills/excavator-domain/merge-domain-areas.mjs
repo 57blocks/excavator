@@ -95,7 +95,7 @@
  * carried. A filePath that is absolute or escapes the root is never located,
  * not even through its nodeIds.
  * Each module lands in exactly one bucket: covered (a flow has a step in
- * it), declared-skip (no flow, its area listed it in skippedModules with a
+ * it, or a flow cites one of its entry points), declared-skip (no flow, its area listed it in skippedModules with a
  * reason, or its only candidates are script entry points and each of them is
  * declared-skip in entryPointCoverage), silent-zero (no flow, not declared, and script + pattern + accepted
  * model entry points > 0 or it has files with unrecognised registrations) or
@@ -629,7 +629,9 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map(), en
  * may lack an origin. What the merge discards on purpose (nodes without an
  * id, repeated ids in an area, edges with an end that is not a node of the
  * area, self loops) is counted by mergeAreas and not expected here.
- * `renames` is merge.idsRenamed.
+ * `renames` is merge.renames: every raw id the merge changed, by derivation
+ * from an entry-point group (merge.flowIdsDerived) or by a collision suffix
+ * (merge.idsRenamed).
  */
 export function checkConservation({ accepted, merged, renames = [] }) {
   const renameOf = new Map();
@@ -762,8 +764,11 @@ export function computeCoverage({
   const modelOfModule = new Map();
   for (const entry of modelEntries) modelOfModule.set(entry.module, (modelOfModule.get(entry.module) ?? 0) + 1);
 
-  // Per-entry-point buckets first: a module whose only candidates are script
-  // entry points, every one declared skipped, is declared-skip as a module.
+  // Per-entry-point buckets first, so the module account agrees with them: a
+  // module that a merged flow starts in (one of its entry points is in-flow)
+  // is covered even when no step lands in it, and a module whose only
+  // candidates are script entry points, every one declared skipped, is
+  // declared-skip.
   const epc = entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared, fileModule });
   const entryBucketsOf = new Map();
   for (const row of epc.rows) {
@@ -771,6 +776,7 @@ export function computeCoverage({
     if (!entryBucketsOf.has(row.module)) entryBucketsOf.set(row.module, []);
     entryBucketsOf.get(row.module).push(row.bucket);
   }
+  const anyEntryInFlow = (path) => (entryBucketsOf.get(path) ?? []).includes('in-flow');
   const allEntriesSkipped = (path, script) => {
     const list = entryBucketsOf.get(path) ?? [];
     return script > 0 && list.length === script && list.every((b) => b === 'declared-skip');
@@ -779,6 +785,7 @@ export function computeCoverage({
   const buckets = Object.fromEntries(MODULE_BUCKETS.map((b) => [b, 0]));
   let skippedModulesWithoutCandidates = 0;
   let modulesSkippedByEntryPoints = 0;
+  let modulesCoveredByEntryPoints = 0;
   const modules = manifest.modules.map((module) => {
     const flows = flowsOfModule.get(module.path)?.size ?? 0;
     const script = module.scriptEntryPoints ?? 0;
@@ -788,8 +795,13 @@ export function computeCoverage({
     const candidates = script + pattern + model > 0 || unrecognised > 0;
     let status;
     let skippedByEntryPoints = false;
+    let coveredByEntryPoints = false;
     if (flows > 0) status = 'covered';
-    else if (!candidates) {
+    else if (anyEntryInFlow(module.path)) {
+      status = 'covered';
+      coveredByEntryPoints = true;
+      modulesCoveredByEntryPoints += 1;
+    } else if (!candidates) {
       // A skip declared for a module with nothing to skip does not change its bucket.
       status = 'no-candidates';
       if (declared.has(module.path)) skippedModulesWithoutCandidates += 1;
@@ -806,6 +818,7 @@ export function computeCoverage({
       flows, status,
     };
     if (plan) row.domain = plan.modules[module.path] ?? null;
+    if (coveredByEntryPoints) row.coveredBy = 'entry-points';
     if (status === 'declared-skip') {
       row.skipReason = skippedByEntryPoints ? 'every entry point declared skipped' : declared.get(module.path);
       row.skippedBy = skippedByEntryPoints ? 'entry-points' : 'module';
@@ -893,6 +906,7 @@ export function computeCoverage({
     entryPointCoverage: epc,
     merge: {
       ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason, skippedModulesWithoutCandidates, modulesSkippedByEntryPoints,
+      modulesCoveredByEntryPoints,
     },
   };
 }
@@ -903,7 +917,9 @@ export function computeCoverage({
  * cites its group), declared-skip (its id is in its area's
  * skippedEntryPoints with a reason, or its module was declared skipped),
  * silent (none of these); outside-areas for the ids the split found in no
- * module. `ok` is false when the buckets do not add up to the distinct ids.
+ * module. `ok` is false when the buckets do not add up to the distinct ids, or
+ * when the distinct ids differ from `expected`: the split's script entry
+ * points per module plus the ids outside every module.
  */
 function entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared, fileModule }) {
   const citedBy = new Map();
@@ -958,10 +974,15 @@ function entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared
     rows.push({ id, bucket: 'outside-areas' });
     buckets['outside-areas'] += 1;
   }
+  // The expected total comes from the split, not from the rows: an entry
+  // point that reached no bucket (an area context that is missing, an entry
+  // without an id) shows as a shortfall.
+  const expected = manifest.modules.reduce((n, m) => n + (m.scriptEntryPoints ?? 0), 0)
+    + (manifest.entryPointsOutsideModules ?? []).length;
   const total = new Set(rows.map((r) => r.id)).size;
   const sum = Object.values(buckets).reduce((n, v) => n + v, 0);
   return {
-    total, buckets, ok: sum === total && rows.length === total,
+    total, expected, buckets, ok: sum === total && rows.length === total && total === expected,
     inFlowBy, declaredBy, skippedEntryPointsUnknown, skippedEntryPointsWithoutReason,
     silent, rows,
   };

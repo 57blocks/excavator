@@ -356,6 +356,42 @@ describe('one coverage bucket per fact entry point', () => {
     expect(unexplained.coverage.merge.modulesSkippedByEntryPoints).toBe(0);
   });
 
+  it('counts a module as covered when a flow starts at one of its entry points but has no step in it', async () => {
+    const { root, manifest, output } = prepare();
+    const { coverage, stdout } = await merge(root, output, areaOutput([
+      { name: 'invoices', files: ['svc/routes.go'], ids: [IDS.invoices] },
+    ], { token: manifest.token }));
+    const billing = coverage.modules.find((m) => m.path === 'svc/billing');
+    expect(billing).toMatchObject({ status: 'covered', coveredBy: 'entry-points', flows: 0 });
+    expect(coverage.merge.modulesCoveredByEntryPoints).toBe(1);
+    expect(coverage.entryPointCoverage.rows.find((r) => r.id === IDS.invoices).bucket).toBe('in-flow');
+    expect(stdout).not.toContain('silent-zero svc/billing');
+  });
+
+  it('fails conservation when an area context is missing, so its entry points reach no bucket', async () => {
+    const { root, manifest, output } = prepare();
+    rmSync(join(root, '.excavator/intermediate/domain-areas/area-001.context.json'));
+    writeFileSync(output, JSON.stringify(areaOutput([], { token: manifest.token })));
+    const out = [];
+    const { exitCode } = await runMerge({ projectRoot: root, stdout: (t) => out.push(t), stderr: (t) => out.push(t) });
+    expect(exitCode).toBe(4);
+    expect(out.join('')).toContain('conservation FAILED');
+  });
+
+  it('fails the bucket check when fewer entry points reach a bucket than the split counted', () => {
+    const manifest = {
+      modules: [{ path: 'svc', files: ['svc/routes.go'], areas: ['area-001'], entryPoints: 2, scriptEntryPoints: 2 }],
+      areas: [{ areaId: 'area-001' }],
+    };
+    const coverage = computeCoverage({
+      manifest,
+      areaResults: [{ areaId: 'area-001', status: 'accepted', graph: {} }],
+      merged: { nodes: [], edges: [] },
+      entriesOf: new Map([['area-001', [{ id: IDS.health, group: IDS.health, file: 'svc/routes.go', method: 'GET', path: '/health', type: 'http' }]]]),
+    });
+    expect(coverage.entryPointCoverage).toMatchObject({ total: 1, expected: 2, ok: false });
+  });
+
   it('fails the bucket check when one id is counted twice', () => {
     const entry = { id: IDS.health, group: IDS.health, file: 'svc/routes.go', method: 'GET', path: '/health', type: 'http' };
     const manifest = {

@@ -52,7 +52,7 @@
 
 有合法引用的流程（接受后没被清洗掉的）：
 
-- id = `flow:` + 组首 id 去掉 `ep:`（例如 `flow:http.get-v2-orders`）。`.` 不会出现在模型按规则写的短横线 id 里，所以派生 id 与无锚流程的 id 不相撞；真撞上时沿用既有的 `--<区>` 改名并计数。原 id 到新 id 记进 `idsRenamed`（`by: "entry-point"`），区里的 `flow_step` 边随之改写，守恒检查经同一张改名表核对。
+- id = `flow:` + 组首 id 去掉 `ep:`（例如 `flow:http.get-v2-orders`）。`.` 不会出现在模型按规则写的短横线 id 里，所以派生 id 与无锚流程的 id 不相撞；真撞上时沿用既有的 `--<区>` 改名并计数。派生的改名记进 `flowIdsDerived`；所有改名（派生与撞名后缀）记进 `renames`，`idsRenamed` 仍只记撞名后缀。区里的 `flow_step` 边随之改写，守恒检查经 `renames` 核对。
 - `domainMeta.entryPointIds` 改写为引用的 id 按事实顺序排列；`entryPoint` 改写为这些入口点的「方法 路径」（界面入口点只有路径）以 `, ` 连接；`entryType` 为 `http`，界面路由为 `manual`（Core 的枚举没有界面，用户在界面上进入一个页面就是手动触发）。
 - 起始模块 = 组所在文件的模块（`homedByEntryPoint`），先于「第一个可定位步骤」。选域检查经同一个 `homeModuleOf`，两者一致。
 
@@ -75,13 +75,13 @@
 }
 ```
 
-判定顺序：所在区没被接受 → `area-not-accepted`；自己或同组被合并后的流程引用 → `in-flow`；自己在 `skippedEntryPoints` 里带非空理由，或所在模块被声明跳过 → `declared-skip`；否则 `silent`。不在任何模块里的事实入口点（分区时已计 `entryPointsOutsideModules`）→ `outside-areas`。桶之和不等于总数时合并按守恒失败处理（退出 4，不写合并结果）。打印 `entry-point coverage total=… in-flow=… declared-skip=… silent=… area-not-accepted=… outside-areas=…`、每个 `silent-entry-point <id> <方法 路径> area=…`，以及 `flows anchored=… unanchored=… citations-dropped=…`。
+判定顺序：所在区没被接受 → `area-not-accepted`；自己或同组被合并后的流程引用 → `in-flow`；自己在 `skippedEntryPoints` 里带非空理由，或所在模块被声明跳过 → `declared-skip`；否则 `silent`。不在任何模块里的事实入口点（分区时已计 `entryPointsOutsideModules`）→ `outside-areas`。桶之和不等于总数、或总数不等于分区脚本给出的期望数（各模块的脚本入口点数加 `entryPointsOutsideModules`，记为 `expected`）时，合并按守恒失败处理（退出 4，不写合并结果）。期望数独立于各桶，所以缺了区上下文、或入口点没有 id 而哪个桶都没进，也看得见。打印 `entry-point coverage total=… in-flow=… declared-skip=… silent=… area-not-accepted=… outside-areas=…`、每个 `silent-entry-point <id> <方法 路径> area=…`，以及 `flows anchored=… unanchored=… citations-dropped=…`。
 
 ### D6 没有候选的模块
 
 判定顺序改为 covered → （有候选时）declared-skip / silent-zero → no-candidates。没有候选的模块被写进 `skippedModules`，落 `no-candidates`，声明计入 `skippedModulesWithoutCandidates`。这消掉了实测的 60 次来回；模块被流程步骤覆盖与否（covered ↔ no-candidates）仍随流程内容变，不在本变更内。
 
-模块的候选只有脚本入口点、且每一个在 `entryPointCoverage` 里都是 `declared-skip` 时，模块也落 `declared-skip`（`skippedBy: "entry-points"`，计入 `modulesSkippedByEntryPoints`）。验收第一轮发现：分析器按规则 10 逐个跳过入口点、没再写 `skippedModules`，模块桶却报 `silent-zero`，两本账对不上，运行报告据此误说覆盖不完整（两次运行 5 个 `silent-zero` 里 4 个是这种）。带正则、模型入口点或未识别文件的模块不走这条，因为这些候选没有逐条的跳过记录。
+没有步骤落在模块里、但它有入口点在 `entryPointCoverage` 里是 `in-flow`（有流程从这里开始）时，模块落 `covered`（`coveredBy: "entry-points"`，计入 `modulesCoveredByEntryPoints`），评审第一轮指出。模块的候选只有脚本入口点、且每一个在 `entryPointCoverage` 里都是 `declared-skip` 时，模块也落 `declared-skip`（`skippedBy: "entry-points"`，计入 `modulesSkippedByEntryPoints`）。验收第一轮发现：分析器按规则 10 逐个跳过入口点、没再写 `skippedModules`，模块桶却报 `silent-zero`，两本账对不上，运行报告据此误说覆盖不完整（两次运行 5 个 `silent-zero` 里 4 个是这种）。带正则、模型入口点或未识别文件的模块不走这条，因为这些候选没有逐条的跳过记录。
 
 ## Risks / Trade-offs
 

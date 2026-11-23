@@ -26,7 +26,7 @@
 
 ### Requirement: 每个事实入口点一个覆盖桶
 
-覆盖报告 SHALL 带 `entryPointCoverage`，每个事实入口点恰好落一个桶：`area-not-accepted`（所在区未被接受）、`in-flow`（自己或同组被合并后的流程引用）、`declared-skip`（自己在 `skippedEntryPoints` 里带非空理由，或所在模块被声明跳过）、`silent`（以上都不是）、`outside-areas`（不在任何模块里）。`silent` 的入口点 SHALL 逐条列出并打印 `silent-entry-point` 行。各桶之和 MUST 等于事实入口点总数，不等时合并 SHALL 以退出码 4 结束且不写合并结果。流程计数 SHALL 区分有锚（`anchored`）与无锚（`unanchored`）流程。
+覆盖报告 SHALL 带 `entryPointCoverage`，每个事实入口点恰好落一个桶：`area-not-accepted`（所在区未被接受）、`in-flow`（自己或同组被合并后的流程引用）、`declared-skip`（自己在 `skippedEntryPoints` 里带非空理由，或所在模块被声明跳过）、`silent`（以上都不是）、`outside-areas`（不在任何模块里）。`silent` 的入口点 SHALL 逐条列出并打印 `silent-entry-point` 行。各桶之和 MUST 等于事实入口点总数，该总数 MUST 等于分区脚本给出的期望数（各模块的脚本入口点数加不在任何模块里的 id 数），不等时合并 SHALL 以退出码 4 结束且不写合并结果。流程计数 SHALL 区分有锚（`anchored`）与无锚（`unanchored`）流程。
 
 #### Scenario: 同组覆盖
 - **WHEN** 一组含 `GET /a`、`POST /a`，流程只引用了 `GET /a`
@@ -44,7 +44,7 @@
 
 ### Requirement: 覆盖报告
 
-合并 SHALL 写 `<数据目录>/reports/domain-coverage.json`，逐区、逐模块给出状态，并列出没有步骤引用的有入口点文件，带上分区脚本的计数。每个模块 SHALL 恰好落进 `covered`、`declared-skip`、`silent-zero`、`no-candidates` 之一，四桶之和 SHALL 等于模块总数。`declared-skip` 只给有候选（脚本、正则或通过核对的模型入口点，或未识别文件）的模块：模块被写进 `skippedModules` 带理由，或模块的候选只有脚本入口点且每一个在 `entryPointCoverage` 里都是 `declared-skip`（行上记 `skippedBy: "entry-points"`，个数计入 `modulesSkippedByEntryPoints`）；没有候选的模块被声明跳过时 SHALL 落 `no-candidates`，该声明计入 `skippedModulesWithoutCandidates`。步骤按 `filePath`、再按 `nodeIds` 经区上下文里的图节点定位到文件；`filePath` 越出项目根的步骤 MUST NOT 被定位（也不经 `nodeIds`），SHALL 计入 `steps.fileOutsideRoot`。拆段模块的每一段，若有入口点文件却没有步骤定位到它、模块也没被声明跳过，SHALL 列入持有该段的区的 `silentZeroParts`。
+合并 SHALL 写 `<数据目录>/reports/domain-coverage.json`，逐区、逐模块给出状态，并列出没有步骤引用的有入口点文件，带上分区脚本的计数。每个模块 SHALL 恰好落进 `covered`、`declared-skip`、`silent-zero`、`no-candidates` 之一，四桶之和 SHALL 等于模块总数。有步骤落在模块里，或模块有入口点在 `entryPointCoverage` 里为 `in-flow`（`coveredBy: "entry-points"`），模块为 `covered`。`declared-skip` 只给有候选（脚本、正则或通过核对的模型入口点，或未识别文件）的模块：模块被写进 `skippedModules` 带理由，或模块的候选只有脚本入口点且每一个在 `entryPointCoverage` 里都是 `declared-skip`（行上记 `skippedBy: "entry-points"`，个数计入 `modulesSkippedByEntryPoints`）；没有候选的模块被声明跳过时 SHALL 落 `no-candidates`，该声明计入 `skippedModulesWithoutCandidates`。步骤按 `filePath`、再按 `nodeIds` 经区上下文里的图节点定位到文件；`filePath` 越出项目根的步骤 MUST NOT 被定位（也不经 `nodeIds`），SHALL 计入 `steps.fileOutsideRoot`。拆段模块的每一段，若有入口点文件却没有步骤定位到它、模块也没被声明跳过，SHALL 列入持有该段的区的 `silentZeroParts`。
 
 #### Scenario: 单分析器漏模块
 - **WHEN** 多模块夹具有 24 个 handler 模块，一份分析只为其中 16 个写了流程
