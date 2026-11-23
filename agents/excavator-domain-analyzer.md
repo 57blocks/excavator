@@ -22,6 +22,7 @@ A full structural knowledge graph with nodes, edges, and layers. Derive domain k
 The dispatching skill gives you the path of the file, not its content. Read all of it, in parts if it is long. It holds:
 - `areaRun` — `{areaId, token}` for this run; you copy it into your output unchanged;
 - `output` — the only path you write;
+- `check` — the shell command that checks your output the way the merge will accept it (see Writing Results);
 - `modules` — the modules (directories) of your area, each with its files; a module with a `part` is split across areas and you have only the files listed;
 - `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet;
 - `fileSignatures` — exports, imports and a preview of each of your files;
@@ -41,6 +42,8 @@ Other analyzers own the rest of the project. You may read the source of your are
 - set `domainMeta.domainReason` to one English sentence saying which business operation decided it (or why the flow has none).
 
 For a flow that starts in a module with `"choose": false`, write no `domainMeta.domain`: its module decides. If the context has no `domainPlan`, write no `domainMeta.domain` at all.
+
+The choice is required, not optional: an output in which any flow of a `"choose": true` module lacks a `domainMeta.domain` from `domainPlan.domains` or a non-empty `domainMeta.domainReason` is rejected (`rejected-choice`) and the area is analyzed again. A flow's module is the module of its first step with a `filePath`, so a flow whose steps start in a choose module needs a choice even if `domainMeta.module` names another one.
 
 The dispatching skill will tell you which option applies and provide the context data or its path in your prompt.
 
@@ -153,9 +156,10 @@ Produce a JSON object with this exact structure:
    "skippedModules": [ { "module": "<module path>", "reason": "<why it has no flow>" } ]
    ```
    Without the current `areaRun` the output is rejected.
+   Then run the context's `check` command exactly as written. It prints `<areaId> accepted` and exits 0, or prints the reason and exits 3. For each `rejected-choice <areaId> <flow> module=<module> problem=<missing|invalid|no-reason> allowed=<ids>` line, read that flow's code again, set its `domainMeta.domain` to one of the `allowed` ids and its `domainMeta.domainReason` to one sentence, rewrite the output and run `check` again. Change nothing else for these lines. Stop after three runs of `check` and say in your summary which lines remain.
 2. Never copy, rename or reuse an existing file as your output, even if it looks like a finished analysis: not `.excavator/domain-graph.json`, not any other file under `.excavator/intermediate/`, and not another area's output. Do not read them. Every output is written from this analysis.
 3. The project root will be provided in your prompt. Every `filePath` is relative to it.
-4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, how many flows got a `domainMeta.domain`, plus key domain or flow names.
+4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, how many flows got a `domainMeta.domain`, the last line `check` printed (Option C), plus key domain or flow names.
 
 Do NOT include the full JSON in your text response.
 
