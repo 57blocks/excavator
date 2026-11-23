@@ -109,7 +109,7 @@ interface RouteFacts {
   sites: RouteSite[];     // every registration a rule matched, in source order
   mounts: RouteMount[];   // every mount a rule matched, in source order
   exportsValue?: { local: string; factory: boolean; line: number }; // CommonJS `module.exports =`
-  ignoredMounts: Record<string, number>; // per framework: mount-method calls on a known receiver whose last argument is not an identifier
+  ignoredMounts: Array<{ framework: string; line: number; text: string }>; // source order: mount-method calls on a known receiver that are not mounts; text 是最后一个实参的文本（前 80 字符），零实参的 `use()` 为空串
   rules: Record<string, { kind: "http" | "ui"; join: "append" | "nested" }>; // the rules this file hit, so the fact build needs no config
 }
 interface RouteSite {
@@ -150,7 +150,7 @@ interface RouteMount {
 - **调用形态**：`recv.verb(args)`，`recv` 是标识符，`verb` 在 `calls.verbs` 里，且 `recv` 是一个已知接收者（下一条）。路径取第 `pathArgument` 个实参；处理者取最后一个实参（实参只有路径时为 `null`）。
 - **已知接收者**：本文件里由 `rootFactories`/`routerFactories` 调用初始化的局部变量、由 `groupMethods` 调用初始化的局部变量、类型属于 `rootParamTypes`/`prefixParamTypes` 的参数。别的接收者不是注册（`axios.get('/x')` 之类不进任何记录）。
 - **锚**：根工厂变量与根参数类型 → `root`；路由器工厂变量 → `local`（变量名）；前缀参数类型 → `parameter`；分组变量继承父接收者的锚。
-- **挂载形态**：`recv.<mounts.methods>(path?, target)`，`recv` 是已知接收者，最后一个实参是标识符。标识符是本文件路由器 → `local`；是 ES import 绑定 → `binding`；是由 `require('x')` 或 `require('x')(...)` 初始化的局部变量 → `require`；其余 → `other`。最后一个实参不是标识符（`cors()`、函数字面量、`express.static(...)`）的 `use` 不是挂载，计入 `mountsIgnored`（见 D7）。
+- **挂载形态**：`recv.<mounts.methods>(path?, target)`，`recv` 是已知接收者。目标按最后一个实参分类：标识符 → 本文件路由器为 `local`，ES import 绑定为 `binding`，由 `require('x')` 或 `require('x')(...)` 初始化的局部变量为 `require`，其余为 `other`；调用 `require('<字面量>')` → `{ kind: "require", source, called: false }`；被调者是 `require('<字面量>')` 的调用，如 `require('x')(a, b)` → `{ kind: "require", source, called: true }`；其余（`cors()`、函数字面量、`express.static(...)`、零实参）都不是挂载，写入 `ignoredMounts`（带行号与实参文本，见 D7）。路径规则不变：有 2 个以上实参且第一个实参不是目标节点时取第一个实参。
 - **JSX 形态**：标签名等于 `elements.tags` 之一的元素。路径属性是字符串字面量或 `{'...'}` 才算字面量。`index` 属性存在且不是 `{false}` 时路径为空（索引路由）。处理者取第一个出现的 `handlerAttributes` 属性：`element={<X/>}` → `name: X`；`Component={X}` → `name: X`；值里含 `import('x')` → `module`。锚：祖先里有根标签 → `root`；否则 → 外层顶层声明（函数或变量）的名字。
 - **对象形态**：对象字面量，满足其一：在 `containerTypes` 类型注解的变量的初值里（数组元素或对象本身）；在 `rootFactories` 调用的数组实参里；是某个路由对象 `childrenKey` 数组的元素。键名与值的读法同 JSX。锚：`rootFactories` 实参里 → `root`；容器变量里 → `local`（变量名）。`childrenKey` 的值是标识符，或数组元素是标识符、`...标识符` 时，记一条挂载：路径为该路由对象自己的路径，目标按挂载形态的标识符规则分类。
 - **包一层**：处理者是只有一个实参的调用，实参是名字或函数字面量时，取实参，`wrappedBy` 记被调者文本。只拆一层。
@@ -226,9 +226,10 @@ interface RouteMount {
 ```
 
 - 挂载的去向按序取第一个成立的：目标是外部包 → `target-external`；目标不可解（含 `other`）→ `target-unresolved`；挂载路径或其文件内前缀不是字面量 → `path-unresolved`；在环上 → `cycle`；否则 `resolved`。「经处理者挂载」（D5 第 2 步）是推出来的，不是挂载记录，不计入 `mounts`。
+- 被忽略的挂载调用（`ignoredMounts` 的每一项）各写一条记录 `{ kind: "mount", framework, file, line, fate: "ignored", text }`，没有 `path`；`mounts.ignored` 等于这些记录的条数，不计入 `mounts.total`。
 - 没有任何结构行带 `routes` 时，`frameworks` 为空对象，`status` 仍是 `ran`。
 - 缺口：`entry-point-path-unresolved`（每个 `path-unresolved` 路由）、`entry-point-prefix-unresolved`（每个 `prefix-unresolved` 路由）、`entry-point-handler-unresolved`（每个处理者为 `unresolved` 或 `ambiguous` 的入口点）。scope 是框架 id，样例 `<file>:<line> <method> <path 或 pathText>`。
-- `assertEntryPointConservation`：每框架 `sites` = 三桶之和；`entryPoints` = 处理者七类之和 = 记录流里该框架 `kind: "entry"` 的条数；`mounts.total` = 除 `ignored` 外五类之和 = 记录流里该框架 `kind: "mount"` 的条数；三种缺口的计数等于对应桶。不等即抛错，不写产物。
+- `assertEntryPointConservation`：每框架 `sites` = 三桶之和；`entryPoints` = 处理者七类之和 = 记录流里该框架 `kind: "entry"` 的条数；`mounts.total` = 除 `ignored` 外五类之和；记录流里该框架 `kind: "mount"` 的条数 = `mounts.total + mounts.ignored`（被忽略的挂载调用也是记录，`fate: "ignored"`，见下条）；三种缺口的计数等于对应桶。不等即抛错，不写产物。
 - 记录流整体按（`kind`，文件，行，方法，路径）排序。
 
 ### D8 版本
@@ -243,7 +244,7 @@ interface RouteMount {
   - 这五条 HTTP 正则改作「像处理者的代码」检测：命中行不是任何 `entry` 记录或 `mount` 记录的注册行（同文件同行）的，算未识别；有未识别命中的文件写进 `unrecognisedFiles: [{ file, lines: [...], matches: [...] }]`。
   - 非 HTTP 四类正则（CLI、事件、定时、导出处理者）不变，`source: "pattern"`。
   - 知识图读不到（没有、格式错）时，入口点来源记为 `unavailable`，写进产物并在 Phase 2 告诉用户，HTTP 入口点为 0；不回退到正则。
-- 记录流的两种记录（D1 的 `entryPoints` 流）：`kind: "entry"`（D5 第 6 步的入口点）与 `kind: "mount"`（`{ kind, framework, file, line, path, pathText?, fate }`，`fate` 为 D7 `mounts` 的五类之一，`ignored` 的不记）。挂载记录不计入入口点数；它让 `app.use('/x', r)` 这样的行在上一条检测里算作已识别。
+- 记录流的两种记录（D1 的 `entryPoints` 流）：`kind: "entry"`（D5 第 6 步的入口点）与 `kind: "mount"`（`{ kind, framework, file, line, path, pathText?, fate }`，`fate` 为 D7 `mounts` 的五类之一；`fate: "ignored"` 的记录没有 `path`，带 `text`）。挂载记录（含 `ignored`）不计入入口点数；它让 `app.use('/x', r)`、`app.use(cors())` 这样的行在上一条检测里都算作已识别。
 
 ### D10 模型补充与核对
 

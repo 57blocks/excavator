@@ -35,9 +35,10 @@
 1. `docs(openspec): propose route-entry-points`
 2. `feat(core): extract route registrations from framework rules`
 3. `feat(excavator): resolve route entry points into the fact graph`
-4. `feat(excavator-domain): read entry points from the fact graph and check model-found ones`
-5. `feat(excavator-unused-code): root route entry points`
-6. `docs(openspec): record the measured entry points of route-entry-points`
+4. `fix(excavator): mount inline require() routers and record ignored mounts`（实现 domain 时发现：`app.use('/x', require('./x'))` 原先只计入忽略数，忽略的挂载也没有行号）
+5. `feat(excavator-domain): read entry points from the fact graph and check model-found ones`
+6. `feat(excavator-unused-code): root route entry points`
+7. `docs(openspec): record the measured entry points of route-entry-points`
 
 ## Capabilities
 

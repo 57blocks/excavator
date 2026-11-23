@@ -11,6 +11,8 @@
 // Every route lands in exactly one bucket (resolved, path-unresolved,
 // prefix-unresolved), every mount in exactly one fate, every entry point's handler
 // in exactly one of seven kinds; `assertEntryPointConservation` checks the books.
+// A mount-method call that is not a mount (`app.use(cors())`) is a record with
+// fate `ignored` and its line, counted in `mounts.ignored`, not in `mounts.total`.
 //
 // Pure: reads structure rows, the import map and the node index; no disk.
 
@@ -287,8 +289,9 @@ export function resolveEntryPoints({ rows, importMap, bindingResolver, declsByPa
   const framework = (id) => (frameworks[id] ??= emptyFramework());
   const sites = [];
   const mounts = [];
+  const ignoredRecords = [];
   for (const row of routeRows) {
-    const touched = new Set(Object.keys(row.routes.ignoredMounts));
+    const touched = new Set(row.routes.ignoredMounts.map((ignored) => ignored.framework));
     for (const site of row.routes.sites) {
       touched.add(site.framework);
       const rule = row.routes.rules[site.framework];
@@ -302,7 +305,10 @@ export function resolveEntryPoints({ rows, importMap, bindingResolver, declsByPa
       mounts.push({ file: row.path, mount, rule, target: resolveMountTarget(row.path, mount.target) });
     }
     for (const id of touched) framework(id).files += 1;
-    for (const [id, count] of Object.entries(row.routes.ignoredMounts)) framework(id).mounts.ignored += count;
+    for (const ignored of row.routes.ignoredMounts) {
+      framework(ignored.framework).mounts.ignored += 1;
+      ignoredRecords.push({ kind: 'mount', framework: ignored.framework, file: row.path, line: ignored.line, fate: 'ignored', text: ignored.text });
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -411,7 +417,7 @@ export function resolveEntryPoints({ rows, importMap, bindingResolver, declsByPa
   // -------------------------------------------------------------------------
   // Mount fates.
   // -------------------------------------------------------------------------
-  const records = [];
+  const records = [...ignoredRecords];
   const gaps = [];
   for (const m of mounts) {
     const fw = framework(m.mount.framework);
@@ -528,7 +534,8 @@ export function assertEntryPointConservation(coverage, { records, gaps }) {
     const fates = MOUNT_FATES.reduce((n, fate) => n + fw.mounts[fate], 0);
     if (fw.mounts.total !== fates) fail(id, 'mounts vs fate total', fw.mounts.total, fates);
     const mountRecords = recordsOf('mount', id);
-    if (fw.mounts.total !== mountRecords) fail(id, 'mounts vs mount records', fw.mounts.total, mountRecords);
+    const expectedMountRecords = fw.mounts.total + fw.mounts.ignored;
+    if (expectedMountRecords !== mountRecords) fail(id, 'mounts plus ignored mounts vs mount records', expectedMountRecords, mountRecords);
     const pairs = [
       [ENTRY_POINT_GAP_KINDS.pathUnresolved, fw.buckets['path-unresolved']],
       [ENTRY_POINT_GAP_KINDS.prefixUnresolved, fw.buckets['prefix-unresolved']],

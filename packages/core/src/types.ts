@@ -495,8 +495,8 @@ export interface RouteMount {
 export interface RouteFacts {
   sites: RouteSite[];
   mounts: RouteMount[];
-  /** Per framework: mount-method calls on a known receiver whose last argument is not an identifier. */
-  ignoredMounts: Record<string, number>;
+  /** Mount-method calls on a known receiver whose last argument is neither an identifier nor a `require` call; `text` is that argument, first 80 characters. */
+  ignoredMounts: Array<{ framework: string; line: number; text: string }>;
   /** One entry per framework with a site, mount or ignored mount in this file. */
   rules: Record<string, { kind: "http" | "ui"; join: "append" | "nested" }>;
   /** CommonJS `module.exports =` of an identifier, or of a function returning one. */

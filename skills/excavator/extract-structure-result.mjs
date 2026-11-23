@@ -258,8 +258,11 @@ function isRouteFacts(value) {
   return isPlainObject(value) &&
     Array.isArray(value.sites) && value.sites.every(isRouteSite) &&
     Array.isArray(value.mounts) && value.mounts.every(isRouteMount) &&
-    isPlainObject(value.ignoredMounts) &&
-    Object.values(value.ignoredMounts).every(count => isFiniteInteger(count) && count >= 0) &&
+    Array.isArray(value.ignoredMounts) &&
+    value.ignoredMounts.every(ignored => isPlainObject(ignored) &&
+      typeof ignored.framework === 'string' &&
+      isFiniteInteger(ignored.line) &&
+      typeof ignored.text === 'string') &&
     isPlainObject(value.rules) &&
     Object.values(value.rules).every(rule => isPlainObject(rule) &&
       (rule.kind === 'http' || rule.kind === 'ui') &&
@@ -312,7 +315,7 @@ function copyRouteFacts(routes) {
       anchor: copyRouteAnchor(mount.anchor),
       target: copyRouteTarget(mount.target),
     })),
-    ignoredMounts: { ...routes.ignoredMounts },
+    ignoredMounts: routes.ignoredMounts.map(ignored => ({ framework: ignored.framework, line: ignored.line, text: ignored.text })),
     rules: Object.fromEntries(Object.entries(routes.rules).map(([id, rule]) => [id, { kind: rule.kind, join: rule.join }])),
     ...(routes.exportsValue === undefined ? {} : {
       exportsValue: { local: routes.exportsValue.local, factory: routes.exportsValue.factory, line: routes.exportsValue.line },

@@ -131,8 +131,38 @@ module.exports = router;
       { framework: "express", line: 10, path: { literal: "/mk" }, anchor: { kind: "root" }, target: { kind: "require", source: "./mk", called: true } },
       { framework: "express", line: 11, path: { literal: "" }, anchor: { kind: "root" }, target: { kind: "local", name: "router" } },
     ]);
-    expect(f.ignoredMounts).toEqual({ express: 3 });
+    expect(f.ignoredMounts).toEqual([
+      { framework: "express", line: 12, text: "cors()" },
+      { framework: "express", line: 13, text: "function f() {}" },
+      { framework: "express", line: 14, text: "express.static('p')" },
+    ]);
     expect(f.exportsValue).toEqual({ local: "router", factory: false, line: 17 });
+  });
+  it("classifies an inline require mount target, called or not, and ignores other calls", () => {
+    const f = routes("a.js", `const express = require('express');
+const app = express();
+app.use('/api', require('./api'));
+app.use('/w', require('./w')(passport, 1));
+app.use('/z', other('./z'));
+app.use();
+`)!;
+    expect(f.mounts.map((m) => [m.line, m.path, m.target])).toEqual([
+      [3, { literal: "/api" }, { kind: "require", source: "./api", called: false }],
+      [4, { literal: "/w" }, { kind: "require", source: "./w", called: true }],
+    ]);
+    expect(f.ignoredMounts).toEqual([
+      { framework: "express", line: 5, text: "other('./z')" },
+      { framework: "express", line: 6, text: "" },
+    ]);
+  });
+  it("keeps a rules entry for a framework that has only ignored mounts", () => {
+    const f = routes("b.js", `const express = require('express');
+const app = express();
+app.use(cors());
+`)!;
+    expect(f.sites).toEqual([]);
+    expect(f.mounts).toEqual([]);
+    expect(f.rules).toEqual({ express: { kind: "http", join: "append" } });
   });
   it("records a factory export and an ES-import mount target", () => {
     const f = routes("r.js", `const express = require('express');

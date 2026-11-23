@@ -42,7 +42,7 @@ describe('structure row: routes', () => {
       target: { kind: 'require', source: './routes/u', called: true },
     }]);
     expect(result.routes.rules).toEqual({ express: { kind: 'http', join: 'append' } });
-    expect(result.routes.ignoredMounts).toEqual({});
+    expect(result.routes.ignoredMounts).toEqual([]);
   });
 
   it('writes no routes field for a file no rule matched', () => {
@@ -64,7 +64,7 @@ describe('structure row: routes validation', () => {
     path: { literal: '/a' }, anchor: { kind: 'root' }, handler: null, ...fields,
   });
   const routes = (fields = {}) => ({
-    sites: [site()], mounts: [], ignoredMounts: {}, rules: { express: { kind: 'http', join: 'append' } }, ...fields,
+    sites: [site()], mounts: [], ignoredMounts: [], rules: { express: { kind: 'http', join: 'append' } }, ...fields,
   });
   const outcome = (r) => analyzeFileWithOutcomes(
     fake({ functions: [], classes: [], imports: [], exports: [], routes: r }), file, '').structureOutcome;
@@ -83,7 +83,7 @@ describe('structure row: routes validation', () => {
         { framework: 'express', line: 2, path: { literal: '/x' }, anchor: { kind: 'root' }, target: { kind: 'require', source: './r', called: false } },
         { framework: 'express', line: 2, path: { literal: '/x' }, anchor: { kind: 'root' }, target: { kind: 'local', name: 'r' } },
         { framework: 'express', line: 2, path: { literal: '/x' }, anchor: { kind: 'root' }, target: { kind: 'other', text: 'x' } }],
-      ignoredMounts: { express: 2 },
+      ignoredMounts: [{ framework: 'express', line: 3, text: 'cors()' }, { framework: 'express', line: 4, text: '' }],
       exportsValue: { local: 'router', factory: true, line: 9 },
     }))).toBe('succeeded');
   });
@@ -92,8 +92,9 @@ describe('structure row: routes validation', () => {
     expect(outcome('routes')).toBe('failed');
     expect(outcome(routes({ sites: {} }))).toBe('failed');
     expect(outcome(routes({ mounts: undefined }))).toBe('failed');
-    expect(outcome(routes({ ignoredMounts: { express: -1 } }))).toBe('failed');
-    expect(outcome(routes({ ignoredMounts: [] }))).toBe('failed');
+    expect(outcome(routes({ ignoredMounts: { express: 2 } }))).toBe('failed');
+    expect(outcome(routes({ ignoredMounts: [{ framework: 'express', line: 1 }] }))).toBe('failed');
+    expect(outcome(routes({ ignoredMounts: [{ framework: 'express', line: '1', text: '' }] }))).toBe('failed');
     expect(outcome(routes({ rules: { express: { kind: 'rpc', join: 'append' } } }))).toBe('failed');
     expect(outcome(routes({ rules: { express: { kind: 'http', join: 'zip' } } }))).toBe('failed');
     expect(outcome(routes({ exportsValue: { local: 'r', factory: 'yes', line: 1 } }))).toBe('failed');

@@ -249,13 +249,14 @@ export function extractRouteFacts(
 
   const sites: Placed<RouteSite>[] = [];
   const mounts: Placed<RouteMount>[] = [];
-  const ignoredMounts: Record<string, number> = {};
+  const ignoredMounts: Placed<RouteFacts["ignoredMounts"][number]>[] = [];
   const ruleUse: Record<string, { kind: "http" | "ui"; join: Join }> = {};
 
   for (const config of active) {
     const rules = config.routes!;
     const sitesBefore = sites.length;
     const mountsBefore = mounts.length;
+    const ignoredBefore = ignoredMounts.length;
     const rec = rules.receivers ?? {};
     const receivers = new Map<string, Receiver>();
     const routerNames = new Set<string>();
@@ -335,10 +336,24 @@ export function extractRouteFacts(
       return { kind: "other", text: clip(name) };
     };
 
+    // The target of a mount-method call: an identifier, `require('x')` or `require('x')(...)`.
+    const classifyCallTarget = (arg: Node): RouteMount["target"] | undefined => {
+      if (arg.type === "identifier") return classifyTarget(arg);
+      if (arg.type !== "call_expression") return undefined;
+      const direct = requireSource(arg, go);
+      if (direct !== undefined) return { kind: "require", source: direct, called: false };
+      const inner = arg.childForFieldName("function");
+      const called = inner ? requireSource(inner, go) : undefined;
+      return called === undefined ? undefined : { kind: "require", source: called, called: true };
+    };
+
     const addMount = (at: Node, path: RoutePath, anchor: RouteAnchor, id: Node) => {
+      pushMount(at, path, anchor, classifyTarget(id));
+    };
+    const pushMount = (at: Node, path: RoutePath, anchor: RouteAnchor, target: RouteMount["target"]) => {
       mounts.push({
         at: at.startIndex,
-        value: { framework: config.id, line: line(at), path, anchor, target: classifyTarget(id) },
+        value: { framework: config.id, line: line(at), path, anchor, target },
       });
     };
 
@@ -454,12 +469,16 @@ export function extractRouteFacts(
             });
           } else if (rules.mounts?.methods.includes(parts.prop)) {
             const last = args[args.length - 1];
-            if (last?.type !== "identifier") {
-              ignoredMounts[config.id] = (ignoredMounts[config.id] ?? 0) + 1;
+            const target = last ? classifyCallTarget(last) : undefined;
+            if (!last || !target) {
+              ignoredMounts.push({
+                at: n.startIndex,
+                value: { framework: config.id, line: line(n), text: last ? clip(last.text) : "" },
+              });
             } else {
               const first = args.length >= 2 && args[0].id !== last.id ? args[0] : undefined;
               const path = compose(recv.prefix, partOf(first, go), "prefix", rules.join);
-              addMount(n, path, recv.anchor, last);
+              pushMount(n, path, recv.anchor, target);
             }
           }
         } else if (objects?.rootFactories?.includes(n.childForFieldName("function")?.text ?? "")) {
@@ -490,19 +509,19 @@ export function extractRouteFacts(
         });
       }
     }
-    if (sites.length > sitesBefore || mounts.length > mountsBefore || ignoredMounts[config.id] !== undefined) {
+    if (sites.length > sitesBefore || mounts.length > mountsBefore || ignoredMounts.length > ignoredBefore) {
       ruleUse[config.id] = { kind: rules.kind, join: rules.join };
     }
   }
 
   const exportsValue = js ? exportsValueOf(nodes) : undefined;
-  if (sites.length === 0 && mounts.length === 0 && Object.keys(ignoredMounts).length === 0 && !exportsValue) return undefined;
+  if (sites.length === 0 && mounts.length === 0 && ignoredMounts.length === 0 && !exportsValue) return undefined;
   const bySource = <T>(list: Placed<T>[]): T[] =>
     list.map((p, i) => ({ p, i })).sort((a, b) => a.p.at - b.p.at || a.i - b.i).map((x) => x.p.value);
   return {
     sites: bySource(sites),
     mounts: bySource(mounts),
-    ignoredMounts: sortedRecord(ignoredMounts),
+    ignoredMounts: bySource(ignoredMounts),
     rules: sortedRecord(ruleUse),
     ...(exportsValue ? { exportsValue } : {}),
   };

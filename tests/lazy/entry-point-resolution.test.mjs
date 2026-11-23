@@ -215,6 +215,7 @@ describe('entry points join across files', () => {
   it('counts every mount in one fate, and a mount on a cycle as cycle', () => {
     const fates = mountsOf(graph, 'express').map((r) => `${r.file}:${r.line} ${r.path} ${r.fate}`);
     expect(fates).toEqual([
+      'express/app.js:9 undefined ignored',
       'express/app.js:10 /users resolved',
       'express/app.js:11 /v resolved',
       'express/app.js:12 /v resolved',
@@ -352,6 +353,57 @@ describe('a project built before the stream existed', () => {
   });
 });
 
+describe('inline require mounts and ignored mounts are visible', () => {
+  let root;
+  let graph;
+  beforeAll(async () => {
+    root = mkdtempSync(join(tmpdir(), 'excavator-inline-mounts-'));
+    const tree = {
+      'app.js': lines(
+        "const express = require('express');",
+        "const cors = require('cors');",
+        'const app = express();',
+        'app.use(cors());',
+        "app.use('/api', require('./routes/api'));",
+        "app.use('/static', express.static('p'));",
+      ),
+      'routes/api.js': lines(
+        "const express = require('express');",
+        'const router = express.Router();',
+        'function list(req, res) {}',
+        "router.get('/list', list);",
+        "router.post('/', list);",
+        'module.exports = router;',
+      ),
+    };
+    for (const [path, text] of Object.entries(tree)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
+    }
+    const result = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(result.saveError).toBeNull();
+    graph = readKnowledgeGraph(join(root, '.excavator', KNOWLEDGE_GRAPH_FILE));
+  });
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it('resolves the inline require mount and puts the routes under its path', () => {
+    const entries = entriesOf(graph, 'express').map((r) => `${r.method} ${r.path} ${r.bucket}`);
+    expect(entries).toEqual(['GET /api/list resolved', 'POST /api resolved']);
+    const resolved = mountsOf(graph, 'express').filter((r) => r.fate === 'resolved');
+    expect(resolved.map((r) => `${r.file}:${r.line} ${r.path}`)).toEqual(['app.js:5 /api']);
+  });
+
+  it('records every ignored mount call with its line and no path', () => {
+    const ignored = mountsOf(graph, 'express').filter((r) => r.fate === 'ignored');
+    expect(ignored).toEqual([
+      { kind: 'mount', framework: 'express', file: 'app.js', line: 4, fate: 'ignored', text: 'cors()' },
+      { kind: 'mount', framework: 'express', file: 'app.js', line: 6, fate: 'ignored', text: "express.static('p')" },
+    ]);
+    expect(graph.coverage.entryPoints.frameworks.express.mounts).toMatchObject({ total: 1, resolved: 1, ignored: 2 });
+    assertEntryPointConservation(graph.coverage.entryPoints, { records: graph.entryPoints, gaps: graph.gaps });
+  });
+});
+
 describe('entry point conservation', () => {
   const coverage = () => ({
     status: 'ran',
@@ -362,14 +414,15 @@ describe('entry point conservation', () => {
         buckets: { resolved: 1, 'path-unresolved': 0, 'prefix-unresolved': 1 },
         entryPoints: 2,
         handlers: { node: 1, module: 0, inline: 0, external: 0, unresolved: 1, ambiguous: 0, none: 0 },
-        mounts: { total: 1, resolved: 1, 'path-unresolved': 0, 'target-unresolved': 0, 'target-external': 0, cycle: 0, ignored: 0 },
+        mounts: { total: 1, resolved: 1, 'path-unresolved': 0, 'target-unresolved': 0, 'target-external': 0, cycle: 0, ignored: 1 },
       },
     },
   });
   const records = () => [
     { kind: 'entry', framework: 'gin' },
     { kind: 'entry', framework: 'gin' },
-    { kind: 'mount', framework: 'gin' },
+    { kind: 'mount', framework: 'gin', fate: 'resolved' },
+    { kind: 'mount', framework: 'gin', fate: 'ignored' },
   ];
   const gaps = () => [
     { kind: 'entry-point-prefix-unresolved', scope: 'gin', count: 1 },
@@ -389,7 +442,9 @@ describe('entry point conservation', () => {
     };
     expect(bad((f) => { f.sites = 3; })).toThrow(/gin.*sites vs bucket total 3 != 2/);
     expect(bad((f) => { f.handlers.node = 2; })).toThrow(/gin.*entry points vs handler total 2 != 3/);
-    expect(bad((f) => { f.mounts.total = 2; f.mounts.resolved = 2; })).toThrow(/gin.*mounts vs mount records 2 != 1/);
+    expect(bad((f) => { f.mounts.total = 2; f.mounts.resolved = 2; })).toThrow(/gin.*mounts plus ignored mounts vs mount records 3 != 2/);
+    expect(bad((f) => { f.mounts.ignored = 0; })).toThrow(/gin.*mounts plus ignored mounts vs mount records 1 != 2/);
+    expect(bad((f) => { f.mounts.ignored = 2; })).toThrow(/gin.*mounts plus ignored mounts vs mount records 3 != 2/);
     expect(bad((f) => { f.buckets['prefix-unresolved'] = 0; f.buckets['path-unresolved'] = 1; })).toThrow(/gin.*entry-point-path-unresolved gaps vs bucket 0 != 1/);
     expect(() => assertEntryPointConservation(coverage(), { records: records().slice(1), gaps: gaps() })).toThrow(/gin.*entry points vs entry records 2 != 1/);
     expect(() => assertEntryPointConservation(coverage(), { records: records(), gaps: gaps().slice(1) })).toThrow(/gin.*prefix-unresolved gaps vs bucket 0 != 1/);
