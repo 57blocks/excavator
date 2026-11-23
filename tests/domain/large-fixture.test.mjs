@@ -10,6 +10,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runLazy } from './helpers/facts.mjs';
 import { LARGE_MODULES, writeLargeMultiModuleProject } from '../fixtures/domain-areas/large-multi-module.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -31,6 +32,7 @@ describe('large multi-module fixture', () => {
       expect(readFileSync(join(b, file), 'utf-8')).toBe(readFileSync(join(a, file), 'utf-8'));
     }
     expect(LARGE_MODULES).toHaveLength(30);
+    runLazy(a);
     const result = spawnSync('python3', [EXTRACT, a], { encoding: 'utf-8' });
     if (result.error) throw result.error;
     expect(result.status, result.stderr).toBe(0);

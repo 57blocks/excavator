@@ -238,7 +238,7 @@ interface RouteMount {
 
 ### D9 `/excavator-domain` 读事实
 
-- Phase 1：没有 `knowledge-graph.jsonl`，或传了 `--full` 时，先跑 `lazy-analyze.mjs`（确定性、零模型），入口点总来自当下的事实。陈旧时照旧只警告。
+- Phase 1：没有 `knowledge-graph.jsonl`、传了 `--full`，或知识图的头一行没有 `entryPoints`（升级前建的图）时，先跑 `lazy-analyze.mjs`（确定性、零模型），入口点总来自当下的事实。抽取脚本另把「没有这条流」「头里的条数与记录数不符」也判为 `unavailable`。陈旧时照旧只警告。
 - `extract-domain-context.py`：
   - 删掉 HTTP 类正则（Express/Koa、装饰器路由、Next.js 处理函数、GraphQL resolver、gRPC service）作为入口点来源；从知识图读 `kind: "entry"` 的记录作为入口点，`source: "script"`，`type` 取记录的 `routeKind`（`"http"` 或 `"ui"`），`file` 取处理者所在文件（处理者为 `node`/`module` 时），否则取注册文件；带注册处的片段。
   - 这五条 HTTP 正则改作「像处理者的代码」检测：命中行不是任何 `entry` 记录或 `mount` 记录的注册行（同文件同行）的，算未识别；有未识别命中的文件写进 `unrecognisedFiles: [{ file, lines: [...], matches: [...] }]`。
