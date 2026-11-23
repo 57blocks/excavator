@@ -81,6 +81,8 @@
 
 判定顺序改为 covered → （有候选时）declared-skip / silent-zero → no-candidates。没有候选的模块被写进 `skippedModules`，落 `no-candidates`，声明计入 `skippedModulesWithoutCandidates`。这消掉了实测的 60 次来回；模块被流程步骤覆盖与否（covered ↔ no-candidates）仍随流程内容变，不在本变更内。
 
+模块的候选只有脚本入口点、且每一个在 `entryPointCoverage` 里都是 `declared-skip` 时，模块也落 `declared-skip`（`skippedBy: "entry-points"`，计入 `modulesSkippedByEntryPoints`）。验收第一轮发现：分析器按规则 10 逐个跳过入口点、没再写 `skippedModules`，模块桶却报 `silent-zero`，两本账对不上，运行报告据此误说覆盖不完整（两次运行 5 个 `silent-zero` 里 4 个是这种）。带正则、模型入口点或未识别文件的模块不走这条，因为这些候选没有逐条的跳过记录。
+
 ## Risks / Trade-offs
 
 - **模型偏向全部跳过**：跳过只要一句理由，比写流程便宜。缓解：跳过与写流程同样逐条可见；提示词要求跳过仅用于没有业务行为的入口点（健康检查、静态资源、调试）。验收测 `declared-skip` 的跨运行一致性。

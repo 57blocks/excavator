@@ -337,6 +337,25 @@ describe('one coverage bucket per fact entry point', () => {
     expect(coverage.merge.skippedModulesWithoutCandidates).toBe(1);
   });
 
+  it('puts a module in declared-skip when each of its entry points is declared skipped, and not when one has no reason', async () => {
+    const { root, manifest, output } = prepare();
+    const skipped = await merge(root, output, areaOutput([], {
+      token: manifest.token,
+      skippedEntryPoints: [{ id: IDS.invoices, reason: 'Read-only listing.' }],
+    }));
+    const billing = skipped.coverage.modules.find((m) => m.path === 'svc/billing');
+    expect(billing).toMatchObject({ status: 'declared-skip', skippedBy: 'entry-points', skipReason: 'every entry point declared skipped' });
+    expect(skipped.coverage.merge.modulesSkippedByEntryPoints).toBe(1);
+    expect(skipped.stdout).not.toContain('silent-zero svc/billing');
+
+    const unexplained = await merge(root, output, areaOutput([], {
+      token: manifest.token,
+      skippedEntryPoints: [{ id: IDS.invoices, reason: ' ' }],
+    }));
+    expect(unexplained.coverage.modules.find((m) => m.path === 'svc/billing').status).toBe('silent-zero');
+    expect(unexplained.coverage.merge.modulesSkippedByEntryPoints).toBe(0);
+  });
+
   it('fails the bucket check when one id is counted twice', () => {
     const entry = { id: IDS.health, group: IDS.health, file: 'svc/routes.go', method: 'GET', path: '/health', type: 'http' };
     const manifest = {

@@ -96,7 +96,8 @@
  * not even through its nodeIds.
  * Each module lands in exactly one bucket: covered (a flow has a step in
  * it), declared-skip (no flow, its area listed it in skippedModules with a
- * reason), silent-zero (no flow, not declared, and script + pattern + accepted
+ * reason, or its only candidates are script entry points and each of them is
+ * declared-skip in entryPointCoverage), silent-zero (no flow, not declared, and script + pattern + accepted
  * model entry points > 0 or it has files with unrecognised registrations) or
  * no-candidates (no flow, not declared, none of those).
  *
@@ -761,8 +762,23 @@ export function computeCoverage({
   const modelOfModule = new Map();
   for (const entry of modelEntries) modelOfModule.set(entry.module, (modelOfModule.get(entry.module) ?? 0) + 1);
 
+  // Per-entry-point buckets first: a module whose only candidates are script
+  // entry points, every one declared skipped, is declared-skip as a module.
+  const epc = entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared, fileModule });
+  const entryBucketsOf = new Map();
+  for (const row of epc.rows) {
+    if (!row.module) continue;
+    if (!entryBucketsOf.has(row.module)) entryBucketsOf.set(row.module, []);
+    entryBucketsOf.get(row.module).push(row.bucket);
+  }
+  const allEntriesSkipped = (path, script) => {
+    const list = entryBucketsOf.get(path) ?? [];
+    return script > 0 && list.length === script && list.every((b) => b === 'declared-skip');
+  };
+
   const buckets = Object.fromEntries(MODULE_BUCKETS.map((b) => [b, 0]));
   let skippedModulesWithoutCandidates = 0;
+  let modulesSkippedByEntryPoints = 0;
   const modules = manifest.modules.map((module) => {
     const flows = flowsOfModule.get(module.path)?.size ?? 0;
     const script = module.scriptEntryPoints ?? 0;
@@ -771,13 +787,18 @@ export function computeCoverage({
     const unrecognised = module.unrecognisedFiles ?? 0;
     const candidates = script + pattern + model > 0 || unrecognised > 0;
     let status;
+    let skippedByEntryPoints = false;
     if (flows > 0) status = 'covered';
     else if (!candidates) {
       // A skip declared for a module with nothing to skip does not change its bucket.
       status = 'no-candidates';
       if (declared.has(module.path)) skippedModulesWithoutCandidates += 1;
     } else if (declared.has(module.path)) status = 'declared-skip';
-    else status = 'silent-zero';
+    else if (pattern + model === 0 && unrecognised === 0 && allEntriesSkipped(module.path, script)) {
+      status = 'declared-skip';
+      skippedByEntryPoints = true;
+      modulesSkippedByEntryPoints += 1;
+    } else status = 'silent-zero';
     buckets[status] += 1;
     const row = {
       path: module.path, areas: module.areas, files: module.files.length,
@@ -785,7 +806,10 @@ export function computeCoverage({
       flows, status,
     };
     if (plan) row.domain = plan.modules[module.path] ?? null;
-    if (status === 'declared-skip') row.skipReason = declared.get(module.path);
+    if (status === 'declared-skip') {
+      row.skipReason = skippedByEntryPoints ? 'every entry point declared skipped' : declared.get(module.path);
+      row.skippedBy = skippedByEntryPoints ? 'entry-points' : 'module';
+    }
     return row;
   });
 
@@ -807,6 +831,7 @@ export function computeCoverage({
       silentZeroParts: held
         .filter(({ path, part, files = [] }) => part
           && !declared.has(path)
+          && statusOf.get(path) !== 'declared-skip'
           && files.some((f) => candidateSet.has(f))
           && !files.some((f) => citedFiles.has(f)))
         .map(({ path, part }) => ({ path, part })),
@@ -865,8 +890,10 @@ export function computeCoverage({
     conservation,
     areas,
     modules,
-    entryPointCoverage: entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared, fileModule }),
-    merge: { ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason, skippedModulesWithoutCandidates },
+    entryPointCoverage: epc,
+    merge: {
+      ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason, skippedModulesWithoutCandidates, modulesSkippedByEntryPoints,
+    },
   };
 }
 
