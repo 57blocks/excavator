@@ -238,3 +238,82 @@ describe('extract-domain-context.py entry points from the facts', () => {
     expect(context.truncated.entryPoints).toBe(0);
   });
 });
+
+/**
+ * Every script entry point carries an `id` and a `group`, computed from the
+ * fact set alone: two runs on the same facts give the same ids, and a flow
+ * that cites an entry point gets its id from them (merge-domain-areas.mjs).
+ */
+describe('extract-domain-context.py entry-point ids and handler groups', () => {
+  const node = (file, name, line) => ({ fate: 'node', text: name, nodeId: `function:${file}:${name}`, file, line });
+
+  it('names an entry point by its kind, method and path', () => {
+    const root = project({ 'svc/routes.js': 'x\n', 'web/app.jsx': 'x\n' });
+    const ui = entryRecord({ file: 'web/app.jsx', line: 1, path: '/my/profile/:id' });
+    Object.assign(ui, { routeKind: 'ui', method: null, framework: 'react' });
+    const rootUi = entryRecord({ file: 'web/app.jsx', line: 2, path: '/' });
+    Object.assign(rootUi, { routeKind: 'ui', method: null, framework: 'react' });
+    const unresolved = entryRecord({ file: 'svc/routes.js', line: 3, method: 'PUT' });
+    delete unresolved.path;
+    unresolved.pathText = "prefix + '/x'";
+    writeEntryPointGraph(root, [
+      entryRecord({ file: 'svc/routes.js', line: 1, method: 'GET', path: '/v2/Orders/{id}' }),
+      entryRecord({ file: 'svc/routes.js', line: 2, method: 'POST', path: '/' }),
+      unresolved, ui, rootUi,
+    ]);
+    const ids = extract(root).entryPoints.map((e) => e.id).sort();
+    expect(ids).toEqual([
+      'ep:http.get-v2-orders-id', 'ep:http.post-root', 'ep:http.put-prefix-x', 'ep:ui.my-profile-id', 'ep:ui.root',
+    ]);
+  });
+
+  it('adds the registration module when two entry points share a name, then a number', () => {
+    const root = project({ 'auth/main.go': 'x\n', 'billing/main.go': 'x\n', 'billing/extra.go': 'x\n' });
+    writeEntryPointGraph(root, [
+      entryRecord({ file: 'billing/main.go', line: 9, path: '/health' }),
+      entryRecord({ file: 'auth/main.go', line: 3, path: '/health' }),
+      entryRecord({ file: 'billing/extra.go', line: 2, path: '/health' }),
+      entryRecord({ file: 'auth/main.go', line: 4, path: '/a-b' }),
+      entryRecord({ file: 'auth/main.go', line: 5, path: '/a/b' }),
+    ]);
+    const byLine = Object.fromEntries(extract(root).entryPoints.map((e) => [`${e.registeredAt.file}:${e.registeredAt.line}`, e.id]));
+    expect(byLine).toEqual({
+      'auth/main.go:3': 'ep:http.get-health.auth',
+      'billing/extra.go:2': 'ep:http.get-health.billing',
+      'billing/main.go:9': 'ep:http.get-health.billing.2',
+      'auth/main.go:4': 'ep:http.get-a-b.auth',
+      'auth/main.go:5': 'ep:http.get-a-b.auth.2',
+    });
+  });
+
+  it('groups the entry points of one handler under the first of them', () => {
+    const root = project({ 'svc/routes.go': 'x\n', 'svc/auth/authorize.go': 'x\n' });
+    const authorize = node('svc/auth/authorize.go', 'Authorize', 5);
+    writeEntryPointGraph(root, [
+      entryRecord({ file: 'svc/routes.go', line: 7, method: 'POST', path: '/oauth/authorize', handler: authorize }),
+      entryRecord({ file: 'svc/routes.go', line: 6, method: 'GET', path: '/oauth/authorize', handler: authorize }),
+      entryRecord({ file: 'svc/routes.go', line: 8, method: 'GET', path: '/a', handler: { fate: 'inline', line: 8, endLine: 9 } }),
+      entryRecord({ file: 'svc/routes.go', line: 10, method: 'GET', path: '/b', handler: { fate: 'unresolved', text: 'x', line: 10 } }),
+      entryRecord({ file: 'svc/routes.go', line: 11, method: 'GET', path: '/c', handler: { fate: 'unresolved', text: 'x', line: 11 } }),
+    ]);
+    const groups = Object.fromEntries(extract(root).entryPoints.map((e) => [e.id, e.group]));
+    expect(groups).toEqual({
+      'ep:http.get-oauth-authorize': 'ep:http.get-oauth-authorize',
+      'ep:http.post-oauth-authorize': 'ep:http.get-oauth-authorize',
+      'ep:http.get-a': 'ep:http.get-a',
+      'ep:http.get-b': 'ep:http.get-b',
+      'ep:http.get-c': 'ep:http.get-c',
+    });
+  });
+
+  it('gives the same ids on a second extraction of the same facts', () => {
+    const root = project({ 'a/routes.js': 'x\n', 'b/routes.js': 'x\n' });
+    const records = [];
+    for (let i = 1; i <= 30; i++) records.push(entryRecord({ file: i % 2 ? 'a/routes.js' : 'b/routes.js', line: i, path: `/r${i % 7}` }));
+    writeEntryPointGraph(root, records);
+    const first = extract(root).entryPoints.map((e) => [e.id, e.group]);
+    const second = extract(root).entryPoints.map((e) => [e.id, e.group]);
+    expect(second).toEqual(first);
+    expect(new Set(first.map(([id]) => id)).size).toBe(30);
+  });
+});

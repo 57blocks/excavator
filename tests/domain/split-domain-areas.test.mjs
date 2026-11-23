@@ -299,3 +299,18 @@ describe('unrecognised files and entry-point sources', () => {
   });
 });
 
+
+describe('script entry points no module holds', () => {
+  it('lists their ids for the merge and keeps the count', () => {
+    const context = contextFor(['a/routes.js']);
+    context.entryPoints = [
+      { file: 'a/routes.js', line: 1, type: 'http', source: 'script', id: 'ep:http.get-a', group: 'ep:http.get-a' },
+      { file: 'gone/routes.js', line: 1, type: 'http', source: 'script', id: 'ep:http.get-gone', group: 'ep:http.get-gone' },
+      { file: 'gone/jobs.js', line: 1, type: 'cron', source: 'pattern' },
+    ];
+    const plan = planAreas({ context });
+    expect(plan.entryPointsOutsideModules).toEqual(['ep:http.get-gone']);
+    expect(plan.counts.entryPointsOutsideModules).toBe(2);
+    expect(plan.areas[0].entryPoints.map((e) => e.id)).toEqual(['ep:http.get-a']);
+  });
+});

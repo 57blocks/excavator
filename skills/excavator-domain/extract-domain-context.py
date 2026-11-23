@@ -20,6 +20,7 @@ Output:
 
 import json
 import os
+import posixpath
 import re
 import sys
 from pathlib import Path
@@ -300,6 +301,7 @@ def script_entry_points(
     dropped and counted under counts["scriptOnTestFiles"]."""
     registered: set[tuple[str, int]] = set()
     entry_points: list[dict[str, Any]] = []
+    keys: list[str | None] = []
     cache: dict[str, list[str]] = {}
     for record in records:
         kind = record.get("kind")
@@ -334,8 +336,91 @@ def script_entry_points(
             entry["pathText"] = record.get("pathText")
         entry["match"] = f"{entry['method']} {record.get('path') if record.get('path') is not None else record.get('pathText')}"[:120]
         entry_points.append(entry)
+        keys.append(handler_key(handler, reg_file))
     counts["script"] = len(entry_points)
+    assign_entry_point_ids(entry_points, keys)
     return entry_points, registered
+
+
+def handler_key(handler: dict[str, Any], reg_file: str) -> str | None:
+    """node:<nodeId> for a handler resolved to a node, module:<file> for one
+    resolved to a module, inline:<registration file>:<line> for an inline
+    handler; None for every other fate (such an entry point is its own group)."""
+    fate = handler.get("fate")
+    if fate == "node" and isinstance(handler.get("nodeId"), str):
+        return f"node:{handler['nodeId']}"
+    if fate == "module" and isinstance(handler.get("file"), str):
+        return f"module:{handler['file']}"
+    if fate == "inline" and isinstance(handler.get("line"), int):
+        return f"inline:{reg_file}:{handler['line']}"
+    return None
+
+
+ID_PART_MAX = 80
+
+
+def id_part(text: str) -> str:
+    """Lower case, every run of characters outside [a-z0-9] turned into one '-',
+    no '-' at either end, at most ID_PART_MAX characters."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:ID_PART_MAX].strip("-")
+
+
+def entry_sort_key(entry: dict[str, Any]) -> tuple[str, int, str, str, str, int]:
+    """Fact order: registration file, registration line, method, path, then the entry's own file and line."""
+    return (
+        entry["registeredAt"]["file"],
+        entry["registeredAt"]["line"],
+        entry.get("method") or "",
+        entry.get("path") if entry.get("path") is not None else (entry.get("pathText") or ""),
+        entry.get("file") or "",
+        entry.get("line") if isinstance(entry.get("line"), int) else 0,
+    )
+
+
+def assign_entry_point_ids(entry_points: list[dict[str, Any]], keys: list[str | None]) -> None:
+    """Write `id` and `group` on every script entry point, from the fact set alone.
+
+    id = ep:<kind>.<part>, part = the method and path (ui: the path) through
+    id_part; "/" is <method>-root (ui: root). Entry points whose part collides
+    get .<registration module> appended; any still colliding get .2, .3 ... in
+    fact order after the first. group = the id of the first entry point, in
+    fact order, with the same handler key; no key means its own group."""
+    order = sorted(range(len(entry_points)), key=lambda i: entry_sort_key(entry_points[i]))
+    bases: dict[int, str] = {}
+    for i in order:
+        entry = entry_points[i]
+        kind = "ui" if entry.get("type") == "ui" else "http"
+        path_text = entry.get("path") if entry.get("path") is not None else (entry.get("pathText") or "")
+        path_part = id_part(path_text)
+        if kind == "ui":
+            part = path_part or "root"
+        else:
+            method = id_part(entry.get("method") or "any") or "any"
+            part = f"{method}-{path_part or 'root'}"
+        bases[i] = f"ep:{kind}.{part}"
+    seen: dict[str, int] = {}
+    for i in order:
+        seen[bases[i]] = seen.get(bases[i], 0) + 1
+    names: dict[int, str] = {}
+    for i in order:
+        name = bases[i]
+        if seen[name] > 1:
+            module = posixpath.dirname(entry_points[i]["registeredAt"]["file"])
+            name = f"{name}.{id_part(module) or 'root'}"
+        names[i] = name
+    taken: dict[str, int] = {}
+    for i in order:
+        name = names[i]
+        taken[name] = taken.get(name, 0) + 1
+        entry_points[i]["id"] = name if taken[name] == 1 else f"{name}.{taken[name]}"
+    leaders: dict[str, str] = {}
+    for i in order:
+        key = keys[i]
+        if key is None:
+            entry_points[i]["group"] = entry_points[i]["id"]
+            continue
+        leaders.setdefault(key, entry_points[i]["id"])
+        entry_points[i]["group"] = leaders[key]
 
 
 def find_unrecognised_files(
