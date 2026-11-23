@@ -208,4 +208,23 @@ describe('model-owned semantic language audit', () => {
     expect(audit.accepted.some((entry) => entry.fieldPath === 'nodes[0].filePath')).toBe(false);
     expectConserved(audit);
   });
+  // A domain plan records the module paths a domain holds and the module a
+  // flow starts in. Paths are source-owned, so a non-Latin directory name is
+  // not model prose and must not block the save.
+  it('skips the module paths a domain plan records', () => {
+    const dir = 'src/\u8bf7\u5047';
+    const domainGraph = {
+      contentLanguage: 'en',
+      project: { name: 'fixture', languages: [], frameworks: [], description: 'Leave management.' },
+      nodes: [
+        { id: 'domain:leave', type: 'domain', name: 'Leave', summary: 'Handles leave.', tags: [], domainMeta: { kind: 'business', modules: [dir] } },
+        { id: 'flow:apply', type: 'flow', name: 'Apply', summary: 'Applies for leave.', tags: [], domainMeta: { entryType: 'http', module: dir } },
+      ],
+      edges: [],
+    };
+    const audit = auditDomainGraphFields({ domainGraph });
+    expect(audit.rejected).toEqual([]);
+    expect(audit.inspected).toBe(5);
+    expectConserved(audit);
+  });
 });

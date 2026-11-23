@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const skill = readFileSync(resolve(repoRoot, 'skills/excavator-domain/SKILL.md'), 'utf-8');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-domain-analyzer.md'), 'utf-8');
+const planner = readFileSync(resolve(repoRoot, 'agents/excavator-domain-planner.md'), 'utf-8');
 
 describe('/excavator-domain skill', () => {
   it('runs the extractor, the split and the merge from the plugin root', () => {
@@ -48,7 +49,54 @@ describe('/excavator-domain skill', () => {
   });
 });
 
+describe('/excavator-domain domain plan', () => {
+  it('prepares and accepts one plan per module set and reuses it', () => {
+    expect(skill).toContain('node "$PLUGIN_ROOT/skills/excavator-domain/plan-domains.mjs" prepare "$PROJECT_ROOT"');
+    expect(skill).toContain('node "$PLUGIN_ROOT/skills/excavator-domain/plan-domains.mjs" accept "$PROJECT_ROOT"');
+    expect(skill).toMatch(/one planner subagent/i);
+    expect(skill).toContain('plan=reused');
+    expect(skill).toContain('--replan');
+    expect(skill).toContain('$DATA_DIR/domain-plan.json');
+  });
+
+  it('stops after a second rejected plan and on a conservation failure', () => {
+    expect(skill).toMatch(/If it exits 3 again, \*\*STOP\*\*/);
+    expect(skill).toMatch(/If it exits 4[^\n]*\*\*STOP\*\*/);
+  });
+
+  // The hand-written alias table was the unrepeatable judgement this change removes.
+  it('has no alias step and forbids editing plan or outputs by hand', () => {
+    expect(skill).not.toMatch(/alias/i);
+    expect(skill).toContain('Never write, copy or edit the plan output or `domain-plan.json` yourself.');
+  });
+});
+
+describe('domain-planner prompt', () => {
+  it('reads the plan input and writes the fixed output shape', () => {
+    expect(planner).toContain('planRun');
+    expect(planner).toContain('"assignments"');
+    expect(planner).toContain('"kind": "business"');
+    expect(planner).toContain('maxBusinessDomains');
+  });
+
+  it('defines business areas, features and support domains', () => {
+    expect(planner).toContain('A **feature is not a domain.**');
+    expect(planner).toMatch(/data-model directory is never a business domain/);
+    expect(planner).toMatch(/existing assignments cannot change/);
+  });
+
+  it('forbids reusing an earlier output', () => {
+    expect(planner).toMatch(/never copy/i);
+    expect(planner).toContain('domain-plan.json');
+  });
+});
+
 describe('domain-analyzer prompt', () => {
+  it('writes flows, not domains, under Option C and names the starting module', () => {
+    expect(agent).toContain('**Under Option C you write flows and steps, not domains.**');
+    expect(agent).toContain('`domainMeta.module`');
+  });
+
   it('describes the area context input and the token it must echo', () => {
     expect(agent).toContain('Option C');
     expect(agent).toContain('areaRun');

@@ -81,7 +81,7 @@ The domain graph (`domain-graph.json`) uses a three-level hierarchy:
 - **Flow** nodes contain **Step** nodes via `flow_step` edges (weight encodes order: 0.1, 0.2, etc.)
 - **Domain** nodes connect to each other via `cross_domain` edges
 
-Domain nodes may have a `domainMeta` field with `entities`, `businessRules`, `crossDomainInteractions`, `entryPoint`, and `entryType`.
+Domain nodes may have a `domainMeta` field with `entities`, `businessRules`, `crossDomainInteractions`, `entryPoint`, and `entryType`. Domains from `/excavator-domain` also carry `kind` (`business` or `support`) and `modules` (the module paths the domain holds); flows carry `module` (the module they start in).
 
 ## How to Help Users
 

@@ -2,13 +2,14 @@
 /**
  * merge-domain-areas.mjs
  *
- * Merges the per-area domain analyses that split-domain-areas.mjs planned
- * into the one `intermediate/domain-analysis.json` the rest of the domain
- * skill already consumes (anchoring, validation, save), and writes a
- * coverage report that says, per area, per module and per file with an entry
- * point, what came back with no flow. The graph itself stays model-authored:
- * this script only accepts or rejects outputs, joins them by fixed rules and
- * counts.
+ * Merges the per-area flow analyses that split-domain-areas.mjs planned into
+ * the one `intermediate/domain-analysis.json` the rest of the domain skill
+ * already consumes (anchoring, validation, save), and writes a coverage
+ * report that says, per area, per module and per file with an entry point,
+ * what came back with no flow. Flows and steps stay model-authored; domains
+ * come only from the accepted plan (plan-domains.mjs, `<dataDir>/domain-plan.json`):
+ * this script accepts or rejects area outputs, joins them by fixed rules,
+ * homes flows under plan domains by rule, and counts.
  *
  * Acceptance. An area output must carry `areaRun: {areaId, token}` matching
  * the manifest. Without it the output is `rejected-stale` (an earlier run's
@@ -18,15 +19,31 @@
  * area is not accepted; the graph and the report are still written.
  *
  * Merge rules, over accepted outputs in area-id order:
- *   - domains with the same id become one: first name and summary, union of
- *     tags and of every array in domainMeta, the higher complexity;
+ *   - one domain node per plan domain, in plan order, carrying its kind, the
+ *     sorted modules assigned to it and its cross-domain interactions;
+ *     complexity is a structural count of the modules it holds (<=2 simple,
+ *     <=6 moderate, else complex);
+ *   - domain nodes, `contains_flow` and `cross_domain` edges an analyzer
+ *     wrote are ignored and counted (analyzerDomainsIgnored,
+ *     analyzerEdgesIgnored); `cross_domain` edges come from the plan;
  *   - any other node whose id an earlier area already used is renamed
  *     `<id>--<areaId>`, and that area's edges follow the rename;
- *   - optional aliases {"domain:a": "domain:b"} (written by the
- *     orchestrator, never by this script) fold a into b when both are
- *     domains, a != b and b is not itself an alias source;
- *   - edges whose ends are missing are dropped (edgesDangling), self loops
+ *   - edges whose ends are not nodes of the area that wrote them are dropped
+ *     (edgesDangling), self loops
  *     dropped (edgesSelfLoop), repeated type|source|target kept once.
+ *
+ * Homing. A flow goes under the plan domain of the module of its first
+ * locatable step, steps taken by `flow_step` weight ascending then edge
+ * order (homedBy step). With no locatable step, a `domainMeta.module` that
+ * is a module the flow's area holds decides (declared). Otherwise the flow
+ * is unplaced: it and its steps stay, no `contains_flow` edge is made, and
+ * it is counted and listed. Nothing is guessed.
+ *
+ * Conservation. checkConservation compares every accepted area's flow ids,
+ * step ids and `flow_step` edges (through that area's renames) with the
+ * merged graph: each must appear exactly once, and nothing may appear that
+ * no area gave. Exit code 4 when it fails; the coverage report is still
+ * written, domain-analysis.json is not.
  *
  * Coverage. A step is located by its `filePath` when that is a file of a
  * module, else by its `nodeIds` through the graph nodes the area contexts
@@ -41,14 +58,13 @@
  * (silentZeroParts), so an area that returned nothing for its part shows.
  *
  * Usage:
- *   node merge-domain-areas.mjs <projectRoot>
- *     [--aliases <file>] [--out <path>] [--coverage <path>]
+ *   node merge-domain-areas.mjs <projectRoot> [--out <path>] [--coverage <path>]
  *
  * Logging: summary to stdout, diagnostics to stderr.
  */
 
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AREAS_DIR, relativeInsideRoot } from './split-domain-areas.mjs';
@@ -59,10 +75,11 @@ const require = createRequire(resolve(pluginRoot, 'package.json'));
 
 export const COVERAGE_FORMAT = 'excavator-domain-coverage/1';
 export const EXIT_INCOMPLETE = 3;
+export const EXIT_NOT_CONSERVED = 4;
 export const MODULE_BUCKETS = Object.freeze(['covered', 'declared-skip', 'silent-zero', 'no-candidates']);
 const AREA_ID = /^area-\d+$/;
-const COMPLEXITY = ['simple', 'moderate', 'complex'];
 /** Fields of an area output that describe the run, not the domain graph. */
+const IGNORED_EDGE_TYPES = new Set(['contains_flow', 'cross_domain']);
 const AREA_ONLY_FIELDS = ['areaRun', 'skippedModules'];
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -95,40 +112,87 @@ function unionInto(target, source) {
   return target;
 }
 
-function mergeDomainInto(target, source) {
-  if (Array.isArray(source.tags)) target.tags = unionInto(Array.isArray(target.tags) ? target.tags : [], source.tags);
-  const rank = (c) => COMPLEXITY.indexOf(c);
-  if (rank(source.complexity) > rank(target.complexity)) target.complexity = source.complexity;
-  if (isObject(source.domainMeta)) {
-    if (!isObject(target.domainMeta)) target.domainMeta = {};
-    for (const [key, value] of Object.entries(source.domainMeta)) {
-      const have = target.domainMeta[key];
-      if (have === undefined) target.domainMeta[key] = clone(value);
-      else if (Array.isArray(have) && Array.isArray(value)) unionInto(have, value);
-    }
+/** module path -> its project files, file -> module path, module path -> area ids. */
+function moduleIndex(manifest) {
+  const fileModule = new Map();
+  const moduleAreas = new Map();
+  for (const module of manifest.modules) {
+    for (const file of module.files) fileModule.set(file, module.path);
+    moduleAreas.set(module.path, module.areas ?? []);
   }
+  return { fileModule, moduleAreas };
+}
+
+/**
+ * Where a step is: its `filePath` when that is a file of a module, else the
+ * first of its `nodeIds` whose file is. state says why it is not located:
+ * 'outside-root' (never placed, not even through node ids), 'outside-modules'
+ * or 'absent'. Shared by homing and coverage.
+ */
+export function locateStep(node, fileModule, nodeFiles) {
+  let state = 'absent';
+  if (typeof node.filePath === 'string' && node.filePath.length > 0) {
+    const rel = relativeInsideRoot(node.filePath);
+    if (rel === null) state = 'outside-root';
+    else if (fileModule.has(rel)) return { file: rel, state: 'located' };
+    else state = 'outside-modules';
+  }
+  if (state !== 'outside-root' && Array.isArray(node.nodeIds)) {
+    const file = node.nodeIds.map((id) => nodeFiles.get(id)).find((f) => f && fileModule.has(f));
+    if (file) return { file, state: 'located' };
+  }
+  return { file: null, state };
+}
+
+function complexityOf(moduleCount) {
+  return moduleCount <= 2 ? 'simple' : moduleCount <= 6 ? 'moderate' : 'complex';
+}
+
+function planDomainNode(domain, plan) {
+  const modules = Object.keys(plan.modules).filter((path) => plan.modules[path] === domain.id).sort(compare);
+  const interactions = (plan.crossDomain ?? []).filter((e) => e.source === domain.id).map((e) => e.description);
+  return {
+    id: domain.id,
+    type: 'domain',
+    name: domain.name,
+    summary: domain.summary,
+    tags: Array.isArray(domain.tags) ? [...domain.tags] : [],
+    complexity: complexityOf(modules.length),
+    domainMeta: {
+      kind: domain.kind,
+      modules,
+      entities: Array.isArray(domain.entities) ? [...domain.entities] : [],
+      businessRules: Array.isArray(domain.businessRules) ? [...domain.businessRules] : [],
+      crossDomainInteractions: interactions,
+    },
+  };
 }
 
 /**
  * Merge accepted area graphs. `accepted` is [{areaId, graph}] in any order;
- * it is processed in area-id order. Returns { graph, merge }.
+ * it is processed in area-id order. `plan` is the stored domain plan,
+ * `manifest` the area manifest (modules, their files and areas), `nodeFiles`
+ * maps knowledge-graph node ids to project files. Returns { graph, merge }.
  */
-export function mergeAreas({ accepted, aliases = null }) {
+export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) {
+  if (!isObject(plan) || !isObject(plan.modules) || !Array.isArray(plan.domains)) throw new Error('mergeAreas needs the stored domain plan');
+  const { fileModule, moduleAreas } = moduleIndex(manifest);
   const ordered = [...accepted].sort((a, b) => compare(a.areaId, b.areaId));
   const merge = {
-    domainsMerged: [],
     idsRenamed: [],
-    aliasesApplied: [],
-    aliasesRejected: [],
+    analyzerDomainsIgnored: 0,
+    analyzerEdgesIgnored: 0,
     nodesWithoutId: 0,
     duplicateIdsInArea: 0,
     edgesDangling: 0,
     edgesSelfLoop: 0,
     edgesDuplicate: 0,
+    flowHoming: { homedByStep: 0, homedByDeclared: 0, unplaced: 0, unplacedFlows: [], unplacedAreas: {} },
   };
   const nodes = new Map();
-  const domainAreas = new Map();
+  for (const domain of plan.domains) nodes.set(domain.id, planDomainNode(domain, plan));
   const edges = [];
+  const homing = [];
   let project = null;
   let version = null;
 
@@ -143,66 +207,84 @@ export function mergeAreas({ accepted, aliases = null }) {
 
     const rename = new Map();
     const seenHere = new Set();
+    const areaNodes = new Map();
     for (const raw of Array.isArray(graph.nodes) ? graph.nodes : []) {
       if (!isObject(raw) || typeof raw.id !== 'string' || raw.id.length === 0) { merge.nodesWithoutId += 1; continue; }
       if (seenHere.has(raw.id)) { merge.duplicateIdsInArea += 1; continue; }
       seenHere.add(raw.id);
+      if (raw.type === 'domain') { merge.analyzerDomainsIgnored += 1; continue; }
       const node = clone(raw);
-      if (node.type === 'domain') {
-        if (!domainAreas.has(node.id)) domainAreas.set(node.id, []);
-        domainAreas.get(node.id).push(areaId);
-        const existing = nodes.get(node.id);
-        if (existing && existing.type === 'domain') { mergeDomainInto(existing, node); continue; }
-      }
       if (nodes.has(node.id)) {
-        const renamed = `${node.id}--${areaId}`;
+        // The suffixed id may itself be taken (an area can hand in an id that
+        // looks renamed); a numbered suffix keeps every node.
+        let renamed = `${node.id}--${areaId}`;
+        for (let n = 2; nodes.has(renamed); n++) renamed = `${node.id}--${areaId}-${n}`;
         rename.set(node.id, renamed);
         merge.idsRenamed.push({ from: node.id, to: renamed, areaId });
         node.id = renamed;
       }
       nodes.set(node.id, node);
+      areaNodes.set(node.id, node);
     }
+    const areaStepEdges = [];
     for (const raw of Array.isArray(graph.edges) ? graph.edges : []) {
       if (!isObject(raw)) { merge.edgesDangling += 1; continue; }
+      if (IGNORED_EDGE_TYPES.has(raw.type)) { merge.analyzerEdgesIgnored += 1; continue; }
       const edge = clone(raw);
       if (rename.has(edge.source)) edge.source = rename.get(edge.source);
       if (rename.has(edge.target)) edge.target = rename.get(edge.target);
+      // An edge joins nodes of the area that wrote it; one that reaches
+      // another area's node (or none) is dangling for this area.
+      if (!areaNodes.has(edge.source) || !areaNodes.has(edge.target)) { merge.edgesDangling += 1; continue; }
       edges.push(edge);
+      if (edge.type === 'flow_step') areaStepEdges.push(edge);
     }
+    homing.push({ areaId, areaNodes, areaStepEdges });
   }
-  for (const [id, areas] of domainAreas) {
-    if (areas.length > 1) merge.domainsMerged.push({ id, areas });
-  }
-  merge.domainsMerged.sort((a, b) => compare(a.id, b.id));
 
-  // Aliases: judged by the orchestrator, checked and applied here.
-  const aliasMap = new Map();
-  if (aliases !== null) {
-    if (!isObject(aliases)) throw new Error('aliases must be a JSON object of "domain:a": "domain:b"');
-    const sources = new Set(Object.keys(aliases));
-    for (const [from, to] of Object.entries(aliases).sort(([a], [b]) => compare(a, b))) {
-      let reason = null;
-      if (typeof to !== 'string') reason = 'target is not a string';
-      else if (from === to) reason = 'self';
-      else if (!nodes.has(from)) reason = 'source-missing';
-      else if (!nodes.has(to)) reason = 'target-missing';
-      else if (nodes.get(from).type !== 'domain' || nodes.get(to).type !== 'domain') reason = 'not-a-domain';
-      else if (sources.has(to)) reason = 'chained';
-      if (reason) { merge.aliasesRejected.push({ from, to, reason }); continue; }
-      aliasMap.set(from, to);
-      merge.aliasesApplied.push({ from, to });
+  // Homing: contains_flow edges are made here, by rule, never taken from an analyzer.
+  const homed = [];
+  for (const { areaId, areaNodes, areaStepEdges } of homing) {
+    for (const flow of areaNodes.values()) {
+      if (flow.type !== 'flow') continue;
+      const steps = areaStepEdges
+        .map((edge, order) => ({ edge, order }))
+        .filter(({ edge }) => edge.source === flow.id)
+        .sort((a, b) => ((Number.isFinite(a.edge.weight) ? a.edge.weight : Infinity) - (Number.isFinite(b.edge.weight) ? b.edge.weight : Infinity)) || a.order - b.order);
+      let domainId = null;
+      let by = null;
+      for (const { edge } of steps) {
+        const step = areaNodes.get(edge.target);
+        if (!step || step.type !== 'step') continue;
+        const { file } = locateStep(step, fileModule, nodeFiles);
+        if (file !== null) { domainId = plan.modules[fileModule.get(file)] ?? null; by = 'step'; break; }
+      }
+      if (domainId === null) {
+        const declared = flow.domainMeta?.module;
+        if (typeof declared === 'string' && (moduleAreas.get(declared) ?? []).includes(areaId)) {
+          domainId = plan.modules[declared] ?? null;
+          by = 'declared';
+        }
+      }
+      if (domainId === null) {
+        merge.flowHoming.unplaced += 1;
+        merge.flowHoming.unplacedFlows.push(flow.id);
+        merge.flowHoming.unplacedAreas[flow.id] = areaId;
+        continue;
+      }
+      if (by === 'step') merge.flowHoming.homedByStep += 1;
+      else merge.flowHoming.homedByDeclared += 1;
+      homed.push({ source: domainId, target: flow.id, type: 'contains_flow', direction: 'forward', weight: 1 });
     }
-    for (const [from, to] of aliasMap) {
-      mergeDomainInto(nodes.get(to), nodes.get(from));
-      nodes.delete(from);
-    }
+  }
+  edges.push(...homed);
+  for (const entry of plan.crossDomain ?? []) {
+    edges.push({ source: entry.source, target: entry.target, type: 'cross_domain', direction: 'forward', description: entry.description, weight: 0.6 });
   }
 
   const kept = [];
   const seenEdges = new Set();
   for (const edge of edges) {
-    if (aliasMap.has(edge.source)) edge.source = aliasMap.get(edge.source);
-    if (aliasMap.has(edge.target)) edge.target = aliasMap.get(edge.target);
     if (typeof edge.source !== 'string' || typeof edge.target !== 'string' || !nodes.has(edge.source) || !nodes.has(edge.target)) {
       merge.edgesDangling += 1;
       continue;
@@ -226,6 +308,79 @@ export function mergeAreas({ accepted, aliases = null }) {
   return { graph, merge };
 }
 
+/**
+ * Every accepted area's flow ids, step ids and flow_step edges (through that
+ * area's renames) must be in `merged` exactly once, and nothing in `merged`
+ * may lack an origin. What the merge discards on purpose (nodes without an
+ * id, repeated ids in an area, edges with an end that is not a node of the
+ * area, self loops) is counted by mergeAreas and not expected here.
+ * `renames` is merge.idsRenamed.
+ */
+export function checkConservation({ accepted, merged, renames = [] }) {
+  const renameOf = new Map();
+  for (const { from, to, areaId } of renames) renameOf.set(`${areaId}|${from}`, to);
+  // Counted, not collected: two areas ending with the same id is a loss,
+  // because the merged graph can hold that id only once.
+  const expected = { flow: new Map(), step: new Map(), edge: new Map() };
+  const bump = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
+  for (const { areaId, graph } of accepted) {
+    const mapId = (id) => renameOf.get(`${areaId}|${id}`) ?? id;
+    const own = new Set();
+    for (const raw of Array.isArray(graph.nodes) ? graph.nodes : []) {
+      if (!isObject(raw) || typeof raw.id !== 'string' || raw.id.length === 0 || own.has(raw.id) || raw.type === 'domain') continue;
+      own.add(raw.id);
+      if (raw.type === 'flow') bump(expected.flow, mapId(raw.id));
+      else if (raw.type === 'step') bump(expected.step, mapId(raw.id));
+    }
+    // A repeated edge within one area is kept once by the merge (edgesDuplicate).
+    const ownEdges = new Set();
+    for (const raw of Array.isArray(graph.edges) ? graph.edges : []) {
+      if (!isObject(raw) || raw.type !== 'flow_step' || !own.has(raw.source) || !own.has(raw.target) || raw.source === raw.target) continue;
+      ownEdges.add(`${mapId(raw.source)}|${mapId(raw.target)}`);
+    }
+    for (const key of ownEdges) bump(expected.edge, key);
+  }
+  const nodes = Array.isArray(merged?.nodes) ? merged.nodes : [];
+  const occurrences = (type) => {
+    const counts = new Map();
+    for (const n of nodes) if (isObject(n) && n.type === type) counts.set(n.id, (counts.get(n.id) ?? 0) + 1);
+    return counts;
+  };
+  const out = {
+    flow: occurrences('flow'),
+    step: occurrences('step'),
+    edge: new Map(),
+  };
+  for (const e of Array.isArray(merged?.edges) ? merged.edges : []) {
+    if (isObject(e) && e.type === 'flow_step') out.edge.set(`${e.source}|${e.target}`, (out.edge.get(`${e.source}|${e.target}`) ?? 0) + 1);
+  }
+  const missing = [];
+  const extra = [];
+  const label = { flow: (k) => k, step: (k) => k, edge: (k) => `flow_step ${k}` };
+  for (const kind of ['flow', 'step', 'edge']) {
+    for (const [key, want] of [...expected[kind]].sort(([a], [b]) => compare(a, b))) {
+      const have = out[kind].get(key) ?? 0;
+      if (have < want) missing.push(want > 1 ? `${label[kind](key)} (given x${want}, kept x${have})` : label[kind](key));
+      else if (have > want) extra.push(`${label[kind](key)} (x${have})`);
+    }
+    for (const key of [...out[kind].keys()].sort(compare)) {
+      if (!expected[kind].has(key)) extra.push(label[kind](key));
+    }
+  }
+  const total = (m) => [...m.values()].reduce((n, v) => n + v, 0);
+  return {
+    flowsIn: total(expected.flow),
+    flowsOut: total(out.flow),
+    stepsIn: total(expected.step),
+    stepsOut: total(out.step),
+    flowStepEdgesIn: total(expected.edge),
+    flowStepEdgesOut: total(out.edge),
+    missing,
+    extra,
+    ok: missing.length === 0 && extra.length === 0,
+  };
+}
+
 function countTypes(graph) {
   const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
   const count = (type) => nodes.filter((n) => isObject(n) && n.type === type).length;
@@ -237,9 +392,10 @@ function countTypes(graph) {
  * for every area of the manifest; `merged` is mergeAreas' graph; `nodeFiles`
  * maps knowledge-graph node ids to project-relative files.
  */
-export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new Map(), merge = null }) {
-  const fileModule = new Map();
-  for (const module of manifest.modules) for (const file of module.files) fileModule.set(file, module.path);
+export function computeCoverage({
+  manifest, areaResults, merged, nodeFiles = new Map(), merge = null, plan = null, planStatus = null, conservation = null,
+}) {
+  const { fileModule } = moduleIndex(manifest);
 
   // Steps -> files.
   const steps = { total: 0, located: 0, unlocated: 0, fileOutsideRoot: 0, fileOutsideModules: 0 };
@@ -247,20 +403,10 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
   for (const node of merged.nodes) {
     if (node.type !== 'step') continue;
     steps.total += 1;
-    let file = null;
-    let pathState = 'absent';
-    if (typeof node.filePath === 'string' && node.filePath.length > 0) {
-      const rel = relativeInsideRoot(node.filePath);
-      if (rel === null) pathState = 'outside-root';
-      else if (fileModule.has(rel)) file = rel;
-      else pathState = 'outside-modules';
-    }
-    if (file === null && pathState !== 'outside-root' && Array.isArray(node.nodeIds)) {
-      file = node.nodeIds.map((id) => nodeFiles.get(id)).find((f) => f && fileModule.has(f)) ?? null;
-    }
+    const { file, state } = locateStep(node, fileModule, nodeFiles);
     if (file !== null) { steps.located += 1; stepFile.set(node.id, file); continue; }
-    if (pathState === 'outside-root') steps.fileOutsideRoot += 1;
-    else if (pathState === 'outside-modules') steps.fileOutsideModules += 1;
+    if (state === 'outside-root') steps.fileOutsideRoot += 1;
+    else if (state === 'outside-modules') steps.fileOutsideModules += 1;
     else steps.unlocated += 1;
   }
 
@@ -305,6 +451,7 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
     else status = 'no-candidates';
     buckets[status] += 1;
     const row = { path: module.path, areas: module.areas, files: module.files.length, entryPoints: module.entryPoints, flows, status };
+    if (plan) row.domain = plan.modules[module.path] ?? null;
     if (status === 'declared-skip') row.skipReason = declared.get(module.path);
     return row;
   });
@@ -335,16 +482,33 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
     return row;
   });
 
+  const totals = countTypes(merged);
+  const homing = merge?.flowHoming;
   return {
     format: COVERAGE_FORMAT,
     token: manifest.token,
     status: areas.every((a) => a.status === 'accepted') ? 'complete' : 'incomplete',
-    totals: countTypes(merged),
+    totals,
     buckets,
     steps,
     candidateFiles: { total: candidates.length, cited: candidates.length - uncited.length, uncited },
     silentZeroParts: areas.reduce((n, a) => n + a.silentZeroParts.length, 0),
     split: manifest.counts ?? null,
+    plan: plan
+      ? {
+        status: planStatus,
+        moduleSetDigest: plan.moduleSetDigest,
+        businessDomains: plan.domains.filter((d) => d.kind === 'business').length,
+        supportDomains: plan.domains.filter((d) => d.kind === 'support').length,
+      }
+      : null,
+    flows: {
+      total: totals.flows,
+      homedByStep: homing?.homedByStep ?? 0,
+      homedByDeclared: homing?.homedByDeclared ?? 0,
+      unplaced: homing?.unplaced ?? 0,
+    },
+    conservation,
     areas,
     modules,
     merge: { ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason },
@@ -352,8 +516,8 @@ export function computeCoverage({ manifest, areaResults, merged, nodeFiles = new
 }
 
 function parseArgs(argv) {
-  const args = { projectRoot: null, aliases: null, out: null, coverage: null };
-  const flags = { '--aliases': 'aliases', '--out': 'out', '--coverage': 'coverage' };
+  const args = { projectRoot: null, out: null, coverage: null };
+  const flags = { '--out': 'out', '--coverage': 'coverage' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (flags[arg]) {
@@ -368,7 +532,7 @@ function parseArgs(argv) {
     throw new Error(`merge-domain-areas: unexpected argument: ${arg}`);
   }
   if (!args.projectRoot) {
-    throw new Error('Usage: node merge-domain-areas.mjs <projectRoot> [--aliases <file>] [--out <path>] [--coverage <path>]');
+    throw new Error('Usage: node merge-domain-areas.mjs <projectRoot> [--out <path>] [--coverage <path>]');
   }
   return args;
 }
@@ -392,15 +556,56 @@ function readOrNull(path) {
   return existsSync(path) ? readFileSync(path, 'utf-8') : null;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const projectRoot = resolve(args.projectRoot);
-  const dataDir = await resolveDataDir(projectRoot);
+/** The stored plan, which must cover exactly the manifest's modules. */
+function loadPlan(dataDir, manifest) {
+  const planPath = join(dataDir, 'domain-plan.json');
+  const hint = 'run plan-domains.mjs prepare, dispatch the planner if it asks for one, then plan-domains.mjs accept';
+  const text = readOrNull(planPath);
+  if (text === null) throw new Error(`merge-domain-areas: no domain plan at ${planPath}; ${hint}`);
+  let plan;
+  try {
+    plan = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`merge-domain-areas: unreadable domain plan ${planPath} (${error.message}); ${hint}`);
+  }
+  if (!isObject(plan) || !isObject(plan.modules) || !Array.isArray(plan.domains)) {
+    throw new Error(`merge-domain-areas: malformed domain plan ${planPath}; ${hint}`);
+  }
+  const planned = new Set(Object.keys(plan.modules));
+  const current = new Set(manifest.modules.map((m) => m.path));
+  const onlyManifest = [...current].filter((p) => !planned.has(p)).sort(compare);
+  const onlyPlan = [...planned].filter((p) => !current.has(p)).sort(compare);
+  if (onlyManifest.length || onlyPlan.length) {
+    const some = (list) => list.slice(0, 5).join(', ') + (list.length > 5 ? ` (+${list.length - 5} more)` : '');
+    throw new Error(
+      `merge-domain-areas: the domain plan's modules differ from this run's modules; ${hint}` +
+      `${onlyManifest.length ? `\n  not in the plan: ${some(onlyManifest)}` : ''}` +
+      `${onlyPlan.length ? `\n  not in this run: ${some(onlyPlan)}` : ''}`,
+    );
+  }
+  return plan;
+}
+
+/**
+ * The whole merge for one project. `mergeFn` is injectable so the not-conserved
+ * path can be exercised with a lossy merge; `stdout`/`stderr` receive text.
+ * Returns { exitCode }.
+ */
+export async function runMerge({
+  projectRoot, out = null, coverage: coverageOut = null, mergeFn = mergeAreas,
+  stdout = (t) => process.stdout.write(t), stderr = (t) => process.stderr.write(t),
+}) {
+  const root = resolve(projectRoot);
+  const dataDir = await resolveDataDir(root);
   const intermediate = join(dataDir, 'intermediate');
   const areasDir = join(intermediate, AREAS_DIR);
   const manifestPath = join(areasDir, 'manifest.json');
   if (!existsSync(manifestPath)) throw new Error(`merge-domain-areas: no area manifest at ${manifestPath}; run split-domain-areas.mjs first`);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+  const plan = loadPlan(dataDir, manifest);
+  const planStatus = existsSync(join(areasDir, 'plan.input.json'))
+    ? (JSON.parse(readFileSync(join(areasDir, 'plan.input.json'), 'utf-8')).mode ?? 'reused')
+    : 'reused';
 
   // Area files are found from the area id, never from a path the manifest carries.
   const areaResults = [];
@@ -418,44 +623,63 @@ async function main() {
     }
   }
 
-  const aliases = args.aliases ? JSON.parse(readFileSync(resolve(args.aliases), 'utf-8')) : null;
   const accepted = areaResults.filter((r) => r.status === 'accepted').map(({ areaId, graph }) => ({ areaId, graph }));
-  const { graph, merge } = mergeAreas({ accepted, aliases });
-  const coverage = computeCoverage({ manifest, areaResults, merged: graph, nodeFiles, merge });
+  const { graph, merge } = mergeFn({ accepted, plan, manifest, nodeFiles });
+  const conservation = checkConservation({ accepted, merged: graph, renames: merge.idsRenamed });
+  const coverage = computeCoverage({ manifest, areaResults, merged: graph, nodeFiles, merge, plan, planStatus, conservation });
 
-  writeJson(resolve(args.out ?? join(intermediate, 'domain-analysis.json')), graph);
-  const coveragePath = resolve(args.coverage ?? join(dataDir, 'reports', 'domain-coverage.json'));
+  const outPath = resolve(out ?? join(intermediate, 'domain-analysis.json'));
+  // A failed check leaves no merged graph behind, not even an earlier merge's.
+  if (conservation.ok) writeJson(outPath, graph);
+  else rmSync(outPath, { force: true });
+  const coveragePath = resolve(coverageOut ?? join(dataDir, 'reports', 'domain-coverage.json'));
   writeJson(coveragePath, coverage);
 
-  const out = [];
+  const lines = [];
   for (const area of coverage.areas) {
-    out.push(
+    lines.push(
       `${area.areaId} ${area.status}${area.reason ? ` (${area.reason})` : ''} domains=${area.domains} flows=${area.flows} ` +
       `steps=${area.steps} modules=${area.modules.length} silent-zero=${area.silentZeroModules.length}` +
       `${area.silentZeroParts.length ? ` silent-zero-parts=${area.silentZeroParts.length}` : ''}`,
     );
   }
   const b = coverage.buckets;
-  out.push(
+  lines.push(
     `modules=${coverage.modules.length} covered=${b.covered} declared-skip=${b['declared-skip']} ` +
     `silent-zero=${b['silent-zero']} no-candidates=${b['no-candidates']}`,
   );
-  out.push(`candidate files cited=${coverage.candidateFiles.cited}/${coverage.candidateFiles.total}`);
-  out.push(`totals domains=${coverage.totals.domains} flows=${coverage.totals.flows} steps=${coverage.totals.steps}`);
+  lines.push(`candidate files cited=${coverage.candidateFiles.cited}/${coverage.candidateFiles.total}`);
+  lines.push(`totals domains=${coverage.totals.domains} flows=${coverage.totals.flows} steps=${coverage.totals.steps}`);
+  lines.push(`plan status=${coverage.plan.status} business=${coverage.plan.businessDomains} support=${coverage.plan.supportDomains}`);
+  lines.push(`flows homed step=${coverage.flows.homedByStep} declared=${coverage.flows.homedByDeclared} unplaced=${coverage.flows.unplaced}`);
+  for (const id of merge.flowHoming.unplacedFlows) lines.push(`unplaced ${id} area=${merge.flowHoming.unplacedAreas[id]}`);
+  lines.push(conservation.ok ? 'conservation ok' : `conservation FAILED missing=${conservation.missing.length} extra=${conservation.extra.length}`);
   for (const module of coverage.modules.filter((m) => m.status === 'silent-zero')) {
-    out.push(`silent-zero ${module.path} entryPoints=${module.entryPoints} areas=${module.areas.join(',')}`);
+    lines.push(`silent-zero ${module.path} entryPoints=${module.entryPoints} areas=${module.areas.join(',')}`);
   }
   for (const area of coverage.areas) {
-    for (const { path, part } of area.silentZeroParts) out.push(`silent-zero-part ${path} part=${part.index}/${part.of} area=${area.areaId}`);
+    for (const { path, part } of area.silentZeroParts) lines.push(`silent-zero-part ${path} part=${part.index}/${part.of} area=${area.areaId}`);
   }
-  out.push(`coverage report: ${coveragePath}`);
-  process.stdout.write(`${out.join('\n')}\n`);
+  lines.push(`coverage report: ${coveragePath}`);
+  stdout(`${lines.join('\n')}\n`);
 
+  if (!conservation.ok) {
+    const detail = [...conservation.missing.map((m) => `missing ${m}`), ...conservation.extra.map((e) => `extra ${e}`)];
+    stderr(`merge-domain-areas: merge did not conserve flows, steps and flow_step edges; domain-analysis.json not written\n${detail.join('\n')}\n`);
+    return { exitCode: EXIT_NOT_CONSERVED };
+  }
   if (coverage.status !== 'complete') {
     const bad = coverage.areas.filter((a) => a.status !== 'accepted').map((a) => `${a.areaId}=${a.status}`);
-    process.stderr.write(`merge-domain-areas: areas not accepted: ${bad.join(' ')}\n`);
-    process.exitCode = EXIT_INCOMPLETE;
+    stderr(`merge-domain-areas: areas not accepted: ${bad.join(' ')}\n`);
+    return { exitCode: EXIT_INCOMPLETE };
   }
+  return { exitCode: 0 };
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const { exitCode } = await runMerge({ projectRoot: args.projectRoot, out: args.out, coverage: args.coverage });
+  if (exitCode !== 0) process.exitCode = exitCode;
 }
 
 function isCliEntry() {
@@ -476,4 +700,4 @@ if (isCliEntry()) {
   }
 }
 
-export default { acceptOutput, mergeAreas, computeCoverage, MODULE_BUCKETS };
+export default { acceptOutput, mergeAreas, checkConservation, computeCoverage, locateStep, runMerge, MODULE_BUCKETS };
