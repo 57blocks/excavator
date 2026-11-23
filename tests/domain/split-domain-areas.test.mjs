@@ -239,3 +239,63 @@ describe('split-domain-areas.mjs CLI', () => {
     expect(withGraph.counts.graphNodesAttached).toBe(1);
   });
 });
+
+describe('unrecognised files and entry-point sources', () => {
+  const unrecognisedContext = () => {
+    const context = contextFor(['svc/a/x.js', 'svc/a/y.js', 'svc/b/z.py', 'web/p.js'], { entriesPerFile: 0 });
+    context.entryPoints = [
+      { file: 'svc/a/x.js', line: 1, type: 'http', description: 'express route', source: 'script', method: 'GET', path: '/x' },
+      { file: 'svc/a/x.js', line: 2, type: 'cli', description: 'CLI command', source: 'pattern' },
+      { file: 'svc/a/y.js', line: 1, type: 'event', description: 'Event listener', source: 'pattern' },
+    ];
+    context.unrecognisedFiles = [
+      { file: 'svc/b/z.py', lines: [3], matches: ['Decorator route (Flask/FastAPI/NestJS)'] },
+      { file: 'svc/b/gone.py', lines: [1], matches: ['x'] },
+      { file: 'svc/a/y.js', lines: [9], matches: ['Express/Koa route'] },
+    ];
+    return context;
+  };
+
+  it('carries unrecognised files into the file material, area contexts and module counts', () => {
+    const plan = planAreas({ context: unrecognisedContext(), budgetBytes: 1_000_000 });
+    expect(plan.areas).toHaveLength(1);
+    expect(plan.areas[0].unrecognisedFiles.map((u) => u.file)).toEqual(['svc/a/y.js', 'svc/b/z.py']);
+    expect(plan.areas[0].entryPoints.map((e) => e.source)).toEqual(['script', 'pattern', 'pattern']);
+    const row = (path) => plan.modules.find((m) => m.path === path);
+    expect(row('svc/a')).toMatchObject({ entryPoints: 3, scriptEntryPoints: 1, patternEntryPoints: 2, unrecognisedFiles: 1 });
+    expect(row('svc/b')).toMatchObject({ entryPoints: 0, scriptEntryPoints: 0, patternEntryPoints: 0, unrecognisedFiles: 1, candidateFiles: ['svc/b/z.py'] });
+    expect(row('svc/a').candidateFiles).toEqual(['svc/a/x.js', 'svc/a/y.js']);
+    expect(plan.counts).toMatchObject({ unrecognisedFiles: 2, unrecognisedFilesOutsideModules: 1 });
+  });
+
+  it('does not count unrecognised files toward the entry-point budget', () => {
+    const context = contextFor(['a/one.js', 'b/two.js'], { entriesPerFile: 0 });
+    context.unrecognisedFiles = [
+      { file: 'a/one.js', lines: [1], matches: ['x'] },
+      { file: 'b/two.js', lines: [1], matches: ['x'] },
+    ];
+    const plan = planAreas({ context, budgetBytes: 1_000_000, maxEntryPoints: 1 });
+    expect(plan.areas).toHaveLength(1);
+    expect(plan.areas[0].overBudget).toBe(false);
+  });
+
+  it('writes unrecognisedFiles into each area context, only for that area, and prints unrecognised=<n>', () => {
+    const root = tempRoot();
+    mkdirSync(join(root, '.excavator/intermediate'), { recursive: true });
+    writeFileSync(join(root, '.excavator/intermediate/domain-context.json'), JSON.stringify(unrecognisedContext()));
+    const result = spawnSync(process.execPath, [SPLIT, root, '--budget-bytes', '1000', '--max-entry-points', '40'], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    const manifest = JSON.parse(readFileSync(join(root, '.excavator/intermediate/domain-areas/manifest.json'), 'utf-8'));
+    expect(manifest.areas.length).toBeGreaterThan(1);
+    for (const area of manifest.areas) {
+      const context = JSON.parse(readFileSync(area.contextFile, 'utf-8'));
+      const files = new Set(area.modules.flatMap((m) => m.files));
+      expect(context.unrecognisedFiles.every((u) => files.has(u.file))).toBe(true);
+      expect(area.unrecognisedFiles).toBe(context.unrecognisedFiles.length);
+      expect(result.stdout).toContain(`${area.areaId} modules=${area.modules.length} files=${area.files} entryPoints=${area.entryPoints} unrecognised=${area.unrecognisedFiles} `);
+    }
+    expect(manifest.areas.reduce((n, a) => n + a.unrecognisedFiles, 0)).toBe(2);
+    expect(manifest.modules.find((m) => m.path === 'svc/b')).toMatchObject({ unrecognisedFiles: 1 });
+  });
+});
+

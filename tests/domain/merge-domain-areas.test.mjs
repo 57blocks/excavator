@@ -21,6 +21,7 @@ import {
 } from '../../skills/excavator-domain/merge-domain-areas.mjs';
 import { PLAN_FORMAT, moduleSetDigest } from '../../skills/excavator-domain/plan-domains.mjs';
 import { HANDLERS, HANDLER_MODULES, writeMultiModuleProject } from '../fixtures/domain-areas/multi-module.mjs';
+import { runLazy } from './helpers/facts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const EXTRACT = resolve(repoRoot, 'skills/excavator-domain/extract-domain-context.py');
@@ -106,7 +107,7 @@ function manifestOf(files, areas = { 'area-001': Object.keys(files) }) {
     token: 'a'.repeat(32),
     areas: Object.keys(areas).map((areaId) => ({ areaId })),
     modules: Object.entries(files).map(([path, list]) => ({
-      path, files: list, entryPoints: 1, candidateFiles: list,
+      path, files: list, entryPoints: 1, scriptEntryPoints: 1, patternEntryPoints: 0, unrecognisedFiles: 0, candidateFiles: list,
       areas: Object.keys(areas).filter((a) => areas[a].includes(path)),
     })),
   };
@@ -591,11 +592,11 @@ describe('computeCoverage', () => {
     token: T,
     areas: [{ areaId: 'area-001' }, { areaId: 'area-002' }],
     modules: [
-      { path: 'api/orders', files: ['api/orders/routes.js', 'api/orders/service.js'], entryPoints: 2, candidateFiles: ['api/orders/routes.js'], areas: ['area-001'] },
-      { path: 'api/refunds', files: ['api/refunds/routes.js'], entryPoints: 1, candidateFiles: ['api/refunds/routes.js'], areas: ['area-001'] },
-      { path: 'api/lib', files: ['api/lib/db.js'], entryPoints: 0, candidateFiles: [], areas: ['area-001'] },
-      { path: 'web/pages', files: ['web/pages/a.jsx'], entryPoints: 1, candidateFiles: ['web/pages/a.jsx'], areas: ['area-002'] },
-      { path: 'web/legacy', files: ['web/legacy/b.jsx'], entryPoints: 1, candidateFiles: ['web/legacy/b.jsx'], areas: ['area-002'] },
+      { path: 'api/orders', files: ['api/orders/routes.js', 'api/orders/service.js'], entryPoints: 2, scriptEntryPoints: 2, candidateFiles: ['api/orders/routes.js'], areas: ['area-001'] },
+      { path: 'api/refunds', files: ['api/refunds/routes.js'], entryPoints: 1, scriptEntryPoints: 1, candidateFiles: ['api/refunds/routes.js'], areas: ['area-001'] },
+      { path: 'api/lib', files: ['api/lib/db.js'], entryPoints: 0, scriptEntryPoints: 0, candidateFiles: [], areas: ['area-001'] },
+      { path: 'web/pages', files: ['web/pages/a.jsx'], entryPoints: 1, scriptEntryPoints: 1, candidateFiles: ['web/pages/a.jsx'], areas: ['area-002'] },
+      { path: 'web/legacy', files: ['web/legacy/b.jsx'], entryPoints: 1, scriptEntryPoints: 1, candidateFiles: ['web/legacy/b.jsx'], areas: ['area-002'] },
     ],
   };
 
@@ -652,7 +653,7 @@ describe('computeCoverage', () => {
         { areaId: 'area-002', modules: [{ path: 'api/big', part: { index: 2, of: 2 }, files: ['api/big/b.js'] }] },
       ],
       modules: [
-        { path: 'api/big', files: ['api/big/a.js', 'api/big/b.js'], entryPoints: 2, candidateFiles: ['api/big/a.js', 'api/big/b.js'], areas: ['area-001', 'area-002'] },
+        { path: 'api/big', files: ['api/big/a.js', 'api/big/b.js'], entryPoints: 2, scriptEntryPoints: 2, candidateFiles: ['api/big/a.js', 'api/big/b.js'], areas: ['area-001', 'area-002'] },
       ],
     };
     const a = analysis({ areaId: 'area-001', token: T, domains: [{ id: 'domain:big', flows: [{ name: 'f', files: ['api/big/a.js'] }] }] });
@@ -681,6 +682,7 @@ describe('computeCoverage', () => {
 /** Extract and split the fixture into one area, as the old single-analyzer run saw it. */
 function prepareProject(root = tempRoot()) {
   writeMultiModuleProject(root);
+  runLazy(root);
   const ex = spawnSync('python3', [EXTRACT, root], { encoding: 'utf-8' });
   if (ex.error) throw ex.error;
   expect(ex.status, ex.stderr).toBe(0);
@@ -691,11 +693,19 @@ function prepareProject(root = tempRoot()) {
   return { root, manifest };
 }
 
-/** A recorded analysis with a flow for every handler in `handlers` and for every other candidate module. */
-function recordedFor(manifest, handlers) {
+/**
+ * A recorded analysis with a flow for every handler in `handlers` and for
+ * every other candidate module. The other modules sit in a support domain
+ * (writePlanFor), so their flows choose it with a reason, as the acceptance
+ * check requires; `choose: false` leaves them without a choice.
+ */
+function recordedFor(manifest, handlers, { choose = true } = {}) {
   const others = manifest.modules
-    .filter((m) => m.entryPoints > 0 && !HANDLER_MODULES.includes(m.path))
-    .map((m) => ({ name: `other-${m.path.replace(/[^a-z0-9]+/g, '-')}`, files: m.candidateFiles }));
+    .filter((m) => m.candidateFiles.length > 0 && !HANDLER_MODULES.includes(m.path))
+    .map((m) => ({
+      name: `other-${m.path.replace(/[^a-z0-9]+/g, '-')}`, files: m.candidateFiles,
+      ...(choose ? { domain: 'domain:operations', domainReason: 'Serves no business area of the fixture.' } : {}),
+    }));
   return analysis({
     areaId: manifest.areas[0].areaId, token: manifest.token,
     domains: [
@@ -735,17 +745,37 @@ describe('multi-module fixture end to end', () => {
     const others = coverage.flows.total - HANDLERS.length;
     expect(coverage.flows).toMatchObject({
       total: coverage.totals.flows, homedByStep: coverage.totals.flows, homedByDeclared: 0, unplaced: 0,
-      byModule: HANDLERS.length, byChoice: 0, fallback: { missing: others, invalid: 0 }, choicesIgnored: 0,
-      support: { total: others, chosen: 0, unchosen: others },
+      byModule: HANDLERS.length, byChoice: others, fallback: { missing: 0, invalid: 0 }, choicesIgnored: 0,
+      support: { total: others, chosen: others, unchosen: 0 },
     });
-    expect(stdout).toContain(`flows domain module=${HANDLERS.length} choice=0 fallback=${others} choices-ignored=0 choices-without-reason=0 support=${others} support-chosen=0 support-unchosen=${others}`);
-    expect(stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(others);
+    expect(stdout).toContain(`flows domain module=${HANDLERS.length} choice=${others} fallback=0 choices-ignored=0 choices-without-reason=0 support=${others} support-chosen=${others} support-unchosen=0`);
+    expect(stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(0);
     expect(coverage.conservation).toMatchObject({ ok: true, missing: [], extra: [] });
     expect(coverage.modules.find((m) => m.path === HANDLER_MODULES[0]).domain).toBe('domain:commerce');
     expect(stdout).toContain('plan status=reused business=1 support=1');
     expect(stdout).toContain(`flows homed step=${coverage.totals.flows} declared=0 unplaced=0`);
     expect(stdout).toContain('conservation ok');
     expect(coverage.totals.domains).toBe(2);
+  });
+
+  it('rejects the area when its support-module flows choose no domain, and falls back only under --accept-unchosen', () => {
+    const { root, manifest } = prepareProject();
+    const plan = writePlanFor(root, manifest);
+    writeFileSync(manifest.areas[0].outputFile, JSON.stringify(recordedFor(manifest, HANDLERS, { choose: false })));
+    const rejected = merge(root);
+    expect(rejected.status).toBe(3);
+    expect(rejected.coverage.areas[0].status).toBe('rejected-choice');
+    expect(rejected.coverage.flows.fallback).toEqual({ missing: 0, invalid: 0 });
+    const others = rejected.stdout.split('\n').filter((l) => l.startsWith('rejected-choice area-001 flow:other-'));
+    expect(others.length).toBeGreaterThan(0);
+    for (const line of others) expect(line.endsWith(` problem=missing allowed=${plan.domains.map((d) => d.id).join(',')}`), line).toBe(true);
+
+    const result = spawnSync(process.execPath, [MERGE, root, '--accept-unchosen'], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    const coverage = JSON.parse(readFileSync(join(root, '.excavator/reports/domain-coverage.json'), 'utf-8'));
+    expect(coverage.areas[0].unchosen).toHaveLength(others.length);
+    expect(coverage.flows).toMatchObject({ byChoice: 0, fallback: { missing: others.length, invalid: 0 }, support: { unchosen: others.length } });
+    expect(result.stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(others.length);
   });
 
   it('reports the plan status from the planner input left by prepare', () => {
@@ -786,7 +816,7 @@ describe('multi-module fixture end to end', () => {
     expect(coverage.candidateFiles.uncited).toEqual(dropped.map((m) => `${m}/routes.js`).sort());
     for (const module of dropped) expect(stdout).toContain(module);
     const analysisOut = JSON.parse(readFileSync(join(root, '.excavator/intermediate/domain-analysis.json'), 'utf-8'));
-    expect(analysisOut.nodes.filter((n) => n.type === 'flow')).toHaveLength(16 + coverage.modules.filter((m) => m.entryPoints > 0 && !HANDLER_MODULES.includes(m.path)).length);
+    expect(analysisOut.nodes.filter((n) => n.type === 'flow')).toHaveLength(16 + coverage.modules.filter((m) => (m.entryPointsTotal > 0 || m.unrecognisedFiles > 0) && !HANDLER_MODULES.includes(m.path)).length);
   });
 
   it('exits 3 and merges nothing from an area whose output is an earlier file copied into place', () => {
@@ -808,5 +838,137 @@ describe('multi-module fixture end to end', () => {
     const { status, coverage } = merge(root);
     expect(status).toBe(3);
     expect(coverage.areas[0].status).toBe('missing');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Model entry points for the files the scripts did not recognise (D10, O6).
+// ---------------------------------------------------------------------------
+
+describe('model entry points', () => {
+  const VIEWS = ['@app.route(\'/orders\')', 'def orders():', '    return []', ''].join('\n');
+
+  /** A one-area project with files `{ path: text }`, of which `unrecognised` are flagged; returns the merge result. */
+  async function mergeWith({ files, unrecognised, entryPoints, flows = [], skippedModules }) {
+    const root = tempRoot();
+    for (const [rel, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, rel)), { recursive: true });
+      writeFileSync(join(root, rel), text);
+    }
+    const byModule = {};
+    for (const rel of Object.keys(files)) (byModule[dirname(rel)] ??= []).push(rel);
+    const manifest = {
+      token: T, entryPointSource: 'facts', areas: [{ areaId: 'area-001' }],
+      modules: Object.entries(byModule).map(([path, list]) => {
+        const flagged = list.filter((f) => unrecognised.includes(f));
+        return {
+          path, files: list, entryPoints: 0, scriptEntryPoints: 0, patternEntryPoints: 0,
+          unrecognisedFiles: flagged.length, candidateFiles: flagged, areas: ['area-001'],
+        };
+      }),
+    };
+    const areasDir = join(root, '.excavator/intermediate/domain-areas');
+    mkdirSync(areasDir, { recursive: true });
+    writeFileSync(join(areasDir, 'manifest.json'), JSON.stringify(manifest));
+    writeFileSync(join(areasDir, 'area-001.context.json'), JSON.stringify({
+      unrecognisedFiles: unrecognised.map((file) => ({ file, lines: [1], matches: ['x'] })),
+    }));
+    const output = analysis({ areaId: 'area-001', token: T, domains: flows.length ? [{ id: 'domain:all', flows }] : [], skippedModules });
+    if (entryPoints !== undefined) output.entryPoints = entryPoints;
+    writeFileSync(join(areasDir, 'area-001.analysis.json'), JSON.stringify(output));
+    writeFileSync(join(root, '.excavator/domain-plan.json'), JSON.stringify(planAll(manifest)));
+    let stdout = '';
+    const { exitCode } = await runMerge({ projectRoot: root, stdout: (t) => { stdout += t; }, stderr: () => {} });
+    const read = (rel) => JSON.parse(readFileSync(join(root, '.excavator', rel), 'utf-8'));
+    return { exitCode, stdout, coverage: read('reports/domain-coverage.json'), analysisPath: join(root, '.excavator/intermediate/domain-analysis.json') };
+  }
+
+  const entry = (over = {}) => ({ file: 'app/views.py', line: 1, method: 'GET', path: '/orders', quote: "@app.route('/orders')", ...over });
+  const run = (entryPoints, extra = {}) => mergeWith({ files: { 'app/views.py': VIEWS, 'app/other.py': 'x = 1\n' }, unrecognised: ['app/views.py'], entryPoints, ...extra });
+
+  it('accepts an entry whose quote is on its line, and records it with source model and its module', async () => {
+    const { coverage, stdout } = await run([entry()]);
+    expect(coverage.entryPoints.model.accepted).toBe(1);
+    expect(coverage.entryPoints.model.entries).toEqual([
+      { file: 'app/views.py', line: 1, method: 'GET', path: '/orders', quote: "@app.route('/orders')", source: 'model', module: 'app' },
+    ]);
+    expect(coverage.entryPoints).toMatchObject({ source: 'facts', script: 0, pattern: 0 });
+    expect(coverage.modules[0].entryPoints).toEqual({ script: 0, pattern: 0, model: 1 });
+    expect(stdout).toContain('entry-points source=facts script=0 pattern=0 model=1 model-rejected=0');
+  });
+
+  it('trims the quote before the substring check', async () => {
+    const { coverage } = await run([entry({ quote: "  @app.route('/orders')  " })]);
+    expect(coverage.entryPoints.model.accepted).toBe(1);
+  });
+
+  it('rejects a quote that is not on the given line as quote-mismatch', async () => {
+    const { coverage, stdout } = await run([entry({ line: 2 })]);
+    expect(coverage.entryPoints.model.accepted).toBe(0);
+    expect(coverage.entryPoints.model.rejected['quote-mismatch']).toBe(1);
+    expect(stdout).toContain('model=0 model-rejected=1');
+  });
+
+  it('rejects a line past the end, and a line below 1, as line-out-of-range', async () => {
+    const { coverage } = await run([entry({ line: 4 }), entry({ line: 99 }), entry({ line: 0 }), entry({ line: 1.5 })]);
+    expect(coverage.entryPoints.model.rejected['line-out-of-range'] + coverage.entryPoints.model.rejected.malformed).toBe(4);
+    expect(coverage.entryPoints.model.rejected['line-out-of-range']).toBe(3);
+    expect(coverage.entryPoints.model.accepted).toBe(0);
+  });
+
+  it('rejects a file that is not one of the area\'s unrecognised files as file-not-unrecognised', async () => {
+    const { coverage } = await run([entry({ file: 'app/other.py', quote: 'x = 1' }), entry({ file: '../outside.py' }), entry({ file: '/etc/passwd' })]);
+    expect(coverage.entryPoints.model.rejected['file-not-unrecognised']).toBe(3);
+    expect(coverage.entryPoints.model.accepted).toBe(0);
+  });
+
+  it('rejects a 201-character quote and an empty quote as quote-mismatch', async () => {
+    const longLine = `x = '${'a'.repeat(300)}'\n`;
+    const files = { 'app/views.py': longLine };
+    const base = { files, unrecognised: ['app/views.py'] };
+    const bad = await mergeWith({ ...base, entryPoints: [entry({ quote: 'a'.repeat(201) }), entry({ quote: '   ' })] });
+    expect(bad.coverage.entryPoints.model.rejected['quote-mismatch']).toBe(2);
+    const ok = await mergeWith({ ...base, entryPoints: [entry({ quote: 'a'.repeat(200) })] });
+    expect(ok.coverage.entryPoints.model.accepted).toBe(1);
+  });
+
+  it('counts a malformed element and a non-array value as malformed', async () => {
+    const { coverage } = await run(['text', null, { file: 'app/views.py' }, entry({ quote: 5 })]);
+    expect(coverage.entryPoints.model.rejected.malformed).toBe(4);
+    const notArray = await run({ file: 'app/views.py' });
+    expect(notArray.coverage.entryPoints.model.rejected.malformed).toBe(1);
+  });
+
+  it('never lets entryPoints reach domain-analysis.json', async () => {
+    const { analysisPath } = await run([entry()], { flows: [{ name: 'view-orders', files: ['app/views.py'], module: 'app' }] });
+    const merged = JSON.parse(readFileSync(analysisPath, 'utf-8'));
+    expect(merged).not.toHaveProperty('entryPoints');
+    expect(JSON.stringify(merged)).not.toContain('@app.route');
+  });
+
+  it('makes a module with only an unrecognised file and no flow or skip silent-zero, not no-candidates', async () => {
+    const { coverage, stdout } = await run([]);
+    const row = coverage.modules.find((m) => m.path === 'app');
+    expect(row).toMatchObject({ status: 'silent-zero', unrecognisedFiles: 1, entryPoints: { script: 0, pattern: 0, model: 0 }, entryPointsTotal: 0 });
+    expect(coverage.buckets['silent-zero']).toBe(1);
+    expect(stdout).toContain('silent-zero app entryPoints=0 unrecognised=1');
+  });
+
+  it('keeps a module with no unrecognised file, no entry point and no flow as no-candidates', async () => {
+    const { coverage } = await mergeWith({ files: { 'lib/a.py': 'x = 1\n' }, unrecognised: [], entryPoints: [] });
+    expect(coverage.modules[0].status).toBe('no-candidates');
+  });
+
+  it('is covered by a flow and declared-skip by a declared reason, as before', async () => {
+    const covered = await run([], { flows: [{ name: 'view-orders', files: ['app/views.py'], module: 'app' }] });
+    expect(covered.coverage.modules[0].status).toBe('covered');
+    const skipped = await run([], { skippedModules: [{ module: 'app', reason: 'a template renderer' }] });
+    expect(skipped.coverage.modules[0].status).toBe('declared-skip');
+  });
+
+  it('rejects an entry in a file the area context does not flag, so the module stays no-candidates', async () => {
+    const { coverage } = await mergeWith({ files: { 'app/views.py': VIEWS }, unrecognised: [], entryPoints: [entry()] });
+    expect(coverage.entryPoints.model.rejected['file-not-unrecognised']).toBe(1);
+    expect(coverage.modules[0].status).toBe('no-candidates');
   });
 });

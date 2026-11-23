@@ -206,7 +206,9 @@ describe('frameworks/README.md explains the hook', () => {
   it('puts injection by type (JSR 330 Inject, an unnamed EJB) and the business interfaces to the deterministic home, the type injection catalog, and takes them out of the addenda row (by-type-injection)', () => {
     const where = flat(readme.slice(readme.indexOf('What is where today:'), readme.indexOf('## Present today')));
     expect(where).toContain('| Injection by type (JSR 330 `@Inject` and an unnamed `@EJB`) to the one class or producer method that can satisfy the type, and the business interfaces a class declares by `@Local` and `@Remote` class literals | deterministic, `catalogs/type-injections.json` |');
-    expect(where).toContain('| DI by type (Spring, Angular, FastAPI, …; JSR 330 `@Inject` and unnamed `@EJB` excepted), component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …), JAX-RS routes excepted | addenda |');
+    expect(where).toContain('| DI by type (Spring, Angular, FastAPI, …; JSR 330 `@Inject` and unnamed `@EJB` excepted), component roles, HTTP routes (Spring, Java EE, Angular, FastAPI, …), JAX-RS routes and the Gin, Express and React Router registrations below excepted | addenda |');
+    // route-entry-points: the registrations the `routes` rules read have a deterministic home
+    expect(where).toContain('| Gin, Express and React Router route registrations (path, method, handler, mount prefixes across files) | deterministic, the `routes` rules of their `FrameworkConfig`, resolved into the knowledge graph\'s `entryPoints` stream |');
     const homes = flat(readme.slice(readme.indexOf('Framework knowledge has three homes'), readme.indexOf('What is where today:')));
     expect(homes).toContain('dependency injection by type (Spring `@Autowired`, an Angular constructor parameter, FastAPI `Depends`)');
     expect(homes).toContain('JSR 330 `@Inject` and an unnamed `@EJB` on Java are not here: the fact graph has them (third home)');

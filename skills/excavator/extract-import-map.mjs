@@ -36,6 +36,7 @@
  *     ambiguous: { <path>: { <specifier>: [<candidatePath>, ...] }, ... },
  *     tsConfigFiles: [<path>, ...],
  *     resolvedSources: { <path>: { <specifier>: <resolvedPath>, ... }, ... },
+ *     resolvedPackages: { <path>: { <goImportPath>: <dir>, ... }, ... },
  *     reexportOnly: { <path>: [<resolvedPath>, ...], ... }
  *   }
  *
@@ -49,7 +50,12 @@
  * incremental run can tell when an edit to one of them changes resolution.
  * `resolvedSources` says which file each resolved TS/JS import or re-export
  * specifier names, so the fact graph can follow an import binding to its
- * module without resolving the specifier again.
+ * module without resolving the specifier again. It also lists the files of
+ * TS/JS `require('x')` and `import('x')` string literals; an `import()` adds
+ * no `importMap` edge and no `unresolved` entry.
+ * `resolvedPackages` says which directory each resolved Go import path names:
+ * the one directory its files share (no entry when there are none or they
+ * span several).
  * `reexportOnly` lists the `importMap` targets that only `export ... from`
  * statements reach: no import statement, require() or other extracted source
  * of the file reaches them. A re-export binds no name in the file, so callers
@@ -1060,6 +1066,37 @@ function stripJsLikeComments(content) {
   return content
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '');
+}
+
+/**
+ * String-literal `import('x')` calls. Unlike `require`, a dynamic import is not
+ * a dependency edge here: its source only resolves into `resolvedSources`, so
+ * a consumer that follows a lazily loaded module can find the file.
+ */
+const DYNAMIC_IMPORT_LITERAL_RE = /\bimport\(\s*(['"])([^'"`\n]+?)\1\s*\)/g;
+
+function extractDynamicImportSources(content) {
+  const sources = [];
+  let m;
+  const stripped = stripJsLikeComments(content);
+  DYNAMIC_IMPORT_LITERAL_RE.lastIndex = 0;
+  while ((m = DYNAMIC_IMPORT_LITERAL_RE.exec(stripped)) !== null) {
+    sources.push(m[2]);
+  }
+  return sources;
+}
+
+/**
+ * The one directory the files of a resolved Go import share, or undefined when
+ * there are none or they span several directories (the import then names no
+ * single package directory).
+ */
+export function commonPackageDir(paths) {
+  const dirs = new Set(paths.map((p) => {
+    const i = p.lastIndexOf('/');
+    return i === -1 ? '' : p.slice(0, i);
+  }));
+  return dirs.size === 1 ? [...dirs][0] : undefined;
 }
 
 function extractRequireSources(content) {
@@ -2225,6 +2262,7 @@ async function main() {
   // with the candidates. They get no edge and are not in `unresolved`.
   const ambiguous = {};
   const resolvedSources = {};
+  const resolvedPackages = {};
   const reexportOnly = {};
   let filesWithImports = 0;
   let totalEdges = 0;
@@ -2268,6 +2306,8 @@ async function main() {
     let resolved;
     const unresolvedSet = new Set();
     const sourceTargets = new Map();
+    // Go import path -> the one directory its files share.
+    const packageDirs = new Map();
     // Targets an `export ... from` entry reaches, and targets anything else
     // reaches; the difference is the file's `reexportOnly`.
     const reexportTargets = new Set();
@@ -2302,6 +2342,10 @@ async function main() {
               (Array.isArray(imp?.reexports) ? reexportTargets : boundTargets).add(out);
             }
           }
+          if (file.language === 'go' && imp?.source) {
+            const dir = commonPackageDir(outs.filter((out) => out && ctx.fileSet.has(out)));
+            if (dir !== undefined) packageDirs.set(imp.source, dir);
+          }
           if (!hit && imp?.source) unresolvedSet.add(imp.source);
         }
         // Supplemental pass for sources tree-sitter doesn't capture (e.g.
@@ -2314,9 +2358,18 @@ async function main() {
               resolvedSet.add(out);
               boundTargets.add(out);
               hit = true;
+              if (TS_JS_LANGS.has(file.language)) sourceTargets.set(extra, out);
             }
           }
           if (!hit && extra) unresolvedSet.add(extra);
+        }
+        // import('x') literals: a source for the resolver, no edge, never unresolved.
+        if (TS_JS_LANGS.has(file.language)) {
+          for (const source of extractDynamicImportSources(content)) {
+            if (sourceTargets.has(source)) continue;
+            const [out] = resolveImport({ source, specifiers: [] }, file, ctx);
+            if (out && ctx.fileSet.has(out)) sourceTargets.set(source, out);
+          }
         }
       }
       resolved = [...resolvedSet].sort((a, b) =>
@@ -2345,6 +2398,10 @@ async function main() {
     if (sourceTargets.size > 0) {
       resolvedSources[path] = Object.fromEntries(
         [...sourceTargets].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    }
+    if (packageDirs.size > 0) {
+      resolvedPackages[path] = Object.fromEntries(
+        [...packageDirs].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
     }
     const onlyReexported = resolved.filter((target) => reexportTargets.has(target) && !boundTargets.has(target));
     if (onlyReexported.length > 0) reexportOnly[path] = onlyReexported;
@@ -2376,6 +2433,7 @@ async function main() {
     ambiguous,
     tsConfigFiles: ctx.tsConfigFiles,
     resolvedSources,
+    resolvedPackages,
     reexportOnly,
   };
 

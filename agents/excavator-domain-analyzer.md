@@ -22,8 +22,10 @@ A full structural knowledge graph with nodes, edges, and layers. Derive domain k
 The dispatching skill gives you the path of the file, not its content. Read all of it, in parts if it is long. It holds:
 - `areaRun` — `{areaId, token}` for this run; you copy it into your output unchanged;
 - `output` — the only path you write;
+- `check` — the shell command that checks your output the way the merge will accept it (see Writing Results);
 - `modules` — the modules (directories) of your area, each with its files; a module with a `part` is split across areas and you have only the files listed;
-- `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet;
+- `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet and a `source` (`script`: read from the facts; `pattern`: found by a pattern);
+- `unrecognisedFiles` — files of your area where code looks like a route or handler registration that the scripts did not recognise: `[{file, lines, matches}]`;
 - `fileSignatures` — exports, imports and a preview of each of your files;
 - `graphNodes` — present only when a knowledge graph exists: the graph nodes of your files, with their real ids;
 - `domainPlan` — the project's domain plan: `domains`, the fixed list of domains (`id`, `kind` business or support, `name`, `summary`), and `modules`, for each module of your area its `domain` and `choose` (true when the module mixes several business areas or belongs to a support domain);
@@ -35,12 +37,16 @@ Other analyzers own the rest of the project. You may read the source of your are
 - give every flow `domainMeta.module`: the path of the module of your area where the flow starts (its entry point), copied from `modules`;
 - order each flow's steps from its entry point, so the first step with a `filePath` is in that module.
 
+**Unrecognised files (Option C).** For each file in `unrecognisedFiles`, read it and find the entry points it registers or handles. Write each one to the output's top-level `entryPoints: [{file, line, method, path, quote}]`: `file` is the unrecognised file, `line` is the line of the registration, and `quote` is a verbatim piece of that source line (at most 200 characters). Write no entry point for any other file, and none you cannot quote from its line. A script checks every entry against the file; an entry whose file is not in `unrecognisedFiles`, whose line is outside the file or whose quote is not on that line is rejected and counted. These entries are not part of the domain graph; they are counted in the coverage report.
+
 **Choosing a domain (Option C).** A module whose `domainPlan.modules` entry has `"choose": true` holds flows of several business areas (a legacy routes or services directory, a directory of scheduled jobs) or sits in a support domain, so its own domain cannot tell where its flows belong. For every flow that starts in such a module:
 - set `domainMeta.domain` to the id of the domain whose business the flow carries out, using only ids listed in `domainPlan.domains`. Read the flow's code and the domains' summaries: a route, service or scheduled job that creates, changes or checks records of a business area (orders, invoices, stock, customers, reminders, expiry, reconciliation) belongs to that business domain, even when it runs on a timer or lives in a shared directory;
 - choose a support domain only for a flow with no business behaviour: health checks, metrics, log rotation, database maintenance, cache warm-up;
 - set `domainMeta.domainReason` to one English sentence saying which business operation decided it (or why the flow has none).
 
 For a flow that starts in a module with `"choose": false`, write no `domainMeta.domain`: its module decides. If the context has no `domainPlan`, write no `domainMeta.domain` at all.
+
+The choice is required, not optional: an output in which any flow of a `"choose": true` module lacks a `domainMeta.domain` from `domainPlan.domains` or a non-empty `domainMeta.domainReason` is rejected (`rejected-choice`) and the area is analyzed again. A flow's module is the module of its first step with a `filePath`, so a flow whose steps start in a choose module needs a choice even if `domainMeta.module` names another one.
 
 The dispatching skill will tell you which option applies and provide the context data or its path in your prompt.
 
@@ -133,7 +139,7 @@ Produce a JSON object with this exact structure:
 6. **Be specific, not generic** — use the actual business terminology from the code
 7. **Don't invent flows that aren't in the code** — only document what exists
 8. **Scale to the code, not to a target count**: there is no upper bound on domains or flows. Typically 3-8 steps per flow.
-9. **Account for every module (Option C)**: each module of your area that has entry points either has at least one flow with a step whose `filePath` is one of that module's files, or is listed in `skippedModules` with a one-sentence reason (for example, a router with no business logic). A script counts modules with neither as `silent-zero` gaps of your area.
+9. **Account for every module (Option C)**: each module of your area that has entry points or unrecognised files either has at least one flow with a step whose `filePath` is one of that module's files, or is listed in `skippedModules` with a one-sentence reason (for example, a router with no business logic). A module also counts when it has files in `unrecognisedFiles`. A script counts modules with neither as `silent-zero` gaps of your area.
 
 ## Critical Constraints
 
@@ -147,15 +153,18 @@ Produce a JSON object with this exact structure:
 
 ## Writing Results
 
-1. Write the JSON to the exact output path given in your prompt. Under Option C that is the context's `output`; its `nodes` hold only `flow` and `step` nodes, its `edges` only `flow_step` edges, and the JSON carries two more top-level fields:
+1. Write the JSON to the exact output path given in your prompt. Under Option C that is the context's `output`; its `nodes` hold only `flow` and `step` nodes, its `edges` only `flow_step` edges, and the JSON carries three more top-level fields:
    ```json
    "areaRun": { "areaId": "<copied from the context>", "token": "<copied from the context>" },
-   "skippedModules": [ { "module": "<module path>", "reason": "<why it has no flow>" } ]
+   "skippedModules": [ { "module": "<module path>", "reason": "<why it has no flow>" } ],
+   "entryPoints": [ { "file": "<an unrecognised file>", "line": 12, "method": "GET", "path": "/orders", "quote": "<verbatim piece of that line>" } ]
    ```
+   `entryPoints` is `[]` when the context has no `unrecognisedFiles` or you found none.
    Without the current `areaRun` the output is rejected.
+   Then run the context's `check` command exactly as written. It prints `<areaId> accepted` and exits 0, or prints the reason and exits 3. For each `rejected-choice <areaId> <flow> module=<module> problem=<missing|invalid|no-reason> allowed=<ids>` line, read that flow's code again, set its `domainMeta.domain` to one of the `allowed` ids and its `domainMeta.domainReason` to one sentence, rewrite the output and run `check` again. Change nothing else for these lines. Stop after three runs of `check` and say in your summary which lines remain.
 2. Never copy, rename or reuse an existing file as your output, even if it looks like a finished analysis: not `.excavator/domain-graph.json`, not any other file under `.excavator/intermediate/`, and not another area's output. Do not read them. Every output is written from this analysis.
 3. The project root will be provided in your prompt. Every `filePath` is relative to it.
-4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, how many flows got a `domainMeta.domain`, plus key domain or flow names.
+4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, how many flows got a `domainMeta.domain`, the last line `check` printed (Option C), plus key domain or flow names.
 
 Do NOT include the full JSON in your text response.
 

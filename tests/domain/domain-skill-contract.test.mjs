@@ -148,3 +148,61 @@ describe('/excavator-domain homing of mixed and support modules', () => {
     expect(agent).toMatch(/only ids listed in `domainPlan.domains`/);
   });
 });
+
+// A flow of a choose module without a reasoned choice fails the area's
+// acceptance; the analyzer checks its own output first, and the skill
+// re-dispatches once before the fallback may take over.
+describe('/excavator-domain choice check', () => {
+  it('has the analyzer run the context check command and fix rejected-choice lines', () => {
+    expect(agent).toContain('`check`');
+    expect(agent).toContain('rejected-choice');
+    expect(agent).toMatch(/run the context's `check` command exactly as written/);
+    expect(agent).toMatch(/The choice is required, not optional/);
+  });
+
+  it('re-dispatches a rejected-choice area once before accepting it with --accept-unchosen', () => {
+    const redispatch = skill.indexOf("adding that area's `rejected-choice` lines to its prompt");
+    const override = skill.indexOf('run the merge once more with `--accept-unchosen`');
+    expect(redispatch).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(redispatch);
+    expect(skill).toMatch(/Use `--accept-unchosen` only after that one re-dispatch/);
+    expect(skill).toMatch(/run the context's `check` command on its output before it returns/);
+  });
+});
+
+// HTTP and UI entry points come from the fact graph; the model only adds the
+// ones in files the scripts did not recognise, and the merge checks them.
+describe('/excavator-domain entry points from the facts', () => {
+  it('builds the deterministic fact graph first when it is missing, --full was passed or it predates the stream', () => {
+    const lazy = skill.indexOf('node "$PLUGIN_ROOT/skills/excavator/lazy-analyze.mjs" "$PROJECT_ROOT"');
+    const extract = skill.indexOf('python3 "$PLUGIN_ROOT/skills/excavator-domain/extract-domain-context.py"');
+    expect(lazy).toBeGreaterThan(-1);
+    expect(lazy).toBeLessThan(extract);
+    expect(skill).toMatch(/is missing, when `--full` was passed, or when the graph predates the entry-point stream/);
+    // The guard reads the header line, so a graph written before the stream existed is rebuilt too.
+    expect(skill).toContain(`head -n 1 "$DATA_DIR/knowledge-graph.jsonl" | grep -q '"entryPoints"'`);
+    expect(skill).toMatch(/runs no model/);
+  });
+
+  it('tells the user when the entry-point source is unavailable', () => {
+    expect(skill).toContain('`entryPointSource`');
+    expect(skill).toMatch(/`unavailable`[^\n]*HTTP and UI entry points are 0 because the facts could not be read/);
+  });
+
+  it('still passes --graph to the split only without --full', () => {
+    expect(skill).toMatch(/With a knowledge graph and without `--full`:\n\n```bash\nnode "\$PLUGIN_ROOT\/skills\/excavator-domain\/split-domain-areas.mjs" "\$PROJECT_ROOT" \\\n  --graph/);
+  });
+
+  it('documents the unrecognised count and the entry-points merge line', () => {
+    expect(skill).toContain('unrecognised=2');
+    expect(skill).toContain('`entry-points source=… script=… pattern=… model=… model-rejected=…`');
+  });
+
+  it('has the analyzer read unrecognised files and quote the source line', () => {
+    expect(agent).toContain('`unrecognisedFiles`');
+    expect(agent).toMatch(/Write no entry point for any other file/);
+    expect(agent).toContain('"entryPoints": [ { "file"');
+    expect(agent).toMatch(/`quote` is a verbatim piece of that source line/);
+    expect(agent).toMatch(/has entry points or unrecognised files either/);
+  });
+});

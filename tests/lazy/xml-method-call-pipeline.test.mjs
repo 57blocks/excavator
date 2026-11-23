@@ -77,8 +77,8 @@ describe('XML method call sites in the real Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/16');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/16');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/17');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/17');
   });
 
   it('draws exactly the expected invokes edges: extracted, forward, from the descriptor file node, with the evidence of every call', () => {
@@ -229,7 +229,7 @@ describe('what reads invokes edges (design D4, tasks 3.4, 3.5, 4.3)', () => {
     });
 
     it('counts the roots by edge type: eleven distinct methods are called by descriptors and no route handler', () => {
-      expect(product.counts.roots).toEqual({ routes: 0, invokes: 11 });
+      expect(product.counts.roots).toEqual({ routes: 0, invokes: 11, entryPoints: 0 });
       expect(product.counts).toMatchObject({ functionNodes: 17, routeReachable: 14, candidates: 3 });
       expect(product.conservation).toEqual({ functionNodes: 17, routeReachable: 14, candidates: 3, holds: true });
     });

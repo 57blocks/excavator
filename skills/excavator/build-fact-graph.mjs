@@ -84,6 +84,9 @@ import { ROUTE_GAP_KINDS, assertRouteConservation, resolveRoutes } from './route
 import { JSX_GAP_KINDS, JSX_GAP_REASONS, assertJsxConservation, resolveJsxElements } from './jsx-element-resolution.mjs';
 import { createModuleBindingResolver } from './module-binding-resolution.mjs';
 import {
+  ENTRY_POINT_GAP_KINDS, ENTRY_POINT_GAP_REASONS, assertEntryPointConservation, resolveEntryPoints,
+} from './entry-point-resolution.mjs';
+import {
   BUSINESS_INTERFACE_GAP_KIND, TYPE_INJECTION_GAP_KINDS, TYPE_INJECTIONS_NOT_RUN, assertTypeInjectionConservation, resolveTypeInjections,
 } from './type-injection-resolution.mjs';
 
@@ -231,7 +234,7 @@ function ordinalGroupKey(entry) {
  *   callers (tests, the CLI) are unaffected; `serializationLimit` defaults
  *   to the runtime ceiling and `headroomRecorder`, when omitted, simply
  *   means no headroom entry is recorded for this call.
- * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }}
+ * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], entryPoints: object[], factsDigest: string }}
  */
 export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, nameReferenceSites, nameBindingCatalog, nameReferenceMutations, routeCatalog, routeMutations, typeInjectionCatalog, typeInjectionMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
@@ -653,6 +656,29 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   }
   const jsxCoverage = jsxResolved.coverage;
 
+  // Entry points (openspec: changes/route-entry-points): the routes a framework
+  // rule matched, joined across files and resolved to the nodes above. A record
+  // stream and coverage only: no node and no edge is added here.
+  const declsByPath = new Map();
+  for (const entry of withOrdinals) {
+    if (entry.type !== 'function' && entry.type !== 'class') continue;
+    const id = idOf.get(entry);
+    if (!declsByPath.has(entry.path)) declsByPath.set(entry.path, []);
+    const list = declsByPath.get(entry.path);
+    if (!list.some((decl) => decl.id === id)) {
+      list.push({ id, name: entry.name, type: entry.type, owner: entry.owner ?? null, line: entry.lineRange?.[0] });
+    }
+  }
+  const entryPointResolved = resolveEntryPoints({
+    rows: fileRows,
+    importMap: importMapSafe,
+    bindingResolver,
+    declsByPath,
+    fileNodeIdOf: (path) => deriveNodeId({ type: 'file', path }),
+  });
+  for (const gap of entryPointResolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+  const entryPointCoverage = entryPointResolved.coverage;
+
   // -------------------------------------------------------------------------
   // Name mentions (openspec: changes/name-mention-facts): a non-code file that
   // writes a repository class's name or a repository file's path. The lexer
@@ -947,7 +973,10 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     routes: routeCoverage,
     typeInjections: typeInjectionCoverage,
     jsxElements: jsxCoverage,
+    entryPoints: entryPointCoverage,
   };
+  // Read back from what was recorded into the graph, as the stages above.
+  assertEntryPointConservation(entryPointCoverage, { records: entryPointResolved.records, gaps: resolutionGaps });
   if (jsxCoverage.status === 'ran') {
     // Read back from what was recorded, as for Java calls.
     const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
@@ -1048,7 +1077,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // computeFactsDigest feeds the hash exactly the bytes that
   // `JSON.stringify(canonicalizeForDigest({...}))` would have produced.
   const factsDigest = computeFactsDigest(
-    { nodes, edges: sortedEdges, coverage: digestCoverage, gaps },
+    { nodes, edges: sortedEdges, coverage: digestCoverage, gaps, entryPoints: entryPointResolved.records },
     { limit: serializationLimit, recorder: headroomRecorder },
   );
 
@@ -1057,6 +1086,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     edges: sortedEdges,
     coverage,
     gaps,
+    entryPoints: entryPointResolved.records,
     factsDigest,
   };
 }
@@ -1114,6 +1144,7 @@ export function computeFactsDigest(parts, { limit = DEFAULT_LIMIT_CHARS, recorde
  *  Gap field, so these are deliberately count-agnostic). */
 const GAP_REASONS = Object.freeze({
   ...JSX_GAP_REASONS,
+  ...ENTRY_POINT_GAP_REASONS,
   'calls-unresolved': "call site(s) did not resolve to any declaration in the caller's file or its resolved imports",
   'calls-ambiguous': 'call site(s) resolved to more than one same-named declaration in scope',
   'calls-caller-unresolved': 'call site(s) could not be attributed to a unique calling declaration',
