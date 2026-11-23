@@ -14,13 +14,17 @@
 
 ### Requirement: 按模块分区
 
-`split-domain-areas.mjs <项目根>` SHALL 把抽取产物里的非测试源文件按所在目录归成模块，按路径排序后装进字节预算与入口点预算都不超的区；单个模块超任一预算时 SHALL 按文件拆成连续的几段。每个文件 SHALL 恰好属于一个区。有知识图且调用者传了 `--graph` 时，每个区 SHALL 附上本区文件的图节点；`filePath` 解析后不在项目根内的图节点 MUST NOT 附上，SHALL 计数。
+`split-domain-areas.mjs <项目根>` SHALL 把抽取产物里的非测试源文件按所在目录归成模块，按路径排序后装进字节预算与入口点预算都不超的区；单个模块超任一预算时 SHALL 按文件拆成连续的几段。每个文件 SHALL 恰好属于一个区。有知识图且调用者传了 `--graph` 时，每个区 SHALL 附上本区文件的图节点；`filePath` 解析后不在项目根内的图节点 MUST NOT 附上，SHALL 计数；图节点所在的非测试文件不在抽取产物里时，该文件 SHALL 照样按所在目录进模块并计数。区上下文 MUST NOT 含随项目增长的全项目索引。
 
 脚本 SHALL 先删除上一次的区目录与 `intermediate/domain-analysis.json`，再写清单与每区上下文，并生成本次运行的令牌。
 
 #### Scenario: 守恒
 - **WHEN** 对任意抽取产物分区
 - **THEN** 所有区的文件清单之并等于非测试源文件全集，且两两不交
+
+#### Scenario: 抽取脚本不扫的文件
+- **WHEN** 知识图里有 `web/src/App.vue` 的节点，抽取产物里没有这个文件
+- **THEN** 模块 `web/src` 出现在清单里，该节点附在持有它的区上
 
 #### Scenario: 超预算模块
 - **WHEN** 一个模块的材料超过预算
@@ -52,11 +56,11 @@
 
 ### Requirement: 覆盖报告
 
-合并 SHALL 写 `<数据目录>/reports/domain-coverage.json`，逐区、逐模块、逐个有入口点的文件给出状态。每个模块 SHALL 恰好落进 `covered`、`declared-skip`、`silent-zero`、`no-candidates` 之一，四桶之和 SHALL 等于模块总数。步骤按 `filePath`、再按 `nodeIds` 经区上下文里的图节点定位到文件；`filePath` 越出项目根的步骤 MUST NOT 被定位，SHALL 计数。
+合并 SHALL 写 `<数据目录>/reports/domain-coverage.json`，逐区、逐模块给出状态，并列出没有步骤引用的有入口点文件，带上分区脚本的计数。每个模块 SHALL 恰好落进 `covered`、`declared-skip`、`silent-zero`、`no-candidates` 之一，四桶之和 SHALL 等于模块总数。步骤按 `filePath`、再按 `nodeIds` 经区上下文里的图节点定位到文件；`filePath` 越出项目根的步骤 MUST NOT 被定位（也不经 `nodeIds`），SHALL 计入 `steps.fileOutsideRoot`。拆段模块的每一段，若有入口点文件却没有步骤定位到它、模块也没被声明跳过，SHALL 列入持有该段的区的 `silentZeroParts`。
 
 #### Scenario: 单分析器漏模块
 - **WHEN** 多模块夹具有 24 个 handler 模块，一份分析只为其中 16 个写了流程
-- **THEN** 报告的 `silent-zero` 恰好是另外 8 个，`uncitedCandidateFiles` 含它们的文件
+- **THEN** 报告的 `silent-zero` 恰好是另外 8 个，`candidateFiles.uncited` 含它们的文件
 
 #### Scenario: 声明跳过
 - **WHEN** 区输出把一个没有流程的模块列进 `skippedModules` 并给出理由

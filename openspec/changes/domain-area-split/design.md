@@ -6,7 +6,7 @@
 
 **Goals**
 - 每个模块都确定地交给某一个分析器；没有流程的模块、没有被任何步骤引用的入口点文件，出现在报告里。
-- 每个分析器的上下文有界，和项目大小无关。
+- 每个分析器的上下文有界，和项目大小无关（区上下文里没有全项目索引）。
 - 拷贝旧文件冒充本次输出的情况被脚本拒收。
 
 **Non-Goals**
@@ -30,11 +30,11 @@
 
 ### D2 模块与区
 
-- **模块** = 源文件所在目录（POSIX 路径，根目录下的文件为 `.`）。测试文件（与抽取脚本跳过入口点时同一规则）不进模块，计入 `excludedTestFiles`。
+- **模块** = 源文件所在目录（POSIX 路径，根目录下的文件为 `.`）。测试文件（与抽取脚本跳过入口点时同一规则，每种形状锚定到路径段，`latest_routes.py` 不算测试文件）不进模块，计入 `testFilesExcluded`。图路径上，图里有、抽取脚本没列出的文件（它不扫的语言如 `.vue`，或它跳过的目录）照样按所在目录进模块，计入 `graphOnlyFiles`，这样它们的模块也会派给分析器、出现在报告里。
 - **区**：模块按路径排序，依次装进当前区；装入后超过字节预算（`--budget-bytes`，默认 150,000，按区材料的 JSON 字节数算）或入口点预算（`--max-entry-points`，默认 40）就另开一区。按路径排序让兄弟目录尽量落在同一区。只有字节预算不够：一个区可以装下两百多个入口点，又回到一个分析器顾不过来的局面。
 - **超预算模块**（任一预算）按文件（排序后）拆成连续的几段，每段一个区；段号写进模块的 `part: {index, of}`。单个文件本身超预算时自成一段，区上标 `overBudget: true`，不砍内容。
-- 区材料：本区文件清单、本区入口点（含片段）、本区文件签名、（图路径）本区文件的图节点 `{id, type, name, summary, filePath, lineRange}`、项目元数据、其它区的模块清单（只给路径，让分析器知道边界）。
-- 图节点的 `filePath` 解析后不在项目根内的，不附到任何区，计入 `graphNodesOutsideRoot`。
+- 区材料：本区文件清单、本区入口点（含片段）、本区文件签名、（图路径）本区文件的图节点 `{id, type, name, summary, filePath, lineRange}`、项目元数据。不给其它区的模块清单：它随模块数增长，会让区上下文失去上界；边界由本区 `modules` 给出。
+- 图节点的 `filePath` 解析后不在项目根内的，不附到任何区，计入 `graphNodesOutsideRoot`；落在测试文件上的计入 `graphNodesOnTestFiles`；没有 `filePath` 的计入 `graphNodesWithoutFile`。这些计数写进清单，并由合并原样带进覆盖报告的 `split` 字段（清单会被 Phase 5 清掉，报告不会）。
 
 区数没有上限（上限就是绕过口）；预算可调，区数写进清单，由编排者报告。
 
@@ -63,7 +63,7 @@
 
 写 `<数据目录>/reports/domain-coverage.json`（不放 `intermediate/`，Phase 5 的清理不会带走它）。
 
-**步骤定位**：步骤的 `filePath`（去掉开头的 `./`）是模块里的文件，则定位到该模块；否则用 `nodeIds` 经各区上下文里的图节点找到文件；仍找不到记为 `unlocated`。`filePath` 为绝对路径或含 `..` 越出根的，计入 `stepFileOutsideRoot`，不定位。指向不属于任何模块的文件，计入 `stepFileOutsideModules`。
+**步骤定位**：步骤的 `filePath`（去掉开头的 `./`）是模块里的文件，则定位到该模块；否则用 `nodeIds` 经各区上下文里的图节点找到文件；仍找不到记为 `unlocated`。`filePath` 为绝对路径或含 `..` 越出根的，计入 `steps.fileOutsideRoot`，不定位，也不再经 `nodeIds` 定位。指向不属于任何模块的文件，计入 `steps.fileOutsideModules`。
 
 **模块状态**（四个桶，和等于模块总数）：
 - `covered`：至少一条流程有步骤定位在该模块；
@@ -71,11 +71,13 @@
 - `silent-zero`：没有流程、没声明，且模块里有入口点——这是本变更要暴露的遗漏；
 - `no-candidates`：没有流程、没声明，模块里也没有入口点。
 
+**拆段模块**：任一段有流程即 `covered`。另外每区列出 `silentZeroParts`：本区持有的段里有入口点文件、没有任何步骤定位到该段文件、模块也没被声明跳过的段；报告顶层 `silentZeroParts` 是其总数。这样拆段模块里某个区什么都没交，也看得见。
+
 `skippedModules` 里不属于本区的模块名计入 `skippedModulesUnknown`，不改变任何模块的状态。被拒或缺失的区，其模块按上面规则照算（自然落进 `silent-zero` 或 `no-candidates`），并在区一级标出状态。
 
-**逐文件**：每个有入口点的文件给出 `cited`（有步骤定位到该文件）与否；未被引用的列入 `uncitedCandidateFiles`。
+**逐文件**：`candidateFiles` 给出有入口点的文件总数 `total`、有步骤定位到的数目 `cited`，以及未被引用的文件清单 `uncited`。
 
-**逐区**：状态、域/流程/步骤数、模块数、入口点数、`silent-zero` 模块清单。
+**逐区**：状态、域/流程/步骤数、模块清单、入口点数、`silent-zero` 模块清单、`silentZeroParts`。
 
 退出码：所有区都被接受为 0；有 `missing` 或 `rejected-*` 为 3（合并结果与报告照写）；用法错误为 1。
 
