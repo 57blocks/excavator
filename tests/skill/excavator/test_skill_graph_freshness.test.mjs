@@ -76,7 +76,7 @@ describe("graph-consuming skills", () => {
     );
 
     expect(content).toContain("When `--full` is used, skip this preflight");
-    expect(content).toContain("Phase 3: Derive from Existing Graph");
+    expect(content).toContain("Phase 3 then attaches the graph's nodes to the areas (derive from the existing graph)");
   });
 
   it("every consumer resolves $PLUGIN_ROOT before invoking the helper (a bare relative script path would fail)", () => {

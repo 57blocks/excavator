@@ -10,9 +10,11 @@ Extracts business domain knowledge — domains, business flows, and process step
 
 ## How It Works
 
-- If a knowledge graph already exists (`.excavator/knowledge-graph.jsonl`), derives domain knowledge from it (cheap, no file scanning)
-- If no knowledge graph exists, performs a lightweight scan: file tree + entry point detection + sampled files
-- Use `--full` flag to force a fresh scan even if a knowledge graph exists
+- A script lists the candidate material: the source files, their entry points (HTTP routes, CLI commands, event handlers, cron jobs, exported handlers) and a signature of every file.
+- A second script groups the files into modules (one per directory) and packs the modules into bounded **areas**. When a knowledge graph exists (`.excavator/knowledge-graph.jsonl`) and `--full` was not passed, each area also carries the graph nodes of its own files, so steps can cite real node ids.
+- One domain-analyzer runs per area, on that area only. No analyzer has to fit the whole project.
+- A third script merges the area results into one domain graph and writes a coverage report: per area, per module and per entry-point file, which ones came back with no flow. A skipped module is listed, not hidden.
+- Use `--full` to leave the knowledge graph out of the areas even if one exists.
 
 ## Instructions
 
@@ -87,41 +89,65 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
    - `stale`: warn that domain extraction may omit recent changes. Suggest: Run `/excavator` to refresh the knowledge graph.
    - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
    - `fresh`: proceed with no warning.
-3. After that preflight, proceed to Phase 3 (derive from graph).
-4. Otherwise, proceed to Phase 2 (lightweight scan). When `--full` is used, skip this preflight because the command performs a fresh scan instead of consuming the existing graph.
+3. After that preflight, proceed to Phase 2; Phase 3 then attaches the graph's nodes to the areas (derive from the existing graph).
+4. Otherwise, proceed to Phase 2 without the graph. When `--full` is used, skip this preflight because the command performs a fresh scan instead of consuming the existing graph.
 
-### Phase 2: Lightweight Scan (Path 1)
+### Phase 2: Extract Candidate Material
 
-The preprocessing script does NOT produce a domain graph — it produces **raw material** (file tree, entry points, exports/imports) so the domain-analyzer agent can focus on the actual domain analysis instead of spending dozens of tool calls exploring the codebase. Think of it as a cheat sheet: cheap Python preprocessing → expensive LLM gets a clean, small input → better results for less cost.
+Run the preprocessing script on every path, with or without a knowledge graph:
 
-1. Run the preprocessing script bundled with this skill, passing `$PROJECT_ROOT` from Phase 0:
-   ```
-   python ./extract-domain-context.py "$PROJECT_ROOT"
-   ```
-   This outputs `$DATA_DIR/intermediate/domain-context.json` containing:
-   - File tree (respecting `.gitignore`)
-   - Detected entry points (HTTP routes, CLI commands, event handlers, cron jobs, exported handlers)
-   - File signatures (exports, imports per file)
-   - Code snippets for each entry point (signature + first few lines)
-   - Project metadata (package.json, README, etc.)
-2. Read the generated `domain-context.json` as context for Phase 4
-3. Proceed to Phase 4
+```bash
+python3 "$PLUGIN_ROOT/skills/excavator-domain/extract-domain-context.py" "$PROJECT_ROOT"
+```
 
-### Phase 3: Derive from Existing Graph (Path 2)
+It writes `$DATA_DIR/intermediate/domain-context.json`: the file tree, the detected entry points with a snippet each, a signature (exports, imports, a short preview) for every source file, and project metadata. No model reads this file whole. If its `truncated` counts are not all 0, tell the user how many files or entry points the extractor's limits left out.
 
-1. Read `$DATA_DIR/knowledge-graph.jsonl` — one JSON record per line: a header, then `node`, `edge`, `layer` and `gap` records. For a large graph, select the records you need with `grep` or `jq -c 'select(.record=="node") | .node'` instead of reading the whole file
-2. Format the graph data as structured context:
-   - All nodes with their types, names, summaries, and tags
-   - All edges with their types (especially `calls`, `imports`, `contains`)
-   - All layers with their descriptions
-3. This is the context for the domain analyzer — no file reading needed
-4. Proceed to Phase 4
+### Phase 3: Split into Areas
+
+With a knowledge graph and without `--full`:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator-domain/split-domain-areas.mjs" "$PROJECT_ROOT" \
+  --graph "$DATA_DIR/knowledge-graph.jsonl"
+```
+
+Otherwise:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator-domain/split-domain-areas.mjs" "$PROJECT_ROOT"
+```
+
+The script groups the non-test source files into modules (one per directory) and packs them, in path order, into areas that stay within a byte budget and an entry-point budget; a module over either budget is split by file into numbered parts. It first deletes any earlier `intermediate/domain-areas/` and `intermediate/domain-analysis.json`, then writes `intermediate/domain-areas/manifest.json` and one context file per area carrying this run's token. It prints one line per area:
+
+```
+area-001 modules=10 files=12 entryPoints=38 graphNodes=0 bytes=19969 context=<context file> output=<output file>
+```
+
+Keep these lines; Phase 4 dispatches from them. Tell the user how many areas there are: that is how many analyzers will run.
 
 ### Phase 4: Domain Analysis
 
-1. Read the domain-analyzer agent prompt from `$PLUGIN_ROOT/agents/excavator-domain-analyzer.md`
-2. Dispatch a subagent with the domain-analyzer prompt + the context from Phase 2 or 3. Explicitly require every model-owned domain field to be written in English while preserving source-owned identifiers, paths, literals, and excerpts verbatim.
-3. The agent writes its output to `$DATA_DIR/intermediate/domain-analysis.json`
+1. Read the domain-analyzer agent prompt from `$PLUGIN_ROOT/agents/excavator-domain-analyzer.md`.
+2. Dispatch **one subagent per area** with that prompt. Give each one only: the project root, the path of its area's context file, and the path of its output file (both from its Phase 3 line), and tell it to use **Option C**. Do not paste the context into the prompt, and do not give it any other area's files. Explicitly require every model-owned domain field to be written in English while preserving source-owned identifiers, paths, literals, and excerpts verbatim. The areas are independent; they may run concurrently.
+3. When every subagent has returned, merge:
+
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-domain/merge-domain-areas.mjs" "$PROJECT_ROOT"
+   ```
+
+   It writes the merged graph to `$DATA_DIR/intermediate/domain-analysis.json` and the coverage report to `$DATA_DIR/reports/domain-coverage.json`, and prints one line per area, the module buckets, and one `silent-zero` line per module that has entry points but no flow and was not declared skipped.
+
+   If it exits 3, some areas were `missing` or rejected (`rejected-stale`: the output does not carry this run's token, for example an earlier file copied into place; `rejected-parse`: not JSON). Dispatch a fresh subagent for each of those areas once, exactly as in step 2, then run the merge again. If it still exits 3, continue with what was accepted and tell the user which areas are missing. Never write or copy an area's output yourself.
+
+4. Domain names can differ between areas for the same business area. Read the merged domains:
+
+   ```bash
+   jq -c '[.nodes[] | select(.type=="domain") | {id, name, summary}]' "$DATA_DIR/intermediate/domain-analysis.json"
+   ```
+
+   Only if two ids clearly name the same business area, write `$DATA_DIR/intermediate/domain-areas/aliases.json` as `{"domain:<duplicate>": "domain:<kept>"}` and run the merge again with `--aliases "$DATA_DIR/intermediate/domain-areas/aliases.json"`. The script applies only entries whose two ends are existing domains and reports the rest under `aliasesRejected`. Do not re-dispatch any analyzer for this.
+
+5. Report to the user, from the merge output: the number of areas accepted, domains, flows and steps; the module buckets `covered`, `declared-skip`, `silent-zero` and `no-candidates`; every `silent-zero` module; and how many entry-point files no step cites. These are the gaps of this run. Do not describe the coverage as complete while `silent-zero` is above 0.
 
 ### Phase 4.5: Anchor Steps
 
@@ -131,11 +157,12 @@ happens in the code", so each `step` node is tied to real knowledge-graph node
 ids before the graph is saved.
 
 ```bash
-node "<SKILL_DIR>/annotate-domain.mjs" "$PROJECT_ROOT"
+node "$PLUGIN_ROOT/skills/excavator-domain/annotate-domain.mjs" "$PROJECT_ROOT"
 ```
 
 Reads `$DATA_DIR/intermediate/domain-analysis.json` and
-`$DATA_DIR/knowledge-graph.jsonl`, and updates the analysis in place:
+`$DATA_DIR/knowledge-graph.jsonl`, and updates the analysis in place (on every
+path, `--full` included, whenever the knowledge graph exists):
 
 - `nodeIds` the domain-analyzer supplied are **checked** against the knowledge
   graph. Ones that resolve stay, in the model's order; ones that do not move to
@@ -151,7 +178,7 @@ Reads `$DATA_DIR/intermediate/domain-analysis.json` and
   `step-evidence-unavailable`.
 
 Writes the counts to `$DATA_DIR/intermediate/domain-annotation.json`. On the
-standalone path (Phase 2, no knowledge graph) it warns and leaves every step
+standalone path (no knowledge graph) it warns and leaves every step
 unanchored rather than inventing ids.
 
 Then run the source-touching validator on the result. A step's `nodeIds` name
@@ -210,8 +237,13 @@ unchanged. The source-touching validator remains supplementary and non-fatal.
 
    ```bash
    node "$PLUGIN_ROOT/skills/excavator/publish-annotations.mjs" "$PROJECT_ROOT" \
-     --domain-annotated "$DATA_DIR/intermediate/domain-analysis.json"
+     --domain-annotated "$DATA_DIR/intermediate/domain-analysis.json" \
+     --reports-dir "$DATA_DIR/reports"
    ```
+
+   `--reports-dir` keeps the preserved reports (among them
+   `domain-annotation.json`) in `$DATA_DIR/reports/`, next to
+   `domain-coverage.json`.
 
    It merges **only** the supplement fields — a step's `nodeIds`,
    `unresolvedNodeIds`, `evidence`, `provenance`, plus the root `gaps` — into
@@ -222,7 +254,7 @@ unchanged. The source-touching validator remains supplementary and non-fatal.
    **Supplement, so not fatal.** Report a non-zero exit as a warning and
    continue to step 5.
 
-5. Clean up `$DATA_DIR/intermediate/domain-analysis.json` and `$DATA_DIR/intermediate/domain-context.json`
+5. Clean up `$DATA_DIR/intermediate/domain-analysis.json`, `$DATA_DIR/intermediate/domain-context.json` and the directory `$DATA_DIR/intermediate/domain-areas`
 
 ### Phase 5.1: Publish Annotations
 
