@@ -159,9 +159,30 @@ describe('zero-model determinism', () => {
     digestCoverage.ignored = Math.max(0, (digestCoverage.ignored ?? 0) - preExtractionIgnored);
 
     const preChangeDigest = sha256Hex(
-      JSON.stringify(canonicalizeForDigest({ nodes: result.nodes, edges: result.edges, coverage: digestCoverage, gaps: result.gaps })),
+      JSON.stringify(canonicalizeForDigest({ nodes: result.nodes, edges: result.edges, coverage: digestCoverage, gaps: result.gaps, entryPoints: result.entryPoints })),
     );
     expect(result.factsDigest).toBe(preChangeDigest);
+  });
+
+  // openspec: changes/route-entry-points: the record stream is part of the facts.
+  it('factsDigest covers the entryPoints stream: one changed record changes it', () => {
+    const records = [
+      { kind: 'entry', framework: 'express', file: 'a.js', line: 1, method: 'GET', path: '/a', bucket: 'resolved' },
+      { kind: 'mount', framework: 'express', file: 'a.js', line: 2, path: '/b', fate: 'resolved' },
+    ];
+    const base = { nodes: [], edges: [], coverage: { files: 0 }, gaps: [], entryPoints: records };
+    const digest = computeFactsDigest(base);
+    expect(computeFactsDigest({ ...base, entryPoints: records.map((r) => ({ ...r })) })).toBe(digest);
+    expect(computeFactsDigest({ ...base, entryPoints: [{ ...records[0], path: '/c' }, records[1]] })).not.toBe(digest);
+    expect(computeFactsDigest({ ...base, entryPoints: [records[0]] })).not.toBe(digest);
+    expect(computeFactsDigest({ ...base, entryPoints: [] })).not.toBe(digest);
+  });
+
+  it('projects an empty entry point stream, and a coverage section that ran, for a tree no rule matches', () => {
+    const { scan, structureAll, importMap } = baseFixture();
+    const result = buildFactGraph({ scan, structureAll, importMap });
+    expect(result.entryPoints).toEqual([]);
+    expect(result.coverage.entryPoints).toEqual({ status: 'ran', frameworks: {} });
   });
 });
 

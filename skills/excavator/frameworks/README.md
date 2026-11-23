@@ -110,7 +110,8 @@ What is where today:
 |---|---|
 | Which frameworks a project uses (`project.frameworks` in the graph header, with the evidence in the scan result) | deterministic, over the registered `FrameworkConfig`s |
 | Detection and layer hints for every framework listed below | `FrameworkConfig` |
-| DI by type (Spring, Angular, FastAPI, …; JSR 330 `@Inject` and unnamed `@EJB` excepted), component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …), JAX-RS routes excepted | addenda |
+| DI by type (Spring, Angular, FastAPI, …; JSR 330 `@Inject` and unnamed `@EJB` excepted), component roles, HTTP routes (Spring, Java EE, Angular, FastAPI, …), JAX-RS routes and the Gin, Express and React Router registrations below excepted | addenda |
+| Gin, Express and React Router route registrations (path, method, handler, mount prefixes across files) | deterministic, the `routes` rules of their `FrameworkConfig`, resolved into the knowledge graph's `entryPoints` stream |
 | JMS and CDI event pairs, the application prefix of JAX-RS routes (`javaee.md`) | addenda |
 | JSF navigation outcomes, composite components, converters and validators by id (`jsf.md`) | addenda |
 | Endpoints from schema files (GraphQL, protobuf) | deterministic parsers |

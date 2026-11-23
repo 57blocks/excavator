@@ -52,6 +52,7 @@ GRAPH_STREAMS = {
     "layers": ("layer", "layer"),
     "tour": ("tour", "step"),
     "gaps": ("gap", "gap"),
+    "entryPoints": ("entryPoint", "entryPoint"),
 }
 GRAPH_STREAM_BY_RECORD = {record: (key, field) for key, (record, field) in GRAPH_STREAMS.items()}
 

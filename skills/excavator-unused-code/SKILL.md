@@ -8,7 +8,7 @@ argument-hint: "[project-path] [--language <lang>]"
 
 Report the code in a project that nothing uses, with a confidence the user can act on.
 
-**Unused** means: a method, function or constructor that no entry of the program reaches along references (`calls`, `routes`, `invokes`, and `implements` / `overrides` in both directions). The roots are the route handlers (the targets of `routes`) and the methods a descriptor has the container call (the targets of `invokes`, such as a Spring `init-method` or the setter of a `<property>`); `counts.roots` of the candidates product gives how many of each. A node nothing references is `unreferenced`; a node referenced only by unused code is `only-reachable-from-unused`. A node reached only from tests is `test-only`, not unused. Unreachable statements inside a method are out of scope.
+**Unused** means: a method, function or constructor that no entry of the program reaches along references (`calls`, `routes`, `invokes`, and `implements` / `overrides` in both directions). The roots are the route handlers (the targets of `routes`), the methods a descriptor has the container call (the targets of `invokes`, such as a Spring `init-method` or the setter of a `<property>`), and the handlers of the entry points in the facts' `entryPoints` stream whose handler resolved to a function; `counts.roots` of the candidates product gives how many of each (`routes`, `invokes`, `entryPoints`). A node nothing references is `unreferenced`; a node referenced only by unused code is `only-reachable-from-unused`. A node reached only from tests is `test-only`, not unused. Unreachable statements inside a method are out of scope.
 
 The work is split three ways, and each part stays with its owner:
 

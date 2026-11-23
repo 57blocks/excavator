@@ -75,6 +75,8 @@ describe('merge-subdomain-graphs.py reads and writes the knowledge-graph.jsonl c
       tour: [{ order: 1, title: 'Start', nodeIds: ['file:a.ts'] }],
       coverage: { files: 1, byLanguage: {}, ignored: 0 },
       gaps: [{ kind: 'k', scope: 's', reason: 'r', count: 1, samples: [] }],
+      // openspec: changes/route-entry-points: a graph with the stream must not make the merge script refuse its base
+      entryPoints: [{ kind: 'mount', framework: 'express', file: 'a.js', line: 1, path: '/x', fate: 'resolved' }],
     };
     const path = join(dataDir, KNOWLEDGE_GRAPH_FILE);
     writeKnowledgeGraph(path, graph);

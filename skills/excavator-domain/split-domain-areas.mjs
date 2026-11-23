@@ -17,8 +17,11 @@
  *            parts, one area each. A single file over either budget is its
  *            own part, marked overBudget, never cut.
  *
- * The material of a file is its entry points, its signature and (when
- * --graph is given) the knowledge-graph nodes on that file. An area's
+ * The material of a file is its entry points (each with its `source`: script
+ * facts, pattern or model), the places in it that look like a route or handler
+ * registration the scripts did not recognise (`unrecognised`), its signature
+ * and (when --graph is given) the knowledge-graph nodes on that file. Unrecognised
+ * places do not count toward the entry-point budget. An area's
  * `bytes` is the JSON size of that material; project metadata and the list
  * of other areas are added on top and are not counted against the budget.
  *
@@ -118,6 +121,8 @@ export function planAreas({
     areas: 0,
     entryPoints: 0,
     entryPointsOutsideModules: 0,
+    unrecognisedFiles: 0,
+    unrecognisedFilesOutsideModules: 0,
     graphNodesAttached: 0,
     graphNodesOutsideRoot: 0,
     graphNodesOnTestFiles: 0,
@@ -132,7 +137,7 @@ export function planAreas({
     if (file === null) { counts.contextFilesOutsideRoot += 1; continue; }
     if (isTestFile(file)) { counts.testFilesExcluded += 1; continue; }
     if (fileMaterial.has(file)) continue;
-    fileMaterial.set(file, { file, entryPoints: [], signature: null, graphNodes: [] });
+    fileMaterial.set(file, { file, entryPoints: [], unrecognised: null, signature: null, graphNodes: [] });
   }
   counts.sourceFiles = fileMaterial.size;
 
@@ -142,6 +147,18 @@ export function planAreas({
     if (!material) { counts.entryPointsOutsideModules += 1; continue; }
     material.entryPoints.push({ ...entry, file });
     counts.entryPoints += 1;
+  }
+  for (const item of context?.unrecognisedFiles ?? []) {
+    const file = relativeInsideRoot(item?.file);
+    const material = file === null ? undefined : fileMaterial.get(file);
+    if (!material) { counts.unrecognisedFilesOutsideModules += 1; continue; }
+    if (material.unrecognised !== null) continue;
+    material.unrecognised = {
+      file,
+      lines: Array.isArray(item.lines) ? item.lines : [],
+      matches: Array.isArray(item.matches) ? item.matches : [],
+    };
+    counts.unrecognisedFiles += 1;
   }
   for (const signature of context?.fileSignatures ?? []) {
     const file = relativeInsideRoot(signature?.file);
@@ -160,7 +177,7 @@ export function planAreas({
       // it joins its module, so the module reaches an analyzer and the report.
       let material = fileMaterial.get(file);
       if (!material) {
-        material = { file, entryPoints: [], signature: null, graphNodes: [] };
+        material = { file, entryPoints: [], unrecognised: null, signature: null, graphNodes: [] };
         fileMaterial.set(file, material);
         counts.graphOnlyFiles += 1;
       }
@@ -236,6 +253,7 @@ export function planAreas({
       bytes: area.bytes,
       overBudget: area.overBudget,
       entryPoints: area.files.flatMap((m) => m.entryPoints),
+      unrecognisedFiles: area.files.map((m) => m.unrecognised).filter(Boolean),
       fileSignatures: area.files.map((m) => m.signature).filter(Boolean),
       graphNodes: area.files.flatMap((m) => m.graphNodes),
     };
@@ -248,7 +266,10 @@ export function planAreas({
       path,
       files: files.map((m) => m.file),
       entryPoints: files.reduce((n, m) => n + m.entryPoints.length, 0),
-      candidateFiles: files.filter((m) => m.entryPoints.length > 0).map((m) => m.file),
+      scriptEntryPoints: files.reduce((n, m) => n + m.entryPoints.filter((e) => e.source === 'script').length, 0),
+      patternEntryPoints: files.reduce((n, m) => n + m.entryPoints.filter((e) => e.source === 'pattern').length, 0),
+      unrecognisedFiles: files.filter((m) => m.unrecognised !== null).length,
+      candidateFiles: files.filter((m) => m.entryPoints.length > 0 || m.unrecognised !== null).map((m) => m.file),
       areas: finished.filter((a) => a.modules.some((m) => m.path === path)).map((a) => a.areaId),
     };
   });
@@ -341,6 +362,7 @@ async function main() {
       check: areaCheckCommand(projectRoot, area.areaId),
       modules: area.modules.map(({ path, part, files }) => ({ path, part, files })),
       entryPoints: area.entryPoints,
+      unrecognisedFiles: area.unrecognisedFiles,
       fileSignatures: area.fileSignatures,
       ...(graphNodes ? { graphNodes: area.graphNodes } : {}),
       metadata: context?.metadata ?? {},
@@ -352,6 +374,7 @@ async function main() {
       modules: area.modules.map(({ path, part, files }) => ({ path, part, files })),
       files: area.modules.reduce((n, m) => n + m.files.length, 0),
       entryPoints: area.entryPoints.length,
+      unrecognisedFiles: area.unrecognisedFiles.length,
       graphNodes: area.graphNodes.length,
       bytes: area.bytes,
       overBudget: area.overBudget,
@@ -364,6 +387,7 @@ async function main() {
     budgetBytes: args.budgetBytes,
     maxEntryPoints: args.maxEntryPoints,
     graph: graphNodes !== null,
+    entryPointSource: context?.entryPointSource ?? null,
     contextPath,
     areas,
     modules: plan.modules,
@@ -374,14 +398,14 @@ async function main() {
   for (const area of areas) {
     process.stdout.write(
       `${area.areaId} modules=${area.modules.length} files=${area.files} entryPoints=${area.entryPoints} ` +
-      `graphNodes=${area.graphNodes} bytes=${area.bytes}${area.overBudget ? ' overBudget' : ''} ` +
+      `unrecognised=${area.unrecognisedFiles} graphNodes=${area.graphNodes} bytes=${area.bytes}${area.overBudget ? ' overBudget' : ''} ` +
       `context=${area.contextFile} output=${area.outputFile}\n`,
     );
   }
   const c = plan.counts;
   process.stderr.write(
     `split-domain-areas: areas=${c.areas} modules=${c.modules} sourceFiles=${c.sourceFiles} ` +
-    `entryPoints=${c.entryPoints} testFilesExcluded=${c.testFilesExcluded} ` +
+    `entryPoints=${c.entryPoints} unrecognisedFiles=${c.unrecognisedFiles} testFilesExcluded=${c.testFilesExcluded} ` +
     `contextFilesOutsideRoot=${c.contextFilesOutsideRoot} graphNodesAttached=${c.graphNodesAttached} ` +
     `graphNodesOutsideRoot=${c.graphNodesOutsideRoot} graphNodesOnTestFiles=${c.graphNodesOnTestFiles} graphOnlyFiles=${c.graphOnlyFiles}\n`,
   );

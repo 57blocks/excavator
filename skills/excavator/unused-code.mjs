@@ -20,9 +20,12 @@
  * a confidence per node. It never reads the fact graph beyond its header digest.
  *
  * Definition. A function node is used when it is reachable from a root along
- * references; the roots are the route handlers (the targets of `routes` edges)
- * and the methods a descriptor has the container call (the targets of `invokes`
- * edges; `counts.roots` has how many of each); every other function node is
+ * references; the roots are the route handlers (the targets of `routes` edges),
+ * the methods a descriptor has the container call (the targets of `invokes`
+ * edges) and the handlers of the knowledge graph's `entryPoints` stream that
+ * resolved to a function node (records of kind `entry` whose handler has fate
+ * `node`; a handler that resolved to a class is not a function root);
+ * `counts.roots` has how many of each; every other function node is
  * a candidate. References are `calls` edges between function nodes and
  * `implements` / `overrides` edges between function nodes, the latter in BOTH
  * directions (an overridden method in use makes its overrides dispatchable; an
@@ -334,12 +337,13 @@ function weaklyConnectedCount(nodeCount, from, to) {
  *   entryComponents: number,
  *   clusters: number,
  *   referrers: Array<Array<{ id: string, edge: string, reverse: boolean }>>,
- *   roots: { routes: number, invokes: number },
+ *   roots: { routes: number, invokes: number, entryPoints: number },
  * }}
  *   `reachable` is indexed like `functionIds`; `entry`, `component`, `referrers`
  *   like `candidateIds`. `roots` counts the distinct function nodes that are the
- *   target of a `routes` edge and of an `invokes` edge (a method that is both is
- *   in both counts).
+ *   target of a `routes` edge, of an `invokes` edge and the function handler of an
+ *   entry record of `graph.entryPoints` (absent is empty); a node that is several
+ *   kinds of root is in each count once.
  */
 export function computeCandidateSet(graph) {
   if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
@@ -363,6 +367,7 @@ export function computeCandidateSet(graph) {
   const seeds = [];
   const routeRoots = new Set();
   const invokeRoots = new Set();
+  const entryRoots = new Set();
   for (const edge of graph.edges) {
     // A route handler and a method a descriptor has the container call are the roots.
     if (edge?.type === 'routes' || edge?.type === 'invokes') {
@@ -388,6 +393,15 @@ export function computeCandidateSet(graph) {
       refTo.push(source);
       refKind.push(forward + 1);
     }
+  }
+
+  // A handler the entry point stage resolved to a function node is a root too.
+  for (const record of Array.isArray(graph.entryPoints) ? graph.entryPoints : []) {
+    if (record?.kind !== 'entry' || record.handler?.fate !== 'node') continue;
+    const target = indexOf.get(record.handler.nodeId);
+    if (target === undefined) continue;
+    seeds.push(target);
+    entryRoots.add(target);
   }
 
   const reachable = reachableFrom(n, buildCsr(n, refFrom, refTo, refKind), seeds);
@@ -462,7 +476,7 @@ export function computeCandidateSet(graph) {
     entryComponents,
     clusters: weaklyConnectedCount(m, cFrom, cTo),
     referrers,
-    roots: { routes: routeRoots.size, invokes: invokeRoots.size },
+    roots: { routes: routeRoots.size, invokes: invokeRoots.size, entryPoints: entryRoots.size },
   };
 }
 
@@ -1693,7 +1707,7 @@ function runCandidates(rootArg) {
   const { counts, census } = product;
   process.stdout.write(`${JSON.stringify({ product: path, counts, census })}\n`);
   process.stderr.write(`unused-code: ${counts.candidates} candidates (${counts.entries} entries in ${counts.entryComponents} components, `
-    + `${counts.clusters} clusters) of ${counts.functionNodes} function nodes, ${counts.routeReachable} reachable from roots (${counts.roots.routes} route handlers, ${counts.roots.invokes} container-invoked methods); `
+    + `${counts.clusters} clusters) of ${counts.functionNodes} function nodes, ${counts.routeReachable} reachable from roots (${counts.roots.routes} route handlers, ${counts.roots.invokes} container-invoked methods, ${counts.roots.entryPoints} entry point handlers); `
     + `census over ${census.files} files, ${census.candidatesWithElsewhere} candidates with the name elsewhere -> ${path}\n`);
 }
 

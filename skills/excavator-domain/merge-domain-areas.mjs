@@ -80,8 +80,16 @@
  * not even through its nodeIds.
  * Each module lands in exactly one bucket: covered (a flow has a step in
  * it), declared-skip (no flow, its area listed it in skippedModules with a
- * reason), silent-zero (no flow, not declared, has entry points) or
- * no-candidates (no flow, not declared, no entry point). A module split
+ * reason), silent-zero (no flow, not declared, and script + pattern + accepted
+ * model entry points > 0 or it has files with unrecognised registrations) or
+ * no-candidates (no flow, not declared, none of those).
+ *
+ * Model entry points. An area output's top-level `entryPoints` (entries the
+ * analyzer found in the area's unrecognised files) is area-only: it never
+ * reaches the merged graph. model-entry-points.mjs checks each element against
+ * the area's unrecognised files and the file text; accepted ones are written
+ * to the report with `source: "model"` and their module, rejected ones are
+ * counted per reason. A module split
  * into parts is covered when any part is; each area also names the parts
  * it holds that have entry points, no cited file and no declared skip
  * (silentZeroParts), so an area that returned nothing for its part shows.
@@ -98,6 +106,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AREAS_DIR, relativeInsideRoot } from './split-domain-areas.mjs';
+import { MODEL_ENTRY_REJECTIONS, checkModelEntryPoints, readProjectLines } from './model-entry-points.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -110,7 +119,7 @@ export const MODULE_BUCKETS = Object.freeze(['covered', 'declared-skip', 'silent
 const AREA_ID = /^area-\d+$/;
 /** Fields of an area output that describe the run, not the domain graph. */
 const IGNORED_EDGE_TYPES = new Set(['contains_flow', 'cross_domain']);
-const AREA_ONLY_FIELDS = ['areaRun', 'skippedModules'];
+const AREA_ONLY_FIELDS = ['areaRun', 'skippedModules', 'entryPoints'];
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -533,6 +542,7 @@ function countTypes(graph) {
  */
 export function computeCoverage({
   manifest, areaResults, merged, nodeFiles = new Map(), merge = null, plan = null, planStatus = null, conservation = null,
+  modelEntryPoints = null,
 }) {
   const { fileModule } = moduleIndex(manifest);
 
@@ -580,16 +590,29 @@ export function computeCoverage({
     }
   }
 
+  // Model entry points the merge accepted, by module.
+  const modelEntries = (modelEntryPoints?.accepted ?? []).map((e) => ({ ...e, module: fileModule.get(e.file) ?? null }));
+  const modelOfModule = new Map();
+  for (const entry of modelEntries) modelOfModule.set(entry.module, (modelOfModule.get(entry.module) ?? 0) + 1);
+
   const buckets = Object.fromEntries(MODULE_BUCKETS.map((b) => [b, 0]));
   const modules = manifest.modules.map((module) => {
     const flows = flowsOfModule.get(module.path)?.size ?? 0;
+    const script = module.scriptEntryPoints ?? 0;
+    const pattern = module.patternEntryPoints ?? 0;
+    const model = modelOfModule.get(module.path) ?? 0;
+    const unrecognised = module.unrecognisedFiles ?? 0;
     let status;
     if (flows > 0) status = 'covered';
     else if (declared.has(module.path)) status = 'declared-skip';
-    else if (module.entryPoints > 0) status = 'silent-zero';
+    else if (script + pattern + model > 0 || unrecognised > 0) status = 'silent-zero';
     else status = 'no-candidates';
     buckets[status] += 1;
-    const row = { path: module.path, areas: module.areas, files: module.files.length, entryPoints: module.entryPoints, flows, status };
+    const row = {
+      path: module.path, areas: module.areas, files: module.files.length,
+      entryPoints: { script, pattern, model }, entryPointsTotal: module.entryPoints, unrecognisedFiles: unrecognised,
+      flows, status,
+    };
     if (plan) row.domain = plan.modules[module.path] ?? null;
     if (status === 'declared-skip') row.skipReason = declared.get(module.path);
     return row;
@@ -624,6 +647,8 @@ export function computeCoverage({
 
   const totals = countTypes(merged);
   const homing = merge?.flowHoming;
+  const rejectedByReason = Object.fromEntries(MODEL_ENTRY_REJECTIONS.map((r) => [r, modelEntryPoints?.rejected?.[r] ?? 0]));
+  const sumOf = (key) => manifest.modules.reduce((n, m) => n + (m[key] ?? 0), 0);
   return {
     format: COVERAGE_FORMAT,
     token: manifest.token,
@@ -631,6 +656,12 @@ export function computeCoverage({
     totals,
     buckets,
     steps,
+    entryPoints: {
+      source: manifest.entryPointSource ?? null,
+      script: sumOf('scriptEntryPoints'),
+      pattern: sumOf('patternEntryPoints'),
+      model: { accepted: modelEntries.length, rejected: rejectedByReason, entries: modelEntries },
+    },
     candidateFiles: { total: candidates.length, cited: candidates.length - uncited.length, uncited },
     silentZeroParts: areas.reduce((n, a) => n + a.silentZeroParts.length, 0),
     split: manifest.counts ?? null,
@@ -773,18 +804,25 @@ function loadManifest(areasDir) {
   return manifest;
 }
 
-/** Knowledge-graph node id -> project file, from the graph nodes every area context carries. */
-function loadNodeFiles(areasDir, manifest) {
+/**
+ * What the merge reads from the area contexts: knowledge-graph node id ->
+ * project file (from every context's graph nodes), and area id -> the
+ * project files its context lists as unrecognised.
+ */
+function loadAreaContexts(areasDir, manifest) {
   const nodeFiles = new Map();
+  const unrecognisedOf = new Map();
   for (const { areaId } of manifest.areas) {
     const contextText = readOrNull(join(areasDir, `${areaId}.context.json`));
     if (contextText === null) continue;
-    for (const node of JSON.parse(contextText).graphNodes ?? []) {
+    const areaContext = JSON.parse(contextText);
+    unrecognisedOf.set(areaId, (areaContext.unrecognisedFiles ?? []).map((u) => relativeInsideRoot(u?.file)).filter((f) => f !== null));
+    for (const node of areaContext.graphNodes ?? []) {
       const file = relativeInsideRoot(node?.filePath);
       if (typeof node?.id === 'string' && file !== null) nodeFiles.set(node.id, file);
     }
   }
-  return nodeFiles;
+  return { nodeFiles, unrecognisedOf };
 }
 
 /**
@@ -801,7 +839,7 @@ export async function runCheck({ projectRoot, areaId, stdout = (t) => process.st
   const plan = loadPlan(dataDir, manifest);
   const result = acceptOutput({
     token: manifest.token, areaId, text: readOrNull(join(areasDir, `${areaId}.analysis.json`)),
-    choice: { plan, manifest, nodeFiles: loadNodeFiles(areasDir, manifest) },
+    choice: { plan, manifest, nodeFiles: loadAreaContexts(areasDir, manifest).nodeFiles },
   });
   const lines = [`${areaId} ${result.status}${result.status === 'accepted' || !result.reason ? '' : ` (${result.reason})`}`, ...choiceLines(areaId, result)];
   stdout(`${lines.join('\n')}\n`);
@@ -828,7 +866,7 @@ export async function runMerge({
     : 'reused';
 
   // Area files are found from the area id, never from a path the manifest carries.
-  const nodeFiles = loadNodeFiles(areasDir, manifest);
+  const { nodeFiles, unrecognisedOf } = loadAreaContexts(areasDir, manifest);
   const choice = { plan, manifest, nodeFiles };
   const areaResults = manifest.areas.map(({ areaId }) => ({
     areaId,
@@ -838,7 +876,18 @@ export async function runMerge({
   const accepted = areaResults.filter((r) => r.status === 'accepted').map(({ areaId, graph }) => ({ areaId, graph }));
   const { graph, merge } = mergeFn({ accepted, plan, manifest, nodeFiles });
   const conservation = checkConservation({ accepted, merged: graph, renames: merge.idsRenamed });
-  const coverage = computeCoverage({ manifest, areaResults, merged: graph, nodeFiles, merge, plan, planStatus, conservation });
+  const modelEntryPoints = { accepted: [], rejected: Object.fromEntries(MODEL_ENTRY_REJECTIONS.map((r) => [r, 0])) };
+  const lineCache = new Map();
+  const readLines = (file) => {
+    if (!lineCache.has(file)) lineCache.set(file, readProjectLines(root, file));
+    return lineCache.get(file);
+  };
+  for (const { areaId, graph: areaGraph } of accepted) {
+    const checked = checkModelEntryPoints({ entries: areaGraph.entryPoints, unrecognisedFiles: unrecognisedOf.get(areaId) ?? [], readLines });
+    modelEntryPoints.accepted.push(...checked.accepted);
+    for (const [reason, n] of Object.entries(checked.rejected)) modelEntryPoints.rejected[reason] += n;
+  }
+  const coverage = computeCoverage({ manifest, areaResults, merged: graph, nodeFiles, merge, plan, planStatus, conservation, modelEntryPoints });
 
   const outPath = resolve(out ?? join(intermediate, 'domain-analysis.json'));
   // A failed check leaves no merged graph behind, not even an earlier merge's.
@@ -862,6 +911,11 @@ export async function runMerge({
     `modules=${coverage.modules.length} covered=${b.covered} declared-skip=${b['declared-skip']} ` +
     `silent-zero=${b['silent-zero']} no-candidates=${b['no-candidates']}`,
   );
+  const ep = coverage.entryPoints;
+  const modelRejected = Object.values(ep.model.rejected).reduce((n, v) => n + v, 0);
+  lines.push(
+    `entry-points source=${ep.source ?? 'unknown'} script=${ep.script} pattern=${ep.pattern} model=${ep.model.accepted} model-rejected=${modelRejected}`,
+  );
   lines.push(`candidate files cited=${coverage.candidateFiles.cited}/${coverage.candidateFiles.total}`);
   lines.push(`totals domains=${coverage.totals.domains} flows=${coverage.totals.flows} steps=${coverage.totals.steps}`);
   lines.push(`plan status=${coverage.plan.status} business=${coverage.plan.businessDomains} support=${coverage.plan.supportDomains}`);
@@ -870,7 +924,7 @@ export async function runMerge({
   lines.push(...homingLines(coverage));
   lines.push(conservation.ok ? 'conservation ok' : `conservation FAILED missing=${conservation.missing.length} extra=${conservation.extra.length}`);
   for (const module of coverage.modules.filter((m) => m.status === 'silent-zero')) {
-    lines.push(`silent-zero ${module.path} entryPoints=${module.entryPoints} areas=${module.areas.join(',')}`);
+    lines.push(`silent-zero ${module.path} entryPoints=${module.entryPointsTotal} unrecognised=${module.unrecognisedFiles} areas=${module.areas.join(',')}`);
   }
   for (const area of coverage.areas) {
     for (const { path, part } of area.silentZeroParts) lines.push(`silent-zero-part ${path} part=${part.index}/${part.of} area=${area.areaId}`);
