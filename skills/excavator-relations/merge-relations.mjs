@@ -394,7 +394,7 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
         linkedReceivers.add(r.item);
         relations.push({
           ...common, bucket: 'linked', key: `${item.end.kind}|${item.view.file}|${n.key}|${r.item.view.file}`,
-          caller: item.view, receiver: { ...r.item.view, addressKey: r.key }, ...(paired.paramToLiteral ? { paramToLiteral: true } : {}),
+          caller: item.view, receiver: { ...r.item.view, addressKey: r.key },
         });
       }
     } else if (paired.bucket === 'ambiguous') {

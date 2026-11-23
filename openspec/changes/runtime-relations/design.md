@@ -82,7 +82,7 @@
 没有地址、或地址里没有任何字面部分（整条路径是变量）的端点进 `address-unresolved`。
 
 配对只在不同的「侧」之间进行。侧是单元加语言族（`js`、`go`、`jvm`、`python`、`dotnet` 等，按扩展名）：一个 Spring 应用把 Angular 前端放在同一清单下时，浏览器代码与服务端是两侧，照样配对；同一个 Node 服务的两个文件是一侧，不配（同一进程内的调用不是单元间通信）。代价：同一单元、同一语言族的前后端（例如 Node 服务目录里的浏览器脚本）配不上，进 `caller-only`/`receiver-only`，看得见。调用端写了 `targetUnit`（指向哪个单元，须在单元清单里，可以是它自己的单元）时，只在该单元里找接收端；清单里没有的 `targetUnit` 计数后忽略：
-- `http`：段数相同（通配除外），逐段满足「接收端是参数则任意，是字面则调用端须为相同字面或参数」，方法相同。按字面段相同的数目取最多者；并列时，不需要「调用端变量等于接收端字面段」的接收端胜出（调用端 `/policy/${id}` 配 `/policy/:id` 而不是 `/policy/tags`）。唯一则 `linked`，多个则 `ambiguous` 并列出候选，没有则 `caller-only`。
+- `http`：段数相同（通配除外），逐段满足「接收端是参数则任意，是字面则调用端须为相同字面」，方法相同；调用端的变量段从不当作等于某个字面段（调用端 `/policy/${id}` 配 `/policy/:id`，不配 `/policy/tags`；只有 `/policy/tags` 时是 `caller-only`）。按字面段相同的数目取最多者。唯一则 `linked`，多个则 `ambiguous` 并列出候选，没有则 `caller-only`。
 - `rpc`、`message`、`realtime`：键相同即配；多个接收端都配上时，`message` 与 `realtime` 是一对多的广播，每个都 `linked`；`rpc` 多个为 `ambiguous`。
 - `external`：调用端核对通过即 `linked` 到具名外部端点。
 

@@ -33,6 +33,34 @@ function segmentOf(raw) {
   return { type: 'literal', text: raw };
 }
 
+/**
+ * A parameter with a pattern (`{id:[0-9]+}`, `{name:[^/]+}`) may hold slashes
+ * and braces: hold each, up to its balancing brace, as one piece.
+ */
+function holdPatternParams(text, holders) {
+  let out = '';
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === '{' && /^\{\w+\s*:/.test(text.slice(i))) {
+      let depth = 0;
+      let j = i;
+      for (; j < text.length; j++) {
+        if (text[j] === '{') depth += 1;
+        else if (text[j] === '}' && --depth === 0) break;
+      }
+      if (j < text.length) {
+        holders.push(text.slice(i, j + 1));
+        out += `${HOLD}${holders.length - 1}${HOLD}`;
+        i = j + 1;
+        continue;
+      }
+    }
+    out += text[i];
+    i += 1;
+  }
+  return out;
+}
+
 /** Split a raw path into { host, segments } or null when it is not a string. */
 export function parsePath(raw) {
   if (typeof raw !== 'string') return null;
@@ -46,6 +74,7 @@ export function parsePath(raw) {
   // Template expressions may hold slashes or question marks: protect them first.
   const holders = [];
   text = text.replace(/\$\{[^}]*\}/g, (m) => { holders.push(m); return `${HOLD}${holders.length - 1}${HOLD}`; });
+  text = holdPatternParams(text, holders);
   text = text.split(/[?#]/)[0];
   const segments = text.split('/').filter((s) => s.length > 0)
     .map((s) => s.replace(HELD, (_, i) => holders[Number(i)]))
@@ -138,35 +167,31 @@ export function methodsMatch(a, b) {
 }
 
 /**
- * Match a caller path against a receiver path (both segment lists).
- * Returns null or { score: literal segments equal, paramToLiteral }.
+ * Match a caller path against a receiver path (both segment lists). A
+ * receiver parameter takes any caller segment; a receiver literal needs the
+ * same caller literal: a caller variable is never taken to equal a word.
+ * Returns null or { score: literal segments equal }.
  */
 export function matchSegments(caller, receiver) {
   let score = 0;
-  let paramToLiteral = false;
   for (let i = 0; i < receiver.length; i++) {
     const r = receiver[i];
-    if (r.type === 'wild') return { score, paramToLiteral };
+    if (r.type === 'wild') return { score };
     const c = caller[i];
     if (c === undefined) return null;
     if (c.type === 'wild') return null;
     if (r.type === 'param') continue;
-    if (c.type === 'literal') {
-      if (c.text !== r.text) return null;
-      score += 1;
-    } else {
-      paramToLiteral = true;
-    }
+    if (c.type !== 'literal' || c.text !== r.text) return null;
+    score += 1;
   }
-  return caller.length === receiver.length ? { score, paramToLiteral } : null;
+  return caller.length === receiver.length ? { score } : null;
 }
 
 /**
- * http: the receivers with the most equal literal segments win; on a tie, those
- * that need no caller variable to equal a literal win.
+ * http: the receivers with the most equal literal segments win.
  * Pair one normalized caller with the receivers it may reach (already limited
  * to other sides and to its target unit). Returns
- *   { bucket: 'linked', receivers: [r], paramToLiteral? } | { bucket: 'ambiguous', receivers } | { bucket: 'caller-only', receivers: [] }.
+ *   { bucket: 'linked', receivers: [r] } | { bucket: 'ambiguous', receivers } | { bucket: 'caller-only', receivers: [] }.
  * `message` and `realtime` link every receiver with the same key (broadcast).
  */
 export function pairCaller(kind, caller, receivers) {
@@ -180,12 +205,9 @@ export function pairCaller(kind, caller, receivers) {
       if (m === null) continue;
       if (m.score > best) { best = m.score; found = [{ r, m }]; } else if (m.score === best) found.push({ r, m });
     }
-    // On a tie, a receiver that takes the caller's variable segments as
-    // parameters beats one that needs a variable to equal a literal.
-    if (found.length > 1 && found.some((f) => !f.m.paramToLiteral)) found = found.filter((f) => !f.m.paramToLiteral);
     if (found.length === 0) return { bucket: 'caller-only', receivers: [] };
     if (found.length > 1) return { bucket: 'ambiguous', receivers: found.map((f) => f.r) };
-    return { bucket: 'linked', receivers: [found[0].r], paramToLiteral: found[0].m.paramToLiteral };
+    return { bucket: 'linked', receivers: [found[0].r] };
   }
   const same = receivers.filter((r) => r.key === caller.key
     && (!caller.namespace || !r.namespace || caller.namespace === r.namespace));

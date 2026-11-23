@@ -12,6 +12,7 @@ describe('normalizeAddress', () => {
       ok: true, key: 'GET /v1/users/{}', address: { method: 'GET', path: '/v1/users/{}', host: 'api.example.com' }, literals: ['v1', 'users'], methodWord: null,
     });
     expect(http('POST', '/users/:id/{tab}/<x>/[slug]').key).toBe('POST /users/{}/{}/{}/{}');
+    expect(http('GET', '/p/{name:[^/]+}/g/{id:\\d{1,3}}').key).toBe('GET /p/{}/g/{}');
     expect(http('ANY', '/static/**/a/b').key).toBe('ANY /static/{*}');
     expect(http('get', '/a/${base + "/x"}').segments).toHaveLength(2);
     expect(http('POST', '/a').methodWord).toBe('POST');
@@ -40,17 +41,20 @@ describe('normalizeAddress', () => {
 describe('pairCaller', () => {
   const recv = (method, path) => http(method, path);
 
-  it('links the receiver with the most literal segments and reports ties as ambiguous', () => {
+  it('links the receiver with the most literal segments, never reads a caller variable as a word, and reports ties as ambiguous', () => {
     const caller = http('GET', '/users/me');
     const result = pairCaller('http', caller, [recv('GET', '/users/:id'), recv('GET', '/users/me'), recv('POST', '/users/me')]);
     expect(result.bucket).toBe('linked');
     expect(result.receivers[0].key).toBe('GET /users/me');
     const tie = pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/:id'), recv('ANY', '/users/me')]);
-    expect(tie).toMatchObject({ bucket: 'linked', paramToLiteral: false });
+    expect(tie.bucket).toBe('linked');
     expect(tie.receivers[0].key).toBe('GET /users/{}');
-    expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/me'), recv('GET', '/users/all')]).bucket).toBe('ambiguous');
+    expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/me'), recv('GET', '/users/all')]).bucket).toBe('caller-only');
     expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/:id'), recv('GET', '/users/:name')]).bucket).toBe('ambiguous');
-    expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/me')])).toMatchObject({ bucket: 'linked', paramToLiteral: true });
+    expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/me')]).bucket).toBe('caller-only');
+    // A literal caller segment may meet a receiver parameter, a caller variable never a receiver word.
+    expect(pairCaller('http', http('GET', '/p/${id}/feeds'), [recv('GET', '/p/plan/:year')]).bucket).toBe('caller-only');
+    expect(pairCaller('http', http('GET', '/p/plan/2024'), [recv('GET', '/p/plan/:year')]).bucket).toBe('linked');
     expect(pairCaller('http', http('GET', '/files/a/b'), [recv('GET', '/files/**')]).bucket).toBe('linked');
     expect(pairCaller('http', http('GET', '/other'), [recv('GET', '/users')]).bucket).toBe('caller-only');
   });
