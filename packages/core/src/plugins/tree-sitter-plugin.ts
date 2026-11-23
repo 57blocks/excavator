@@ -10,6 +10,8 @@ import type { LanguageConfig } from "../languages/types.js";
 import type { LanguageExtractor } from "./extractors/types.js";
 import { collectSymbolEvidence, type SymbolEvidence } from "./symbol-evidence.js";
 import { builtinExtractors } from "./extractors/index.js";
+import { builtinFrameworkConfigs } from "../languages/frameworks/index.js";
+import { extractRouteFacts } from "./route-facts.js";
 
 // web-tree-sitter uses CJS internally; we need createRequire for .wasm resolution
 const require = createRequire(import.meta.url);
@@ -235,6 +237,16 @@ export class TreeSitterPlugin implements AnalyzerPlugin {
     return { functions: [], classes: [], imports: [], exports: [] };
   }
 
+  // Route facts come from the framework rules (data); set only when a rule matched.
+  private attachRoutes(
+    structure: StructuralAnalysis,
+    rootNode: import("web-tree-sitter").Node,
+    langKey: string,
+  ): void {
+    const routes = extractRouteFacts(rootNode, langKey, structure.imports, builtinFrameworkConfigs);
+    if (routes) structure.routes = routes;
+  }
+
   analyzeFile(
     filePath: string,
     content: string,
@@ -255,6 +267,7 @@ export class TreeSitterPlugin implements AnalyzerPlugin {
     let result: StructuralAnalysis;
     if (extractor) {
       result = extractor.extractStructure(tree.rootNode);
+      this.attachRoutes(result, tree.rootNode, langKey!);
     } else {
       result = { functions: [], classes: [], imports: [], exports: [] };
     }
@@ -335,6 +348,7 @@ export class TreeSitterPlugin implements AnalyzerPlugin {
     const structure = extractor
       ? extractor.extractStructure(tree.rootNode)
       : TreeSitterPlugin.emptyStructure();
+    if (extractor) this.attachRoutes(structure, tree.rootNode, langKey!);
     const callGraph = extractor ? extractor.extractCallGraph(tree.rootNode) : [];
 
     tree.delete();

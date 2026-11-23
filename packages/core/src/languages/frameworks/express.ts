@@ -7,6 +7,23 @@ export const expressConfig = {
   detectionKeywords: ["\"express\":", "express-validator", "express-session"],
   manifestFiles: ["package.json"],
   promptSnippetPath: "./frameworks/express.md",
+  routes: {
+    importSources: ["express"],
+    kind: "http",
+    join: "append",
+    receivers: {
+      rootFactories: ["express"],
+      routerFactories: ["express.Router", "Router"],
+    },
+    calls: {
+      verbs: {
+        get: "GET", post: "POST", put: "PUT", patch: "PATCH", delete: "DELETE",
+        head: "HEAD", options: "OPTIONS", all: "ALL",
+      },
+      pathArgument: 0,
+    },
+    mounts: { methods: ["use"] },
+  },
   entryPoints: [
     "src/index.js",
     "src/app.js",

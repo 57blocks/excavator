@@ -109,6 +109,8 @@ interface RouteFacts {
   sites: RouteSite[];     // every registration a rule matched, in source order
   mounts: RouteMount[];   // every mount a rule matched, in source order
   exportsValue?: { local: string; factory: boolean; line: number }; // CommonJS `module.exports =`
+  ignoredMounts: Record<string, number>; // per framework: mount-method calls on a known receiver whose last argument is not an identifier
+  rules: Record<string, { kind: "http" | "ui"; join: "append" | "nested" }>; // the rules this file hit, so the fact build needs no config
 }
 interface RouteSite {
   framework: string;            // the config id
@@ -173,12 +175,12 @@ interface RouteMount {
    - `require` → `resolvedSources[file][source]` 给出模块；本地名取该模块的 `exportsValue.local`；`called` 与 `factory` 必须一致，否则目标不可解；
    - 外部模块、找不到、多于一个 → 挂载落 `target-unresolved` 或 `target-external`。
 2. **经处理者挂载**（只对 `join: nested`）：路由的处理者解析到一个文件或一个声明，而该文件里有锚为 `local` 且名字等于该声明名（或该文件默认导出的本地名，处理者为 `module` 时）的路由，就把这个路由的路径（去掉末尾 `/*`）当作挂载路径。
-3. **拼前缀**：从锚为 `root` 的记录出发，沿挂载向下传播完整前缀：一个锚 `local:N` 的组，其前缀集合 = 所有指向（该文件, N）的挂载的完整路径。有环时环上的组不再传播，计入 `cycle`。
+3. **拼前缀**：从锚为 `root` 的记录出发，沿挂载向下传播完整前缀：一个锚 `local:N` 的组，其前缀集合 = 所有指向（该文件, N）的挂载的完整路径。有环时环上的组不再传播，计入 `cycle`。锚为 `parameter` 的组没有挂载能指向它（把分组当实参跨函数传递不在本变更内），所以总落 `prefix-unresolved`。
 4. **每个路由的桶**（恰好一个）：
    - 自身路径或文件内前缀不是字面量 → `path-unresolved`；
    - 锚为 `root` → `resolved`，一个入口点；
    - 锚为 `local`/`parameter`，前缀集合非空 → `resolved`，每个前缀一个入口点；
-   - 否则 → `prefix-unresolved`，一个入口点，`path` 为文件内路径，`prefixResolved: false`。
+   - 否则 → `prefix-unresolved`，一个入口点，`path` 为文件内路径。
    - 挂载路径本身不是字面量时，经它的前缀记为未解析：路由若再没有别的可解前缀，落 `prefix-unresolved`。
 5. **处理者**（每个入口点一次）：
    - `name`：TS/JS 用 `resolveBoundCallSite` 的规则（标识符、命名空间成员）；JSX 标签同理。Go：`a.B` 中 `a` 是导入说明符时，在 `resolvedPackages[file][source]` 目录里的文件中找无 `owner` 的同名函数；无限定的名字在本文件所在目录的文件里找。唯一 → `node`；多个 → `ambiguous`；外部包 → `external`；其余 → `unresolved`。
@@ -216,12 +218,13 @@ interface RouteMount {
       "buckets": { "resolved": 0, "path-unresolved": 0, "prefix-unresolved": 0 },
       "entryPoints": 0,
       "handlers": { "node": 0, "module": 0, "inline": 0, "external": 0, "unresolved": 0, "ambiguous": 0, "none": 0 },
-      "mounts": { "total": 0, "resolved": 0, "target-unresolved": 0, "target-external": 0, "cycle": 0, "ignored": 0 }
+      "mounts": { "total": 0, "resolved": 0, "path-unresolved": 0, "target-unresolved": 0, "target-external": 0, "cycle": 0, "ignored": 0 }
     }
   }
 }
 ```
 
+- 挂载的去向按序取第一个成立的：目标是外部包 → `target-external`；目标不可解（含 `other`）→ `target-unresolved`；挂载路径或其文件内前缀不是字面量 → `path-unresolved`；在环上 → `cycle`；否则 `resolved`。「经处理者挂载」（D5 第 2 步）是推出来的，不是挂载记录，不计入 `mounts`。
 - 没有任何结构行带 `routes` 时，`frameworks` 为空对象，`status` 仍是 `ran`。
 - 缺口：`entry-point-path-unresolved`（每个 `path-unresolved` 路由）、`entry-point-prefix-unresolved`（每个 `prefix-unresolved` 路由）、`entry-point-handler-unresolved`（每个处理者为 `unresolved` 或 `ambiguous` 的入口点）。scope 是框架 id，样例 `<file>:<line> <method> <path 或 pathText>`。
 - `assertEntryPointConservation`：每框架 `sites` = 三桶之和；`entryPoints` = 处理者七类之和 = 记录流里该框架 `kind: "entry"` 的条数；`mounts.total` = 除 `ignored` 外五类之和 = 记录流里该框架 `kind: "mount"` 的条数；三种缺口的计数等于对应桶。不等即抛错，不写产物。
