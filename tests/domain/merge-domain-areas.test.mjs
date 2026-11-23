@@ -319,6 +319,44 @@ describe('O4 flow homing', () => {
   });
 });
 
+// An id the merge gives by renaming may already be used by another area, and
+// two areas may hand in the same final id. Either way one node would replace
+// another, so the rename must pick a free id and the check must count ids,
+// not just see them.
+describe('id collisions across areas', () => {
+  const manifest = manifestOf(
+    { 'm/one': ['m/one/a.js'], 'm/two': ['m/two/b.js'] },
+    { 'area-001': ['m/one'], 'area-002': ['m/two'] },
+  );
+  const plan = planFrom({ 'm/one': 'domain:a', 'm/two': 'domain:a' });
+  const flowNode = (id) => ({ id, type: 'flow', name: id, summary: 's', tags: ['t'], complexity: 'simple' });
+  const out = (areaId, ids) => ({ version: '1.0.0', project: {}, nodes: ids.map(flowNode), edges: [], areaRun: { areaId, token: T } });
+
+  it('renames into an id no area uses, so nothing is overwritten', () => {
+    const list = [
+      { areaId: 'area-001', graph: out('area-001', ['flow:x', 'flow:x--area-002']) },
+      { areaId: 'area-002', graph: out('area-002', ['flow:x']) },
+    ];
+    const { graph, merge } = mergeAreas({ accepted: list, plan, manifest });
+    const flows = graph.nodes.filter((n) => n.type === 'flow').map((n) => n.id);
+    expect(flows).toHaveLength(3);
+    expect(new Set(flows).size).toBe(3);
+    expect(checkConservation({ accepted: list, merged: graph, renames: merge.idsRenamed }).ok).toBe(true);
+  });
+
+  it('fails when two areas end with the same id and the merge keeps one', () => {
+    const list = [
+      { areaId: 'area-001', graph: out('area-001', ['flow:x']) },
+      { areaId: 'area-002', graph: out('area-002', ['flow:x']) },
+    ];
+    const merged = { nodes: [flowNode('flow:x')], edges: [] };
+    const result = checkConservation({ accepted: list, merged, renames: [] });
+    expect(result.ok).toBe(false);
+    expect(result.flowsIn).toBe(2);
+    expect(result.missing.join('\n')).toContain('flow:x');
+  });
+});
+
 describe('O5 conservation', () => {
   const manifest = manifestOf(
     { 'm/one': ['m/one/a.js'], 'm/two': ['m/two/b.js'] },

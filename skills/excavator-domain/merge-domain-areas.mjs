@@ -215,7 +215,10 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
       if (raw.type === 'domain') { merge.analyzerDomainsIgnored += 1; continue; }
       const node = clone(raw);
       if (nodes.has(node.id)) {
-        const renamed = `${node.id}--${areaId}`;
+        // The suffixed id may itself be taken (an area can hand in an id that
+        // looks renamed); a numbered suffix keeps every node.
+        let renamed = `${node.id}--${areaId}`;
+        for (let n = 2; nodes.has(renamed); n++) renamed = `${node.id}--${areaId}-${n}`;
         rename.set(node.id, renamed);
         merge.idsRenamed.push({ from: node.id, to: renamed, areaId });
         node.id = renamed;
@@ -316,20 +319,26 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
 export function checkConservation({ accepted, merged, renames = [] }) {
   const renameOf = new Map();
   for (const { from, to, areaId } of renames) renameOf.set(`${areaId}|${from}`, to);
-  const expected = { flow: new Set(), step: new Set(), edge: new Set() };
+  // Counted, not collected: two areas ending with the same id is a loss,
+  // because the merged graph can hold that id only once.
+  const expected = { flow: new Map(), step: new Map(), edge: new Map() };
+  const bump = (map, key) => map.set(key, (map.get(key) ?? 0) + 1);
   for (const { areaId, graph } of accepted) {
     const mapId = (id) => renameOf.get(`${areaId}|${id}`) ?? id;
     const own = new Set();
     for (const raw of Array.isArray(graph.nodes) ? graph.nodes : []) {
       if (!isObject(raw) || typeof raw.id !== 'string' || raw.id.length === 0 || own.has(raw.id) || raw.type === 'domain') continue;
       own.add(raw.id);
-      if (raw.type === 'flow') expected.flow.add(mapId(raw.id));
-      else if (raw.type === 'step') expected.step.add(mapId(raw.id));
+      if (raw.type === 'flow') bump(expected.flow, mapId(raw.id));
+      else if (raw.type === 'step') bump(expected.step, mapId(raw.id));
     }
+    // A repeated edge within one area is kept once by the merge (edgesDuplicate).
+    const ownEdges = new Set();
     for (const raw of Array.isArray(graph.edges) ? graph.edges : []) {
       if (!isObject(raw) || raw.type !== 'flow_step' || !own.has(raw.source) || !own.has(raw.target) || raw.source === raw.target) continue;
-      expected.edge.add(`${mapId(raw.source)}|${mapId(raw.target)}`);
+      ownEdges.add(`${mapId(raw.source)}|${mapId(raw.target)}`);
     }
+    for (const key of ownEdges) bump(expected.edge, key);
   }
   const nodes = Array.isArray(merged?.nodes) ? merged.nodes : [];
   const occurrences = (type) => {
@@ -349,9 +358,10 @@ export function checkConservation({ accepted, merged, renames = [] }) {
   const extra = [];
   const label = { flow: (k) => k, step: (k) => k, edge: (k) => `flow_step ${k}` };
   for (const kind of ['flow', 'step', 'edge']) {
-    for (const key of [...expected[kind]].sort(compare)) {
-      if ((out[kind].get(key) ?? 0) === 0) missing.push(label[kind](key));
-      else if (out[kind].get(key) > 1) extra.push(`${label[kind](key)} (x${out[kind].get(key)})`);
+    for (const [key, want] of [...expected[kind]].sort(([a], [b]) => compare(a, b))) {
+      const have = out[kind].get(key) ?? 0;
+      if (have < want) missing.push(want > 1 ? `${label[kind](key)} (given x${want}, kept x${have})` : label[kind](key));
+      else if (have > want) extra.push(`${label[kind](key)} (x${have})`);
     }
     for (const key of [...out[kind].keys()].sort(compare)) {
       if (!expected[kind].has(key)) extra.push(label[kind](key));
@@ -359,11 +369,11 @@ export function checkConservation({ accepted, merged, renames = [] }) {
   }
   const total = (m) => [...m.values()].reduce((n, v) => n + v, 0);
   return {
-    flowsIn: expected.flow.size,
+    flowsIn: total(expected.flow),
     flowsOut: total(out.flow),
-    stepsIn: expected.step.size,
+    stepsIn: total(expected.step),
     stepsOut: total(out.step),
-    flowStepEdgesIn: expected.edge.size,
+    flowStepEdgesIn: total(expected.edge),
     flowStepEdgesOut: total(out.edge),
     missing,
     extra,
