@@ -227,4 +227,20 @@ describe('model-owned semantic language audit', () => {
     expect(audit.inspected).toBe(5);
     expectConserved(audit);
   });
+  // A flow cites fact entry points by id; the ids are written by a script,
+  // not model prose, so they are not inspected.
+  it('skips the entry-point ids a flow cites', () => {
+    const domainGraph = {
+      contentLanguage: 'en',
+      project: { name: 'fixture', languages: [], frameworks: [], description: 'Leave management.' },
+      nodes: [
+        { id: 'flow:http.post-leave', type: 'flow', name: 'Apply', summary: 'Applies for leave.', tags: [], domainMeta: { entryType: 'http', entryPointIds: ['ep:http.post-leave', 'ep:http.put-leave'] } },
+      ],
+      edges: [],
+    };
+    const audit = auditDomainGraphFields({ domainGraph });
+    expect(audit.rejected).toEqual([]);
+    expect(audit.accepted.some((entry) => entry.fieldPath.includes('entryPointIds'))).toBe(false);
+    expectConserved(audit);
+  });
 });
