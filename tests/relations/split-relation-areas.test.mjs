@@ -42,6 +42,20 @@ describe('planRelationAreas', () => {
     expect(c.candidateFiles).toBe(c.bySignal + c.byClientImport + c.byEntryPoint);
   });
 
+  it('makes a server that is handed its socket instance a candidate, and leaves plain emitters out', () => {
+    const files = {
+      'server/package.json': '{"name":"server","scripts":{"start":"node app.js"}}',
+      'server/order-socket.js': "export const watch = (io) => {\n  io.to(room).emit('orderStatusUpdate', o);\n};",
+      'server/report.js': "export const r = (req) => req.app.get('io').emit('reportReady', 1);",
+      'server/stream.js': "export const s = (stream, emitter) => { stream.on('data', f); emitter.emit('done'); };",
+    };
+    const result = plan(files);
+    const status = Object.fromEntries(result.classified.map((c) => [c.file, c.status]));
+    expect(status).toEqual({ 'server/order-socket.js': 'candidate', 'server/report.js': 'candidate', 'server/stream.js': 'not-candidate' });
+    const order = result.candidates.find((c) => c.file === 'server/order-socket.js');
+    expect(order.reasons).toEqual(['signal:socket-event-call']);
+  });
+
   it('makes a file that imports a client definition a candidate, without a signal of its own', () => {
     const files = {
       'web/package.json': '{"name":"web","scripts":{"dev":"x"}}',

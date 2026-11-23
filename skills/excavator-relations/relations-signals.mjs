@@ -15,7 +15,9 @@
  *              one is a "client definition", and files importing it are
  *              candidates too (a wrapped axios instance, a generated client);
  *   server     a route, a handler or a gateway registration;
- *   call       a call shape with a path argument, whatever the library;
+ *   call       a call shape with a path or an event-name argument, whatever
+ *              the library (a server handed its socket.io instance as a
+ *              parameter imports nothing);
  *   message    a queue, topic or pub/sub library or annotation;
  *   realtime   a WebSocket or socket.io library or annotation;
  *   rpc        an RPC framework;
@@ -28,7 +30,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-export const SIGNALS_VERSION = 1;
+export const SIGNALS_VERSION = 2;
 
 const lib = (names) => names.map((n) => n.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|');
 /** An import, require or Go/Java/Python import of one of the named modules (prefix match). */
@@ -65,6 +67,7 @@ export const SIGNALS = Object.freeze([
   { id: 'redis-pubsub', family: 'message', pattern: '\\.(?:publish|subscribe|psubscribe)\\s*\\(\\s*[\'"`]' },
   // Real-time events.
   { id: 'realtime-library', family: 'realtime', pattern: importOf(['socket.io', 'socket.io-client', 'ws', 'sockjs-client', '@stomp/stompjs', 'stompjs', '@microsoft/signalr', '@nestjs/websockets', 'github.com/gorilla/websocket', 'nhooyr.io/websocket', 'github.com/googollee/go-socket.io', 'pusher', 'pusher-js', 'ably', 'centrifuge']) },
+  { id: 'socket-event-call', family: 'call', pattern: '(?:\\bio|\\bsocket[A-Za-z]*|\\bnsp|\\bnamespace|\\.get\\(\\s*[\'"]io[\'"]\\s*\\))(?:\\.(?:to|in|of|broadcast)\\b(?:\\([^)]*\\))?)*\\.(?:emit|on|once)\\s*\\(\\s*[\'"`]' },
   { id: 'realtime-api', family: 'realtime', pattern: 'new\\s+WebSocket\\s*\\(|new\\s+EventSource\\s*\\(|@WebSocketGateway|@SubscribeMessage|@MessageMapping|SimpMessagingTemplate|SseEmitter|@ServerEndpoint' },
   // External systems.
   { id: 'external-sdk', family: 'external', pattern: importOf(['@slack/', 'jira-client', 'jira.js', 'stripe', '@sendgrid/', 'nodemailer', 'mailgun', 'mailgun.js', 'twilio', '@aws-sdk/client-s3', '@aws-sdk/client-ses', 'aws-sdk', '@google-cloud/storage', 'firebase-admin', 'googleapis', '@octokit/', 'openai', '@anthropic-ai/', 'minio', '@azure/storage-blob', 'github.com/slack-go/slack', 'github.com/andygrunwald/go-jira', 'github.com/aws/aws-sdk-go', 'github.com/stripe/stripe-go', 'net/smtp', 'gopkg.in/gomail', 'github.com/sendgrid', 'boto3', 'smtplib']) },
