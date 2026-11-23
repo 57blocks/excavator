@@ -691,11 +691,19 @@ function prepareProject(root = tempRoot()) {
   return { root, manifest };
 }
 
-/** A recorded analysis with a flow for every handler in `handlers` and for every other candidate module. */
-function recordedFor(manifest, handlers) {
+/**
+ * A recorded analysis with a flow for every handler in `handlers` and for
+ * every other candidate module. The other modules sit in a support domain
+ * (writePlanFor), so their flows choose it with a reason, as the acceptance
+ * check requires; `choose: false` leaves them without a choice.
+ */
+function recordedFor(manifest, handlers, { choose = true } = {}) {
   const others = manifest.modules
     .filter((m) => m.entryPoints > 0 && !HANDLER_MODULES.includes(m.path))
-    .map((m) => ({ name: `other-${m.path.replace(/[^a-z0-9]+/g, '-')}`, files: m.candidateFiles }));
+    .map((m) => ({
+      name: `other-${m.path.replace(/[^a-z0-9]+/g, '-')}`, files: m.candidateFiles,
+      ...(choose ? { domain: 'domain:operations', domainReason: 'Serves no business area of the fixture.' } : {}),
+    }));
   return analysis({
     areaId: manifest.areas[0].areaId, token: manifest.token,
     domains: [
@@ -735,17 +743,37 @@ describe('multi-module fixture end to end', () => {
     const others = coverage.flows.total - HANDLERS.length;
     expect(coverage.flows).toMatchObject({
       total: coverage.totals.flows, homedByStep: coverage.totals.flows, homedByDeclared: 0, unplaced: 0,
-      byModule: HANDLERS.length, byChoice: 0, fallback: { missing: others, invalid: 0 }, choicesIgnored: 0,
-      support: { total: others, chosen: 0, unchosen: others },
+      byModule: HANDLERS.length, byChoice: others, fallback: { missing: 0, invalid: 0 }, choicesIgnored: 0,
+      support: { total: others, chosen: others, unchosen: 0 },
     });
-    expect(stdout).toContain(`flows domain module=${HANDLERS.length} choice=0 fallback=${others} choices-ignored=0 choices-without-reason=0 support=${others} support-chosen=0 support-unchosen=${others}`);
-    expect(stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(others);
+    expect(stdout).toContain(`flows domain module=${HANDLERS.length} choice=${others} fallback=0 choices-ignored=0 choices-without-reason=0 support=${others} support-chosen=${others} support-unchosen=0`);
+    expect(stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(0);
     expect(coverage.conservation).toMatchObject({ ok: true, missing: [], extra: [] });
     expect(coverage.modules.find((m) => m.path === HANDLER_MODULES[0]).domain).toBe('domain:commerce');
     expect(stdout).toContain('plan status=reused business=1 support=1');
     expect(stdout).toContain(`flows homed step=${coverage.totals.flows} declared=0 unplaced=0`);
     expect(stdout).toContain('conservation ok');
     expect(coverage.totals.domains).toBe(2);
+  });
+
+  it('rejects the area when its support-module flows choose no domain, and falls back only under --accept-unchosen', () => {
+    const { root, manifest } = prepareProject();
+    const plan = writePlanFor(root, manifest);
+    writeFileSync(manifest.areas[0].outputFile, JSON.stringify(recordedFor(manifest, HANDLERS, { choose: false })));
+    const rejected = merge(root);
+    expect(rejected.status).toBe(3);
+    expect(rejected.coverage.areas[0].status).toBe('rejected-choice');
+    expect(rejected.coverage.flows.fallback).toEqual({ missing: 0, invalid: 0 });
+    const others = rejected.stdout.split('\n').filter((l) => l.startsWith('rejected-choice area-001 flow:other-'));
+    expect(others.length).toBeGreaterThan(0);
+    for (const line of others) expect(line.endsWith(` problem=missing allowed=${plan.domains.map((d) => d.id).join(',')}`), line).toBe(true);
+
+    const result = spawnSync(process.execPath, [MERGE, root, '--accept-unchosen'], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    const coverage = JSON.parse(readFileSync(join(root, '.excavator/reports/domain-coverage.json'), 'utf-8'));
+    expect(coverage.areas[0].unchosen).toHaveLength(others.length);
+    expect(coverage.flows).toMatchObject({ byChoice: 0, fallback: { missing: others.length, invalid: 0 }, support: { unchosen: others.length } });
+    expect(result.stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(others.length);
   });
 
   it('reports the plan status from the planner input left by prepare', () => {
