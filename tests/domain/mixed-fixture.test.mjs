@@ -11,6 +11,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runLazy } from './helpers/facts.mjs';
 import {
   AREA_MODULES, MIXED_AREAS, MIXED_DIRECTORIES, MIXED_FILE_AREAS, NON_BUSINESS_FILES, writeMixedLegacyProject,
 } from '../fixtures/domain-areas/mixed-legacy.mjs';
@@ -35,6 +36,7 @@ describe('mixed legacy fixture', () => {
     for (const file of [...Object.keys(MIXED_FILE_AREAS), ...NON_BUSINESS_FILES]) expect(files, file).toContain(file);
     for (const module of Object.values(AREA_MODULES)) expect(files.some((f) => f.startsWith(`${module}/`)), module).toBe(true);
 
+    runLazy(a);
     const result = spawnSync('python3', [EXTRACT, a], { encoding: 'utf-8' });
     if (result.error) throw result.error;
     expect(result.status, result.stderr).toBe(0);

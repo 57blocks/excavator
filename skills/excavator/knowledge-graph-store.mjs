@@ -80,6 +80,7 @@ const STREAMS = Object.freeze({
   layers: { record: 'layer', field: 'layer' },
   tour: { record: 'tour', field: 'step' },
   gaps: { record: 'gap', field: 'gap' },
+  entryPoints: { record: 'entryPoint', field: 'entryPoint' },
 });
 const STREAM_BY_RECORD = new Map(Object.entries(STREAMS).map(([key, s]) => [s.record, { key, field: s.field }]));
 const COVERAGE_KEY = 'coverage';

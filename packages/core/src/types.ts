@@ -454,6 +454,55 @@ export interface JavaNestedType {
   instantiates?: { type: string; line: number };
 }
 
+// Route registrations a framework rule (FrameworkConfig.routes) matched in one file.
+export type RoutePath =
+  | { literal: string }
+  | { unresolved: "own" | "prefix"; text: string };
+
+export type RouteAnchor =
+  | { kind: "root" }
+  | { kind: "local"; name: string }
+  | { kind: "parameter"; name: string; type: string };
+
+export type RouteHandler =
+  | { kind: "name"; text: string; line: number; wrappedBy?: string }
+  | { kind: "inline"; line: number; endLine: number; wrappedBy?: string }
+  | { kind: "module"; source: string; line: number }
+  | { kind: "other"; text: string; line: number };
+
+export interface RouteSite {
+  framework: string;
+  form: "call" | "element" | "object";
+  line: number;
+  method: string | null;
+  path: RoutePath;
+  anchor: RouteAnchor;
+  handler: RouteHandler | null;
+}
+
+export interface RouteMount {
+  framework: string;
+  line: number;
+  path: RoutePath;
+  anchor: RouteAnchor;
+  target:
+    | { kind: "local"; name: string }
+    | { kind: "binding"; name: string }
+    | { kind: "require"; source: string; called: boolean }
+    | { kind: "other"; text: string };
+}
+
+export interface RouteFacts {
+  sites: RouteSite[];
+  mounts: RouteMount[];
+  /** Mount-method calls on a known receiver whose last argument is neither an identifier nor a `require` call; `text` is that argument, first 80 characters. */
+  ignoredMounts: Array<{ framework: string; line: number; text: string }>;
+  /** One entry per framework with a site, mount or ignored mount in this file. */
+  rules: Record<string, { kind: "http" | "ui"; join: "append" | "nested" }>;
+  /** CommonJS `module.exports =` of an identifier, or of a function returning one. */
+  exportsValue?: { local: string; factory: boolean; line: number };
+}
+
 // Plugin interfaces
 export interface StructuralAnalysis {
   functions: Array<{
@@ -518,6 +567,8 @@ export interface StructuralAnalysis {
   exports: Array<{ name: string; lineNumber: number; isDefault?: boolean; local?: string }>;
   /** TS/JS: the JSX elements of the file. */
   jsx?: JsxFacts;
+  /** Route registrations matched by framework rules; absent when no rule matched. */
+  routes?: RouteFacts;
   /** Java: every class literal in the file, in source order. */
   classLiterals?: JavaClassLiteral[];
   /** Java: every annotation on a field, method, constructor, parameter or

@@ -10,7 +10,7 @@ Extracts business domain knowledge — domains, business flows, and process step
 
 ## How It Works
 
-- A script lists the candidate material: the source files, their entry points (HTTP routes, CLI commands, event handlers, cron jobs, exported handlers) and a signature of every file.
+- A script lists the candidate material: the source files, their entry points and a signature of every file. HTTP and UI entry points are read from the deterministic fact graph (never found by regex); CLI commands, event handlers, cron jobs and exported handlers are found by patterns. Files with code that looks like a route or handler registration the facts do not account for are listed as `unrecognisedFiles`, and the analyzer of their area reads them and writes the entry points they hold, which the merge checks against the source.
 - A second script groups the files into modules (one per directory) and packs the modules into bounded **areas**. When a knowledge graph exists (`.excavator/knowledge-graph.jsonl`) and `--full` was not passed, each area also carries the graph nodes of its own files, so steps can cite real node ids.
 - The project's domains are decided **once**: a script lists every module, one domain-planner assigns each module to one business domain (or to a support domain for data models, shared libraries and infrastructure) and marks the modules that mix several business areas (`mixed`), and the script checks the plan and stores it in `.excavator/domain-plan.json`. While the set of modules stays the same, later runs reuse that plan and dispatch no planner, so the domains do not drift from run to run; new modules are added to it, and only `--replan` decides it again.
 - Once the plan is settled, the script writes it into every area's context as `domainPlan`: the plan's domains, and for each module of the area its domain and whether the analyzer chooses the domain of its flows (`choose`: the module is mixed or belongs to a support domain).
@@ -82,6 +82,17 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
 
 ### Phase 1: Detect Existing Graph
 
+0. HTTP and UI entry points come from the deterministic fact graph. Build it first when `$DATA_DIR/knowledge-graph.jsonl` is missing, when `--full` was passed, or when the graph predates the entry-point stream (its first line, the header, does not name `entryPoints`). This runs no model and does not build or run the project:
+
+   ```bash
+   FULL=0   # write FULL=1 here when --full was passed
+   if [ ! -f "$DATA_DIR/knowledge-graph.jsonl" ] || [ "$FULL" = "1" ] \
+     || ! head -n 1 "$DATA_DIR/knowledge-graph.jsonl" | grep -q '"entryPoints"'; then
+     node "$PLUGIN_ROOT/skills/excavator/lazy-analyze.mjs" "$PROJECT_ROOT"
+   fi
+   ```
+
+   If it fails, report its stderr and go on: the extractor then records the entry-point source as `unavailable`.
 1. Check if `$DATA_DIR/knowledge-graph.jsonl` exists
 2. If it exists AND `--full` was NOT passed, check freshness before deriving from it via the ONE shared, deterministic freshness helper (`$PLUGIN_ROOT` was already resolved in Phase 0), instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    ```bash
@@ -102,7 +113,7 @@ Run the preprocessing script on every path, with or without a knowledge graph:
 python3 "$PLUGIN_ROOT/skills/excavator-domain/extract-domain-context.py" "$PROJECT_ROOT"
 ```
 
-It writes `$DATA_DIR/intermediate/domain-context.json`: the file tree, the detected entry points with a snippet each, a signature (exports, imports, a short preview) for every source file, and project metadata. No model reads this file whole. If its `truncated` counts are not all 0, tell the user how many files or entry points the extractor's limits left out.
+It writes `$DATA_DIR/intermediate/domain-context.json`: the file tree, the entry points with a snippet each (`source` is `script` for those read from the facts and `pattern` for the CLI, event, cron and exported-handler patterns), `unrecognisedFiles`, `entryPointSource`, `counts`, a signature (exports, imports, a short preview) for every source file, and project metadata. No model reads this file whole. If its `truncated` counts are not all 0, tell the user how many files or entry points the extractor's limits left out. If `entryPointSource` is `unavailable` (the extractor also prints a warning), tell the user that HTTP and UI entry points are 0 because the facts could not be read, and that a rerun after `/excavator` builds them; the patterns never stand in for them.
 
 ### Phase 3: Split into Areas
 
@@ -122,7 +133,7 @@ node "$PLUGIN_ROOT/skills/excavator-domain/split-domain-areas.mjs" "$PROJECT_ROO
 The script groups the non-test source files into modules (one per directory) and packs them, in path order, into areas that stay within a byte budget and an entry-point budget; a module over either budget is split by file into numbered parts. It first deletes any earlier `intermediate/domain-areas/` and `intermediate/domain-analysis.json`, then writes `intermediate/domain-areas/manifest.json` and one context file per area carrying this run's token. It prints one line per area:
 
 ```
-area-001 modules=10 files=12 entryPoints=38 graphNodes=0 bytes=19969 context=<context file> output=<output file>
+area-001 modules=10 files=12 entryPoints=38 unrecognised=2 graphNodes=0 bytes=19969 context=<context file> output=<output file>
 ```
 
 Keep these lines; Phase 4 dispatches from them. Tell the user how many areas there are: that is how many analyzers will run.
@@ -160,13 +171,13 @@ The analyzers choose domains from the plan, so the plan is settled first and the
    node "$PLUGIN_ROOT/skills/excavator-domain/merge-domain-areas.mjs" "$PROJECT_ROOT"
    ```
 
-   It writes the merged graph to `$DATA_DIR/intermediate/domain-analysis.json` and the coverage report to `$DATA_DIR/reports/domain-coverage.json`, and prints one line per area, the plan status, how the flows were homed (one `unplaced` line per flow it could hang under no domain), how their domains were decided (`flows domain module=… choice=… fallback=… choices-ignored=… choices-without-reason=… support=… support-chosen=… support-unchosen=…`, then one `fallback` line per flow of a `choose` module whose analyzer gave no valid pick, written `support-unchosen` when that flow ended in a support domain, and one `support-unchosen … reason=no-reason` line per flow put in a support domain by a pick that gives no reason), the conservation check, the module buckets, one `silent-zero` line per module that has entry points but no flow and was not declared skipped, and one `silent-zero-part` line per part of a split module whose area cited none of its entry-point files.
+   It writes the merged graph to `$DATA_DIR/intermediate/domain-analysis.json` and the coverage report to `$DATA_DIR/reports/domain-coverage.json`, and prints one line per area, the plan status, how the flows were homed (one `unplaced` line per flow it could hang under no domain), how their domains were decided (`flows domain module=… choice=… fallback=… choices-ignored=… choices-without-reason=… support=… support-chosen=… support-unchosen=…`, then one `fallback` line per flow of a `choose` module whose analyzer gave no valid pick, written `support-unchosen` when that flow ended in a support domain, and one `support-unchosen … reason=no-reason` line per flow put in a support domain by a pick that gives no reason), the entry-point counts (`entry-points source=… script=… pattern=… model=… model-rejected=…`: the model entry points the merge accepted, and those it rejected because the file is not an unrecognised file of the area, the line is outside the file or the quote is not on that line), the conservation check, the module buckets, one `silent-zero` line per module that has entry points or unrecognised files but no flow and was not declared skipped, and one `silent-zero-part` line per part of a split module whose area cited none of its entry-point files.
 
    If it exits 4, the merge lost or added a flow, a step or a step edge: report the `conservation FAILED` line and stderr and **STOP**; nothing was written. If it exits 1 because the plan does not match the modules, run Phase 3.5 again, then step 2 unless it prints `plan=reused`, then steps 3 and 4.
 
    If it exits 3, some areas were `missing` or rejected (`rejected-stale`: the output does not carry this run's token, for example an earlier file copied into place; `rejected-parse`: not JSON). Dispatch a fresh subagent for each of those areas once, exactly as in step 3, then run the merge again. If it still exits 3, continue with what was accepted and tell the user which areas are missing. Never write or copy an area's output yourself.
 
-5. Report to the user, from the merge output: the plan status (`new`, `extend` or `reused`) with its business and support domain counts; the number of areas accepted, domains, flows and steps; the number of `unplaced` flows; how many flows took their domain from the module, from the analyzer's pick and by fallback, how many picks were ignored and how many gave no reason, and every `support-unchosen` flow (a flow in a support domain that no analyzer judged non-business with a reason); the module buckets `covered`, `declared-skip`, `silent-zero` and `no-candidates`; every `silent-zero` module and `silent-zero-part`; and how many entry-point files no step cites. These are the gaps of this run. Do not describe the coverage as complete while either is above 0.
+5. Report to the user, from the merge output: the plan status (`new`, `extend` or `reused`) with its business and support domain counts; the number of areas accepted, domains, flows and steps; the number of `unplaced` flows; how many flows took their domain from the module, from the analyzer's pick and by fallback, how many picks were ignored and how many gave no reason, and every `support-unchosen` flow (a flow in a support domain that no analyzer judged non-business with a reason); the module buckets `covered`, `declared-skip`, `silent-zero` and `no-candidates`; the `entry-points` counts, with a note when `model-rejected` is above 0; every `silent-zero` module and `silent-zero-part`; and how many entry-point files no step cites. These are the gaps of this run. Do not describe the coverage as complete while either is above 0.
 
 ### Phase 4.5: Anchor Steps
 

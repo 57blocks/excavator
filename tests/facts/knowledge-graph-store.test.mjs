@@ -57,6 +57,21 @@ function lazyGraph() {
   };
 }
 
+/** A Lazy graph that carries the `entryPoints` record stream (openspec: changes/route-entry-points). */
+function lazyGraphWithEntryPoints() {
+  return {
+    ...lazyGraph(),
+    entryPoints: [
+      {
+        kind: 'entry', framework: 'express', routeKind: 'http', form: 'call', method: 'GET', path: '/users/list',
+        bucket: 'resolved', file: 'src/a.ts', line: 2, handler: { fate: 'node', nodeId: 'function:src/a.ts:run', file: 'src/a.ts', line: 1 },
+        source: 'script',
+      },
+      { kind: 'mount', framework: 'express', file: 'src/a.ts', line: 3, path: null, pathText: 'base', fate: 'path-unresolved' },
+    ],
+  };
+}
+
 /** The pre-v2 shape: no `coverage` and no `gaps` keys at all. */
 function preV2Graph() {
   const graph = lazyGraph();
@@ -103,7 +118,7 @@ describe('writeKnowledgeGraph + readKnowledgeGraph — lossless round trip', () 
     expect(isDeepStrictEqual(a, lazyGraph())).toBe(true);
   });
 
-  for (const [name, make] of [['Lazy', lazyGraph], ['pre-v2 (no coverage/gaps)', preV2Graph], ['Full (layers, tour, extra fields)', fullGraph]]) {
+  for (const [name, make] of [['Lazy with an entry point stream', lazyGraphWithEntryPoints], ['Lazy', lazyGraph], ['pre-v2 (no coverage/gaps)', preV2Graph], ['Full (layers, tour, extra fields)', fullGraph]]) {
     it(`reads back a ${name} graph strictly deep-equal, with the same key order`, () => {
       const path = join(dir, KNOWLEDGE_GRAPH_FILE);
       writeKnowledgeGraph(path, make());
@@ -112,6 +127,17 @@ describe('writeKnowledgeGraph + readKnowledgeGraph — lossless round trip', () 
       expect(Object.keys(read)).toEqual(Object.keys(make()));
     });
   }
+
+  it('writes each entry point record on its own line, under the entryPoint record type', () => {
+    const path = join(dir, KNOWLEDGE_GRAPH_FILE);
+    writeKnowledgeGraph(path, lazyGraphWithEntryPoints());
+    const records = lines(path).map((line) => JSON.parse(line));
+    expect(records[0].counts.entryPoints).toBe(2);
+    expect(records.filter((r) => r.record === 'entryPoint').map((r) => r.entryPoint.kind)).toEqual(['entry', 'mount']);
+    // A graph with no stream (a /16 file) reads back with no key, not an empty one.
+    writeKnowledgeGraph(path, lazyGraph());
+    expect(Object.hasOwn(readKnowledgeGraph(path), 'entryPoints')).toBe(false);
+  });
 
   it('a pre-v2 graph stays without coverage and gaps keys (absent, not empty)', () => {
     const path = join(dir, KNOWLEDGE_GRAPH_FILE);

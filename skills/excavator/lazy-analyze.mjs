@@ -294,8 +294,19 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  call to a name require() binds becomes `calls-unresolved`. Structure rows of
  *  TS/JS files mark a call site whose callee an enclosing function binds with
  *  `local: true`, and such a site is `calls-unresolved`. Other languages are
- *  unchanged. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/16';
+ *  unchanged.
+ *  `lazy-fact-graph/17` (openspec: changes/route-entry-points): the route
+ *  registrations and mounts a framework rule matches (Gin, Express, React
+ *  Router) become a knowledge graph record stream `entryPoints`, one record per
+ *  entry point (a route with its full path, bucket and handler) and per mount,
+ *  joined across files; no node and no edge is added. A `coverage.entryPoints`
+ *  section and the gap kinds `entry-point-path-unresolved`,
+ *  `entry-point-prefix-unresolved` and `entry-point-handler-unresolved` appear,
+ *  and `factsDigest` covers the stream, so every digest changes. Structure rows
+ *  of files a rule matches gain `routes`; the import map's `resolvedSources`
+ *  gains TS/JS `require()` and `import()` literals (an `import()` adds no edge)
+ *  and a new `resolvedPackages` maps a Go import path to its directory. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/17';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result
@@ -921,6 +932,7 @@ export async function runLazyAnalysis({
       tour: merged.tour,
       coverage: projection.coverage,
       gaps: projection.gaps,
+      entryPoints: projection.entryPoints,
     };
 
     const product = { knowledgeGraph, validation, scan, structureAll, projection, sourceIndex, timings, fingerprints, recorder };
