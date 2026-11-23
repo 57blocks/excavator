@@ -55,4 +55,11 @@ describe('relations analyzer prompt', () => {
     expect(agent).toContain('outOfScope');
     for (const kind of ['`http`', '`rpc`', '`message`', '`realtime`', '`external`']) expect(agent).toContain(kind);
   });
+
+  it('runs the self-check before finishing and never edits an address to pass it', () => {
+    expect(agent).toContain('## Check before you finish');
+    expect(agent).toContain('run the `check` command exactly as given');
+    expect(agent).toContain('Never drop a word from an address');
+    expect(agent).toMatch(/after three runs, stop/);
+  });
 });

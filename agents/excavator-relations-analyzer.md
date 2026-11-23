@@ -14,6 +14,7 @@ The dispatching skill gives you three things: the project root, the path of your
 
 - `areaRun` — `{areaId, token}`: copy it into your output unchanged;
 - `output` — the only path you write;
+- `check` — a command that checks your output the way the merge script will (see "Check before you finish");
 - `unit` — the runtime unit your files belong to (`id`, `name`, `root`, `kind`);
 - `units` — every unit of the project: `id`, `name`, `root`, `kind`, its languages, and up to 20 address lines of its configuration (URLs, hosts, ports, topics);
 - `files` — your files. Each has `lines`, `reasons` (why it was chosen), `hits` (lines that matched a signal: a client import, a route registration, a call with a path, a message or socket library; these are hints, not findings), and, when a knowledge graph exists, `graphNodes` (`[id, startLine, endLine]` of its functions and classes) and `entryPoints` (HTTP routes the graph found in that file, with `line`, `method` and the full `path`);
@@ -85,6 +86,17 @@ Write one JSON object, and only this, to `output`:
 ```
 
 Every file in `files` either has an end or an evidence line citing it, or is listed in `skippedFiles` with a one-sentence reason (for example: the client wrapper's calls carry no address of their own; it only defines a socket connection; the matched line is a comment). A file you leave out of both is reported as silently skipped.
+
+## Check before you finish
+
+After writing `output`, run the `check` command exactly as given. It prints `check <areaId>: ends=N accepted=A rejected=R` and one line per end the merge would reject, with the reason. For each rejected end:
+
+- `address-not-quoted: <words>` — the words are in no cited line. Cite as evidence the line that holds them (the class-level mapping, the router mount, the route group, the base URL, the import of the SDK). When no line of the project holds them, the address was not read from the code: write it as `unresolved`.
+- `quote-mismatch` — copy the quote again, exactly, from that line; or correct the line number.
+- `evidence-mismatch` — the evidence quote is not on its line: copy it again or correct the line.
+- `outside-area`, `outside-root` — the end is not in your files: remove it.
+
+Never drop a word from an address, never change a path to something the code does not say, and never cite a line you did not read, to make the check pass. Run the check again after fixing; after three runs, stop and leave what is still rejected: the merge reports it.
 
 Rules:
 

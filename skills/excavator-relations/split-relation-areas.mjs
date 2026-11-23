@@ -55,6 +55,8 @@ import { UNITS_FILE, UNITS_FORMAT, unitOfFile } from './plan-units.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
+/** The analyzer's self-check over its own output (the merge's end check). */
+const CHECK_SCRIPT = join(__dirname, 'check-relations-area.mjs');
 const require = createRequire(resolve(pluginRoot, 'package.json'));
 
 export const AREA_CONTEXT_FORMAT = 'excavator-relations-area/1';
@@ -370,6 +372,7 @@ async function main() {
       areaRun: { areaId: area.areaId, token },
       projectRoot,
       output: outputFile,
+      check: `node ${JSON.stringify(CHECK_SCRIPT)} ${JSON.stringify(contextFile)}`,
       kinds: { inScope: IN_SCOPE_KINDS, outOfScope: OUT_OF_SCOPE_KINDS },
       unit: { id: unit.id, name: unit.name, root: unit.root, kind: unit.kind },
       units: plan.summaries,
