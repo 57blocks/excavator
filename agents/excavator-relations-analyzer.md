@@ -44,6 +44,7 @@ Kinds:
 The script pairs a caller with a receiver only when their addresses match, and it rejects an address whose words are not in the lines you cite. So:
 
 - **Write the path the receiver sees.** Join every prefix: a client's base URL path (`axios.create({ baseURL: '/api' })`), a router's mount (`app.use('/api', router)`), a class-level `@RequestMapping("/api")`, a route group (`r.Group("/v1")`), a global prefix (`app.setGlobalPrefix('api')`). Put each line that supplies a prefix, a host or the value of a variable in the end's `evidence`: `{"file", "line", "quote"}`. Evidence may be in any file of the project.
+- **Keep every segment of a prefix**, the words after its parameters too: `@RequestMapping("/api/shops/{shopId}/items")` with `@GetMapping("/{itemId}")` is `/api/shops/{shopId}/items/{itemId}`. A parameter with a pattern, even one built from a constant (`{id:" + ID_PATTERN + "}`), is one segment.
 - **The host of a base URL goes in `host`, not in the path.** A variable whose value is a URL: find its value in `unitConfig`, `projectConfig` or the source and cite that line as evidence; split off the scheme and host, keep the path part as a prefix.
 - **Keep parameters as the code writes them:** `${id}`, `:id`, `{id}`, `<int:id>`; the script normalizes them.
 - **A receiver whose file has an entry in `entryPoints` at that line:** use that entry's `method` and `path` exactly; they are already joined.
