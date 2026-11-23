@@ -33,6 +33,8 @@
 3. `feat(excavator-domain): split candidate material into bounded areas`
 4. `feat(excavator-domain): merge per-area analyses with a coverage report`
 5. `feat(excavator-domain): dispatch one analyzer per area`
+6. `test(excavator-domain): add the large multi-module measurement fixture`
+7. `docs(openspec): record the measured coverage of domain-area-split`
 
 ## Capabilities
 
