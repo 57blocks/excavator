@@ -44,7 +44,7 @@ describe('Phase F resumes from what it has committed', () => {
   it('moves every kind of per-batch file into the trash before Phase F1', () => {
     const move = intro.slice(intro.indexOf('**Before Phase F1**'));
     expect(move).toContain('TRASH="$DATA_DIR/.trash-$(date +%s)"');
-    for (const pattern of ['semantic-patch-batch-*.json', 'semantic-patch-report-*.json', 'semantic-verify-batch-*.json', 'summary-verdicts-*.json']) {
+    for (const pattern of ['semantic-patch-batch-*.json', 'semantic-input-batch-*.json', 'semantic-patch-report-*.json', 'semantic-verify-batch-*.json', 'summary-verdicts-*.json']) {
       expect(move).toContain(`'${pattern}'`);
     }
     expect(move).toContain('-exec mv {} "$TRASH/"');
@@ -82,7 +82,7 @@ describe('Phase F resumes from what it has committed', () => {
 
 describe('--scope and --estimate in Phase F', () => {
   it('passes --scope to both selection scripts', () => {
-    expect(section('### Phase F2', '2. **Batch the stale files**')).toContain('select-stale-semantics.mjs" "$PROJECT_ROOT" [--scope "<dir>"]');
+    expect(section('### Phase F2', '2. **Batch the stale nodes by the source lines to read:**')).toContain('select-stale-semantics.mjs" "$PROJECT_ROOT" [--scope "<dir>"]');
     expect(section('### Phase F4', '### Phase F5')).toContain('prepare-semantic [--scope "<dir>"]');
   });
 
@@ -96,9 +96,17 @@ describe('--scope and --estimate in Phase F', () => {
   it('stops --estimate after batching, before the first dispatch', () => {
     const f2 = section('### Phase F2', '### Phase F3');
     const stop = f2.indexOf('**With `--estimate`, stop here.** Dispatch nothing.');
-    expect(stop).toBeGreaterThan(f2.indexOf('compute-batches.mjs'));
+    expect(f2).not.toContain('compute-batches.mjs');
+    expect(stop).toBeGreaterThan(f2.indexOf('plan-semantic-batches.mjs'));
     expect(stop).toBeLessThan(f2.indexOf('3. **Dispatch file-analyzer'));
     expect(flat(f2.slice(stop))).toContain('Follow `<SKILL_DIR>/full-run-estimate.md`');
+  });
+
+  it('dispatches each analyzer with the input file the planner wrote, not a list the orchestrator builds', () => {
+    const f2 = flat(section('### Phase F2', '### Phase F3'));
+    expect(f2).toContain('Fact nodes for this batch: `$DATA_DIR/intermediate/semantic-input-batch-<batchIndex>.json`');
+    expect(f2).toContain('do not build, filter or copy the node list yourself');
+    expect(f2).not.toContain('<filtered {id, type, name, filePath, lineRange} list>');
   });
 });
 
@@ -108,6 +116,7 @@ describe('full-run-estimate.md', () => {
     expect(estimate).toContain('wall_min = 2.6 + F2_wall + 1.54 × B4 + 12 × F3');
     expect(estimate).toContain('F2_wall  = 0 when B2 is 0, otherwise max(6, 1.24 × B2)');
     expect(estimate).toContain('`D = B2 + B4 + 2 × F3`');
+    expect(estimate).toContain(`jq '.totalBatches' "$INTER/semantic-batches.json"`);
     expect(estimate).toContain('`B4 = ceil(V / 30)`');
     expect(estimate).toContain('| Phase F2, per batch | $0.60 | 1.24 min, at least 6 min |');
     expect(estimate).toContain('| Phase F4, per batch | $0.38 | 1.54 min |');

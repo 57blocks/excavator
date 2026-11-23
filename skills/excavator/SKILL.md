@@ -339,6 +339,7 @@ stood in for by an older file with the same index:
 TRASH="$DATA_DIR/.trash-$(date +%s)"
 mkdir -p "$TRASH"
 find "$DATA_DIR/intermediate" -maxdepth 1 -type f \( -name 'semantic-patch-batch-*.json' \
+  -o -name 'semantic-input-batch-*.json' \
   -o -name 'semantic-patch-report-*.json' -o -name 'semantic-verify-batch-*.json' \
   -o -name 'summary-verdicts-*.json' \) -exec mv {} "$TRASH/" \; 2>/dev/null || true
 ```
@@ -399,16 +400,22 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    unchanged project. With `--estimate`, go to the estimate at the end of
    step 2.
 
-2. **Batch the stale files**, reusing the same batching script Phase 1.5
-   below uses (see its own doc for the algorithm):
+2. **Batch the stale nodes by the source lines to read:**
 
    ```bash
-   node "<SKILL_DIR>/compute-batches.mjs" "$PROJECT_ROOT" \
-     --changed-files="$DATA_DIR/intermediate/stale-files.json"
+   node "<SKILL_DIR>/plan-semantic-batches.mjs" "$PROJECT_ROOT"
    ```
 
-   Writes `$DATA_DIR/intermediate/batches.json`, scoped to only the stale
-   files.
+   Gives each node in `plan.generate[]` the lines the analyzer must read
+   (`readRange`: its `lineRange`, or the first 300 lines of its file when it
+   has none) and packs the nodes in path order into batches of at most 40
+   nodes and 1,500 lines to read. A node longer than that has a batch to
+   itself, marked `oversized`. Writes
+   `$DATA_DIR/intermediate/semantic-batches.json` (`totalBatches`, per-batch
+   counts and the `unreadable` nodes, whose file could not be read or is
+   empty) and one `$DATA_DIR/intermediate/semantic-input-batch-<i>.json` per
+   batch: the node list that batch's analyzer works from. Report the
+   `unreadable` nodes as gaps; they are not dispatched.
 
    **With `--estimate`, stop here.** Dispatch nothing. Follow
    `<SKILL_DIR>/full-run-estimate.md` to take the counts, compute the
@@ -421,14 +428,10 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    its batch right away, before you dispatch another batch or wait for the
    rest, and report `Batch <i>/<N> committed.`** Do not wait for every
    batch and commit them together: a run that stops while it waits loses
-   every batch that had already finished. Read the fact nodes from `knowledge-graph.jsonl`
-   (one record per line, e.g. `jq -c 'select(.record=="node") | .node |
-   {id, type, name, filePath, lineRange}' "$DATA_DIR/knowledge-graph.jsonl"`)
-   and, for this batch's files, list ONLY nodes whose id occurs in
-   `$DATA_DIR/intermediate/stale-semantics.json`'s `plan.generate[]` as
-   `{id, type, name, filePath, lineRange}`. Do not send `plan.reuse[]` nodes
-   to the analyzer, even when they share a file with a stale node. Report
-   `plan.unavailable[]` as gaps, never generate for them. Read
+   every batch that had already finished. Give each analyzer the path of its
+   batch's `semantic-input-batch-<i>.json`; do not build, filter or copy the
+   node list yourself. Report `plan.unavailable[]` as gaps, never generate
+   for them. Read
    `project.frameworks` once from the graph header (the same `header` call
    Phase F1 reads `project.factsDigest` from) and put it in every dispatch
    prompt, with this skill's own directory; the file-analyzer reads
@@ -436,17 +439,14 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    it has to search the disk and may find another installed copy of the
    skill, whose addenda can be older or missing.
 
-   > Produce a semantic patch for each fact node below: a `summary`, a
+   > Produce a semantic patch for each fact node in the batch file below: a `summary`, a
    > `displayName` and `tags` describing what it does, from reading its source at the given
-   > `filePath`/`lineRange`. Copy each `nodeId` VERBATIM from the list — do
-   > NOT invent a node, an edge, a layer, or an id that is not in this list.
+   > `filePath`, lines `readRange`. Copy each `nodeId` VERBATIM from the batch file — do
+   > NOT invent a node, an edge, a layer, or an id that is not in it.
    > Project root: `$PROJECT_ROOT`
    > Skill directory (for bundled scripts and framework addenda): `<SKILL_DIR>`
    > Frameworks detected: `<project.frameworks from the graph header>`
-   > Fact nodes for this batch:
-   > ```json
-   > <filtered {id, type, name, filePath, lineRange} list>
-   > ```
+   > Fact nodes for this batch: `$DATA_DIR/intermediate/semantic-input-batch-<batchIndex>.json`
    > Write output to: `$DATA_DIR/intermediate/semantic-patch-batch-<batchIndex>.json`
    > as `{ "patches": [{ "nodeId": "<copied verbatim>", "summary": "...", "displayName": "...", "tags": ["..."] }] }`.
    > Write the `displayName` as your agent definition's Display Name section says:
