@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import { planSemanticBatches, MAX_BATCH_NODES, MAX_BATCH_LINES } from '../../skills/excavator/plan-semantic-batches.mjs';
-import { readRangeFor, FILE_HEAD_LINES } from '../../skills/excavator/read-evidence.mjs';
+import { readRangeFor, FILE_HEAD_LINES, createLineReader } from '../../skills/excavator/read-evidence.mjs';
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 
 const SCRIPT = join(import.meta.dirname, '../../skills/excavator/plan-semantic-batches.mjs');
@@ -156,5 +156,30 @@ describe('plan-semantic-batches.mjs CLI', () => {
     const run = input.nodes.find((n) => n.name === 'run');
     expect(run).toMatchObject({ filePath: 'src/a.ts', lineRange: [1, 3], readRange: [1, 3] });
     expect(existsSync(join(inter, `semantic-input-batch-${planFile.totalBatches}.json`))).toBe(false);
+  });
+
+  it('removes an input file a previous plan left at a batch index this plan does not have', () => {
+    const inter = join(root, '.excavator', 'intermediate');
+    writeFileSync(join(inter, 'semantic-input-batch-7.json'), JSON.stringify({ batchIndex: 7, nodes: [] }));
+    execFileSync(process.execPath, [SCRIPT, root], { stdio: 'pipe' });
+    expect(existsSync(join(inter, 'semantic-input-batch-7.json'))).toBe(false);
+  });
+});
+
+describe('createLineReader', () => {
+  let base;
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'line-reader-'));
+    mkdirSync(join(base, 'project'));
+    writeFileSync(join(base, 'project', 'in.js'), 'a\nb\n');
+    writeFileSync(join(base, 'outside.js'), 'secret\n');
+  });
+  afterEach(() => rmSync(base, { recursive: true, force: true }));
+
+  it('reads a file inside the project root and never one outside it', () => {
+    const read = createLineReader(join(base, 'project'));
+    expect(read('in.js')).toEqual(['a', 'b']);
+    expect(read('../outside.js')).toBeNull();
+    expect(read(join(base, 'outside.js'))).toBeNull();
   });
 });
