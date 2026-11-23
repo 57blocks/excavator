@@ -61,7 +61,7 @@
 - `m` 需选域，没写 → 挂 `plan.modules[m]`，`domainBy: fallback`，原因 `missing`；
 - `m` 需选域，写了清单外的值 → 同上回落，原因 `invalid`，记下所写的值。
 
-覆盖报告 `flows` 增加：`byModule`、`byChoice`、`fallback: {missing, invalid}`、`choicesIgnored`、`choices`（每条需选域流程一行：`{flow, module, moduleDomain, domain, by, reason?, chosen?}`，`reason` 取分析器的 `domainMeta.domainReason`）、`support: {total, chosen, unchosen, unchosenFlows}`。`support.total` 是挂在支撑域的流程数；`chosen` 是分析器明确选了支撑域的；`unchosen` 是回落进支撑域的。打印 `flows domain module=… choice=… fallback=… support=… support-chosen=… support-unchosen=…`，并为每条回落流程打印 `fallback <flow> module=<m> reason=<missing|invalid>`。
+覆盖报告 `flows` 增加：`byModule`、`byChoice`、`fallback: {missing, invalid}`、`choicesIgnored`、`choices`（每条需选域流程一行：`{flow, module, moduleDomain, domain, by, reason?, chosen?}`，`reason` 取分析器的 `domainMeta.domainReason`）、`support: {total, chosen, unchosen, unchosenFlows}`。`support.total` 是挂在支撑域的流程数；`chosen` 是分析器明确选了支撑域的；`unchosen` 是回落进支撑域的。打印 `flows domain module=… choice=… fallback=… support=… support-chosen=… support-unchosen=…`，并为每条回落流程打印一行：回落进支撑域的写 `support-unchosen <flow> module=<m> reason=<missing|invalid>`，其余写 `fallback <flow> module=<m> reason=…`。`flows.choices` 的一行为 `{flow, module, moduleDomain, domain, by, reason?, fallback?, chosen?}`：`fallback` 是 `missing`/`invalid`，`chosen` 是非法时所写的值。
 
 `homedByStep`/`homedByDeclared`/`unplaced` 保持原义（起始模块怎么求出来的），新计数描述的是域怎么定的，两组正交。守恒与四个桶不受挂接影响。
 

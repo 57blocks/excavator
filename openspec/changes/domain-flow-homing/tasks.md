@@ -12,8 +12,8 @@
 
 ## 2. 挂接
 
-- [ ] 2.1 红测试（`tests/domain/merge-domain-areas.test.mjs`）：O3、O4，先在旧代码上红。
-- [ ] 2.2 改 `merge-domain-areas.mjs`：两档挂接、`flows.choices`、`flows.support`、打印行。
+- [x] 2.1 红测试（`tests/domain/merge-domain-areas.test.mjs`）：O3、O4，先在旧代码上红。
+- [x] 2.2 改 `merge-domain-areas.mjs`：两档挂接、`flows.choices`、`flows.support`、打印行。
   - **验证：** 2.1 绿；既有合并测试绿。
 
 ## 3. skill 与代理
