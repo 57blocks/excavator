@@ -98,3 +98,34 @@ AGENTS.md 的范围闸：能由 skill/prompt 可靠完成的不写进代码。�
 - **O2 变异。** 实现后逐个关掉 D2 的声明行规则、D2 的子串比较、D3、D4 的依据检查、D1 的行数上限，各自至少一个测试变红，然后还原。
 - **O3 门。** 本地跑受影响的测试（`tests/full/`、`tests/semantic-cache/`、`tests/lazy/lazy-to-full-e2e`、`tests/mcp/cross-channel`、`tests/skill/excavator/`、`tests/benchmark/test_full_run_report`）与 `node scripts/check-refs.mjs`、`openspec validate --all --strict`；全量交 CI，`CI gate` 与 `Privacy scan` 都绿。
 - **O4 隐私与语言。** 分支改动的代码、散文、测试零中文字符；代码、测试、spec、PR 不出现语料或客户的名字。
+
+## 验收记录（2026-11-23）
+
+**O1 先红后绿。** 每组测试先在未实现的代码上跑：
+
+| 检查 | 改前 | 改后 |
+|---|---|---|
+| D1 分批（`plan-semantic-batches.test.mjs`） | 模块不存在，整个文件加载失败 | 12 绿 |
+| D2 补丁依据（`apply-semantic-patches-evidence.test.mjs` 前两组） | 20 红：`checkReadEvidence` 未导出；`applySemanticPatches` 不认 `factNodes`，无依据的补丁照样提交 | 20 绿 |
+| D3 锚点引用（同文件后两组） | 6 红：`citesAnchor` 未导出，模板 summary 照样提交 | 6 绿 |
+| D4 判定依据（`apply-verification-semantic-evidence.test.mjs`） | 加载失败：`createSemanticEvidenceChecker` 未导出，无依据的 verified 照样写入 | 12 绿 |
+
+**O2 变异。** 实现提交后逐个改坏、跑上面三个测试文件、再从提交还原：
+
+| 变异 | 结果 |
+|---|---|
+| 去掉声明行规则 | 4 红 |
+| 去掉「引文在该行上」 | 3 红 |
+| 去掉过短引文规则 | 2 红 |
+| 去掉「行在 readRange 内」 | 2 红 |
+| `citesAnchor` 恒为 false | 5 红 |
+| 补丁提交不看依据 | 6 红 |
+| 判定写入不看依据 | 7 红 |
+| 分批去掉行数上限 | 第一次全绿：节点数上限或 oversized 分支总先把批关上。补了「三个 600 行的函数」一例，变异下 1 红，还原后绿（单独一个提交） |
+| 分批按和计行、不取并集 | 2 红 |
+
+**O3 门。** 本地跑了 `tests/full/`、`tests/lazy/`、`tests/mcp/`、`tests/semantic-cache/`、`tests/skill/excavator/`、`tests/benchmark/`、`tests/deploy/load-check`、`tests/language/storage-language-control`、`tests/refs/`、`tests/skill/excavator-view/translations-isolation`，全绿；`node scripts/check-refs.mjs` 通过；`openspec validate --all --strict` 66 项通过。全量交 CI。
+
+**O4.** 分支改动除 `openspec/` 外零中文字符（扫描新增行）；代码、测试、spec、提交信息不含语料或客户名，夹具用通用路径。
+
+**未做。** 没有在观察到问题的语料上真实重跑，矛盾率与花费的变化未测。
