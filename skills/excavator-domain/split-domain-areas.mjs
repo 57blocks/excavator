@@ -31,6 +31,10 @@
  * `areaRun`; an output without the current token (an earlier run's file, an
  * old domain-graph.json copied into place) is rejected by the merge.
  *
+ * Every context also carries `check`: the shell command that runs the
+ * merge's acceptance of that one area (merge-domain-areas.mjs --check). The
+ * analyzer runs it on its own output before it returns.
+ *
  * Usage:
  *   node split-domain-areas.mjs <projectRoot>
  *     [--context <domain-context.json>] [--graph <knowledge-graph.jsonl>]
@@ -304,6 +308,13 @@ function parseArgs(argv) {
   return args;
 }
 
+const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+
+/** The command an analyzer runs to check its own output the way the merge will accept it. */
+export function areaCheckCommand(projectRoot, areaId) {
+  return `node ${shellQuote(join(__dirname, 'merge-domain-areas.mjs'))} ${shellQuote(projectRoot)} --check ${areaId}`;
+}
+
 async function resolveDataDir(projectRoot) {
   let core;
   try {
@@ -348,6 +359,7 @@ async function main() {
       areaRun: { areaId: area.areaId, token },
       projectRoot,
       output: outputFile,
+      check: areaCheckCommand(projectRoot, area.areaId),
       modules: area.modules.map(({ path, part, files }) => ({ path, part, files })),
       entryPoints: area.entryPoints,
       unrecognisedFiles: area.unrecognisedFiles,

@@ -15,8 +15,22 @@
  * the manifest. Without it the output is `rejected-stale` (an earlier run's
  * file or a published domain-graph.json copied into place cannot carry this
  * run's token); unparsable JSON is `rejected-parse`; no file is `missing`.
+ * Every flow that starts in a choose module (see Homing) must carry a
+ * `domainMeta.domain` that is a plan domain id and a non-empty
+ * `domainMeta.domainReason`; an output with any flow short of that is
+ * `rejected-choice`, and one line per such flow names it and the allowed
+ * ids, so the analyzer is sent back to choose instead of the merge placing
+ * the flow by fallback. `--accept-unchosen` (used only after one re-dispatch)
+ * accepts such an output anyway and records its flows on the area
+ * (`unchosen`); homing then treats them as before: a missing or invalid
+ * pick falls back and is counted, a pick without a reason is kept and
+ * counted as choicesWithoutReason.
  * Nothing of a rejected area enters the merged graph. Exit code 3 when any
  * area is not accepted; the graph and the report are still written.
+ *
+ * `--check <areaId>` runs the acceptance of that one area against the stored
+ * plan, writes nothing, prints `accepted` or the rejection lines and exits 0
+ * or 3. The analyzer runs it on its own output before it returns.
  *
  * Merge rules, over accepted outputs in area-id order:
  *   - one domain node per plan domain, in plan order, carrying its kind, the
@@ -46,7 +60,8 @@
  * domain, holds flows of many areas, so there the analyzer's
  * `domainMeta.domain` decides when it is a plan domain id (byChoice); a
  * missing or unknown one falls back to the module's domain and is counted
- * (fallbackMissing, fallbackInvalid). Every such flow is listed in `choices`
+ * (fallbackMissing, fallbackInvalid). Acceptance rejects such flows, so the
+ * fallback is reached only by an area accepted with `--accept-unchosen`. Every such flow is listed in `choices`
  * with the analyzer's `domainMeta.domainReason`, and `support` counts the
  * flows that end in a support domain, naming those that got there without a
  * choice that carries a reason. A claim the merge did not follow (ignored or
@@ -80,7 +95,8 @@
  * (silentZeroParts), so an area that returned nothing for its part shows.
  *
  * Usage:
- *   node merge-domain-areas.mjs <projectRoot> [--out <path>] [--coverage <path>]
+ *   node merge-domain-areas.mjs <projectRoot> [--out <path>] [--coverage <path>] [--accept-unchosen]
+ *   node merge-domain-areas.mjs <projectRoot> --check <areaId>
  *
  * Logging: summary to stdout, diagnostics to stderr.
  */
@@ -109,8 +125,13 @@ const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** Accept or reject one area's output text. `text: null` means the file does not exist. */
-export function acceptOutput({ token, areaId, text }) {
+/**
+ * Accept or reject one area's output text. `text: null` means the file does
+ * not exist. With `choice: {plan, manifest, nodeFiles}` the flows of choose
+ * modules are checked too (checkChoices); `allowUnchosen` accepts an output
+ * that fails only that check and returns its flows as `unchosen`.
+ */
+export function acceptOutput({ token, areaId, text, choice = null, allowUnchosen = false }) {
   if (text === null || text === undefined) return { status: 'missing' };
   let graph;
   try {
@@ -123,7 +144,88 @@ export function acceptOutput({ token, areaId, text }) {
   if (!isObject(run)) return { status: 'rejected-stale', reason: 'no areaRun' };
   if (run.token !== token) return { status: 'rejected-stale', reason: 'areaRun.token is not this run\'s token' };
   if (run.areaId !== areaId) return { status: 'rejected-stale', reason: `areaRun.areaId is ${JSON.stringify(run.areaId)}` };
-  return { status: 'accepted', graph };
+  if (choice === null) return { status: 'accepted', graph };
+  const { allowed, problems } = checkChoices({ graph, areaId, ...choice });
+  if (problems.length === 0) return { status: 'accepted', graph };
+  if (allowUnchosen) return { status: 'accepted', graph, unchosen: problems };
+  const named = problems.slice(0, 5).map((p) => p.flow).join(', ') + (problems.length > 5 ? ` (+${problems.length - 5} more)` : '');
+  return {
+    status: 'rejected-choice',
+    reason: `${problems.length} flow(s) of choose modules lack a plan domain id in domainMeta.domain with a domainMeta.domainReason: ${named}; allowed: ${allowed.join(', ')}`,
+    problems,
+    allowed,
+  };
+}
+
+/** Flow nodes and flow_step edges of one raw area output, read as mergeAreas reads them. */
+function areaParts(graph) {
+  const areaNodes = new Map();
+  for (const raw of Array.isArray(graph.nodes) ? graph.nodes : []) {
+    if (!isObject(raw) || typeof raw.id !== 'string' || raw.id.length === 0 || areaNodes.has(raw.id) || raw.type === 'domain') continue;
+    areaNodes.set(raw.id, raw);
+  }
+  const areaStepEdges = (Array.isArray(graph.edges) ? graph.edges : [])
+    .filter((e) => isObject(e) && e.type === 'flow_step' && areaNodes.has(e.source) && areaNodes.has(e.target));
+  return { areaNodes, areaStepEdges };
+}
+
+/**
+ * The module a flow starts in: the module of its first locatable step
+ * (`flow_step` weight ascending, then edge order), else its
+ * `domainMeta.module` when the flow's area holds it; null when neither.
+ */
+function homeModuleOf({ flow, areaId, areaNodes, areaStepEdges, fileModule, moduleAreas, nodeFiles }) {
+  const steps = areaStepEdges
+    .map((edge, order) => ({ edge, order }))
+    .filter(({ edge }) => edge.source === flow.id)
+    .sort((a, b) => ((Number.isFinite(a.edge.weight) ? a.edge.weight : Infinity) - (Number.isFinite(b.edge.weight) ? b.edge.weight : Infinity)) || a.order - b.order);
+  for (const { edge } of steps) {
+    const step = areaNodes.get(edge.target);
+    if (!step || step.type !== 'step') continue;
+    const { file } = locateStep(step, fileModule, nodeFiles);
+    if (file !== null) return { home: fileModule.get(file), by: 'step' };
+  }
+  const declared = flow.domainMeta?.module;
+  if (typeof declared === 'string' && (moduleAreas.get(declared) ?? []).includes(areaId)) return { home: declared, by: 'declared' };
+  return { home: null, by: null };
+}
+
+/** Whether the analyzer chooses the domain of flows starting in a module: mixed, or of a support domain. */
+function choosesFor(plan) {
+  const kindOf = new Map(plan.domains.map((d) => [d.id, d.kind]));
+  const mixed = new Set(Array.isArray(plan.mixed) ? plan.mixed : []);
+  return { kindOf, chooses: (module) => mixed.has(module) || kindOf.get(plan.modules[module]) === 'support' };
+}
+
+/**
+ * The flows of one area output that start in a choose module without a
+ * valid choice: `problem` is missing (no domainMeta.domain), invalid (not a
+ * plan domain id; `chosen` keeps it) or no-reason (no domainMeta.domainReason).
+ * `allowed` is every plan domain id, in plan order.
+ */
+export function checkChoices({ graph, areaId, plan, manifest, nodeFiles = new Map() }) {
+  const { fileModule, moduleAreas } = moduleIndex(manifest);
+  const { kindOf, chooses } = choosesFor(plan);
+  const { areaNodes, areaStepEdges } = areaParts(graph);
+  const problems = [];
+  for (const flow of areaNodes.values()) {
+    if (flow.type !== 'flow') continue;
+    const { home } = homeModuleOf({ flow, areaId, areaNodes, areaStepEdges, fileModule, moduleAreas, nodeFiles });
+    if (home === null || plan.modules[home] === undefined || !chooses(home)) continue;
+    const chosen = flow.domainMeta?.domain;
+    const reason = flow.domainMeta?.domainReason;
+    if (chosen === undefined || chosen === null || chosen === '') problems.push({ flow: flow.id, module: home, problem: 'missing' });
+    else if (typeof chosen !== 'string' || !kindOf.has(chosen)) problems.push({ flow: flow.id, module: home, problem: 'invalid', chosen });
+    else if (typeof reason !== 'string' || reason.trim().length === 0) problems.push({ flow: flow.id, module: home, problem: 'no-reason' });
+  }
+  return { allowed: plan.domains.map((d) => d.id), problems };
+}
+
+/** One stdout line per flow of a `rejected-choice` area, naming the flow, its module and the allowed ids. */
+export function choiceLines(areaId, result) {
+  if (result.status !== 'rejected-choice') return [];
+  return result.problems.map((p) => `rejected-choice ${areaId} ${p.flow} module=${p.module} problem=${p.problem}` +
+    `${p.problem === 'invalid' ? ` chosen=${JSON.stringify(p.chosen)}` : ''} allowed=${result.allowed.join(',')}`);
 }
 
 function unionInto(target, source) {
@@ -270,33 +372,13 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
   }
 
   // Homing: contains_flow edges are made here, by rule, never taken from an analyzer.
-  const kindOf = new Map(plan.domains.map((d) => [d.id, d.kind]));
-  const mixed = new Set(Array.isArray(plan.mixed) ? plan.mixed : []);
-  const chooses = (module) => mixed.has(module) || kindOf.get(plan.modules[module]) === 'support';
+  const { kindOf, chooses } = choosesFor(plan);
   const fh = merge.flowHoming;
   const homed = [];
   for (const { areaId, areaNodes, areaStepEdges } of homing) {
     for (const flow of areaNodes.values()) {
       if (flow.type !== 'flow') continue;
-      const steps = areaStepEdges
-        .map((edge, order) => ({ edge, order }))
-        .filter(({ edge }) => edge.source === flow.id)
-        .sort((a, b) => ((Number.isFinite(a.edge.weight) ? a.edge.weight : Infinity) - (Number.isFinite(b.edge.weight) ? b.edge.weight : Infinity)) || a.order - b.order);
-      let home = null;
-      let by = null;
-      for (const { edge } of steps) {
-        const step = areaNodes.get(edge.target);
-        if (!step || step.type !== 'step') continue;
-        const { file } = locateStep(step, fileModule, nodeFiles);
-        if (file !== null) { home = fileModule.get(file); by = 'step'; break; }
-      }
-      if (home === null) {
-        const declared = flow.domainMeta?.module;
-        if (typeof declared === 'string' && (moduleAreas.get(declared) ?? []).includes(areaId)) {
-          home = declared;
-          by = 'declared';
-        }
-      }
+      const { home, by } = homeModuleOf({ flow, areaId, areaNodes, areaStepEdges, fileModule, moduleAreas, nodeFiles });
       const moduleDomain = home === null ? null : plan.modules[home] ?? null;
       if (moduleDomain === null) {
         fh.unplaced += 1;
@@ -559,6 +641,7 @@ export function computeCoverage({
         .map(({ path, part }) => ({ path, part })),
     };
     if (result.reason) row.reason = result.reason;
+    if (result.unchosen?.length) row.unchosen = result.unchosen;
     return row;
   });
 
@@ -633,11 +716,15 @@ export function homingLines(coverage) {
   return lines;
 }
 
+const USAGE = 'Usage: node merge-domain-areas.mjs <projectRoot> [--out <path>] [--coverage <path>] [--accept-unchosen]\n' +
+  '       node merge-domain-areas.mjs <projectRoot> --check <areaId>';
+
 function parseArgs(argv) {
-  const args = { projectRoot: null, out: null, coverage: null };
-  const flags = { '--out': 'out', '--coverage': 'coverage' };
+  const args = { projectRoot: null, out: null, coverage: null, check: null, acceptUnchosen: false };
+  const flags = { '--out': 'out', '--coverage': 'coverage', '--check': 'check' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
+    if (arg === '--accept-unchosen') { args.acceptUnchosen = true; continue; }
     if (flags[arg]) {
       const value = argv[i + 1];
       if (!value || value.startsWith('--')) throw new Error(`merge-domain-areas: ${arg} requires a value`);
@@ -650,7 +737,10 @@ function parseArgs(argv) {
     throw new Error(`merge-domain-areas: unexpected argument: ${arg}`);
   }
   if (!args.projectRoot) {
-    throw new Error('Usage: node merge-domain-areas.mjs <projectRoot> [--out <path>] [--coverage <path>]');
+    throw new Error(USAGE);
+  }
+  if (args.check !== null && (args.out || args.coverage || args.acceptUnchosen)) {
+    throw new Error('merge-domain-areas: --check takes no other option');
   }
   return args;
 }
@@ -704,45 +794,84 @@ function loadPlan(dataDir, manifest) {
   return plan;
 }
 
+function loadManifest(areasDir) {
+  const manifestPath = join(areasDir, 'manifest.json');
+  if (!existsSync(manifestPath)) throw new Error(`merge-domain-areas: no area manifest at ${manifestPath}; run split-domain-areas.mjs first`);
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+  for (const { areaId } of manifest.areas) {
+    if (!AREA_ID.test(areaId)) throw new Error(`merge-domain-areas: malformed area id ${JSON.stringify(areaId)} in the manifest`);
+  }
+  return manifest;
+}
+
+/**
+ * What the merge reads from the area contexts: knowledge-graph node id ->
+ * project file (from every context's graph nodes), and area id -> the
+ * project files its context lists as unrecognised.
+ */
+function loadAreaContexts(areasDir, manifest) {
+  const nodeFiles = new Map();
+  const unrecognisedOf = new Map();
+  for (const { areaId } of manifest.areas) {
+    const contextText = readOrNull(join(areasDir, `${areaId}.context.json`));
+    if (contextText === null) continue;
+    const areaContext = JSON.parse(contextText);
+    unrecognisedOf.set(areaId, (areaContext.unrecognisedFiles ?? []).map((u) => relativeInsideRoot(u?.file)).filter((f) => f !== null));
+    for (const node of areaContext.graphNodes ?? []) {
+      const file = relativeInsideRoot(node?.filePath);
+      if (typeof node?.id === 'string' && file !== null) nodeFiles.set(node.id, file);
+    }
+  }
+  return { nodeFiles, unrecognisedOf };
+}
+
+/**
+ * The acceptance of one area, as the merge would decide it, without writing
+ * anything: prints `<areaId> accepted` or the status, its reason and one
+ * `rejected-choice` line per flow. Returns { exitCode } (0 or 3).
+ */
+export async function runCheck({ projectRoot, areaId, stdout = (t) => process.stdout.write(t) }) {
+  const root = resolve(projectRoot);
+  const dataDir = await resolveDataDir(root);
+  const areasDir = join(dataDir, 'intermediate', AREAS_DIR);
+  const manifest = loadManifest(areasDir);
+  if (!manifest.areas.some((a) => a.areaId === areaId)) throw new Error(`merge-domain-areas: no area ${JSON.stringify(areaId)} in the manifest`);
+  const plan = loadPlan(dataDir, manifest);
+  const result = acceptOutput({
+    token: manifest.token, areaId, text: readOrNull(join(areasDir, `${areaId}.analysis.json`)),
+    choice: { plan, manifest, nodeFiles: loadAreaContexts(areasDir, manifest).nodeFiles },
+  });
+  const lines = [`${areaId} ${result.status}${result.status === 'accepted' || !result.reason ? '' : ` (${result.reason})`}`, ...choiceLines(areaId, result)];
+  stdout(`${lines.join('\n')}\n`);
+  return { exitCode: result.status === 'accepted' ? 0 : EXIT_INCOMPLETE };
+}
+
 /**
  * The whole merge for one project. `mergeFn` is injectable so the not-conserved
  * path can be exercised with a lossy merge; `stdout`/`stderr` receive text.
  * Returns { exitCode }.
  */
 export async function runMerge({
-  projectRoot, out = null, coverage: coverageOut = null, mergeFn = mergeAreas,
+  projectRoot, out = null, coverage: coverageOut = null, mergeFn = mergeAreas, acceptUnchosen = false,
   stdout = (t) => process.stdout.write(t), stderr = (t) => process.stderr.write(t),
 }) {
   const root = resolve(projectRoot);
   const dataDir = await resolveDataDir(root);
   const intermediate = join(dataDir, 'intermediate');
   const areasDir = join(intermediate, AREAS_DIR);
-  const manifestPath = join(areasDir, 'manifest.json');
-  if (!existsSync(manifestPath)) throw new Error(`merge-domain-areas: no area manifest at ${manifestPath}; run split-domain-areas.mjs first`);
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+  const manifest = loadManifest(areasDir);
   const plan = loadPlan(dataDir, manifest);
   const planStatus = existsSync(join(areasDir, 'plan.input.json'))
     ? (JSON.parse(readFileSync(join(areasDir, 'plan.input.json'), 'utf-8')).mode ?? 'reused')
     : 'reused';
 
   // Area files are found from the area id, never from a path the manifest carries.
-  const areaResults = [];
-  const nodeFiles = new Map();
-  const unrecognisedOf = new Map();
-  for (const { areaId } of manifest.areas) {
-    if (!AREA_ID.test(areaId)) throw new Error(`merge-domain-areas: malformed area id ${JSON.stringify(areaId)} in the manifest`);
-    const result = acceptOutput({ token: manifest.token, areaId, text: readOrNull(join(areasDir, `${areaId}.analysis.json`)) });
-    areaResults.push({ areaId, ...result });
-    const contextText = readOrNull(join(areasDir, `${areaId}.context.json`));
-    if (contextText !== null) {
-      const areaContext = JSON.parse(contextText);
-      unrecognisedOf.set(areaId, (areaContext.unrecognisedFiles ?? []).map((u) => relativeInsideRoot(u?.file)).filter((f) => f !== null));
-      for (const node of areaContext.graphNodes ?? []) {
-        const file = relativeInsideRoot(node?.filePath);
-        if (typeof node?.id === 'string' && file !== null) nodeFiles.set(node.id, file);
-      }
-    }
-  }
+  const { nodeFiles, unrecognisedOf } = loadAreaContexts(areasDir, manifest);
+  const choice = { plan, manifest, nodeFiles };
+  const areaResults = manifest.areas.map(({ areaId }) => ({
+    areaId,
+    ...acceptOutput({ token: manifest.token, areaId, text: readOrNull(join(areasDir, `${areaId}.analysis.json`)), choice, allowUnchosen: acceptUnchosen }),
+  }));
 
   const accepted = areaResults.filter((r) => r.status === 'accepted').map(({ areaId, graph }) => ({ areaId, graph }));
   const { graph, merge } = mergeFn({ accepted, plan, manifest, nodeFiles });
@@ -772,9 +901,11 @@ export async function runMerge({
     lines.push(
       `${area.areaId} ${area.status}${area.reason ? ` (${area.reason})` : ''} domains=${area.domains} flows=${area.flows} ` +
       `steps=${area.steps} modules=${area.modules.length} silent-zero=${area.silentZeroModules.length}` +
-      `${area.silentZeroParts.length ? ` silent-zero-parts=${area.silentZeroParts.length}` : ''}`,
+      `${area.silentZeroParts.length ? ` silent-zero-parts=${area.silentZeroParts.length}` : ''}` +
+      `${area.unchosen ? ` unchosen=${area.unchosen.length}` : ''}`,
     );
   }
+  for (const result of areaResults) lines.push(...choiceLines(result.areaId, result));
   const b = coverage.buckets;
   lines.push(
     `modules=${coverage.modules.length} covered=${b.covered} declared-skip=${b['declared-skip']} ` +
@@ -816,7 +947,9 @@ export async function runMerge({
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const { exitCode } = await runMerge({ projectRoot: args.projectRoot, out: args.out, coverage: args.coverage });
+  const { exitCode } = args.check !== null
+    ? await runCheck({ projectRoot: args.projectRoot, areaId: args.check })
+    : await runMerge({ projectRoot: args.projectRoot, out: args.out, coverage: args.coverage, acceptUnchosen: args.acceptUnchosen });
   if (exitCode !== 0) process.exitCode = exitCode;
 }
 
@@ -838,4 +971,6 @@ if (isCliEntry()) {
   }
 }
 
-export default { acceptOutput, mergeAreas, checkConservation, computeCoverage, homingLines, locateStep, runMerge, MODULE_BUCKETS };
+export default {
+  acceptOutput, checkChoices, choiceLines, mergeAreas, checkConservation, computeCoverage, homingLines, locateStep, runMerge, runCheck, MODULE_BUCKETS,
+};

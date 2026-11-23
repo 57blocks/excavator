@@ -149,6 +149,27 @@ describe('/excavator-domain homing of mixed and support modules', () => {
   });
 });
 
+// A flow of a choose module without a reasoned choice fails the area's
+// acceptance; the analyzer checks its own output first, and the skill
+// re-dispatches once before the fallback may take over.
+describe('/excavator-domain choice check', () => {
+  it('has the analyzer run the context check command and fix rejected-choice lines', () => {
+    expect(agent).toContain('`check`');
+    expect(agent).toContain('rejected-choice');
+    expect(agent).toMatch(/run the context's `check` command exactly as written/);
+    expect(agent).toMatch(/The choice is required, not optional/);
+  });
+
+  it('re-dispatches a rejected-choice area once before accepting it with --accept-unchosen', () => {
+    const redispatch = skill.indexOf("adding that area's `rejected-choice` lines to its prompt");
+    const override = skill.indexOf('run the merge once more with `--accept-unchosen`');
+    expect(redispatch).toBeGreaterThan(-1);
+    expect(override).toBeGreaterThan(redispatch);
+    expect(skill).toMatch(/Use `--accept-unchosen` only after that one re-dispatch/);
+    expect(skill).toMatch(/run the context's `check` command on its output before it returns/);
+  });
+});
+
 // HTTP and UI entry points come from the fact graph; the model only adds the
 // ones in files the scripts did not recognise, and the merge checks them.
 describe('/excavator-domain entry points from the facts', () => {
