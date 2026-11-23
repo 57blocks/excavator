@@ -14,9 +14,9 @@ CACHE="$DATA_DIR/semantic-cache.json"; [ -f "$CACHE" ] || CACHE=/dev/null
 
 - `G`: nodes Phase F2 will generate semantics for.
   `jq '.plan.generate | length' "$INTER/stale-semantics.json"`
-- `B2`: Phase F2 batches. `jq '.totalBatches' "$INTER/batches.json"`. When
-  step 1 found nothing stale, step 2 did not run: `B2` is 0. Do not read an
-  older `batches.json` in that case.
+- `B2`: Phase F2 batches. `jq '.totalBatches' "$INTER/semantic-batches.json"`.
+  When step 1 found nothing stale, step 2 did not run: `B2` is 0. Do not read
+  an older `semantic-batches.json` in that case.
 - `V`: summaries Phase F4 will verify. These are the in-scope nodes with a
   line-range anchor that will get a new summary, plus the in-scope nodes with
   a fresh, non-empty summary that carries no verdict yet. File nodes have no
@@ -59,6 +59,10 @@ F2_wall  = 0 when B2 is 0, otherwise max(6, 1.24 × B2)
 | Phase F4, per batch | $0.38 | 1.54 min |
 | Phase F3 | $2.40 | 12 min |
 
+- **Batches:** the Phase F2 rate was measured when batches were whole files
+  grouped by imports, before batches were capped at 40 nodes and 1,500 lines
+  to read. It has not been measured on the capped batches, which are smaller
+  and more numerous; say so in the report.
 - **Model:** Sonnet. No other model has been measured. For another model,
   use these rates and say that they are Sonnet's.
 - **Calibration:** one default Full run of an open-source Java EE application

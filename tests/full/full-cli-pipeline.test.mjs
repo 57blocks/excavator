@@ -58,7 +58,7 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
     const patchesPath = join(intermediate, 'patches.json');
     writeFileSync(patchesPath, JSON.stringify({
       patches: [
-        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs.', displayName: 'Run task', tags: ['x'], semanticSourceHash: hash },
+        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs.', displayName: 'Run task', tags: ['x'], evidence: { line: 1, quote: 'export function run(): void {}' }, semanticSourceHash: hash },
         { nodeId: 'function:src/a.ts:ghost', filePath: 'src/a.ts', summary: 'fake', semanticSourceHash: hash },
       ],
     }, null, 2));
@@ -102,7 +102,7 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
     expect(verifyManifest.selectedIds).toEqual([runNode.id]);
     writeFileSync(
       join(intermediate, 'summary-verdicts-0.json'),
-      JSON.stringify({ verdicts: [{ id: runNode.id, verdict: 'verified' }] }, null, 2),
+      JSON.stringify({ verdicts: [{ id: runNode.id, verdict: 'verified', evidence: { line: 1, quote: 'export function run(): void {}' } }] }, null, 2),
     );
     // A verdict file some earlier run left behind, at a batch index this
     // manifest does not have. Read, it would raise the marking to contradicted.

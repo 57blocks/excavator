@@ -304,9 +304,8 @@ export function readSample(projectDir, missing = [], { read = readSync } = {}) {
   const dataDir = join(projectDir, '.excavator');
   const staleFiles = readJsonIfPresent(join(dataDir, 'intermediate', 'stale-files.json'));
   if (Array.isArray(staleFiles)) sample.files = staleFiles.length;
-  const batches = readJsonIfPresent(join(dataDir, 'intermediate', 'batches.json'));
-  const batchList = Array.isArray(batches) ? batches : batches?.batches;
-  if (Array.isArray(batchList)) sample.batches = batchList.length;
+  const batches = readJsonIfPresent(join(dataDir, 'intermediate', 'semantic-batches.json'));
+  if (Array.isArray(batches?.batches)) sample.batches = batches.batches.length;
   sample.nodes = graphNodeCount(join(dataDir, 'knowledge-graph.jsonl'), read);
   for (const [key, value] of Object.entries(sample)) if (value === null) missing.push(`sample:${key}`);
   return sample;
@@ -548,7 +547,7 @@ export function continuedCopy(workDir) {
 /** The run's products that a resume or an estimate is checked against. */
 export const PRODUCT_FILES = [
   'intermediate/stale-semantics.json',
-  'intermediate/batches.json',
+  'intermediate/semantic-batches.json',
   'intermediate/semantic-verify-manifest.json',
   'semantic-cache.json',
 ];

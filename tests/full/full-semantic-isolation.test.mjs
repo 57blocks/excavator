@@ -125,10 +125,10 @@ describe('full-semantic-isolation — physical isolation of a Full semantic writ
     const factNodeIds = collectFactNodeIds(graph);
     const patchResult = await applySemanticPatches({
       projectRoot: root,
-      factNodeIds,
+      factNodes: graph.nodes,
       patches: [
-        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs the app entry point.', displayName: 'Run app entry', tags: ['entrypoint'], semanticSourceHash: hashOf('src/a.ts') },
-        { nodeId: helperNode.id, filePath: 'src/b.ts', summary: 'Says hi.', displayName: 'Say hi', semanticSourceHash: hashOf('src/b.ts') },
+        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs the app entry point.', displayName: 'Run app entry', tags: ['entrypoint'], evidence: { line: 4, quote: 'helper();' }, semanticSourceHash: hashOf('src/a.ts') },
+        { nodeId: helperNode.id, filePath: 'src/b.ts', summary: 'Says hi.', displayName: 'Say hi', evidence: { line: 2, quote: "console.log('hi');" }, semanticSourceHash: hashOf('src/b.ts') },
         // A hallucinated id — must become a gap, never a committed entry.
         { nodeId: 'function:src/a.ts:doesNotExist', filePath: 'src/a.ts', summary: 'fabricated', semanticSourceHash: hashOf('src/a.ts') },
       ],

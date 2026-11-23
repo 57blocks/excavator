@@ -237,7 +237,7 @@ describe('readSample', () => {
     const intermediate = join(root, '.excavator', 'intermediate');
     mkdirSync(intermediate, { recursive: true });
     if (staleFiles) writeFileSync(join(intermediate, 'stale-files.json'), JSON.stringify(staleFiles));
-    if (batches) writeFileSync(join(intermediate, 'batches.json'), JSON.stringify(batches));
+    if (batches) writeFileSync(join(intermediate, 'semantic-batches.json'), JSON.stringify(batches));
     if (graphHeader) {
       writeFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), `${JSON.stringify(graphHeader)}\n{"record":"node"}\n`);
     }
@@ -249,7 +249,7 @@ describe('readSample', () => {
     const sample = readSample(
       project({
         staleFiles: ['a.java', 'b.java', 'c.xhtml'],
-        batches: { batches: [{}, {}], neighborMap: {} },
+        batches: { totalBatches: 2, batches: [{}, {}] },
         graphHeader: { record: 'header', counts: { nodes: 12, edges: 30 } },
       }),
       missing,
@@ -467,7 +467,7 @@ describe('run: continue, time out, pass skill arguments', () => {
     const missing = [];
     expect(copyProducts(project, out, missing)).toEqual(['intermediate/stale-semantics.json', 'semantic-cache.json']);
     expect(readdirSync(join(out, 'products')).sort()).toEqual(['semantic-cache.json', 'stale-semantics.json']);
-    expect(missing).toEqual(['products:intermediate/batches.json', 'products:intermediate/semantic-verify-manifest.json']);
+    expect(missing).toEqual(['products:intermediate/semantic-batches.json', 'products:intermediate/semantic-verify-manifest.json']);
   });
 
   it('stops a child that runs past the timeout, and kills one that ignores SIGTERM', async () => {
@@ -519,6 +519,6 @@ describe('run: continue, time out, pass skill arguments', () => {
     expect(readFileSync(log, 'utf-8')).toBe(`/excavator:excavator ${copy.project} --full --estimate`);
     expect(report.run).toMatchObject({ continued: true, copy: copy.project, timedOut: true, signal: 'SIGTERM', skillArgs: '--estimate' });
     expect(readFileSync(join(out, 'products', 'semantic-cache.json'), 'utf-8')).toBe('{"entries":{"n":{}}}');
-    expect(report.missing).toContain('products:intermediate/batches.json');
+    expect(report.missing).toContain('products:intermediate/semantic-batches.json');
   });
 });

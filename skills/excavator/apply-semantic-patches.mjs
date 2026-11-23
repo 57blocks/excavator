@@ -22,7 +22,16 @@
  *   node apply-semantic-patches.mjs <projectRoot> --patches <patches.json> [--out <report.json>]
  *
  * `<patches.json>` is an array of
- *   `{ nodeId, filePath, summary, displayName, tags?, semanticSourceHash, model?, generatedAt? }`.
+ *   `{ nodeId, filePath, summary, displayName, tags?, evidence, semanticSourceHash, model?, generatedAt? }`.
+ *
+ * `evidence` is `{ line, quote }`: a line of the node's own slice, not its
+ * declaration line, and text copied from it (read-evidence.mjs). A patch
+ * without valid evidence is not committed and is recorded as a gap: the
+ * floor under a summary written from the node's name without reading its
+ * source (openspec: changes/semantic-read-evidence, D2). The evidence is a
+ * gate input only and is not written to the cache. A patch whose `summary`
+ * or `displayName` names a line number or the node's own path is not
+ * committed either (D3): that is the anchor transcribed, not the code read.
  *
  * Contract: openspec/changes/full-semantic-isolation/specs/full-semantic-isolation/spec.md
  */
@@ -32,7 +41,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { WRITER_FIELDS, commitSemanticCacheEntry } from './semantic-cache.mjs';
-import { collectFactNodeIds } from './semantic-graph.mjs';
+import { checkReadEvidence, citesAnchor, createLineReader } from './read-evidence.mjs';
 import { createGapCollector } from './fact-graph-resolve.mjs';
 import { compareGaps } from './coverage-ledger.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
@@ -57,6 +66,12 @@ function reasonFor(kind) {
   if (kind === 'semantic-patch-invalid') {
     return 'a model-authored semantic patch was missing a nodeId and was dropped, not committed';
   }
+  if (kind === 'semantic-patch-evidence-invalid') {
+    return 'a semantic patch did not quote a line of its own slice other than the declaration line, and was not committed';
+  }
+  if (kind === 'semantic-patch-cites-anchor') {
+    return 'a semantic patch named a line number or its own file path in its summary or displayName, and was not committed';
+  }
   if (kind === 'semantic-patch-unmappable-node') {
     return 'a semantic patch named a nodeId with no fact-graph counterpart and was dropped, not committed';
   }
@@ -69,12 +84,14 @@ function reasonFor(kind) {
 
 /**
  * Commit a batch of node-local semantic patches, validating each `nodeId`
- * against the real fact-graph node id set first. Never throws per-patch — a
- * rejected or failed patch is recorded as a gap, and processing continues.
+ * against the real fact-graph nodes first, then the patch's read evidence
+ * against the node's source. Never throws per-patch — a rejected or failed
+ * patch is recorded as a gap, and processing continues.
  *
  * @param {{
  *   projectRoot: string,
- *   factNodeIds: Set<string>|string[],
+ *   factNodes: Array<{ id: string, filePath?: string, lineRange?: [number, number] }>,
+ *   readLines?: (filePath: string) => string[]|null,
  *   patches: object[],
  *   commit?: typeof commitSemanticCacheEntry,
  *   sampleLimit?: number,
@@ -83,12 +100,16 @@ function reasonFor(kind) {
  */
 export async function applySemanticPatches({
   projectRoot,
-  factNodeIds,
+  factNodes,
   patches,
+  readLines = createLineReader(projectRoot),
   commit = commitSemanticCacheEntry,
   sampleLimit = 5,
 }) {
-  const idSet = factNodeIds instanceof Set ? factNodeIds : new Set(factNodeIds ?? []);
+  if (!Array.isArray(factNodes)) {
+    throw new Error('applySemanticPatches: factNodes (the fact-graph nodes) is required to check read evidence');
+  }
+  const nodeById = new Map(factNodes.filter((n) => isNonEmptyString(n?.id)).map((n) => [n.id, n]));
   const gapCollector = createGapCollector(sampleLimit);
   const list = Array.isArray(patches) ? patches : [];
   const results = [];
@@ -101,12 +122,30 @@ export async function applySemanticPatches({
       results.push({ nodeId: nodeId ?? null, ok: false, status: 'invalid-patch' });
       continue;
     }
-    if (!idSet.has(nodeId)) {
+    const node = nodeById.get(nodeId);
+    if (!node) {
       // The one behavior this whole module exists for: an unmappable model
       // output becomes a semantic gap, never a fact anchor and never a
       // committed cache entry under a made-up key.
       gapCollector.add('semantic-patch-unmappable-node', isNonEmptyString(patch.filePath) ? patch.filePath : 'unknown', nodeId);
       results.push({ nodeId, ok: false, status: 'unmappable-node' });
+      continue;
+    }
+
+    if (citesAnchor(patch.summary, node) || citesAnchor(patch.displayName, node)) {
+      gapCollector.add('semantic-patch-cites-anchor', isNonEmptyString(node.filePath) ? node.filePath : 'unknown', nodeId);
+      results.push({ nodeId, ok: false, status: 'cites-anchor' });
+      continue;
+    }
+
+    // The patch must quote a line of the node's own slice: the floor under a
+    // summary written from the name without reading the source.
+    const evidence = checkReadEvidence({
+      evidence: patch.evidence, node, lines: isNonEmptyString(node.filePath) ? readLines(node.filePath) : null,
+    });
+    if (!evidence.ok) {
+      gapCollector.add('semantic-patch-evidence-invalid', isNonEmptyString(node.filePath) ? node.filePath : 'unknown', nodeId);
+      results.push({ nodeId, ok: false, status: evidence.status });
       continue;
     }
 
@@ -175,13 +214,12 @@ async function main() {
   const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
   if (!existsSync(graphPath)) throw new Error(`apply-semantic-patches: ${KNOWLEDGE_GRAPH_FILE} not found: ${graphPath}`);
   const knowledgeGraph = readKnowledgeGraph(graphPath);
-  const factNodeIds = collectFactNodeIds(knowledgeGraph);
 
   const patchesRaw = readJson(resolve(args.patches), 'patches file');
   const patches = Array.isArray(patchesRaw) ? patchesRaw : patchesRaw?.patches ?? [];
 
   const { committed, total, gaps, results } = await applySemanticPatches({
-    projectRoot, factNodeIds, patches,
+    projectRoot, factNodes: knowledgeGraph.nodes, patches,
   });
 
   const outPath = resolve(args.out ?? join(intermediate, 'semantic-patch-report.json'));
