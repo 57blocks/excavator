@@ -14,6 +14,17 @@
  * planner's output, reconciles with the stored plan, and writes the accepted
  * plan. Everything about domains that needs judgment stays with the planner.
  *
+ * Mixed modules. A directory can hold the business logic of several areas
+ * (a legacy routes/ or services/ directory, a directory of scheduled jobs),
+ * so homing it whole puts the flows of every other area in the wrong domain.
+ * The planner lists such modules in `mixed`; the plan stores the list, and
+ * the flows that start in a mixed module or in a module of a support domain
+ * are homed on the domain the area analyzer chose from the plan's list
+ * (merge-domain-areas.mjs checks the choice). So once the plan is settled
+ * (reused, or accepted) this script writes `domainPlan` into every area
+ * context: the plan's domains, and for each module of the area its domain
+ * and whether the analyzer chooses (`choose`).
+ *
  * Modes (decided by `prepare`):
  *   new     no usable stored plan, or --replan: every module is planned.
  *   extend  the stored plan lost no coverage but the project gained module
@@ -30,7 +41,7 @@
  * name, summary), assignments that are not exactly the modules to plan,
  * assignment to an undeclared domain, a new domain holding no module, more
  * business domains than max(3, ceil(sqrt(modules))) or more than 3 support
- * domains. Cross-domain entries that are not between two plan domains, are
+ * domains, a mixed entry that is not a module to plan (or repeats). Cross-domain entries that are not between two plan domains, are
  * self loops, or have no description are dropped and counted, not rejected.
  * A rejected output leaves domain-plan.json untouched.
  *
@@ -52,8 +63,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
 const require = createRequire(resolve(pluginRoot, 'package.json'));
 
-export const PLAN_INPUT_FORMAT = 'excavator-domain-plan-input/1';
-export const PLAN_FORMAT = 'excavator-domain-plan/1';
+export const PLAN_INPUT_FORMAT = 'excavator-domain-plan-input/2';
+export const PLAN_FORMAT = 'excavator-domain-plan/2';
 export const PLAN_FILE = 'domain-plan.json';
 export const MAX_SUPPORT_DOMAINS = 3;
 export const SAMPLE_LIMITS = Object.freeze({ fileNames: 20, entrySamples: 8, exports: 12 });
@@ -86,6 +97,10 @@ function malformedReason(stored) {
   const ids = new Set(stored.domains.map((d) => d?.id));
   for (const [path, id] of Object.entries(stored.modules)) {
     if (!ids.has(id)) return `stored plan assigns ${path} to unknown domain ${JSON.stringify(id)}`;
+  }
+  if (!Array.isArray(stored.mixed)) return 'stored plan mixed is not an array';
+  for (const path of stored.mixed) {
+    if (typeof path !== 'string' || !(path in stored.modules)) return `stored plan marks ${JSON.stringify(path)} mixed but holds no such module`;
   }
   return null;
 }
@@ -124,6 +139,7 @@ export function reconcilePlan({ stored, modulePaths, replan }) {
     ...stored,
     moduleSetDigest: moduleSetDigest(Object.keys(modules)),
     modules,
+    mixed: stored.mixed.filter((path) => path in modules),
     domains: stored.domains.filter((d) => !emptied.has(d.id)),
     crossDomain: (Array.isArray(stored.crossDomain) ? stored.crossDomain : [])
       .filter((e) => !emptied.has(e?.source) && !emptied.has(e?.target)),
@@ -179,6 +195,7 @@ export function buildPlanInput({ manifest, context, token, mode, plan, unassigne
       exports: names.slice(0, SAMPLE_LIMITS.exports),
       exportsOmitted: Math.max(0, names.length - SAMPLE_LIMITS.exports),
       assigned: mode === 'extend' && !toPlan.has(module.path) ? plan?.modules?.[module.path] ?? null : null,
+      mixed: mode === 'extend' && !toPlan.has(module.path) ? (plan?.mixed ?? []).includes(module.path) : null,
     };
   });
   return {
@@ -280,6 +297,21 @@ export function acceptPlan({ input, output, plan = null, now = new Date() }) {
     if (typeof domain.id === 'string' && !held.has(domain.id)) reasons.push(`domain ${domain.id} holds no module`);
   }
 
+  const newMixed = [];
+  if (output.mixed !== undefined && !Array.isArray(output.mixed)) reasons.push('mixed is not an array of module paths');
+  else {
+    const seenMixed = new Set();
+    (output.mixed ?? []).forEach((path, i) => {
+      if (typeof path !== 'string') { reasons.push(`mixed[${i}] is not a module path`); return; }
+      if (seenMixed.has(path)) { reasons.push(`mixed: duplicate module ${path}`); return; }
+      seenMixed.add(path);
+      if (wanted.has(path)) { newMixed.push(path); return; }
+      reasons.push(input.modules.some((m) => m.path === path)
+        ? `mixed: ${path} is already assigned and its mark cannot be changed`
+        : `mixed: unknown module ${path}`);
+    });
+  }
+
   const all = [...existing, ...newDomains];
   const business = all.filter((d) => d.kind === 'business').length;
   const support = all.filter((d) => d.kind === 'support').length;
@@ -305,6 +337,7 @@ export function acceptPlan({ input, output, plan = null, now = new Date() }) {
     format: PLAN_FORMAT,
     moduleSetDigest: moduleSetDigest(Object.keys(sortedModules)),
     modules: sortedModules,
+    mixed: [...(extend ? plan.mixed : []), ...newMixed].sort(compare),
     domains: [
       ...existing,
       ...newDomains.map((d) => ({
@@ -319,6 +352,40 @@ export function acceptPlan({ input, output, plan = null, now = new Date() }) {
     ],
   };
   return { ok: true, plan: stored, dropped: { crossDomain: dropped } };
+}
+
+/**
+ * What one area's analyzer is told about the settled plan: every plan domain
+ * (id, kind, name, summary), and for each of `modulePaths` its domain and
+ * whether the analyzer chooses the domain of the flows that start there (a
+ * mixed module, or a module of a support domain).
+ */
+export function areaPlanFor(plan, modulePaths) {
+  const kindOf = new Map(plan.domains.map((d) => [d.id, d.kind]));
+  const mixed = new Set(plan.mixed ?? []);
+  return {
+    domains: plan.domains.map(({ id, kind, name, summary }) => ({ id, kind, name, summary })),
+    modules: Object.fromEntries([...modulePaths].sort(compare).map((path) => {
+      const domain = plan.modules[path] ?? null;
+      return [path, { domain, choose: mixed.has(path) || kindOf.get(domain) === 'support' }];
+    })),
+  };
+}
+
+/** Write `domainPlan` into every area context of the manifest; returns how many were written. */
+export function writeAreaPlans({ areasDir, manifest, plan }) {
+  let written = 0;
+  for (const { areaId } of manifest.areas ?? []) {
+    if (typeof areaId !== 'string' || !/^area-\d+$/.test(areaId)) throw new Error(`plan-domains: malformed area id ${JSON.stringify(areaId)} in the manifest`);
+    const path = join(areasDir, `${areaId}.context.json`);
+    const context = readJsonOrNull(path);
+    if (!isObject(context)) throw new Error(`plan-domains: no readable area context at ${path}; run split-domain-areas.mjs again`);
+    const held = manifest.modules.filter((m) => (m.areas ?? []).includes(areaId)).map((m) => m.path);
+    context.domainPlan = areaPlanFor(plan, held);
+    writeJson(path, context);
+    written += 1;
+  }
+  return written;
 }
 
 function parseArgs(argv) {
@@ -386,8 +453,10 @@ async function prepare(args, dataDir, areasDir) {
   if (result.mode === 'reused') {
     if (JSON.stringify(result.plan) !== JSON.stringify(stored)) writeJson(planPath, result.plan);
     clearPlanArtifacts(areasDir, PLAN_ARTIFACTS);
+    const written = writeAreaPlans({ areasDir, manifest, plan: result.plan });
     process.stdout.write(
-      `plan=reused modules=${modulePaths.length} domains=${result.plan.domains.length} digest=${result.plan.moduleSetDigest}\n`,
+      `plan=reused modules=${modulePaths.length} domains=${result.plan.domains.length} digest=${result.plan.moduleSetDigest} ` +
+      `mixed=${result.plan.mixed.length} areaContexts=${written}\n`,
     );
     return;
   }
@@ -444,10 +513,12 @@ async function accept(args, dataDir, areasDir) {
   }
   writeJson(planPath, verdict.plan);
   rmSync(join(areasDir, 'plan.rejection.json'), { force: true });
+  const written = writeAreaPlans({ areasDir, manifest, plan: verdict.plan });
   const kinds = (kind) => verdict.plan.domains.filter((d) => d.kind === kind).length;
   process.stdout.write(
     `plan accepted mode=${input.mode} business=${kinds('business')} support=${kinds('support')} ` +
-    `modules=${Object.keys(verdict.plan.modules).length} crossDomainDropped=${verdict.dropped.crossDomain}\n`,
+    `modules=${Object.keys(verdict.plan.modules).length} mixed=${verdict.plan.mixed.length} ` +
+    `crossDomainDropped=${verdict.dropped.crossDomain} areaContexts=${written}\n`,
   );
 }
 
@@ -478,4 +549,4 @@ if (isCliEntry()) {
   }
 }
 
-export default { moduleSetDigest, maxBusinessDomains, reconcilePlan, buildPlanInput, acceptPlan };
+export default { moduleSetDigest, maxBusinessDomains, reconcilePlan, buildPlanInput, acceptPlan, areaPlanFor, writeAreaPlans };

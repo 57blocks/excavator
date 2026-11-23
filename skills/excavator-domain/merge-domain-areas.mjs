@@ -32,12 +32,26 @@
  *     (edgesDangling), self loops
  *     dropped (edgesSelfLoop), repeated type|source|target kept once.
  *
- * Homing. A flow goes under the plan domain of the module of its first
- * locatable step, steps taken by `flow_step` weight ascending then edge
- * order (homedBy step). With no locatable step, a `domainMeta.module` that
- * is a module the flow's area holds decides (declared). Otherwise the flow
- * is unplaced: it and its steps stay, no `contains_flow` edge is made, and
- * it is counted and listed. Nothing is guessed.
+ * Homing. A flow's home module is the module of its first locatable step,
+ * steps taken by `flow_step` weight ascending then edge order (homedBy
+ * step). With no locatable step, a `domainMeta.module` that is a module the
+ * flow's area holds is the home module (declared). Otherwise the flow is
+ * unplaced: it and its steps stay, no `contains_flow` edge is made, and it is
+ * counted and listed. Nothing is guessed.
+ *
+ * The domain then follows from the home module. A module of one business
+ * area (not marked mixed in the plan, assigned to a business domain) decides
+ * it (byModule); a `domainMeta.domain` the analyzer wrote there is ignored
+ * and counted (choicesIgnored). A mixed module, or a module of a support
+ * domain, holds flows of many areas, so there the analyzer's
+ * `domainMeta.domain` decides when it is a plan domain id (byChoice); a
+ * missing or unknown one falls back to the module's domain and is counted
+ * (fallbackMissing, fallbackInvalid). Every such flow is listed in `choices`
+ * with the analyzer's `domainMeta.domainReason`, and `support` counts the
+ * flows that end in a support domain, naming those that got there without a
+ * choice that carries a reason. A claim the merge did not follow (ignored or
+ * invalid) is removed from the merged flow node, so the graph never shows a
+ * domain the flow is not under; the report keeps the invalid value.
  *
  * Conservation. checkConservation compares every accepted area's flow ids,
  * step ids and `flow_step` edges (through that area's renames) with the
@@ -187,7 +201,11 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
     edgesDangling: 0,
     edgesSelfLoop: 0,
     edgesDuplicate: 0,
-    flowHoming: { homedByStep: 0, homedByDeclared: 0, unplaced: 0, unplacedFlows: [], unplacedAreas: {} },
+    flowHoming: {
+      homedByStep: 0, homedByDeclared: 0, unplaced: 0, unplacedFlows: [], unplacedAreas: {},
+      byModule: 0, byChoice: 0, fallbackMissing: 0, fallbackInvalid: 0, choicesIgnored: 0, choicesWithoutReason: 0, choices: [],
+      support: { total: 0, chosen: 0, unchosen: 0, unchosenFlows: [] },
+    },
   };
   const nodes = new Map();
   for (const domain of plan.domains) nodes.set(domain.id, planDomainNode(domain, plan));
@@ -243,6 +261,10 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
   }
 
   // Homing: contains_flow edges are made here, by rule, never taken from an analyzer.
+  const kindOf = new Map(plan.domains.map((d) => [d.id, d.kind]));
+  const mixed = new Set(Array.isArray(plan.mixed) ? plan.mixed : []);
+  const chooses = (module) => mixed.has(module) || kindOf.get(plan.modules[module]) === 'support';
+  const fh = merge.flowHoming;
   const homed = [];
   for (const { areaId, areaNodes, areaStepEdges } of homing) {
     for (const flow of areaNodes.values()) {
@@ -251,29 +273,64 @@ export function mergeAreas({ accepted, plan, manifest, nodeFiles = new Map() }) 
         .map((edge, order) => ({ edge, order }))
         .filter(({ edge }) => edge.source === flow.id)
         .sort((a, b) => ((Number.isFinite(a.edge.weight) ? a.edge.weight : Infinity) - (Number.isFinite(b.edge.weight) ? b.edge.weight : Infinity)) || a.order - b.order);
-      let domainId = null;
+      let home = null;
       let by = null;
       for (const { edge } of steps) {
         const step = areaNodes.get(edge.target);
         if (!step || step.type !== 'step') continue;
         const { file } = locateStep(step, fileModule, nodeFiles);
-        if (file !== null) { domainId = plan.modules[fileModule.get(file)] ?? null; by = 'step'; break; }
+        if (file !== null) { home = fileModule.get(file); by = 'step'; break; }
       }
-      if (domainId === null) {
+      if (home === null) {
         const declared = flow.domainMeta?.module;
         if (typeof declared === 'string' && (moduleAreas.get(declared) ?? []).includes(areaId)) {
-          domainId = plan.modules[declared] ?? null;
+          home = declared;
           by = 'declared';
         }
       }
-      if (domainId === null) {
-        merge.flowHoming.unplaced += 1;
-        merge.flowHoming.unplacedFlows.push(flow.id);
-        merge.flowHoming.unplacedAreas[flow.id] = areaId;
+      const moduleDomain = home === null ? null : plan.modules[home] ?? null;
+      if (moduleDomain === null) {
+        fh.unplaced += 1;
+        fh.unplacedFlows.push(flow.id);
+        fh.unplacedAreas[flow.id] = areaId;
         continue;
       }
-      if (by === 'step') merge.flowHoming.homedByStep += 1;
-      else merge.flowHoming.homedByDeclared += 1;
+      if (by === 'step') fh.homedByStep += 1;
+      else fh.homedByDeclared += 1;
+
+      const chosen = flow.domainMeta?.domain;
+      let domainId = moduleDomain;
+      let reasoned = false;
+      const dropClaim = () => {
+        if (isObject(flow.domainMeta)) { delete flow.domainMeta.domain; delete flow.domainMeta.domainReason; }
+      };
+      if (!chooses(home)) {
+        fh.byModule += 1;
+        if (chosen !== undefined) { fh.choicesIgnored += 1; dropClaim(); }
+      } else {
+        const row = { flow: flow.id, module: home, moduleDomain };
+        if (typeof chosen === 'string' && kindOf.has(chosen)) {
+          domainId = chosen;
+          fh.byChoice += 1;
+          Object.assign(row, { domain: chosen, by: 'choice' });
+          const reason = flow.domainMeta?.domainReason;
+          if (typeof reason === 'string' && reason.trim()) { row.reason = reason.trim(); reasoned = true; }
+          else fh.choicesWithoutReason += 1;
+        } else if (chosen === undefined || chosen === null || chosen === '') {
+          fh.fallbackMissing += 1;
+          Object.assign(row, { domain: moduleDomain, by: 'fallback', fallback: 'missing' });
+        } else {
+          fh.fallbackInvalid += 1;
+          Object.assign(row, { domain: moduleDomain, by: 'fallback', fallback: 'invalid', chosen });
+          dropClaim();
+        }
+        fh.choices.push(row);
+      }
+      if (kindOf.get(domainId) === 'support') {
+        fh.support.total += 1;
+        if (reasoned) fh.support.chosen += 1;
+        else { fh.support.unchosen += 1; fh.support.unchosenFlows.push(flow.id); }
+      }
       homed.push({ source: domainId, target: flow.id, type: 'contains_flow', direction: 'forward', weight: 1 });
     }
   }
@@ -507,12 +564,42 @@ export function computeCoverage({
       homedByStep: homing?.homedByStep ?? 0,
       homedByDeclared: homing?.homedByDeclared ?? 0,
       unplaced: homing?.unplaced ?? 0,
+      byModule: homing?.byModule ?? 0,
+      byChoice: homing?.byChoice ?? 0,
+      fallback: { missing: homing?.fallbackMissing ?? 0, invalid: homing?.fallbackInvalid ?? 0 },
+      choicesIgnored: homing?.choicesIgnored ?? 0,
+      choicesWithoutReason: homing?.choicesWithoutReason ?? 0,
+      support: homing?.support ?? { total: 0, chosen: 0, unchosen: 0, unchosenFlows: [] },
+      choices: homing?.choices ?? [],
     },
     conservation,
     areas,
     modules,
     merge: { ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason },
   };
+}
+
+/**
+ * The stdout lines on how flow domains were decided: one count line, then one
+ * line per flow of a choose module that has no valid choice with a reason,
+ * written `support-unchosen` when it ended in a support domain, else
+ * `fallback`. The reason is missing, invalid or no-reason.
+ */
+export function homingLines(coverage) {
+  const f = coverage.flows;
+  const lines = [
+    `flows domain module=${f.byModule} choice=${f.byChoice} fallback=${f.fallback.missing + f.fallback.invalid} ` +
+    `choices-ignored=${f.choicesIgnored} choices-without-reason=${f.choicesWithoutReason} ` +
+    `support=${f.support.total} support-chosen=${f.support.chosen} support-unchosen=${f.support.unchosen}`,
+  ];
+  const unchosen = new Set(f.support.unchosenFlows);
+  for (const row of f.choices) {
+    if (row.by === 'choice' && row.reason !== undefined) continue;
+    const reason = row.by === 'fallback' ? row.fallback : 'no-reason';
+    if (row.by === 'choice' && !unchosen.has(row.flow)) continue;
+    lines.push(`${unchosen.has(row.flow) ? 'support-unchosen' : 'fallback'} ${row.flow} module=${row.module} reason=${reason}`);
+  }
+  return lines;
 }
 
 function parseArgs(argv) {
@@ -568,7 +655,7 @@ function loadPlan(dataDir, manifest) {
   } catch (error) {
     throw new Error(`merge-domain-areas: unreadable domain plan ${planPath} (${error.message}); ${hint}`);
   }
-  if (!isObject(plan) || !isObject(plan.modules) || !Array.isArray(plan.domains)) {
+  if (!isObject(plan) || !isObject(plan.modules) || !Array.isArray(plan.domains) || !Array.isArray(plan.mixed)) {
     throw new Error(`merge-domain-areas: malformed domain plan ${planPath}; ${hint}`);
   }
   const planned = new Set(Object.keys(plan.modules));
@@ -653,6 +740,7 @@ export async function runMerge({
   lines.push(`plan status=${coverage.plan.status} business=${coverage.plan.businessDomains} support=${coverage.plan.supportDomains}`);
   lines.push(`flows homed step=${coverage.flows.homedByStep} declared=${coverage.flows.homedByDeclared} unplaced=${coverage.flows.unplaced}`);
   for (const id of merge.flowHoming.unplacedFlows) lines.push(`unplaced ${id} area=${merge.flowHoming.unplacedAreas[id]}`);
+  lines.push(...homingLines(coverage));
   lines.push(conservation.ok ? 'conservation ok' : `conservation FAILED missing=${conservation.missing.length} extra=${conservation.extra.length}`);
   for (const module of coverage.modules.filter((m) => m.status === 'silent-zero')) {
     lines.push(`silent-zero ${module.path} entryPoints=${module.entryPoints} areas=${module.areas.join(',')}`);
@@ -700,4 +788,4 @@ if (isCliEntry()) {
   }
 }
 
-export default { acceptOutput, mergeAreas, checkConservation, computeCoverage, locateStep, runMerge, MODULE_BUCKETS };
+export default { acceptOutput, mergeAreas, checkConservation, computeCoverage, homingLines, locateStep, runMerge, MODULE_BUCKETS };

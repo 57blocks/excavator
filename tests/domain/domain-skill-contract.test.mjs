@@ -67,7 +67,7 @@ describe('/excavator-domain domain plan', () => {
   // The hand-written alias table was the unrepeatable judgement this change removes.
   it('has no alias step and forbids editing plan or outputs by hand', () => {
     expect(skill).not.toMatch(/alias/i);
-    expect(skill).toContain('Never write, copy or edit the plan output or `domain-plan.json` yourself.');
+    expect(skill).toContain('Never write, copy or edit the plan output, `domain-plan.json` or an area context yourself.');
   });
 });
 
@@ -111,5 +111,40 @@ describe('domain-analyzer prompt', () => {
   it('forbids reusing an earlier output', () => {
     expect(agent).toMatch(/never copy/i);
     expect(agent).toContain('domain-graph.json');
+  });
+});
+
+// Flows that start in a directory holding several business areas, or in a
+// support directory, are homed on the domain the analyzer chooses from the
+// plan's fixed list. The analyzer can only choose from a list it has, so the
+// plan is settled before any area is dispatched.
+describe('/excavator-domain homing of mixed and support modules', () => {
+  it('settles the plan before dispatching the areas', () => {
+    const accept = skill.indexOf('node "$PLUGIN_ROOT/skills/excavator-domain/plan-domains.mjs" accept "$PROJECT_ROOT"');
+    const areas = skill.search(/one subagent per area/i);
+    expect(accept).toBeGreaterThan(-1);
+    expect(areas).toBeGreaterThan(accept);
+    expect(skill).not.toMatch(/the planner are independent/i);
+    expect(skill).toContain('domainPlan');
+  });
+
+  it('reports the flows that ended in a support domain without a choice', () => {
+    expect(skill).toContain('support-unchosen');
+    expect(skill).toMatch(/fallback/);
+  });
+
+  it('has the planner mark mixed modules and keep business directories out of support domains', () => {
+    expect(planner).toContain('"mixed"');
+    expect(planner).toMatch(/holds only modules with no business behaviour/);
+    expect(planner).toMatch(/scheduled jobs/);
+    expect(planner).toMatch(/existing marks cannot change/);
+  });
+
+  it('has the analyzer choose a planned domain for flows of modules marked choose, with a reason', () => {
+    expect(agent).toContain('domainPlan');
+    expect(agent).toContain('`domainMeta.domain`');
+    expect(agent).toContain('`domainMeta.domainReason`');
+    expect(agent).toContain('"choose": true');
+    expect(agent).toMatch(/only ids listed in `domainPlan.domains`/);
   });
 });

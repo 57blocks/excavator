@@ -15,7 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   PLAN_FORMAT, PLAN_INPUT_FORMAT, PLAN_FILE, SAMPLE_LIMITS, EXIT_REJECTED,
-  moduleSetDigest, maxBusinessDomains, reconcilePlan, buildPlanInput, acceptPlan,
+  moduleSetDigest, maxBusinessDomains, reconcilePlan, buildPlanInput, acceptPlan, areaPlanFor,
 } from '../../skills/excavator-domain/plan-domains.mjs';
 import { writeMultiModuleProject } from '../fixtures/domain-areas/multi-module.mjs';
 
@@ -227,6 +227,7 @@ describe('O2 acceptPlan', () => {
       format: PLAN_FORMAT,
       moduleSetDigest: moduleSetDigest(['a', 'b']),
       modules: { a: 'domain:alpha', b: 'domain:beta' },
+      mixed: [],
       domains: [dom('domain:alpha', 'business', { tags: ['t'] }), dom('domain:beta')],
       crossDomain: [{ source: 'domain:alpha', target: 'domain:beta', description: 'x' }],
       history: [{ mode: 'new', at: 'earlier', modules: 2, planned: 2 }],
@@ -274,6 +275,7 @@ describe('extend after a shrink', () => {
     format: PLAN_FORMAT,
     moduleSetDigest: moduleSetDigest(ps),
     modules: Object.fromEntries(ps.map((p, i) => [p, five[i % 5]])),
+    mixed: [],
     domains: five.map((id) => dom(id)),
     crossDomain: [],
     history: [],
@@ -310,6 +312,7 @@ describe('O3 reconcilePlan', () => {
       format: PLAN_FORMAT,
       moduleSetDigest: moduleSetDigest(modulePaths),
       modules,
+      mixed: [],
       domains: [dom('domain:alpha'), dom('domain:beta')],
       crossDomain: [{ source: 'domain:alpha', target: 'domain:beta', description: 'x' }],
       history: [],
@@ -402,7 +405,7 @@ describe('CLI end to end on the multi-module fixture', () => {
     writeFileSync(join(areasDir, 'plan.output.json'), JSON.stringify(goodOutput(inp)));
     const a = run('accept', root);
     expect(a.status, a.stdout + a.stderr).toBe(0);
-    expect(a.stdout).toMatch(/^plan accepted mode=new business=2 support=1 modules=\d+ crossDomainDropped=0/);
+    expect(a.stdout).toMatch(/^plan accepted mode=new business=2 support=1 modules=\d+ mixed=0 crossDomainDropped=0 areaContexts=\d+/);
     const plan = JSON.parse(readFileSync(planFile, 'utf-8'));
     expect(Object.keys(plan.modules)).toEqual(Object.keys(plan.modules).sort());
     expect(Object.keys(plan.modules)).toHaveLength(manifest.modules.length);
@@ -439,5 +442,185 @@ describe('CLI end to end on the multi-module fixture', () => {
   it('prepare without a manifest exits 1', () => {
     const root = tempRoot();
     expect(run('prepare', root).status).toBe(1);
+  });
+});
+
+// A directory that holds the business logic of several areas (a legacy
+// routes/ or services/ directory, a jobs directory) cannot be homed whole.
+// The planner marks it mixed; the plan stores the mark, reuse carries it, and
+// every area context learns the plan's domains and which of its modules leave
+// the choice of domain to the analyzer.
+describe('mixed modules in the plan', () => {
+  const ps = paths(9);
+  const reasonsOf = (r) => (r.ok ? '' : r.reasons.join('\n'));
+
+  it('stores the plan as format 2 with sorted mixed modules, empty when omitted', () => {
+    expect(PLAN_FORMAT).toBe('excavator-domain-plan/2');
+    expect(PLAN_INPUT_FORMAT).toBe('excavator-domain-plan-input/2');
+    const i = input(ps);
+    const r = acceptPlan({ input: i, output: goodOutput(i, { mixed: [ps[4], ps[1]] }), plan: null, now: NOW });
+    expect(r.ok, reasonsOf(r)).toBe(true);
+    expect(r.plan.mixed).toEqual([ps[1], ps[4]]);
+    const plain = acceptPlan({ input: i, output: goodOutput(i), plan: null, now: NOW });
+    expect(plain.plan.mixed).toEqual([]);
+  });
+
+  const rejectCases = [
+    ['unknown module', ['src/unknown'], 'src/unknown'],
+    ['duplicate', [ps[0], ps[0]], ps[0]],
+    ['not an array', 'src/m001', 'mixed'],
+    ['not a path', [7], 'mixed'],
+  ];
+  for (const [label, mixed, mention] of rejectCases) {
+    it(`rejects mixed: ${label}`, () => {
+      const i = input(ps);
+      const r = acceptPlan({ input: i, output: goodOutput(i, { mixed }), plan: null, now: NOW });
+      expect(r.ok, label).toBe(false);
+      expect(reasonsOf(r)).toContain(mention);
+      expect(reasonsOf(r)).toContain('mixed');
+    });
+  }
+
+  describe('extend mode', () => {
+    const base = {
+      format: 'excavator-domain-plan/2',
+      moduleSetDigest: moduleSetDigest(['a', 'b']),
+      modules: { a: 'domain:alpha', b: 'domain:beta' },
+      mixed: ['a'],
+      domains: [dom('domain:alpha'), dom('domain:beta', 'support')],
+      crossDomain: [],
+      history: [],
+    };
+    const extendInput = () => {
+      const { manifest, context } = material(['a', 'b', 'c']);
+      return buildPlanInput({ manifest, context, token: manifest.token, mode: 'extend', plan: base, unassigned: ['c'], outputPath: '/o' });
+    };
+    it('shows the existing marks on the input rows and leaves the new rows unmarked', () => {
+      expect(extendInput().modules.map((m) => [m.path, m.mixed])).toEqual([['a', true], ['b', false], ['c', null]]);
+      const fresh = input(['x', 'y']);
+      expect(fresh.modules.map((m) => m.mixed)).toEqual([null, null]);
+    });
+    it('adds a mark for a new module and keeps the old ones', () => {
+      const i = extendInput();
+      const r = acceptPlan({ input: i, output: { planRun: i.planRun, domains: [], assignments: { c: 'domain:alpha' }, mixed: ['c'] }, plan: base, now: NOW });
+      expect(r.ok, reasonsOf(r)).toBe(true);
+      expect(r.plan.mixed).toEqual(['a', 'c']);
+    });
+    it('rejects a mark on an existing module', () => {
+      const i = extendInput();
+      const r = acceptPlan({ input: i, output: { planRun: i.planRun, domains: [], assignments: { c: 'domain:alpha' }, mixed: ['b'] }, plan: base, now: NOW });
+      expect(r.ok).toBe(false);
+      expect(reasonsOf(r)).toMatch(/mixed: b is already assigned/);
+    });
+  });
+
+  it('replans a stored plan of format 1, with the format as the reason', () => {
+    const s = { format: 'excavator-domain-plan/1', moduleSetDigest: moduleSetDigest(['a']), modules: { a: 'domain:alpha' }, domains: [dom('domain:alpha')], crossDomain: [], history: [] };
+    const r = reconcilePlan({ stored: s, modulePaths: ['a'], replan: false });
+    expect(r.mode).toBe('new');
+    expect(r.reason).toContain('excavator-domain-plan/1');
+  });
+
+  it('treats a stored mark on a module the plan does not hold as malformed', () => {
+    const s = { format: PLAN_FORMAT, moduleSetDigest: moduleSetDigest(['a']), modules: { a: 'domain:alpha' }, mixed: ['ghost'], domains: [dom('domain:alpha')], crossDomain: [], history: [] };
+    const r = reconcilePlan({ stored: s, modulePaths: ['a'], replan: false });
+    expect(r.mode).toBe('new');
+    expect(r.reason).toContain('ghost');
+  });
+
+  it('prunes the marks of removed modules', () => {
+    const s = {
+      format: PLAN_FORMAT, moduleSetDigest: moduleSetDigest(['a', 'b', 'c']),
+      modules: { a: 'domain:alpha', b: 'domain:alpha', c: 'domain:alpha' }, mixed: ['a', 'c'],
+      domains: [dom('domain:alpha')], crossDomain: [], history: [],
+    };
+    const r = reconcilePlan({ stored: s, modulePaths: ['a', 'b'], replan: false });
+    expect(r.mode).toBe('reused');
+    expect(r.plan.mixed).toEqual(['a']);
+  });
+
+  it('gives an area the plan domains and, per module of the area, its domain and whether the analyzer chooses', () => {
+    const plan = {
+      format: PLAN_FORMAT,
+      modules: { 'legacy/routes': 'domain:orders', 'api/orders': 'domain:orders', 'jobs/cmd': 'domain:infra', 'api/billing': 'domain:billing' },
+      mixed: ['legacy/routes'],
+      domains: [dom('domain:orders'), dom('domain:billing', 'business', { tags: ['t'] }), dom('domain:infra', 'support')],
+    };
+    const got = areaPlanFor(plan, ['api/orders', 'jobs/cmd', 'legacy/routes']);
+    expect(got.domains).toEqual([
+      { id: 'domain:orders', kind: 'business', name: 'orders', summary: 'domain:orders summary' },
+      { id: 'domain:billing', kind: 'business', name: 'billing', summary: 'domain:billing summary' },
+      { id: 'domain:infra', kind: 'support', name: 'infra', summary: 'domain:infra summary' },
+    ]);
+    expect(got.modules).toEqual({
+      'api/orders': { domain: 'domain:orders', choose: false },
+      'jobs/cmd': { domain: 'domain:infra', choose: true },
+      'legacy/routes': { domain: 'domain:orders', choose: true },
+    });
+  });
+});
+
+describe('CLI: area contexts carry the settled plan', () => {
+  function prepareProject() {
+    const root = tempRoot();
+    writeMultiModuleProject(root);
+    const ex = spawnSync('python3', [EXTRACT, root], { encoding: 'utf-8' });
+    if (ex.error) throw ex.error;
+    expect(ex.status, ex.stderr).toBe(0);
+    const sp = spawnSync(process.execPath, [SPLIT, root, '--budget-bytes', '4000'], { encoding: 'utf-8' });
+    expect(sp.status, sp.stderr).toBe(0);
+    return { root, areasDir: join(root, '.excavator/intermediate/domain-areas') };
+  }
+  const run = (...args) => spawnSync(process.execPath, [PLAN, ...args], { encoding: 'utf-8' });
+  const contexts = (areasDir) => {
+    const manifest = JSON.parse(readFileSync(join(areasDir, 'manifest.json'), 'utf-8'));
+    return manifest.areas.map(({ areaId }) => ({
+      areaId,
+      held: manifest.modules.filter((m) => m.areas.includes(areaId)).map((m) => m.path).sort(),
+      context: JSON.parse(readFileSync(join(areasDir, `${areaId}.context.json`), 'utf-8')),
+    }));
+  };
+
+  it('writes domainPlan into every area context on accept and on reuse, and not on a rejection', () => {
+    const { root, areasDir } = prepareProject();
+    expect(run('prepare', root).status).toBe(0);
+    for (const { context } of contexts(areasDir)) expect(context.domainPlan).toBeUndefined();
+    const inp = JSON.parse(readFileSync(join(areasDir, 'plan.input.json'), 'utf-8'));
+
+    writeFileSync(join(areasDir, 'plan.output.json'), JSON.stringify(goodOutput({ ...inp, planRun: { token: 'old' } })));
+    expect(run('accept', root).status).toBe(EXIT_REJECTED);
+    for (const { context } of contexts(areasDir)) expect(context.domainPlan).toBeUndefined();
+
+    const mixed = [inp.modules[0].path];
+    writeFileSync(join(areasDir, 'plan.output.json'), JSON.stringify(goodOutput(inp, { mixed })));
+    const a = run('accept', root);
+    expect(a.status, a.stdout + a.stderr).toBe(0);
+    expect(a.stdout).toMatch(/mixed=1/);
+    expect(a.stdout).toMatch(/areaContexts=\d+/);
+    const plan = JSON.parse(readFileSync(join(root, '.excavator', PLAN_FILE), 'utf-8'));
+    const support = new Set(plan.domains.filter((d) => d.kind === 'support').map((d) => d.id));
+    const check = () => {
+      const all = contexts(areasDir);
+      expect(all.length).toBeGreaterThan(1);
+      for (const { areaId, held, context } of all) {
+        expect(context.areaRun.areaId).toBe(areaId);
+        expect(Object.keys(context.domainPlan.modules).sort()).toEqual(held);
+        expect(context.domainPlan.domains.map((d) => d.id)).toEqual(plan.domains.map((d) => d.id));
+        for (const path of held) {
+          expect(context.domainPlan.modules[path]).toEqual({
+            domain: plan.modules[path],
+            choose: mixed.includes(path) || support.has(plan.modules[path]),
+          });
+        }
+      }
+    };
+    check();
+
+    const sp = spawnSync(process.execPath, [SPLIT, root, '--budget-bytes', '4000'], { encoding: 'utf-8' });
+    expect(sp.status, sp.stderr).toBe(0);
+    for (const { context } of contexts(areasDir)) expect(context.domainPlan).toBeUndefined();
+    const p2 = run('prepare', root);
+    expect(p2.stdout).toMatch(/^plan=reused .*mixed=1 areaContexts=\d+/);
+    check();
   });
 });

@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  acceptOutput, mergeAreas, computeCoverage, checkConservation, runMerge, EXIT_NOT_CONSERVED,
+  acceptOutput, mergeAreas, computeCoverage, checkConservation, runMerge, homingLines, EXIT_NOT_CONSERVED,
 } from '../../skills/excavator-domain/merge-domain-areas.mjs';
 import { PLAN_FORMAT, moduleSetDigest } from '../../skills/excavator-domain/plan-domains.mjs';
 import { HANDLERS, HANDLER_MODULES, writeMultiModuleProject } from '../fixtures/domain-areas/multi-module.mjs';
@@ -59,6 +59,8 @@ function analysis({ areaId, token, domains, skippedModules, extraEdges = [], wri
       const flowId = `flow:${flow.name}`;
       const meta = { entryPoint: 'POST /x', entryType: 'http' };
       if (flow.module) meta.module = flow.module;
+      if (flow.domain !== undefined) meta.domain = flow.domain;
+      if (flow.domainReason !== undefined) meta.domainReason = flow.domainReason;
       nodes.push({ id: flowId, type: 'flow', name: flow.name, summary: 's', tags: ['t'], complexity: 'simple', domainMeta: meta });
       if (writeDomains) edges.push({ source: domain.id, target: flowId, type: 'contains_flow', direction: 'forward', weight: 1 });
       flow.files.forEach((file, i) => {
@@ -82,12 +84,13 @@ function analysis({ areaId, token, domains, skippedModules, extraEdges = [], wri
 }
 
 /** A stored plan: `assign` is { modulePath: domainId }; `kinds` overrides the default business kind. */
-function planFrom(assign, { kinds = {}, crossDomain = [] } = {}) {
+function planFrom(assign, { kinds = {}, crossDomain = [], mixed = [] } = {}) {
   const ids = [...new Set(Object.values(assign))];
   return {
     format: PLAN_FORMAT,
     moduleSetDigest: moduleSetDigest(Object.keys(assign)),
     modules: Object.fromEntries(Object.keys(assign).sort().map((k) => [k, assign[k]])),
+    mixed: [...mixed].sort(),
     domains: ids.map((id) => ({ id, kind: kinds[id] ?? 'business', name: id.slice(7), summary: `${id} summary`, tags: ['t'], entities: ['E'], businessRules: ['R'] })),
     crossDomain,
     history: [],
@@ -316,6 +319,130 @@ describe('O4 flow homing', () => {
     const a = one([{ name: 'dup', files: ['modules/orders/routes.js'] }]);
     const b = analysis({ areaId: 'area-002', token: T, domains: [{ id: 'x', flows: [{ name: 'dup', files: ['modules/lib/db.js'] }] }] });
     expect(homed([a, b]).edges).toEqual(['domain:ordering>flow:dup', 'domain:shared>flow:dup--area-002']);
+  });
+});
+
+// A directory that holds several business areas (a legacy routes/ or
+// services/ directory, a jobs directory) cannot be homed whole: under the
+// module rule every flow it starts goes to the one domain the directory got,
+// often a support domain. Flows that start in a mixed module or in a module
+// of a support domain are homed on the domain the analyzer chose from the
+// plan's list; a missing or unknown choice falls back to the module's domain
+// and is counted, and a flow that ends in a support domain without a choice
+// is listed by id.
+describe('homing flows of mixed and support modules on the analyzer\'s choice', () => {
+  const manifest = manifestOf({
+    'api/orders': ['api/orders/controller.js'],
+    'api/billing': ['api/billing/controller.js'],
+    'legacy/routes': ['legacy/routes/orders.js', 'legacy/routes/invoices.js'],
+    'jobs/cmd': ['jobs/cmd/remind.js', 'jobs/cmd/rotate.js', 'jobs/cmd/vacuum.js', 'jobs/cmd/purge.js'],
+  });
+  const plan = planFrom(
+    { 'api/orders': 'domain:ordering', 'api/billing': 'domain:billing', 'legacy/routes': 'domain:ordering', 'jobs/cmd': 'domain:infra' },
+    { kinds: { 'domain:infra': 'support' }, mixed: ['legacy/routes'] },
+  );
+  const area = analysis({
+    areaId: 'area-001', token: T,
+    domains: [{
+      id: 'x',
+      flows: [
+        { name: 'v1-issue-invoice', files: ['legacy/routes/invoices.js'], domain: 'domain:billing', domainReason: 'Issues an invoice.' },
+        { name: 'v1-cancel-order', files: ['legacy/routes/orders.js'] },
+        { name: 'remind-overdue', files: ['jobs/cmd/remind.js'], domain: 'domain:billing', domainReason: 'Reminds customers of overdue invoices.' },
+        { name: 'rotate-logs', files: ['jobs/cmd/rotate.js'], domain: 'domain:infra', domainReason: 'Log rotation serves no business area.' },
+        { name: 'vacuum', files: ['jobs/cmd/vacuum.js'], domain: 'domain:nowhere' },
+        { name: 'purge', module: 'jobs/cmd', files: [{ summary: 'no file' }] },
+        { name: 'create-order', files: ['api/orders/controller.js'], domain: 'domain:billing' },
+      ],
+    }],
+  });
+  const run = () => mergeAreas({ accepted: accepted(area), plan, manifest });
+
+  it('homes each flow by module, by a valid choice, or by fallback', () => {
+    const { graph } = run();
+    const edges = graph.edges.filter((e) => e.type === 'contains_flow').map((e) => `${e.target}>${e.source}`).sort();
+    expect(edges).toEqual([
+      'flow:create-order>domain:ordering',
+      'flow:purge>domain:infra',
+      'flow:remind-overdue>domain:billing',
+      'flow:rotate-logs>domain:infra',
+      'flow:v1-cancel-order>domain:ordering',
+      'flow:v1-issue-invoice>domain:billing',
+      'flow:vacuum>domain:infra',
+    ]);
+  });
+
+  it('counts how each domain was decided and lists every choice with its reason', () => {
+    const { merge } = run();
+    expect(merge.flowHoming).toMatchObject({
+      homedByStep: 6, homedByDeclared: 1, unplaced: 0,
+      byModule: 1, byChoice: 3, fallbackMissing: 2, fallbackInvalid: 1, choicesIgnored: 1,
+    });
+    expect(merge.flowHoming.choices).toEqual([
+      { flow: 'flow:v1-issue-invoice', module: 'legacy/routes', moduleDomain: 'domain:ordering', domain: 'domain:billing', by: 'choice', reason: 'Issues an invoice.' },
+      { flow: 'flow:v1-cancel-order', module: 'legacy/routes', moduleDomain: 'domain:ordering', domain: 'domain:ordering', by: 'fallback', fallback: 'missing' },
+      { flow: 'flow:remind-overdue', module: 'jobs/cmd', moduleDomain: 'domain:infra', domain: 'domain:billing', by: 'choice', reason: 'Reminds customers of overdue invoices.' },
+      { flow: 'flow:rotate-logs', module: 'jobs/cmd', moduleDomain: 'domain:infra', domain: 'domain:infra', by: 'choice', reason: 'Log rotation serves no business area.' },
+      { flow: 'flow:vacuum', module: 'jobs/cmd', moduleDomain: 'domain:infra', domain: 'domain:infra', by: 'fallback', fallback: 'invalid', chosen: 'domain:nowhere' },
+      { flow: 'flow:purge', module: 'jobs/cmd', moduleDomain: 'domain:infra', domain: 'domain:infra', by: 'fallback', fallback: 'missing' },
+    ]);
+  });
+
+  it('names every flow that ends in a support domain without a choice', () => {
+    const { merge } = run();
+    expect(merge.flowHoming.support).toEqual({ total: 3, chosen: 1, unchosen: 2, unchosenFlows: ['flow:vacuum', 'flow:purge'] });
+  });
+
+  it('stays conserved and leaves the module buckets as they were', () => {
+    const { graph, merge } = run();
+    expect(checkConservation({ accepted: accepted(area), merged: graph, renames: merge.idsRenamed }).ok).toBe(true);
+    const coverage = computeCoverage({ manifest, areaResults: [{ areaId: 'area-001', status: 'accepted', graph: area }], merged: graph, merge, plan, planStatus: 'reused' });
+    expect(coverage.buckets).toEqual({ covered: 3, 'declared-skip': 0, 'silent-zero': 1, 'no-candidates': 0 }); // api/billing has no flow
+    expect(coverage.flows).toMatchObject({
+      total: 7, byModule: 1, byChoice: 3, fallback: { missing: 2, invalid: 1 }, choicesIgnored: 1,
+      support: { total: 3, chosen: 1, unchosen: 2, unchosenFlows: ['flow:vacuum', 'flow:purge'] },
+    });
+    expect(coverage.flows.choices).toHaveLength(6);
+  });
+
+  it('keeps no claim on a merged flow that the merge did not follow', () => {
+    const { graph } = run();
+    const meta = (id) => graph.nodes.find((n) => n.id === id).domainMeta;
+    expect(meta('flow:create-order').domain).toBeUndefined();
+    expect(meta('flow:vacuum').domain).toBeUndefined();
+    expect(meta('flow:v1-issue-invoice')).toMatchObject({ domain: 'domain:billing', domainReason: 'Issues an invoice.' });
+    expect(area.nodes.find((n) => n.id === 'flow:vacuum').domainMeta.domain).toBe('domain:nowhere');
+  });
+
+  it('prints one line per flow the analyzer left without a valid, reasoned choice', () => {
+    const { graph, merge } = run();
+    const coverage = computeCoverage({ manifest, areaResults: [{ areaId: 'area-001', status: 'accepted', graph: area }], merged: graph, merge, plan, planStatus: 'reused' });
+    expect(homingLines(coverage)).toEqual([
+      'flows domain module=1 choice=3 fallback=3 choices-ignored=1 choices-without-reason=0 support=3 support-chosen=1 support-unchosen=2',
+      'fallback flow:v1-cancel-order module=legacy/routes reason=missing',
+      'support-unchosen flow:vacuum module=jobs/cmd reason=invalid',
+      'support-unchosen flow:purge module=jobs/cmd reason=missing',
+    ]);
+  });
+
+  it('does not count a support choice without a reason as judged non-business', () => {
+    const bare = analysis({ areaId: 'area-001', token: T, domains: [{ id: 'x', flows: [{ name: 'quiet', files: ['jobs/cmd/rotate.js'], domain: 'domain:infra' }] }] });
+    const r = mergeAreas({ accepted: accepted(bare), plan, manifest });
+    expect(r.merge.flowHoming).toMatchObject({ byChoice: 1, choicesWithoutReason: 1 });
+    expect(r.merge.flowHoming.support).toEqual({ total: 1, chosen: 0, unchosen: 1, unchosenFlows: ['flow:quiet'] });
+    const coverage = computeCoverage({ manifest, areaResults: [{ areaId: 'area-001', status: 'accepted', graph: bare }], merged: r.graph, merge: r.merge, plan, planStatus: 'reused' });
+    expect(homingLines(coverage)).toContain('support-unchosen flow:quiet module=jobs/cmd reason=no-reason');
+  });
+
+  it('moves a flow only through the choice: without it the jobs flow stays in the support domain', () => {
+    const bare = JSON.parse(JSON.stringify(area));
+    for (const node of bare.nodes) if (node.domainMeta) { delete node.domainMeta.domain; delete node.domainMeta.domainReason; }
+    const homeOf = (graph, flow) => graph.edges.find((e) => e.type === 'contains_flow' && e.target === flow).source;
+    const without = mergeAreas({ accepted: accepted(bare), plan, manifest });
+    expect(homeOf(without.graph, 'flow:remind-overdue')).toBe('domain:infra');
+    expect(homeOf(without.graph, 'flow:v1-issue-invoice')).toBe('domain:ordering');
+    expect(without.merge.flowHoming.support.unchosen).toBe(4);
+    expect(homeOf(run().graph, 'flow:remind-overdue')).toBe('domain:billing');
   });
 });
 
@@ -605,7 +732,14 @@ describe('multi-module fixture end to end', () => {
     expect(coverage.candidateFiles.uncited).toEqual([]);
     expect(coverage.plan).toMatchObject({ status: 'reused', businessDomains: 1, supportDomains: 1 });
     expect(coverage.plan.moduleSetDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(coverage.flows).toEqual({ total: coverage.totals.flows, homedByStep: coverage.totals.flows, homedByDeclared: 0, unplaced: 0 });
+    const others = coverage.flows.total - HANDLERS.length;
+    expect(coverage.flows).toMatchObject({
+      total: coverage.totals.flows, homedByStep: coverage.totals.flows, homedByDeclared: 0, unplaced: 0,
+      byModule: HANDLERS.length, byChoice: 0, fallback: { missing: others, invalid: 0 }, choicesIgnored: 0,
+      support: { total: others, chosen: 0, unchosen: others },
+    });
+    expect(stdout).toContain(`flows domain module=${HANDLERS.length} choice=0 fallback=${others} choices-ignored=0 choices-without-reason=0 support=${others} support-chosen=0 support-unchosen=${others}`);
+    expect(stdout.split('\n').filter((l) => l.startsWith('support-unchosen flow:'))).toHaveLength(others);
     expect(coverage.conservation).toMatchObject({ ok: true, missing: [], extra: [] });
     expect(coverage.modules.find((m) => m.path === HANDLER_MODULES[0]).domain).toBe('domain:commerce');
     expect(stdout).toContain('plan status=reused business=1 support=1');
