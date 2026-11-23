@@ -8,11 +8,12 @@ const DIGEST = 'digest-current';
 const MODEL = 'eu.anthropic.claude-sonnet-5';
 
 // The fact graph header as the Lazy pass leaves it; Full does not rewrite it.
-function factGraph(factsDigest = DIGEST) {
-  return { project: { pipelineVersion: 'lazy-fact-graph/14', factsDigest } };
+function factGraph(structureDigest = DIGEST) {
+  // factsDigest differs on purpose: the decision never looks at it.
+  return { project: { pipelineVersion: 'lazy-fact-graph/18', factsDigest: 'facts-digest-unrelated', structureDigest } };
 }
 function semanticGraph(overrides = {}) {
-  return { factDigest: DIGEST, model: MODEL, layers: [], ...overrides };
+  return { structureDigest: DIGEST, model: MODEL, layers: [], ...overrides };
 }
 function meta(commit) {
   return { gitCommitHash: commit };
@@ -41,7 +42,7 @@ describe('planFullRun (skip rule, design D5)', () => {
   });
 
   it('uses --mode=full when the semantic graph digest differs from the fact graph', () => {
-    const result = plan({ semanticGraph: semanticGraph({ factDigest: 'digest-old' }) });
+    const result = plan({ semanticGraph: semanticGraph({ structureDigest: 'digest-old' }) });
     expect(result.action).toBe('run');
     expect(result.flag).toBe('--mode=full');
   });
@@ -53,13 +54,27 @@ describe('planFullRun (skip rule, design D5)', () => {
   });
 
   it.each([
-    ['without a factDigest', { factDigest: undefined }],
-    ['with an empty factDigest', { factDigest: '' }],
-    ['with a non-string factDigest', { factDigest: 7 }],
+    ['without a structureDigest', { structureDigest: undefined }],
+    ['with an empty structureDigest', { structureDigest: '' }],
+    ['with a non-string structureDigest', { structureDigest: 7 }],
   ])('a semantic graph %s is not a full product: --full, no skip', (_name, overrides) => {
     const result = plan({ semanticGraph: semanticGraph(overrides) });
     expect(result.action).toBe('run');
     expect(result.flag).toBe('--full');
+  });
+
+  it('a legacy semantic graph (factDigest only) is a full product that is not fresh: --mode=full, never skip, never --full', () => {
+    const legacy = { factDigest: DIGEST, model: MODEL, layers: [] };
+    const result = plan({ semanticGraph: legacy });
+    expect(result.action).toBe('run');
+    expect(result.flag).toBe('--mode=full');
+  });
+
+  it('a legacy factDigest that is empty or not a string is not a full product', () => {
+    for (const factDigest of ['', 7]) {
+      const result = plan({ semanticGraph: { factDigest, model: MODEL, layers: [] } });
+      expect(result.flag).toBe('--full');
+    }
   });
 
   it('EXCAVATOR_FORCE always uses --full and is never skipped, even with a matching full product', () => {
@@ -76,7 +91,7 @@ describe('planFullRun (skip rule, design D5)', () => {
 
   it('the fact graph pipelineVersion no longer decides anything', () => {
     // An annotate-era stamp on the fact graph does not make a product Full ...
-    const stamped = plan({ graph: { project: { pipelineVersion: 'excavator-annotate/1', factsDigest: DIGEST } }, semanticGraph: null });
+    const stamped = plan({ graph: { project: { pipelineVersion: 'excavator-annotate/1', structureDigest: DIGEST } }, semanticGraph: null });
     expect(stamped.flag).toBe('--full');
     // ... and a Lazy stamp does not hide a Full one.
     expect(plan({ graph: factGraph() }).action).toBe('skip');
@@ -98,12 +113,12 @@ describe('planFullRun and the recorded model (design D5)', () => {
   });
 
   it('a model mismatch wins over a changed digest or HEAD: still --full', () => {
-    const result = plan({ semanticGraph: semanticGraph({ model: 'unknown', factDigest: 'digest-old' }), meta: meta(OTHER) });
+    const result = plan({ semanticGraph: semanticGraph({ model: 'unknown', structureDigest: 'digest-old' }), meta: meta(OTHER) });
     expect(result.flag).toBe('--full');
   });
 
   it('matching model with a changed digest keeps --mode=full', () => {
-    const result = plan({ semanticGraph: semanticGraph({ factDigest: 'digest-old' }) });
+    const result = plan({ semanticGraph: semanticGraph({ structureDigest: 'digest-old' }) });
     expect(result.flag).toBe('--mode=full');
   });
 
@@ -115,8 +130,8 @@ describe('planFullRun and the recorded model (design D5)', () => {
     expect(plan({}).action).toBe('skip');
   });
 
-  it('a fact graph without a factsDigest never skips (matching undefined is not a match)', () => {
-    const result = plan({ graph: { project: {} }, semanticGraph: semanticGraph({ factDigest: 'x' }) });
+  it('a fact graph without a structureDigest never skips (matching undefined is not a match)', () => {
+    const result = plan({ graph: { project: {} }, semanticGraph: semanticGraph({ structureDigest: 'x' }) });
     expect(result.action).toBe('run');
     expect(result.flag).toBe('--mode=full');
   });
@@ -124,7 +139,7 @@ describe('planFullRun and the recorded model (design D5)', () => {
 
 describe('checkProduct (design D1, model from semantic-graph.json)', () => {
   const check = (overrides) => checkProduct({
-    semanticGraph: semanticGraph(), meta: meta(HEAD), expectedHead: HEAD, expectedModel: MODEL, factsDigest: DIGEST, ...overrides,
+    semanticGraph: semanticGraph(), meta: meta(HEAD), expectedHead: HEAD, expectedModel: MODEL, structureDigest: DIGEST, ...overrides,
   });
 
   it('passes when commit and the semantic graph model both match', () => {
@@ -166,10 +181,10 @@ describe('checkProduct (design D1, model from semantic-graph.json)', () => {
     expect(result.ok).toBe(false);
   });
 
-  it('fails when the semantic graph factDigest differs from the fact graph factsDigest, naming both files and values', () => {
-    const result = check({ semanticGraph: semanticGraph({ factDigest: 'digest-old' }) });
+  it('fails when the semantic graph structureDigest differs from the fact graph structureDigest, naming both files and values', () => {
+    const result = check({ semanticGraph: semanticGraph({ structureDigest: 'digest-old' }) });
     expect(result.ok).toBe(false);
-    const reason = result.reasons.find((r) => r.includes('factDigest'));
+    const reason = result.reasons.find((r) => r.includes('structureDigest'));
     expect(reason).toBeTruthy();
     expect(reason).toContain('semantic-graph.json');
     expect(reason).toContain('knowledge-graph.jsonl');
@@ -178,19 +193,19 @@ describe('checkProduct (design D1, model from semantic-graph.json)', () => {
   });
 
   it('fails when the semantic graph is a stale one from the same model after the facts moved', () => {
-    const result = check({ factsDigest: 'digest-new' });
+    const result = check({ structureDigest: 'digest-new' });
     expect(result.ok).toBe(false);
   });
 
   it.each([
-    ['semantic graph without factDigest', { semanticGraph: semanticGraph({ factDigest: undefined }) }],
-    ['semantic graph with non-string factDigest', { semanticGraph: semanticGraph({ factDigest: 7 }) }],
-    ['fact graph without factsDigest', { factsDigest: undefined }],
-    ['fact graph with non-string factsDigest', { factsDigest: 7 }],
-    ['fact graph with null factsDigest', { factsDigest: null }],
+    ['semantic graph without structureDigest', { semanticGraph: semanticGraph({ structureDigest: undefined }) }],
+    ['semantic graph with non-string structureDigest', { semanticGraph: semanticGraph({ structureDigest: 7 }) }],
+    ['fact graph without structureDigest', { structureDigest: undefined }],
+    ['fact graph with non-string structureDigest', { structureDigest: 7 }],
+    ['fact graph with null structureDigest', { structureDigest: null }],
   ])('fails on a missing or non-string digest: %s', (_n, overrides) => {
     const result = check(overrides);
     expect(result.ok).toBe(false);
-    expect(result.reasons.some((r) => r.includes('factDigest'))).toBe(true);
+    expect(result.reasons.some((r) => r.includes('structureDigest'))).toBe(true);
   });
 });

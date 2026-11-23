@@ -36,7 +36,7 @@ const edge = (source, target, type) => ({ source, target, type, direction: 'forw
 function graph(extra = {}) {
   return {
     version: '1.0.0',
-    project: { name: 'fixture', languages: ['javascript'], frameworks: [], description: 'd', analyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc', factsDigest: DIGEST },
+    project: { name: 'fixture', languages: ['javascript'], frameworks: [], description: 'd', analyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc', factsDigest: DIGEST, structureDigest: DIGEST },
     nodes: [
       node('file:src/a.js', 'file', 'a.js', { filePath: 'src/a.js' }),
       node('file:src/b.js', 'file', 'b.js', { filePath: 'src/b.js' }),
@@ -175,7 +175,7 @@ describe('the semantic product of a full analysis', () => {
       { path: 'src/b.js', contentHash: HASH_B },
     ]));
     writeProduct(project.root, 'semantic-cache.json', semanticCache(Object.fromEntries(Object.entries(entries).map(([id, fields]) => [id, semanticEntry(fields)]))));
-    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ factDigest: layerDigest, layers }));
+    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ structureDigest: layerDigest, layers }));
   }
   const nodeOf = (data, id) => data['knowledge-graph.json'].nodes.find((n) => n.id === id);
 
@@ -265,7 +265,7 @@ describe('the semantic product of a full analysis', () => {
     writeFull({ entries: {}, layers: [ALL_LAYER], layerDigest: OTHER_DIGEST });
     const { data, manifest } = pack();
     expect(data['knowledge-graph.json']).toEqual(graph());
-    expect(manifest.rows.find((row) => row.key === 'semantics')).toMatchObject({ status: 'not-merged', reason: expect.stringMatching(/made from other facts/) });
+    expect(manifest.rows.find((row) => row.key === 'semantics')).toMatchObject({ status: 'not-merged', reason: expect.stringMatching(/made from other nodes and edges/) });
   });
 
   it('merges nothing without a semantic cache and says so', () => {
@@ -361,7 +361,7 @@ describe('a product that is missing is a missing key', () => {
     writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
     writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision, []));
     writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
-    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ factDigest: DIGEST }));
+    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ structureDigest: DIGEST }));
     writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: DIGEST }));
     const { manifest, result } = pack();
     const states = Object.fromEntries(manifest.products.map(({ name, status }) => [name, status]));
@@ -407,7 +407,7 @@ describe('a product that is missing is a missing key', () => {
     };
     writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision, []));
     writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
-    writeProduct(project.root, 'semantic-graph.json', JSON.stringify({ ...semanticGraph({ factDigest: DIGEST }), layers: undefined }));
+    writeProduct(project.root, 'semantic-graph.json', JSON.stringify({ ...semanticGraph({ structureDigest: DIGEST }), layers: undefined }));
     const seen = Object.fromEntries(Object.entries(graphs).map(([name, write]) => {
       write();
       const semantics = pack().result.products.find((p) => p.name === 'semantics');

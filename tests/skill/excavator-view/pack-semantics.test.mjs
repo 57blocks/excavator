@@ -10,6 +10,8 @@ import { writeTemplate } from './plugin-fixture.mjs';
 
 const DIGEST = 'a'.repeat(64);
 const OTHER_DIGEST = 'b'.repeat(64);
+// The graph's digest over its record streams too; the semantic layer must not bind to it.
+const FACTS_DIGEST = 'c'.repeat(64);
 const CONTRADICTED_TEXT = 'Opens a socket to the billing service and retries forever.';
 
 // Nodes of two files; the manifest records the content hash each file has now.
@@ -37,13 +39,13 @@ beforeEach(() => rmSync(join(project.root, '.excavator'), { recursive: true, for
 
 /** Write the graph and the source manifest, then the semantic cache and graph given; entries are { id: entry fields }. */
 function writeFull({ entries, cache = {}, layers, graphDigest = DIGEST, layerDigest = DIGEST, graph = true } = {}) {
-  writeProduct(project.root, 'knowledge-graph.jsonl', factGraphJsonl({ factsDigest: graphDigest, nodes: NODES }));
+  writeProduct(project.root, 'knowledge-graph.jsonl', factGraphJsonl({ factsDigest: FACTS_DIGEST, structureDigest: graphDigest, nodes: NODES }));
   writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision, [
     { path: 'src/a.js', contentHash: HASH_A },
     { path: 'src/b.js', contentHash: HASH_B },
   ]));
   writeProduct(project.root, 'semantic-cache.json', semanticCache(Object.fromEntries(Object.entries(entries ?? {}).map(([id, fields]) => [id, semanticEntry(fields)])), cache));
-  if (graph) writeProduct(project.root, 'semantic-graph.json', semanticGraph({ factDigest: layerDigest, layers: layers ?? [] }));
+  if (graph) writeProduct(project.root, 'semantic-graph.json', semanticGraph({ structureDigest: layerDigest, layers: layers ?? [] }));
 }
 
 // The entry and the bytes the packer read for the semantic files (the page's node summaries are made from them), and the packed page.
@@ -59,7 +61,7 @@ const payloadOf = (packed) => JSON.parse(payloadText(packed, 'semantics'));
 
 describe('semantics product', () => {
   it('is not run, with the full-mode command, when there is no semantic-cache.json, and the graph is still included', () => {
-    writeProduct(project.root, 'knowledge-graph.jsonl', factGraphJsonl({ factsDigest: DIGEST, nodes: NODES }));
+    writeProduct(project.root, 'knowledge-graph.jsonl', factGraphJsonl({ factsDigest: FACTS_DIGEST, structureDigest: DIGEST, nodes: NODES }));
     const packed = pack();
     expect(packed.product).toMatchObject({ status: 'not-run', command: '/excavator --full', payloads: [] });
     expect(packed.manifest.products.find((p) => p.name === 'knowledge-graph').status).toBe('included');
@@ -143,7 +145,7 @@ describe('semantics product', () => {
     expect(payloadOf(pack()).entries[0]).not.toHaveProperty('verification');
   });
 
-  it('is unreadable when the semantic graph\'s factDigest is not the knowledge graph\'s factsDigest, and names both', () => {
+  it('is unreadable when the semantic graph\'s structureDigest is not the knowledge graph\'s structureDigest, and names both', () => {
     writeFull({ entries: { 'file:src/a.js': { summary: 'x.', semanticSourceHash: HASH_A } }, layerDigest: OTHER_DIGEST });
     const packed = pack();
     expect(packed.product.status).toBe('unreadable');
@@ -152,7 +154,40 @@ describe('semantics product', () => {
     expect(payloadIds(packed)).not.toContain('semantics');
   });
 
-  it('is unreadable when the knowledge graph records no factsDigest but the semantic graph has one', () => {
+  it('includes the layers when only the graph\'s factsDigest and record streams differ, the nodes and edges being the same', () => {
+    const entries = { 'file:src/a.js': { summary: 'x.', semanticSourceHash: HASH_A } };
+    const layers = [{ id: 'l1', name: 'One', nodeIds: [] }, { id: 'l2', name: 'Two', nodeIds: [] }];
+    writeFull({ entries, layers });
+    const before = pack().product.counts.layers;
+    // Same structureDigest, another factsDigest, and an entry point record stream the semantic graph never saw.
+    writeProduct(project.root, 'knowledge-graph.jsonl', factGraphJsonl({
+      factsDigest: OTHER_DIGEST, structureDigest: DIGEST, nodes: NODES, entryPoints: [{ kind: 'entry', path: '/x' }],
+    }));
+    const packed = pack();
+    expect(packed.product.status).toBe('included');
+    expect(packed.product.counts.layers).toBe(2);
+    expect(packed.product.counts.layers).toBe(before);
+  });
+
+  it('is unreadable when a node or an edge changed, so the graph\'s structureDigest moved, and shows both structureDigests', () => {
+    writeFull({ entries: {}, layers: [{ id: 'l1', name: 'One', nodeIds: [] }], graphDigest: OTHER_DIGEST });
+    const packed = pack();
+    expect(packed.product.status).toBe('unreadable');
+    expect(packed.product.reason).toContain(`its structureDigest is ${DIGEST}`);
+    expect(packed.product.reason).toContain(`the graph's structureDigest is ${OTHER_DIGEST}`);
+  });
+
+  it('is unreadable for a semantic graph written before it was bound to nodes and edges, and says how it is re-bound', () => {
+    writeFull({ entries: {}, graph: false });
+    writeProduct(project.root, 'semantic-graph.json', { version: '2.0.0', contentLanguage: 'en', factDigest: DIGEST, layers: [] });
+    const packed = pack();
+    expect(packed.product.status).toBe('unreadable');
+    expect(packed.product.reason).toMatch(/no structureDigest/);
+    expect(packed.product.reason).toMatch(/written before the semantic graph was bound to the nodes and edges alone/);
+    expect(packed.product.reason).toMatch(/\/excavator re-binds it/);
+  });
+
+  it('is unreadable when the knowledge graph records no structureDigest but the semantic graph has one', () => {
     writeFull({ entries: {}, graphDigest: null });
     const packed = pack();
     expect(packed.product.status).toBe('unreadable');
@@ -183,9 +218,9 @@ describe('semantics product', () => {
 
   it('is unreadable when the semantic graph is not in English or lacks its layers', () => {
     writeFull({ entries: {} });
-    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ factDigest: DIGEST, extra: { contentLanguage: 'fr' } }));
+    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ structureDigest: DIGEST, extra: { contentLanguage: 'fr' } }));
     expect(pack().product.reason).toContain('semantic-graph.json');
-    writeProduct(project.root, 'semantic-graph.json', { version: '2.0.0', contentLanguage: 'en', factDigest: DIGEST });
+    writeProduct(project.root, 'semantic-graph.json', { version: '2.0.0', contentLanguage: 'en', structureDigest: DIGEST });
     expect(pack().product.reason).toMatch(/missing the top-level key\(s\): layers/);
   });
 
