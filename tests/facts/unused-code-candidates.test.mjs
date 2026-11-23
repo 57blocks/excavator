@@ -123,7 +123,7 @@ describe('candidates and clusters', () => {
       edges: [edge('invokes', descriptor.id, fnId('start')), call('start', 'loadCache')],
     });
     expect(candidateLabels(product)).toEqual(['orphan']);
-    expect(product.counts).toMatchObject({ functionNodes: 3, routeReachable: 2, candidates: 1, roots: { routes: 0, invokes: 1 } });
+    expect(product.counts).toMatchObject({ functionNodes: 3, routeReachable: 2, candidates: 1, roots: { routes: 0, invokes: 1, entryPoints: 0 } });
     expect(product.conservation).toEqual({ functionNodes: 3, routeReachable: 2, candidates: 1, holds: true });
   });
 
@@ -137,8 +137,62 @@ describe('candidates and clusters', () => {
         edge('invokes', descriptor.id, fnId('both')), edge('invokes', descriptor.id, fnId('invoked')), edge('invokes', 'file:other.xml', fnId('invoked')),
       ],
     });
-    expect(product.counts.roots).toEqual({ routes: 2, invokes: 2 });
+    expect(product.counts.roots).toEqual({ routes: 2, invokes: 2, entryPoints: 0 });
     expect(candidateLabels(product)).toEqual(['lone']);
+  });
+
+  // route-entry-points, task 4: entry records of the knowledge graph's `entryPoints` stream are roots
+  describe('entry point roots', () => {
+    const entryRecord = (nodeId, extra = {}) => ({
+      kind: 'entry', framework: 'express', file: 'src/X.java', line: 1, handler: { fate: 'node', nodeId }, ...extra,
+    });
+    const buildWith = ({ nodes, edges = [], entryPoints }) => buildUnusedCandidates({
+      graph: { nodes, edges, entryPoints, gaps: [], factsDigest: 'digest-1' },
+      structure: { results: [] },
+      sourceRevision: 'rev-1',
+    });
+
+    it('an entry whose handler resolved to a function roots it and its call chain; the count is 1', () => {
+      const product = buildWith({
+        nodes: labels(['handler', 'loader', 'orphan']),
+        edges: [call('handler', 'loader')],
+        entryPoints: [entryRecord(fnId('handler'))],
+      });
+      expect(candidateLabels(product)).toEqual(['orphan']);
+      expect(product.counts.roots).toEqual({ routes: 0, invokes: 0, entryPoints: 1 });
+    });
+
+    it('a graph without the stream roots nothing and counts 0', () => {
+      const product = build({ nodes: labels(['a']) });
+      expect(product.counts.roots.entryPoints).toBe(0);
+      expect(candidateLabels(product)).toEqual(['a']);
+    });
+
+    it('an entry whose handler is a class node, a mount record and an entry with another fate are no roots', () => {
+      const product = buildWith({
+        nodes: [classNode('Page'), ...labels(['a', 'b', 'c'])],
+        entryPoints: [
+          entryRecord(classId('Page')),
+          { kind: 'mount', framework: 'express', file: 'src/X.java', line: 2, fate: 'ignored', text: 'cors()' },
+          { ...entryRecord(fnId('a')), kind: 'mount' },
+          entryRecord(fnId('b'), { handler: { fate: 'inline', line: 3, endLine: 4 } }),
+          entryRecord('function:gone'),
+        ],
+      });
+      expect(product.counts.roots.entryPoints).toBe(0);
+      expect(candidateLabels(product)).toEqual(['a', 'b', 'c']);
+    });
+
+    it('the same function rooted by a routes edge and by an entry record is counted in both, once each', () => {
+      const endpoint = endpointNode('GET /x');
+      const product = buildWith({
+        nodes: [endpoint, ...labels(['both', 'lone'])],
+        edges: [routeTo(endpoint, fnId('both'))],
+        entryPoints: [entryRecord(fnId('both')), entryRecord(fnId('both'), { line: 5 })],
+      });
+      expect(product.counts.roots).toEqual({ routes: 1, invokes: 0, entryPoints: 1 });
+      expect(candidateLabels(product)).toEqual(['lone']);
+    });
   });
 
   it('an invokes edge to a node that is no function is no root, and is not counted', () => {
@@ -147,7 +201,7 @@ describe('candidates and clusters', () => {
       nodes: [descriptor, classNode('K'), ...labels(['a'])],
       edges: [edge('invokes', descriptor.id, classId('K')), edge('invokes', descriptor.id, 'function:gone')],
     });
-    expect(product.counts.roots).toEqual({ routes: 0, invokes: 0 });
+    expect(product.counts.roots).toEqual({ routes: 0, invokes: 0, entryPoints: 0 });
     expect(candidateLabels(product)).toEqual(['a']);
   });
 
@@ -613,7 +667,7 @@ describe('features from a Java fixture', () => {
     expect(product.counts).toEqual({
       functionNodes: 7,
       routeReachable: 0,
-      roots: { routes: 0, invokes: 0 },
+      roots: { routes: 0, invokes: 0, entryPoints: 0 },
       candidates: 7,
       entries: 7,
       entryComponents: 7,
