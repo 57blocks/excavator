@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 import { applySemanticPatches } from '../../skills/excavator/apply-semantic-patches.mjs';
 import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
-import { checkReadEvidence } from '../../skills/excavator/read-evidence.mjs';
+import { checkReadEvidence, citesAnchor } from '../../skills/excavator/read-evidence.mjs';
 
 const SOURCE = [
   'export function run(): void {',
@@ -150,4 +150,61 @@ describe('applySemanticPatches refuses a patch without read evidence', () => {
   it('refuses to run without the fact nodes the evidence is checked against', async () => {
     await expect(applySemanticPatches({ projectRoot: root, patches: [] })).rejects.toThrow(/factNodes/);
   });
+});
+
+describe('citesAnchor', () => {
+  const node = { filePath: 'src/orders/create.js' };
+  it('finds a line reference', () => {
+    expect(citesAnchor('Validates the order; implemented in create.js lines 12-31.', node)).toBe(true);
+    expect(citesAnchor('See line 40 for the retry.', node)).toBe(true);
+  });
+  it('finds a file:line reference', () => {
+    expect(citesAnchor('Called from create.js:120 on submit.', node)).toBe(true);
+  });
+  it('finds the node\'s own path when it has a directory', () => {
+    expect(citesAnchor('Order creation as part of the orders service in src/orders/create.js.', node)).toBe(true);
+  });
+  it('lets a summary name a file at the project root, or say line without a number', () => {
+    expect(citesAnchor('Declares the scripts of package.json.', { filePath: 'package.json' })).toBe(false);
+    expect(citesAnchor('Reads the input line by line and counts the lines.', node)).toBe(false);
+    expect(citesAnchor('Sums the totals of 3 lines items.', node)).toBe(false);
+  });
+});
+
+describe('applySemanticPatches refuses a summary that cites its own anchor', () => {
+  let root;
+  let graph;
+  let runNode;
+  let hash;
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'apply-semantic-patches-anchor-'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture' }));
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'a.ts'), SOURCE);
+    await runLazyAnalysis({ projectRoot: root, now: () => '2024-01-01T00:00:00.000Z' });
+    graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
+    runNode = graph.nodes.find((n) => n.type === 'function' && n.name === 'run');
+    const manifest = JSON.parse(readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8'));
+    hash = manifest.entries.find((e) => e.path === 'src/a.ts').contentHash;
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  for (const [label, fields] of [
+    ['a templated summary', { summary: 'Run as part of the fixture service; implemented in src/a.ts lines 1-4.' }],
+    ['a display name with a line number', { displayName: 'Run at line 1' }],
+  ]) {
+    it(`never commits ${label}, even with valid evidence, and records a gap`, async () => {
+      const { committed, gaps, results } = await applySemanticPatches({
+        projectRoot: root, factNodes: graph.nodes,
+        patches: [{
+          nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Logs a fixed label.', displayName: 'Log the label',
+          evidence: { line: 3, quote: 'console.log(label);' }, semanticSourceHash: hash, ...fields,
+        }],
+      });
+      expect(committed).toBe(0);
+      expect(results[0]).toMatchObject({ nodeId: runNode.id, ok: false, status: 'cites-anchor' });
+      expect(gaps.find((g) => g.kind === 'semantic-patch-cites-anchor')).toMatchObject({ count: 1, samples: [runNode.id] });
+    });
+  }
 });

@@ -128,3 +128,22 @@ export function checkReadEvidence({ evidence, node, lines }) {
   }
   return { ok: true };
 }
+
+const LINE_REFERENCE = /\blines?\s+\d+/i;
+const FILE_LINE_REFERENCE = /[\w.-]+\.[A-Za-z][\w]*:\d+/;
+
+/**
+ * True when `text` transcribes the node's anchor instead of describing the
+ * code: a line reference (`line 12`, `lines 12-31`), a `<file>.<ext>:<n>`
+ * reference, or the node's own path when the path has a directory. A file at
+ * the project root may name itself; its name is not a location.
+ *
+ * @param {unknown} text
+ * @param {{ filePath?: string }} node
+ */
+export function citesAnchor(text, node) {
+  if (typeof text !== 'string') return false;
+  if (LINE_REFERENCE.test(text) || FILE_LINE_REFERENCE.test(text)) return true;
+  const filePath = node?.filePath;
+  return typeof filePath === 'string' && filePath.includes('/') && text.includes(filePath);
+}

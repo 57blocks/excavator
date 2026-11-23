@@ -29,7 +29,9 @@
  * without valid evidence is not committed and is recorded as a gap: the
  * floor under a summary written from the node's name without reading its
  * source (openspec: changes/semantic-read-evidence, D2). The evidence is a
- * gate input only and is not written to the cache.
+ * gate input only and is not written to the cache. A patch whose `summary`
+ * or `displayName` names a line number or the node's own path is not
+ * committed either (D3): that is the anchor transcribed, not the code read.
  *
  * Contract: openspec/changes/full-semantic-isolation/specs/full-semantic-isolation/spec.md
  */
@@ -39,7 +41,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { WRITER_FIELDS, commitSemanticCacheEntry } from './semantic-cache.mjs';
-import { checkReadEvidence, createLineReader } from './read-evidence.mjs';
+import { checkReadEvidence, citesAnchor, createLineReader } from './read-evidence.mjs';
 import { createGapCollector } from './fact-graph-resolve.mjs';
 import { compareGaps } from './coverage-ledger.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
@@ -66,6 +68,9 @@ function reasonFor(kind) {
   }
   if (kind === 'semantic-patch-evidence-invalid') {
     return 'a semantic patch did not quote a line of its own slice other than the declaration line, and was not committed';
+  }
+  if (kind === 'semantic-patch-cites-anchor') {
+    return 'a semantic patch named a line number or its own file path in its summary or displayName, and was not committed';
   }
   if (kind === 'semantic-patch-unmappable-node') {
     return 'a semantic patch named a nodeId with no fact-graph counterpart and was dropped, not committed';
@@ -124,6 +129,12 @@ export async function applySemanticPatches({
       // committed cache entry under a made-up key.
       gapCollector.add('semantic-patch-unmappable-node', isNonEmptyString(patch.filePath) ? patch.filePath : 'unknown', nodeId);
       results.push({ nodeId, ok: false, status: 'unmappable-node' });
+      continue;
+    }
+
+    if (citesAnchor(patch.summary, node) || citesAnchor(patch.displayName, node)) {
+      gapCollector.add('semantic-patch-cites-anchor', isNonEmptyString(node.filePath) ? node.filePath : 'unknown', nodeId);
+      results.push({ nodeId, ok: false, status: 'cites-anchor' });
       continue;
     }
 
