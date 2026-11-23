@@ -94,7 +94,7 @@
 
 分析器注意到的后续种类按种类计入 `out-of-scope`。区内重复的端点（同端、同种类、同文件、同行、同地址键）保留一条并计数。守恒：分析器写出的端点数 = 各桶端点数之和 + 重复数，MUST 成立，否则退出 4、不写 `relations-graph.json`。
 
-候选文件的桶，恰好一个：`cited`（有端点或证据引到它）、`declared-skip`（分析器在 `skippedFiles` 里写了理由）、`silent-zero`（都没有）。非候选的源码文件计数 `not-candidate`；`container` 单元的候选计数 `container-skipped`；读不了的（超过 1 MB 或有超过 2000 字符的行）计数 `unreadable`；测试文件计数 `test-excluded`。单元的桶：`has-candidates`、`no-candidates`。各项之和等于源码文件总数与单元总数。
+候选文件的桶，恰好一个：`cited`（有端点或证据引到它）、`declared-skip`（分析器在 `skippedFiles` 里写了理由）、`ends-rejected`（分析器在它里面写了端点，但核对全部拒掉）、`silent-zero`（都没有）。非候选的源码文件计数 `not-candidate`；`container` 单元的候选计数 `container-skipped`；读不了的（超过 1 MB 或有超过 2000 字符的行）计数 `unreadable`；测试文件计数 `test-excluded`。单元的桶：`has-candidates`、`no-candidates`。各项之和等于源码文件总数与单元总数。
 
 区的验收同域 skill：没有本次令牌为 `rejected-stale`，不是 JSON 为 `rejected-parse`，没有文件为 `missing`；被拒区的东西不进合并，退出 3。
 

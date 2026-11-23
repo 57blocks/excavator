@@ -44,7 +44,8 @@ function outputs() {
     { kind: 'http', address: httpAddr('GET', '/api/ping'), caller: end('../outside.js', 1, 'whatever text'), receiver: null },
     { kind: 'http', address: httpAddr('GET', '/api/users/:id'), caller: end('server/app.js', 5, "app.get('/api/users/:id'"), receiver: null },
     { kind: 'http', address: httpAddr('GET', '/api/ping'), caller: end('web/src/users.js', 999, 'return api.get'), receiver: null },
-    { kind: 'http', address: httpAddr('GET', '/api/ping'), caller: end('web/src/users.js', 9, 'return api.delete(everything)'), receiver: null },
+    // quote-mismatch, the only end of web/src/admin.js: that file is ends-rejected, not silent.
+    { kind: 'http', address: httpAddr('GET', '/api/admin/stats'), caller: end('web/src/admin.js', 2, 'return api.delete(everything)'), receiver: null },
     { kind: 'http', address: httpAddr('GET', '/api/ping'), caller: end('web/src/users.js', 9, "api.get('/api/ping')", { evidence: [end('web/.env', 1, 'nothing like this line')] }), receiver: null },
     { kind: 'http', address: httpAddr('POST', '/api/carts'), caller: end('web/src/users.js', 6, "return api.post('/api/orders', order);"), receiver: null },
     // A later kind: counted, never linked.
@@ -141,10 +142,12 @@ describe('merge-relations end to end', () => {
 
     const files = Object.fromEntries(coverage.files.rows.map((r) => [r.file, r.status]));
     expect(files).toEqual({
-      'server/app.js': 'cited', 'server/public/widget.js': 'declared-skip', 'web/src/http.js': 'silent-zero',
+      'server/app.js': 'cited', 'server/public/widget.js': 'declared-skip', 'web/src/admin.js': 'ends-rejected', 'web/src/http.js': 'silent-zero',
       'web/src/live.js': 'cited', 'web/src/users.js': 'cited', 'worker/main.go': 'cited',
     });
     expect(result.stdout).toContain('silent-zero web/src/http.js unit=unit:web');
+    expect(result.stdout).not.toContain('silent-zero web/src/admin.js');
+    expect(result.stdout).toMatch(/files cited=\d+ declared-skip=1 ends-rejected=1 silent-zero=1 /);
     expect(coverage.units.find((u) => u.id === 'unit:lib').status).toBe('no-candidates');
 
     // http: 17 ends after the duplicate, 7 rejected -> over the quote-failure threshold.

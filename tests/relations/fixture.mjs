@@ -41,6 +41,7 @@ export const FILES = {
     "const socket = io('/');",
     "socket.on('order:created', (o) => console.log(o));",
   ].join('\n'),
+  'web/src/admin.js': "import { api } from './http';\nexport const stats = () => api.get('/api/admin/stats');\n",
   'web/src/plain.js': 'export const two = 1 + 1;\n',
   'web/src/users.test.js': "import axios from 'axios';\n",
   'server/package.json': JSON.stringify({ name: 'server', scripts: { start: 'node app.js' } }, null, 2),

@@ -54,8 +54,9 @@
  * relations-graph.json. Later kinds an analyzer noticed are counted by kind
  * (out-of-scope), never linked.
  * Candidate files: cited (an end or an evidence line of a checked end is in
- * it), declared-skip (its area listed it in skippedFiles with a reason) or
- * silent-zero. Units: has-candidates or no-candidates.
+ * it), declared-skip (its area listed it in skippedFiles with a reason),
+ * ends-rejected (an analyzer wrote ends in it and the check rejected every
+ * one) or silent-zero (none of these). Units: has-candidates or no-candidates.
  *
  * Measurements per kind: ends, quote-failed and its rate, the share of checked
  * ends that are address-unresolved, linked relations, and, when the previous
@@ -88,7 +89,7 @@ export const EXIT_INCOMPLETE = 3;
 export const EXIT_NOT_CONSERVED = 4;
 export const CALLER_BUCKETS = Object.freeze(['linked', 'ambiguous', 'caller-only', 'address-unresolved', 'quote-failed']);
 export const RECEIVER_BUCKETS = Object.freeze(['linked', 'receiver-only', 'address-unresolved', 'quote-failed']);
-export const FILE_BUCKETS = Object.freeze(['cited', 'declared-skip', 'silent-zero']);
+export const FILE_BUCKETS = Object.freeze(['cited', 'declared-skip', 'ends-rejected', 'silent-zero']);
 export const REJECTIONS = Object.freeze(['malformed', 'outside-root', 'outside-area', 'line-out-of-range', 'quote-mismatch', 'evidence-mismatch', 'address-not-quoted']);
 export const THRESHOLDS = Object.freeze({ agreement: 0.8, minAgreementUnion: 5, quoteFailureRate: 0.1, unresolvedShare: 0.3, minEnds: 10 });
 const QUOTE_WINDOW = 3;
@@ -431,15 +432,22 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
 
   // Candidate files and units.
   const cited = new Set();
+  const rejectedIn = new Set();
   for (const item of kept) {
-    if (!item.view) continue;
+    if (!item.view) {
+      const file = isObject(item.end.raw) && typeof item.end.raw.file === 'string' ? insideRoot(item.end.raw.file) : null;
+      if (file !== null) rejectedIn.add(file);
+      continue;
+    }
     cited.add(item.view.file);
     for (const e of item.view.evidence) cited.add(e.file);
   }
   const fileRows = [];
   const fileBuckets = Object.fromEntries(FILE_BUCKETS.map((b) => [b, 0]));
   for (const candidate of manifest.candidates ?? []) {
-    const status = cited.has(candidate.file) ? 'cited' : declared.has(candidate.file) ? 'declared-skip' : 'silent-zero';
+    const status = cited.has(candidate.file) ? 'cited'
+      : declared.has(candidate.file) ? 'declared-skip'
+        : rejectedIn.has(candidate.file) ? 'ends-rejected' : 'silent-zero';
     fileBuckets[status] += 1;
     fileRows.push({ file: candidate.file, unit: candidate.unit, status, ...(status === 'declared-skip' ? { reason: declared.get(candidate.file) } : {}) });
   }
@@ -537,7 +545,7 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
   const oos = Object.entries(merged.outOfScope).sort(([a], [b]) => compare(a, b));
   lines.push(`out-of-scope ${oos.length ? oos.map(([k, n]) => `${k}=${n}`).join(' ') : 'none'}`);
   const f = merged.files.buckets;
-  lines.push(`files cited=${f.cited} declared-skip=${f['declared-skip']} silent-zero=${f['silent-zero']} config-cited=${merged.files.configCited}/${merged.files.configFiles}`);
+  lines.push(`files cited=${f.cited} declared-skip=${f['declared-skip']} ends-rejected=${f['ends-rejected']} silent-zero=${f['silent-zero']} config-cited=${merged.files.configCited}/${merged.files.configFiles}`);
   const u = merged.units;
   lines.push(`units has-candidates=${u.filter((x) => x.status === 'has-candidates').length} no-candidates=${u.filter((x) => x.status === 'no-candidates').length}`);
   const n = merged.counts;

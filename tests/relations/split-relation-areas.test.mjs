@@ -30,6 +30,7 @@ describe('planRelationAreas', () => {
       'server/app.js': 'candidate',
       'server/public/widget.js': 'candidate',
       'tools/release.js': 'container-skipped',
+      'web/src/admin.js': 'candidate',
       'web/src/http.js': 'candidate',
       'web/src/live.js': 'candidate',
       'web/src/plain.js': 'not-candidate',
