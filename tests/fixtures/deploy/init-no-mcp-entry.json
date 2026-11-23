@@ -22,6 +22,7 @@
     "excavator:excavator-assemble-reviewer",
     "excavator:excavator-design-analyzer",
     "excavator:excavator-domain-analyzer",
+    "excavator:excavator-domain-planner",
     "excavator:excavator-file-analyzer",
     "excavator:excavator-graph-reviewer",
     "excavator:excavator-handbook-writer",

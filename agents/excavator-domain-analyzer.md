@@ -29,6 +29,11 @@ The dispatching skill gives you the path of the file, not its content. Read all 
 
 Other analyzers own the rest of the project. You may read the source of your area's files to understand a flow. Analyze only the modules and files listed in `modules`.
 
+**Under Option C you write flows and steps, not domains.** The project's domains are decided once for the whole project by a separate planner, and a script hangs each of your flows under the domain of the module it starts in. So under Option C:
+- write no `domain` nodes and no `contains_flow` or `cross_domain` edges (a script ignores them if you do);
+- give every flow `domainMeta.module`: the path of the module of your area where the flow starts (its entry point), copied from `modules`;
+- order each flow's steps from its entry point, so the first step with a `filePath` is in that module.
+
 The dispatching skill will tell you which option applies and provide the context data or its path in your prompt.
 
 ## Task
@@ -81,7 +86,8 @@ Produce a JSON object with this exact structure:
       "complexity": "simple|moderate|complex",
       "domainMeta": {
         "entryPoint": "<trigger, e.g. POST /api/orders>",
-        "entryType": "http|cli|event|cron|manual"
+        "entryType": "http|cli|event|cron|manual",
+        "module": "<Option C only: the module path where the flow starts>"
       }
     },
     {
@@ -110,9 +116,9 @@ Produce a JSON object with this exact structure:
 ## Rules
 
 1. **flow_step weight encodes order**: Use fractional weights within 0-1 range. For N steps: first = 1/N rounded to 1 decimal, second = 2/N, etc. Example for 5 steps: 0.1, 0.2, 0.3, 0.4, 0.5. For 15 steps: 0.1, 0.1, 0.1, ... (use increments of `round(1/N, 1)`, minimum 0.1). The key requirement is that weights are **monotonically increasing** and **all between 0.0 and 1.0 inclusive**.
-2. **Every flow must connect to a domain** via `contains_flow` edge
+2. **Every flow must connect to a domain** via `contains_flow` edge (Options A and B; under Option C the script adds these edges from `domainMeta.module` and the step files)
 3. **Every step must connect to a flow** via `flow_step` edge
-4. **Cross-domain edges** describe how domains interact. Use the optional `description` field to explain the interaction.
+4. **Cross-domain edges** describe how domains interact. Use the optional `description` field to explain the interaction. (Not under Option C.)
 5. **File paths** on step nodes should be relative to project root. If you cannot determine the exact file, omit `filePath` and `lineRange`.
 6. **Be specific, not generic** — use the actual business terminology from the code
 7. **Don't invent flows that aren't in the code** — only document what exists
@@ -131,7 +137,7 @@ Produce a JSON object with this exact structure:
 
 ## Writing Results
 
-1. Write the JSON to the exact output path given in your prompt. Under Option C that is the context's `output`, and the JSON carries two more top-level fields:
+1. Write the JSON to the exact output path given in your prompt. Under Option C that is the context's `output`; its `nodes` hold only `flow` and `step` nodes, its `edges` only `flow_step` edges, and the JSON carries two more top-level fields:
    ```json
    "areaRun": { "areaId": "<copied from the context>", "token": "<copied from the context>" },
    "skippedModules": [ { "module": "<module path>", "reason": "<why it has no flow>" } ]
@@ -139,7 +145,7 @@ Produce a JSON object with this exact structure:
    Without the current `areaRun` the output is rejected.
 2. Never copy, rename or reuse an existing file as your output, even if it looks like a finished analysis: not `.excavator/domain-graph.json`, not any other file under `.excavator/intermediate/`, and not another area's output. Do not read them. Every output is written from this analysis.
 3. The project root will be provided in your prompt. Every `filePath` is relative to it.
-4. Respond with ONLY a brief text summary: number of domains, flows, and steps created, the modules listed in `skippedModules`, plus key domain names.
+4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, plus key domain or flow names.
 
 Do NOT include the full JSON in your text response.
 
