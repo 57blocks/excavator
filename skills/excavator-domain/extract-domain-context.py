@@ -26,13 +26,14 @@ def resolve_data_dir(root: Path) -> Path:
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
-MAX_FILE_TREE_DEPTH = 6
-MAX_FILES_PER_DIR = 50
-MAX_FILES_TOTAL = 5000
-MAX_SAMPLED_FILES = 40
+# No model reads this file whole: split-domain-areas.mjs cuts it into bounded
+# areas. The caps that remain only guard pathological trees, and every one of
+# them is counted under `truncated` in the output, never applied silently.
+MAX_FILE_TREE_DEPTH = 12
+MAX_FILES_TOTAL = 20000
 MAX_LINES_PER_FILE = 80
-MAX_ENTRY_POINTS = 200
-MAX_OUTPUT_BYTES = 512 * 1024  # 512 KB — keeps output within agent context limits
+MAX_ENTRY_POINTS = 5000
+MAX_PREVIEW_CHARS = 300
 
 # File extensions we care about for domain analysis
 SOURCE_EXTENSIONS = {
@@ -156,23 +157,26 @@ def is_ignored(rel_path: str, gitignore_patterns: list[re.Pattern[str]]) -> bool
 def scan_file_tree(
     root: Path,
     gitignore_patterns: list[re.Pattern[str]],
+    truncated: dict[str, int],
     max_depth: int = MAX_FILE_TREE_DEPTH,
 ) -> list[str]:
-    """Return a flat list of relative file paths (source files only)."""
+    """Return a flat list of relative file paths (source files only).
+
+    Source files beyond MAX_FILES_TOTAL, and directories below
+    MAX_FILE_TREE_DEPTH, are counted under truncated["fileTree"] and
+    truncated["depthSkippedDirs"]."""
     result: list[str] = []
 
     def _walk(dir_path: Path, depth: int) -> None:
-        if depth > max_depth or len(result) >= MAX_FILES_TOTAL:
+        if depth > max_depth:
+            truncated["depthSkippedDirs"] += 1
             return
         try:
             entries = sorted(dir_path.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
         except PermissionError:
             return
 
-        file_count = 0
         for entry in entries:
-            if len(result) >= MAX_FILES_TOTAL:
-                break
             # Skip symlinks to avoid infinite loops
             if entry.is_symlink():
                 continue
@@ -184,14 +188,14 @@ def scan_file_tree(
                     continue
                 _walk(entry, depth + 1)
             elif entry.is_file():
-                if file_count >= MAX_FILES_PER_DIR:
-                    break
                 if entry.suffix not in SOURCE_EXTENSIONS:
                     continue
                 if is_ignored(rel, gitignore_patterns):
                     continue
+                if len(result) >= MAX_FILES_TOTAL:
+                    truncated["fileTree"] += 1
+                    continue
                 result.append(rel)
-                file_count += 1
 
     _walk(root, 0)
     return result
@@ -199,16 +203,18 @@ def scan_file_tree(
 
 # ── Entry point detection ──────────────────────────────────────────────────
 
-def detect_entry_points(root: Path, file_paths: list[str]) -> list[dict[str, Any]]:
-    """Scan source files for entry point patterns."""
+def detect_entry_points(
+    root: Path, file_paths: list[str], truncated: dict[str, int]
+) -> list[dict[str, Any]]:
+    """Scan source files for entry point patterns.
+
+    Matches beyond MAX_ENTRY_POINTS are counted under truncated["entryPoints"]."""
     entry_points: list[dict[str, Any]] = []
 
     # Skip test files and the extraction script itself
     test_patterns = re.compile(r"(?:\.test\.|\.spec\.|__tests__|_test\.py|test_\w+\.py|extract-domain-context\.py)")
 
     for rel_path in file_paths:
-        if len(entry_points) >= MAX_ENTRY_POINTS:
-            break
         if test_patterns.search(rel_path):
             continue
         full_path = root / rel_path
@@ -220,6 +226,9 @@ def detect_entry_points(root: Path, file_paths: list[str]) -> list[dict[str, Any
         lines = content.splitlines()
         for entry_type, description, pattern in ENTRY_POINT_PATTERNS:
             for match in pattern.finditer(content):
+                if len(entry_points) >= MAX_ENTRY_POINTS:
+                    truncated["entryPoints"] += 1
+                    continue
                 # Find line number
                 line_no = content[:match.start()].count("\n") + 1
                 # Extract a snippet (signature + a few lines)
@@ -236,40 +245,19 @@ def detect_entry_points(root: Path, file_paths: list[str]) -> list[dict[str, Any
                     "snippet": snippet[:300],
                 })
 
-                if len(entry_points) >= MAX_ENTRY_POINTS:
-                    break
-            if len(entry_points) >= MAX_ENTRY_POINTS:
-                break
-
     return entry_points
 
 
 # ── File signatures ────────────────────────────────────────────────────────
 
 def extract_file_signatures(root: Path, file_paths: list[str]) -> list[dict[str, Any]]:
-    """Extract exports and imports from each file (lightweight)."""
+    """Extract exports and imports from every file (lightweight).
+
+    Every file gets a signature: the split step decides what each analyzer
+    sees, so ranking files here would only hide the low-ranked ones."""
     signatures: list[dict[str, Any]] = []
 
-    # Prioritize files likely to contain business logic
-    priority_keywords = [
-        "controller", "service", "handler", "router", "route", "api",
-        "model", "entity", "repository", "usecase", "use_case",
-        "command", "query", "event", "subscriber", "listener",
-        "middleware", "guard", "interceptor", "resolver",
-        "workflow", "flow", "process", "pipeline", "job", "task",
-    ]
-
-    def priority_score(path: str) -> int:
-        lower = path.lower()
-        score = 0
-        for kw in priority_keywords:
-            if kw in lower:
-                score += 1
-        return score
-
-    sorted_paths = sorted(file_paths, key=priority_score, reverse=True)
-
-    for rel_path in sorted_paths[:MAX_SAMPLED_FILES]:
+    for rel_path in file_paths:
         full_path = root / rel_path
         try:
             content = full_path.read_text(encoding="utf-8", errors="replace")
@@ -300,7 +288,7 @@ def extract_file_signatures(root: Path, file_paths: list[str]) -> list[dict[str,
             "exports": exports[:20],
             "imports": import_list,
             "lines": len(content.splitlines()),
-            "preview": truncated[:500],
+            "preview": truncated[:MAX_PREVIEW_CHARS],
         })
 
     return signatures
@@ -345,39 +333,6 @@ def extract_metadata(root: Path) -> dict[str, Any]:
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def _truncate_to_fit(context: dict[str, Any]) -> dict[str, Any]:
-    """Progressively trim context sections to stay under MAX_OUTPUT_BYTES."""
-    output = json.dumps(context, indent=2)
-    if len(output.encode()) <= MAX_OUTPUT_BYTES:
-        return context
-
-    # 1. Trim file tree to just a count
-    context["fileTree"] = context["fileTree"][:200]
-    output = json.dumps(context, indent=2)
-    if len(output.encode()) <= MAX_OUTPUT_BYTES:
-        return context
-
-    # 2. Trim previews in signatures
-    for sig in context.get("fileSignatures", []):
-        sig["preview"] = sig["preview"][:200]
-    output = json.dumps(context, indent=2)
-    if len(output.encode()) <= MAX_OUTPUT_BYTES:
-        return context
-
-    # 3. Trim snippets in entry points
-    for ep in context.get("entryPoints", []):
-        ep["snippet"] = ep["snippet"][:100]
-    output = json.dumps(context, indent=2)
-    if len(output.encode()) <= MAX_OUTPUT_BYTES:
-        return context
-
-    # 4. Reduce number of signatures and entry points
-    context["fileSignatures"] = context["fileSignatures"][:20]
-    context["entryPoints"] = context["entryPoints"][:100]
-
-    return context
-
-
 def main() -> None:
     if len(sys.argv) < 2:
         print("Usage: python extract-domain-context.py <project-root>", file=sys.stderr)
@@ -396,11 +351,12 @@ def main() -> None:
 
         print(f"Scanning {project_root} ...", file=sys.stderr)
 
+        truncated = {"fileTree": 0, "entryPoints": 0, "depthSkippedDirs": 0}
         gitignore_patterns = parse_gitignore(project_root)
-        file_tree = scan_file_tree(project_root, gitignore_patterns)
+        file_tree = scan_file_tree(project_root, gitignore_patterns, truncated)
         print(f"  Found {len(file_tree)} source files", file=sys.stderr)
 
-        entry_points = detect_entry_points(project_root, file_tree)
+        entry_points = detect_entry_points(project_root, file_tree, truncated)
         print(f"  Detected {len(entry_points)} entry points", file=sys.stderr)
 
         signatures = extract_file_signatures(project_root, file_tree)
@@ -416,9 +372,9 @@ def main() -> None:
             "entryPoints": entry_points,
             "fileSignatures": signatures,
             "metadata": metadata,
+            "truncated": truncated,
         }
 
-        context = _truncate_to_fit(context)
         output = json.dumps(context, indent=2)
         output_path.write_text(output, encoding="utf-8")
         size_kb = len(output.encode()) / 1024
