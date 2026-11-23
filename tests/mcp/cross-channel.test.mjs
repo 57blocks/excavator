@@ -65,8 +65,8 @@ describe('one semantic cache across Lazy, Full and MCP', () => {
   it('Full patch writer -> MCP reuses', async () => {
     const { fixture, service, filePath, fields } = make();
     const result = await applySemanticPatches({ projectRoot: fixture.root,
-      factNodeIds: fixture.graph.nodes.map((node) => node.id),
-      patches: [{ nodeId: IDS.missing, filePath, ...fields }],
+      factNodes: fixture.graph.nodes,
+      patches: [{ nodeId: IDS.missing, filePath, ...fields, evidence: { line: 1, quote: 'return 2;' } }],
     });
     expect(result.committed).toBe(1);
     const before = fixture.readCacheBytes();

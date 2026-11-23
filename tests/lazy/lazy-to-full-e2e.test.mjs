@@ -143,13 +143,14 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
 
     const onDemandPatch = await applySemanticPatches({
       projectRoot: root,
-      factNodeIds,
+      factNodes: graph.nodes,
       patches: [{
         nodeId: runNode.id,
         filePath: 'src/a.ts',
         summary: 'Runs the app entry point.',
         displayName: 'Run app entry',
         tags: ['entrypoint'],
+        evidence: { line: 4, quote: 'helper();' },
         semanticSourceHash: hashOf('src/a.ts'),
       }],
     });
@@ -186,12 +187,13 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
 
     const fullPatch = await applySemanticPatches({
       projectRoot: root,
-      factNodeIds,
+      factNodes: graph.nodes,
       patches: [{
         nodeId: helperNode.id,
         filePath: 'src/b.ts',
         summary: 'Says hi.',
         displayName: 'Say hi',
+        evidence: { line: 2, quote: "console.log('hi');" },
         semanticSourceHash: hashOf('src/b.ts'),
       }],
     });

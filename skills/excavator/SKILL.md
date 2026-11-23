@@ -448,7 +448,12 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    > Frameworks detected: `<project.frameworks from the graph header>`
    > Fact nodes for this batch: `$DATA_DIR/intermediate/semantic-input-batch-<batchIndex>.json`
    > Write output to: `$DATA_DIR/intermediate/semantic-patch-batch-<batchIndex>.json`
-   > as `{ "patches": [{ "nodeId": "<copied verbatim>", "summary": "...", "displayName": "...", "tags": ["..."] }] }`.
+   > as `{ "patches": [{ "nodeId": "<copied verbatim>", "summary": "...", "displayName": "...", "tags": ["..."], "evidence": { "line": <n>, "quote": "..." } }] }`.
+   > `evidence` is the line your summary rests on, as your agent definition's
+   > Semantic Patch Mode says: inside the node's `readRange`, not the first line
+   > of a multi-line `lineRange`, with text copied from that line. A patch without
+   > it is not committed. Do not put the node's path or a line number in the
+   > `summary` or `displayName`.
    > Write the `displayName` as your agent definition's Display Name section says:
    > 2 to 8 words, at most 60 characters, for a reader who does not read code.
    >
@@ -470,7 +475,7 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    content hash — attach both deterministically (`filePath` from the fact
    node id's own entry, `semanticSourceHash` from that file's CURRENT
    `contentHash` in `source-manifest.json`) before calling
-   `apply-semantic-patches.mjs` (the patch's `summary`, `displayName` and `tags` pass through hydration unchanged; the commit gate rejects a patch whose `displayName` is missing or malformed, recorded as a semantic gap), which re-validates every `nodeId` against
+   `apply-semantic-patches.mjs` (the patch's `summary`, `displayName`, `tags` and `evidence` pass through hydration unchanged; the commit gate rejects a patch whose `displayName` is missing or malformed, or whose `evidence` does not quote a line of the node's own slice other than its declaration line, recorded as a semantic gap), which re-validates every `nodeId` against
    the real fact-graph id set one more time and NEVER commits an unmappable
    one (recorded as a semantic gap instead):
 

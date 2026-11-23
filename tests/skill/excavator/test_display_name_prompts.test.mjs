@@ -62,7 +62,7 @@ describe('/excavator carries displayName through Phase F2 and Phase 2', () => {
   it('lists it in the F2 dispatch patch shape, language rule and commit description', () => {
     expect(fullSkill).toContain('"summary": "...", "displayName": "...", "tags": ["..."]');
     expect(fullSkill).toContain('Write every model-owned `summary`, `displayName`, and `tags` value in English');
-    expect(fullSkill).toContain('the patch\'s `summary`, `displayName` and `tags` pass through hydration');
+    expect(fullSkill).toContain('the patch\'s `summary`, `displayName`, `tags` and `evidence` pass through hydration');
   });
 
   it('lists it in the Phase 2 GraphNode fields and language rule', () => {

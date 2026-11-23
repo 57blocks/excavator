@@ -76,3 +76,55 @@ export function createLineReader(projectRoot) {
     return cache.get(filePath);
   };
 }
+
+function collapse(text) {
+  return String(text).replace(/\s+/g, ' ').trim();
+}
+
+function nonWhitespaceLength(text) {
+  return String(text).replace(/\s+/g, '').length;
+}
+
+/**
+ * Check that `evidence` quotes a line the subagent must have read for `node`.
+ * The first failing rule decides the status:
+ *
+ * - `evidence-missing`: no evidence, `line` not a positive integer, or `quote`
+ *   not a one-line string;
+ * - `evidence-source-unreadable`: `lines` is null (missing, unreadable or
+ *   outside the project root);
+ * - `evidence-line-outside-range`: `line` is outside the node's `readRange`;
+ * - `evidence-declaration-line`: the node spans several lines and `line` is
+ *   the first, which the node's name alone lets a writer guess;
+ * - `evidence-quote-trivial`: the quote has no letter or digit, or fewer than
+ *   `min(MIN_QUOTE_CHARS, the line's)` non-whitespace characters;
+ * - `evidence-quote-not-on-line`: with whitespace runs collapsed, the quote is
+ *   not a substring of the cited line.
+ *
+ * @param {{ evidence: unknown, node: { lineRange?: [number, number] }, lines: string[]|null }} args
+ * @returns {{ ok: true } | { ok: false, status: string }}
+ */
+export function checkReadEvidence({ evidence, node, lines }) {
+  const line = evidence?.line;
+  const quote = evidence?.quote;
+  if (!isLineNumber(line) || typeof quote !== 'string' || /[\r\n]/.test(quote)) {
+    return { ok: false, status: 'evidence-missing' };
+  }
+  if (!Array.isArray(lines)) return { ok: false, status: 'evidence-source-unreadable' };
+  const range = readRangeFor(node, lines.length);
+  if (range === null || line < range[0] || line > range[1] || line > lines.length) {
+    return { ok: false, status: 'evidence-line-outside-range' };
+  }
+  if (hasLineRange(node) && node.lineRange[1] > node.lineRange[0] && line === node.lineRange[0]) {
+    return { ok: false, status: 'evidence-declaration-line' };
+  }
+  const sourceLine = lines[line - 1];
+  const needed = Math.min(MIN_QUOTE_CHARS, nonWhitespaceLength(sourceLine));
+  if (!/[\p{L}\p{N}]/u.test(quote) || nonWhitespaceLength(quote) < Math.max(1, needed)) {
+    return { ok: false, status: 'evidence-quote-trivial' };
+  }
+  if (!collapse(sourceLine).includes(collapse(quote))) {
+    return { ok: false, status: 'evidence-quote-not-on-line' };
+  }
+  return { ok: true };
+}

@@ -15,7 +15,6 @@ import { join } from 'node:path';
 
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 import { applySemanticPatches } from '../../skills/excavator/apply-semantic-patches.mjs';
-import { collectFactNodeIds } from '../../skills/excavator/semantic-graph.mjs';
 import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';
@@ -51,11 +50,11 @@ describe('apply-semantic-patches.mjs', () => {
     const manifest = JSON.parse(readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8'));
     const hash = manifest.entries.find((e) => e.path === 'src/a.ts').contentHash;
 
-    const factNodeIds = collectFactNodeIds(graph);
+    const factNodes = graph.nodes;
     const { committed, total, gaps } = await applySemanticPatches({
       projectRoot: root,
-      factNodeIds,
-      patches: [{ nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs the fixture.', displayName: 'Run the fixture', tags: ['entrypoint'], semanticSourceHash: hash }],
+      factNodes,
+      patches: [{ nodeId: runNode.id, filePath: 'src/a.ts', summary: 'Runs the fixture.', displayName: 'Run the fixture', tags: ['entrypoint'], evidence: { line: 2, quote: "console.log('run');" }, semanticSourceHash: hash }],
     });
 
     expect(total).toBe(1);
@@ -69,10 +68,10 @@ describe('apply-semantic-patches.mjs', () => {
 
   it('never commits a patch naming a nodeId with no fact-graph counterpart, and records a semantic gap instead', async () => {
     const bogusId = 'function:src/a.ts:doesNotExist';
-    const factNodeIds = collectFactNodeIds(graph);
+    const factNodes = graph.nodes;
     const { committed, total, gaps, results } = await applySemanticPatches({
       projectRoot: root,
-      factNodeIds,
+      factNodes,
       patches: [{ nodeId: bogusId, filePath: 'src/a.ts', summary: 'hallucinated', semanticSourceHash: 'whatever' }],
     });
 
@@ -98,13 +97,13 @@ describe('apply-semantic-patches.mjs', () => {
   it('handles a mix of valid and unmappable patches in one batch, committing only the valid one', async () => {
     const manifest = JSON.parse(readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8'));
     const hash = manifest.entries.find((e) => e.path === 'src/a.ts').contentHash;
-    const factNodeIds = collectFactNodeIds(graph);
+    const factNodes = graph.nodes;
 
     const { committed, total, gaps } = await applySemanticPatches({
       projectRoot: root,
-      factNodeIds,
+      factNodes,
       patches: [
-        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'ok', displayName: 'Run fixture', semanticSourceHash: hash },
+        { nodeId: runNode.id, filePath: 'src/a.ts', summary: 'ok', displayName: 'Run fixture', evidence: { line: 2, quote: "console.log('run');" }, semanticSourceHash: hash },
         { nodeId: 'function:src/a.ts:ghost', filePath: 'src/a.ts', summary: 'nope', semanticSourceHash: hash },
       ],
     });

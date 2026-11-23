@@ -674,16 +674,30 @@ says so explicitly. When your dispatch prompt asks for "a semantic patch for
 each fact node" rather than "GraphNode and GraphEdge objects", follow this
 section instead of the node/edge construction rules above:
 
-- You are given a fixed list of fact node ids (`{id, type, name, filePath,
-  lineRange}`) for this batch's files. This list is the ONLY set of ids you
-  may use — it already comes from a deterministic fact graph, not from your
-  own reading.
-- For each id, read the source at its `filePath`/`lineRange` and write ONE
-  patch: `{"nodeId": "<copied verbatim from the list>", "summary": "...",
-  "displayName": "...", "tags": ["..."]}`. Do not invent a `nodeId` that is not in the list, and do
+- Your dispatch prompt names a batch file listing fact nodes (`{id, type,
+  name, filePath, lineRange?, readRange}`). This list is the ONLY set of ids
+  you may use — it already comes from a deterministic fact graph, not from
+  your own reading. A script sized the batch so that every `readRange` can
+  be read in full.
+- For each id, read the source at its `filePath`, lines `readRange`
+  (`sed -n '<start>,<end>p'`), and write ONE patch: `{"nodeId": "<copied
+  verbatim from the list>", "summary": "...", "displayName": "...", "tags":
+  ["..."], "evidence": {"line": <n>, "quote": "..."}}`. Do not invent a `nodeId` that is not in the list, and do
   not add a node, an edge, a layer, or any field this shape does not have — an
   unmappable `nodeId` becomes a semantic gap downstream, not a fact anchor,
   which means your invented id is simply discarded, not merged.
+- `evidence` is the line you read that your summary rests on: `line` is its
+  1-based number in the file, inside `readRange`, and `quote` is text copied
+  from that one line, at least 8 characters or the whole line when it is
+  shorter. When the node has a `lineRange` of more than one line, the line is
+  not its first line (the declaration): pick a line of the body. The commit
+  script reads the source and drops, as a semantic gap, every patch whose
+  quote is not on that line. A summary written from the node's name,
+  signature or file, without reading its lines, has no evidence to give; do
+  not write one.
+- Do not put the node's file path or any line number in `summary` or
+  `displayName`. The script drops a patch whose text names `line <n>`,
+  `<file>:<n>` or the node's path; its location is already in the graph.
 - Do not include `filePath`, `lineRange`, `type`, `owner`, `complexity`, or a
   content hash — the deterministic layer attaches those itself from the fact
   graph and `source-manifest.json`; adding them here would be redundant at
