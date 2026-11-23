@@ -67,4 +67,14 @@ describe('extract-domain-context.py caps', () => {
     expect(new Set(context.fileSignatures.map((s) => s.file))).toEqual(new Set(context.fileTree));
     expect(context.truncated.entryPoints).toBe(0);
   });
+  it('reads the routes of an ordinary file whose name merely contains a test shape', () => {
+    const context = extract(project({
+      'app/latest_routes.py': "@app.route('/latest')\ndef latest():\n    return []\n",
+      'app/contest_entries.py': "@app.post('/entries')\ndef enter():\n    return {}\n",
+      'app/tests/test_routes.py': "@app.route('/t')\ndef t():\n    return []\n",
+      'app/routes_test.py': "@app.route('/u')\ndef u():\n    return []\n",
+    }));
+    const files = [...new Set(context.entryPoints.map((e) => e.file))].sort();
+    expect(files).toEqual(['app/contest_entries.py', 'app/latest_routes.py']);
+  });
 });

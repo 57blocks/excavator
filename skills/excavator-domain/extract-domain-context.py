@@ -211,8 +211,12 @@ def detect_entry_points(
     Matches beyond MAX_ENTRY_POINTS are counted under truncated["entryPoints"]."""
     entry_points: list[dict[str, Any]] = []
 
-    # Skip test files and the extraction script itself
-    test_patterns = re.compile(r"(?:\.test\.|\.spec\.|__tests__|_test\.py|test_\w+\.py|extract-domain-context\.py)")
+    # Skip test files and the extraction script itself. Each shape is anchored
+    # to a path segment, so latest_routes.py is not a test file
+    # (split-domain-areas.mjs uses the same shapes).
+    test_patterns = re.compile(
+        r"(?:\.test\.|\.spec\.|__tests__/|_test\.go$|_test\.py$|(?:^|/)test_\w+\.py$|(?:^|/)extract-domain-context\.py$)"
+    )
 
     for rel_path in file_paths:
         if test_patterns.search(rel_path):
