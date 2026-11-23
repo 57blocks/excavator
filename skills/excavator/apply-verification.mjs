@@ -85,6 +85,7 @@ import {
 import { compareGaps } from './coverage-ledger.mjs';
 import { scopePredicate } from './project-paths.mjs';
 import { resolveWithinRoot } from './validate-graph.mjs';
+import { checkReadEvidence, createLineReader } from './read-evidence.mjs';
 import { VERIFICATION_SEVERITY, mergeVerification } from './verification-state.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
@@ -383,6 +384,25 @@ export function prepareSemanticVerification({
 }
 
 /**
+ * The evidence check `applySemanticVerification` takes: a `verified` or
+ * `contradicted` verdict must quote a line of its node's slice other than the
+ * declaration line (read-evidence.mjs; openspec: changes/semantic-read-evidence, D4).
+ *
+ * @param {{
+ *   anchorOf: (id: string) => ({ filePath: string, lineRange: [number, number] } | null),
+ *   readLines: (filePath: string) => string[]|null,
+ * }} args
+ * @returns {(verdict: { id: string, evidence?: unknown }) => { ok: true } | { ok: false, status: string }}
+ */
+export function createSemanticEvidenceChecker({ anchorOf, readLines }) {
+  return (verdict) => {
+    const anchor = anchorOf(verdict?.id);
+    if (!anchor || !hasAnchor(anchor)) return { ok: false, status: 'evidence-no-anchor' };
+    return checkReadEvidence({ evidence: verdict?.evidence, node: anchor, lines: readLines(anchor.filePath) });
+  };
+}
+
+/**
  * Write the verdicts into semantic-cache entries' `verification` field.
  * NEVER touches `knowledge-graph.jsonl` — it does not even take a graph as an
  * argument. Returns a new semantic-cache object; the caller persists it.
@@ -393,6 +413,12 @@ export function prepareSemanticVerification({
  * that came back with no verdict become `unverified`. With neither, any id
  * with a cache entry.
  *
+ * `checkEvidence` is required: a `verified` or `contradicted` verdict it
+ * refuses is not written and is counted in `verdictNoEvidence`. A batch
+ * commit leaves that id unmarked, so the next run selects it again; the close
+ * marks it `unverified`, as it does an id with no verdict, but counts it
+ * apart from `verdictMissing`. An `unverified` verdict needs no evidence.
+ *
  * `previousArchive` carries earlier contradicted records forward while the
  * entry still holds that same summary and that marking, so a resumed run
  * does not lose the reasons an interrupted one already committed.
@@ -401,12 +427,16 @@ export function prepareSemanticVerification({
  *   semanticCache: { version?: string, entries?: Record<string, object> } | null | undefined,
  *   manifest?: object|null, verdicts?: object[], mode?: string|null, sampleLimit?: number,
  *   batchIds?: string[]|null, previousArchive?: object[],
+ *   checkEvidence: (verdict: object) => { ok: boolean, status?: string },
  * }} args
  */
 export function applySemanticVerification({
   semanticCache, manifest = null, verdicts = [], mode = null, sampleLimit = 5,
-  batchIds = null, previousArchive = [],
+  batchIds = null, previousArchive = [], checkEvidence,
 }) {
+  if (typeof checkEvidence !== 'function') {
+    throw new Error('applySemanticVerification: checkEvidence is required; a verdict is written only with read evidence');
+  }
   // Keep every top-level field: dropping `contentLanguage` would make every
   // entry read as noncanonical, and the next Full would regenerate them all.
   const cache = {
@@ -429,9 +459,13 @@ export function applySemanticVerification({
     verdictUnknownNode: 0,
     verdictDuplicate: 0,
     verdictMissing: 0,
+    verdictNoEvidence: 0,
     verificationPreserved: 0,
   };
-  const samples = { contradicted: [], unverified: [], invalid: [], notSelected: [], unknownNode: [], missing: [] };
+  const samples = {
+    contradicted: [], unverified: [], invalid: [], notSelected: [], unknownNode: [], missing: [], noEvidence: [],
+  };
+  const noEvidence = new Set();
   const archive = [];
 
   const seen = new Set();
@@ -467,6 +501,12 @@ export function applySemanticVerification({
       counts.verdictDuplicate += 1;
       continue;
     }
+    if (verdict !== 'unverified' && !checkEvidence(entry).ok) {
+      // A verdict that does not quote a line of the slice was not shown to
+      // rest on reading it: not written, so the summary is not confirmed.
+      noEvidence.add(id);
+      continue;
+    }
     seen.add(id);
 
     const merged = mergeVerification(existingEntry.verification, verdict);
@@ -487,14 +527,21 @@ export function applySemanticVerification({
     }
   }
 
+  // An id whose later verdict did carry evidence was written; it is not counted.
+  for (const id of seen) noEvidence.delete(id);
+  counts.verdictNoEvidence = noEvidence.size;
+  samples.noEvidence = [...noEvidence].map(String).sort(compareStrings).slice(0, sampleLimit);
+
   // Missing verdicts only count at the close of a run: a batch commit leaves
   // its unanswered ids unmarked, so the next run selects them again.
   const markMissing = Array.isArray(batchIds) ? [] : selectedIds ?? [];
   for (const id of [...markMissing].sort(compareStrings)) {
     if (seen.has(id)) continue;
     const existingEntry = cache.entries[id];
-    counts.verdictMissing += 1;
-    if (samples.missing.length < sampleLimit) samples.missing.push(String(id));
+    if (!noEvidence.has(id)) {
+      counts.verdictMissing += 1;
+      if (samples.missing.length < sampleLimit) samples.missing.push(String(id));
+    }
     if (!existingEntry) continue;
     const merged = mergeVerification(existingEntry.verification, 'unverified');
     if (merged.preserved) continue;
@@ -544,6 +591,9 @@ export function applySemanticVerification({
   addGap('semantic-summary-verdict-missing', counts.verdictMissing,
     `${counts.verdictMissing} selected summary(ies) came back with no verdict`,
     samples.missing);
+  addGap('semantic-summary-verdict-no-evidence', counts.verdictNoEvidence,
+    `${counts.verdictNoEvidence} verified or contradicted verdict(s) did not quote a line of the slice other than the declaration line, and were not written`,
+    samples.noEvidence);
   addGap('semantic-summary-verdict-not-selected', counts.verdictNotSelected,
     `${counts.verdictNotSelected} verdict(s) name an id this batch or run did not select, and were not written`,
     samples.notSelected);
@@ -904,6 +954,11 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
   if (!existsSync(graphPath)) throw new Error(`apply-verification: ${KNOWLEDGE_GRAPH_FILE} not found: ${graphPath}`);
   const knowledgeGraph = readKnowledgeGraph(graphPath);
   const factNodes = factNodesFrom(knowledgeGraph);
+  const anchorById = new Map(factNodes.map((n) => [n.id, n]));
+  const checkEvidence = createSemanticEvidenceChecker({
+    anchorOf: (id) => anchorById.get(id) ?? null,
+    readLines: createLineReader(projectRoot),
+  });
 
   if (args.action === 'prepare-semantic') {
     const semanticCache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf-8')) : { entries: {} };
@@ -952,7 +1007,7 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
       process.stderr.write(`Warning: apply-verification: no summary-verdicts-${args.batch}.json in ${verdictDir}\n`);
     }
     const { semanticCache: updatedCache, report, archive } = applySemanticVerification({
-      semanticCache, verdicts, batchIds, previousArchive, sampleLimit: args.sampleLimit,
+      semanticCache, verdicts, batchIds, previousArchive, sampleLimit: args.sampleLimit, checkEvidence,
     });
     writeJsonAtomic(cachePath, updatedCache);
     writeJson(archivePath, { scriptCompleted: true, count: archive.length, records: archive });
@@ -960,7 +1015,8 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
     process.stderr.write(
       `apply-verification apply-semantic --batch ${args.batch}: ids=${batchIds.length} verdicts=${c.verdictsRead} ` +
       `applied=${c.verdictsApplied} verified=${c.verified} unverified=${c.unverified} ` +
-      `contradicted=${c.contradicted} not-selected=${c.verdictNotSelected} invalid=${c.verdictInvalid}\n`,
+      `contradicted=${c.contradicted} no-evidence=${c.verdictNoEvidence} not-selected=${c.verdictNotSelected} ` +
+      `invalid=${c.verdictInvalid}\n`,
     );
     return;
   }
@@ -978,7 +1034,7 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
   }
 
   const { semanticCache: updatedCache, report, archive } = applySemanticVerification({
-    semanticCache, manifest, verdicts, previousArchive, sampleLimit: args.sampleLimit,
+    semanticCache, manifest, verdicts, previousArchive, sampleLimit: args.sampleLimit, checkEvidence,
   });
 
   writeJsonAtomic(cachePath, updatedCache);
@@ -989,7 +1045,7 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
   process.stderr.write(
     `apply-verification apply-semantic: mode=${report.mode} verdicts=${c.verdictsRead} applied=${c.verdictsApplied} ` +
     `verified=${c.verified} unverified=${c.unverified} contradicted=${c.contradicted} ` +
-    `verdict-missing=${c.verdictMissing} not-selected=${c.verdictNotSelected} unknown-node=${c.verdictUnknownNode} ` +
+    `verdict-missing=${c.verdictMissing} no-evidence=${c.verdictNoEvidence} not-selected=${c.verdictNotSelected} unknown-node=${c.verdictUnknownNode} ` +
     `invalid=${c.verdictInvalid} preserved=${c.verificationPreserved} ` +
     `unchecked=${report.byVerification.unmarked}\n`,
   );

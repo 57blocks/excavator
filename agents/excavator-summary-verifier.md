@@ -126,7 +126,8 @@ Write JSON to the output file named in your prompt:
     {
       "id": "function:src/orders/create.ts:validateOrder",
       "verdict": "contradicted",
-      "reason": "Slice validates the customer id only; there is no line-items check and no early return."
+      "reason": "Slice validates the customer id only; there is no line-items check and no early return.",
+      "evidence": { "line": 14, "quote": "if (!order.customerId) throw new ValidationError" }
     }
   ]
 }
@@ -137,6 +138,17 @@ Write JSON to the output file named in your prompt:
 - `reason` is **one line**, at most about 200 characters, and states what you
   saw: the line, name, or condition that decided the verdict. No hedging
   preambles, no restating the summary, no suggestions for a better summary.
+- `evidence` is required with `verified` and `contradicted`: the line of the
+  slice that decided the verdict. `line` is its 1-based number in the file,
+  inside `lineRange` and not its first line when the range has more than one
+  line (the first line is the declaration, which the node's name already
+  tells you; checking a summary against the name is not checking it against
+  the source). `quote` is text copied from that one line, at least 8
+  characters or the whole line when it is shorter. The script reads the
+  source and does not write a `verified` or `contradicted` verdict whose
+  quote is not on that line; the summary then stays unchecked. If you did not
+  read the slice, or no body line bears on the summary, the verdict is
+  `unverified`, which needs no `evidence`.
 - `id` is copied byte-for-byte from the batch. A verdict whose id is not in the
   graph is counted and discarded, so a reconstructed id loses the whole check.
 

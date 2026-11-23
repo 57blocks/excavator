@@ -293,7 +293,7 @@ describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf
   });
 
   it('the Phase F2 dispatch prompt lists the header ids for the file-analyzer', () => {
-    const prompt = between('> Produce a semantic patch for each fact node below', 'Write output to:');
+    const prompt = between('> Produce a semantic patch for each fact node in the batch file below', 'Write output to:');
     expect(prompt).toContain('Frameworks detected: `<project.frameworks from the graph header>`');
     // the line sits with the project root, ahead of the fact node list
     expect(prompt.indexOf('Frameworks detected:')).toBeLessThan(prompt.indexOf('Fact nodes for this batch:'));
@@ -301,10 +301,10 @@ describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf
   });
 
   it('the Phase F2 dispatch prompt names the skill directory the addenda are read from (architecture-input)', () => {
-    const prompt = between('> Produce a semantic patch for each fact node below', 'Write output to:');
+    const prompt = between('> Produce a semantic patch for each fact node in the batch file below', 'Write output to:');
     expect(prompt).toContain('Skill directory (for bundled scripts and framework addenda): `<SKILL_DIR>`');
     expect(prompt.indexOf('Skill directory')).toBeLessThan(prompt.indexOf('Frameworks detected:'));
-    expect(between('Read the fact nodes from `knowledge-graph.jsonl`', '> Produce a semantic patch')).toContain('the file-analyzer reads `<SKILL_DIR>/frameworks/<id>.md` for each id itself');
+    expect(between('Give each analyzer the path of its', '> Produce a semantic patch')).toContain('the file-analyzer reads `<SKILL_DIR>/frameworks/<id>.md` for each id itself');
   });
 
   it('Phase F3 still takes the context injection from Phase 4 itself', () => {
@@ -369,7 +369,7 @@ describe('Phase F3 gives the architecture analyzer node semantics and page refer
   });
 
   it('has Phase F2 put the role tags of the addendum next to its own tags', () => {
-    const start = skill.indexOf('> Produce a semantic patch for each fact node below');
+    const start = skill.indexOf('> Produce a semantic patch for each fact node in the batch file below');
     const end = skill.indexOf('4. **Hydrate + commit.**', start);
     const f2 = flat(skill.slice(start, end).replace(/^\s*> ?/gm, ''));
     expect(f2).toContain("When a framework addendum's Canonical File Roles table gives a node a role from what its source shows (an annotation, a descriptor entry, a file pattern), include that row's Tags in the node's `tags`, next to the tags you choose yourself.");
