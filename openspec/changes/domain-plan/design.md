@@ -44,7 +44,7 @@
 
 - 每个模块都列出，不截模块；模块内的样本有上界（文件名 20、入口点样本 8、导出名 12），省略数写明。输入大小随模块数线性。
 - 扩展模式下，已归属的模块 `assigned` 是它的域 id，`domains` 是已有域；只有 `assigned: null` 的模块要规划。
-- `limits.maxBusinessDomains = max(3, ⌈√模块数⌉)`（模块数含支撑模块，不能靠把模块标成支撑来抬高上界）。理由：域是业务领域，平均一个域应持有不少于 √N 个模块；103 个域对 290 个模块（上界 17）会被拒，#158 之前单分析器给出的 7 个在界内。上界只约束域数，不约束流程数（流程来自区分析，不受影响），所以不会重演 #158 修掉的「2–6 个域、每域 2–5 条流程」导致的漏覆盖。
+- `limits.maxBusinessDomains = max(3, ⌈√模块数⌉)`（模块数含支撑模块，不能靠把模块标成支撑来抬高上界）。扩展模式下两个上界都取「公式值」与「已存规划中该类域数」的较大者：项目缩小后，修剪过的规划可能已超出新公式，已有域在扩展模式里不能改，否则每份输出都会被拒；超限的拒收理由写明用 `--replan` 重新决定全部域。理由：域是业务领域，平均一个域应持有不少于 √N 个模块；103 个域对 290 个模块（上界 17）会被拒，#158 之前单分析器给出的 7 个在界内。上界只约束域数，不约束流程数（流程来自区分析，不受影响），所以不会重演 #158 修掉的「2–6 个域、每域 2–5 条流程」导致的漏覆盖。
 
 规划代理写 `plan.output.json`：
 
@@ -89,7 +89,7 @@ Option C 的分析器只写流程、步骤、`flow_step` 边、`skippedModules`�
 
 - 读 `<数据目录>/domain-plan.json`；它的模块集合必须等于本次清单的模块集合，否则报错退出 1（说明先跑 `plan-domains.mjs`）。
 - 域节点：规划里的每个域一个节点，`domainMeta` 为 `{kind, modules(排序), entities, businessRules, crossDomainInteractions}`；`complexity` 按持有模块数定（≤2 simple、≤6 moderate、其余 complex）——这是结构计数，不是内容。
-- 流程、步骤：同 #158，跨区冲突 id 改名 `<id>--<区id>`，本区的边跟随。
+- 流程、步骤：同 #158，跨区冲突 id 改名 `<id>--<区id>`（该 id 也已被占用时依次加 `-2`、`-3`…），本区的边跟随。守恒按次数计：两个区交来同一个 id、合并后只剩一个，算丢失。
 - **挂接**：每条流程按 `flow_step` 权重（再按边序）找第一个能定位到模块的步骤（定位规则同覆盖报告），挂到该模块在规划里的域（`homedBy: step`）；没有可定位步骤时，若 `domainMeta.module` 是本区持有的模块则挂到它的域（`homedBy: declared`）；否则 `unplaced`：流程与步骤照留，不生成 `contains_flow`，计数并逐条打印。不编造归属。
 - `contains_flow` 边由脚本生成（weight 1.0）；`cross_domain` 边来自规划。
 - **守恒**：对每个已接受的区，输入的流程 id、步骤 id、`flow_step` 边（按改名表映射后）必须在合并结果里各出现恰好一次；`checkConservation` 返回 `{flowsIn, flowsOut, stepsIn, stepsOut, flowStepEdgesIn, flowStepEdgesOut, missing, extra, ok}`。区内重复 id、无 id 节点在进入计数前就被丢弃并另计（#158 已有），不算违反。`ok: false` 时退出码 4，不写 `domain-analysis.json`。

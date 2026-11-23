@@ -40,7 +40,7 @@
 
 ### Requirement: 合并区输出
 
-合并 SHALL 按区 id 顺序处理已接受的输出：与已合并 id 冲突的流程与步骤改名为 `<id>--<区id>` 并同步改写本区的边；端点缺失的边丢弃并计数。域节点 SHALL 只来自接受的规划（`domainMeta.kind`、`domainMeta.modules`），规划的模块集合 MUST 等于本次分区清单的模块集合，否则合并报错退出。区输出里的域节点、`contains_flow` 与 `cross_domain` 边 SHALL 被忽略并计数；`contains_flow` 边由合并按挂接规则生成，`cross_domain` 边来自规划。合并 MUST NOT 接受别名文件。合并结果 SHALL 写到 `intermediate/domain-analysis.json`，不含 `areaRun` 与 `skippedModules`。
+合并 SHALL 按区 id 顺序处理已接受的输出：与已合并 id 冲突的流程与步骤改名为 `<id>--<区id>`（该 id 也已被占用时依次加 `-2`、`-3`…，直到无冲突）并同步改写本区的边；端点缺失的边丢弃并计数。域节点 SHALL 只来自接受的规划（`domainMeta.kind`、`domainMeta.modules`），规划的模块集合 MUST 等于本次分区清单的模块集合，否则合并报错退出。区输出里的域节点、`contains_flow` 与 `cross_domain` 边 SHALL 被忽略并计数；`contains_flow` 边由合并按挂接规则生成，`cross_domain` 边来自规划。合并 MUST NOT 接受别名文件。合并结果 SHALL 写到 `intermediate/domain-analysis.json`，不含 `areaRun` 与 `skippedModules`。
 
 #### Scenario: 两区同名域
 - **WHEN** 两个区分别为 `modules/invoices` 与 `modules/payments` 写了流程，规划把这两个模块归到 `domain:billing`
