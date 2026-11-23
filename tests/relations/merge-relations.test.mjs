@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  REJECTIONS, THRESHOLDS, mergeRelations, runMerge,
+  REJECTIONS, THRESHOLDS, containsToken, mergeRelations, runMerge,
 } from '../../skills/excavator-relations/merge-relations.mjs';
 import { isRelationsGraphUsable } from '../../skills/excavator-relations/relations-freshness.mjs';
 import { makeProject, removeProject, run, writeGraph } from './fixture.mjs';
@@ -26,11 +26,13 @@ const httpAddr = (method, path) => ({ method, path });
 
 function outputs() {
   const web = [
-    // ambiguous: /api/users/{} matches /api/users/:id and /api/users/me equally.
+    // linked: /api/users/{} prefers the parameter route /api/users/:id over /api/users/me.
     { kind: 'http', address: httpAddr('GET', '/api/users/${id}'), caller: end('web/src/users.js', 3, 'return api.get(`/api/users/${id}`);'), receiver: null, reason: 'loads one user' },
     // linked, and its duplicate.
     { kind: 'http', address: httpAddr('POST', '/api/orders'), caller: end('web/src/users.js', 6, "return api.post('/api/orders', order);"), receiver: null },
     { kind: 'http', address: httpAddr('POST', '/api/orders'), caller: end('web/src/users.js', 6, "api.post('/api/orders', order)"), receiver: null },
+    // ambiguous: two units each register a parameter route for /api/items/{}.
+    { kind: 'http', address: httpAddr('GET', '/api/items/${id}'), caller: end('web/src/users.js', 12, 'return api.get(`/api/items/${id}`);'), receiver: null },
     // caller-only: no server route.
     { kind: 'http', address: httpAddr('GET', '/api/ping'), caller: end('web/src/users.js', 9, "return api.get('/api/ping');"), receiver: null },
     // address-unresolved.
@@ -52,6 +54,7 @@ function outputs() {
     { kind: 'http', address: httpAddr('GET', '/api/users/:id'), caller: null, receiver: end('server/app.js', 5, "app.get('/api/users/:id', (req, res) => res.json({}));", { nodeId: 'function:server/app.js:getUser' }) },
     { kind: 'http', address: httpAddr('GET', '/api/users/me'), caller: null, receiver: end('server/app.js', 12, "app.get('/api/users/me'", { nodeId: 'function:elsewhere' }) },
     { kind: 'http', address: httpAddr('POST', '/api/orders'), caller: null, receiver: end('server/app.js', 6, "app.post('/api/orders', (req, res) => {") },
+    { kind: 'http', address: httpAddr('GET', '/api/items/:id'), caller: null, receiver: end('server/app.js', 13, "app.get('/api/items/:id'") },
     { kind: 'message', address: { channel: 'orders.created', broker: 'redis' }, caller: end('server/app.js', 7, "pub.publish('orders.created', JSON.stringify(req.body));"), receiver: null },
     { kind: 'realtime', address: { event: 'order:created' }, caller: end('server/app.js', 8, "io.emit('order:created', req.body);"), receiver: null },
     {
@@ -61,6 +64,7 @@ function outputs() {
   ];
   const worker = [
     { kind: 'message', address: { channel: 'orders.created' }, caller: null, receiver: end('worker/main.go', 6, 'sub := rdb.Subscribe(ctx, "orders.created")') },
+    { kind: 'http', address: httpAddr('GET', '/api/items/{key}'), caller: null, receiver: end('worker/main.go', 8, 'http.HandleFunc("/api/items/{key}", h)') },
   ];
   return {
     'unit:web': { relations: web, outOfScope: [{ kind: 'auth-trust', note: 'token passed through' }] },
@@ -107,10 +111,10 @@ describe('merge-relations end to end', () => {
 
     expect(coverage.rejections).toEqual(Object.fromEntries(REJECTIONS.map((r) => [r, 1])));
     expect(coverage.buckets).toEqual({
-      caller: { linked: 4, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 1, 'quote-failed': 7 },
-      receiver: { linked: 3, 'receiver-only': 2, 'address-unresolved': 0, 'quote-failed': 0 },
+      caller: { linked: 5, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 1, 'quote-failed': 7 },
+      receiver: { linked: 4, 'receiver-only': 3, 'address-unresolved': 0, 'quote-failed': 0 },
     });
-    expect(coverage.conservation).toEqual({ endsIn: 20, inBuckets: 19, duplicates: 1, ok: true });
+    expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true });
     expect(coverage.outOfScope).toEqual({ 'shared-database': 1, 'auth-trust': 1 });
     expect(graph.status).toBe('complete');
     expect(graph.factDigest).toBe('facts-1');
@@ -119,13 +123,14 @@ describe('merge-relations end to end', () => {
     const linked = graph.relations.filter((r) => r.bucket === 'linked').map((r) => r.key).sort();
     expect(linked).toEqual([
       'external|server/app.js|external:nodemailer|external:nodemailer',
+      'http|web/src/users.js|GET /api/users/{}|server/app.js',
       'http|web/src/users.js|POST /api/orders|server/app.js',
       'message|server/app.js|orders.created|worker/main.go',
       'realtime|server/app.js|order:created|web/src/live.js',
     ]);
     expect(graph.externals).toEqual([{ id: 'external:nodemailer' }]);
     const ambiguous = graph.relations.find((r) => r.bucket === 'ambiguous');
-    expect(ambiguous.candidates.map((c) => c.addressKey).sort()).toEqual(['GET /api/users/me', 'GET /api/users/{}']);
+    expect(ambiguous.candidates.map((c) => c.file).sort()).toEqual(['server/app.js', 'worker/main.go']);
 
     // Node ids: kept, replaced when not on the end's file, derived from the range, else the file.
     const recv = (line) => graph.relations.find((r) => r.receiver?.file === 'server/app.js' && r.receiver.line === line).receiver;
@@ -142,11 +147,11 @@ describe('merge-relations end to end', () => {
     expect(result.stdout).toContain('silent-zero web/src/http.js unit=unit:web');
     expect(coverage.units.find((u) => u.id === 'unit:lib').status).toBe('no-candidates');
 
-    // http: 14 ends after the duplicate, 7 rejected -> over the quote-failure threshold.
-    expect(coverage.measurements.http).toMatchObject({ ends: 14, quoteFailed: 7, escalation: { candidate: true, reasons: ['quote-failure'] } });
+    // http: 17 ends after the duplicate, 7 rejected -> over the quote-failure threshold.
+    expect(coverage.measurements.http).toMatchObject({ ends: 17, quoteFailed: 7, escalation: { candidate: true, reasons: ['quote-failure'] } });
     expect(coverage.escalationCandidates).toEqual([{ kind: 'http', reasons: ['quote-failure'] }]);
     expect(coverage.measurements.message.agreement.status).toBe('no-previous-run');
-    expect(result.stdout).toMatch(/^conservation ok ends=20 duplicates=1$/m);
+    expect(result.stdout).toMatch(/^conservation ok ends=23 duplicates=1$/m);
   });
 
   it('compares a second run on the same input with the first', () => {
@@ -260,6 +265,16 @@ describe('agreement and escalation', () => {
       accepted: [], manifest: { areas: [], candidates: [], inputDigest: 'other' }, units: [], readLines, previous,
     });
     expect(changed.measurements.message.agreement.status).toBe('input-changed');
+  });
+});
+
+describe('containsToken', () => {
+  it('finds a path segment only as a whole token', () => {
+    expect(containsToken('oauthGp.GET("/authorize"', 'oauth')).toBe(false);
+    expect(containsToken('r.Group("/oauth")', 'oauth')).toBe(true);
+    expect(containsToken('`${base}/v2/items`', 'v2')).toBe(true);
+    expect(containsToken('getUsers()', 'Users')).toBe(false);
+    expect(containsToken("'orders.created'", 'orders.')).toBe(true);
   });
 });
 

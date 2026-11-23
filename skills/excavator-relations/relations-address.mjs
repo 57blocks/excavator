@@ -162,6 +162,8 @@ export function matchSegments(caller, receiver) {
 }
 
 /**
+ * http: the receivers with the most equal literal segments win; on a tie, those
+ * that need no caller variable to equal a literal win.
  * Pair one normalized caller with the receivers it may reach (already limited
  * to other sides and to its target unit). Returns
  *   { bucket: 'linked', receivers: [r], paramToLiteral? } | { bucket: 'ambiguous', receivers } | { bucket: 'caller-only', receivers: [] }.
@@ -178,6 +180,9 @@ export function pairCaller(kind, caller, receivers) {
       if (m === null) continue;
       if (m.score > best) { best = m.score; found = [{ r, m }]; } else if (m.score === best) found.push({ r, m });
     }
+    // On a tie, a receiver that takes the caller's variable segments as
+    // parameters beats one that needs a variable to equal a literal.
+    if (found.length > 1 && found.some((f) => !f.m.paramToLiteral)) found = found.filter((f) => !f.m.paramToLiteral);
     if (found.length === 0) return { bucket: 'caller-only', receivers: [] };
     if (found.length > 1) return { bucket: 'ambiguous', receivers: found.map((f) => f.r) };
     return { bucket: 'linked', receivers: [found[0].r], paramToLiteral: found[0].m.paramToLiteral };

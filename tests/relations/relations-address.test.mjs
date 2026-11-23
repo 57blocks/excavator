@@ -45,7 +45,11 @@ describe('pairCaller', () => {
     const result = pairCaller('http', caller, [recv('GET', '/users/:id'), recv('GET', '/users/me'), recv('POST', '/users/me')]);
     expect(result.bucket).toBe('linked');
     expect(result.receivers[0].key).toBe('GET /users/me');
-    expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/:id'), recv('ANY', '/users/me')]).bucket).toBe('ambiguous');
+    const tie = pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/:id'), recv('ANY', '/users/me')]);
+    expect(tie).toMatchObject({ bucket: 'linked', paramToLiteral: false });
+    expect(tie.receivers[0].key).toBe('GET /users/{}');
+    expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/me'), recv('GET', '/users/all')]).bucket).toBe('ambiguous');
+    expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/:id'), recv('GET', '/users/:name')]).bucket).toBe('ambiguous');
     expect(pairCaller('http', http('GET', '/users/${id}'), [recv('GET', '/users/me')])).toMatchObject({ bucket: 'linked', paramToLiteral: true });
     expect(pairCaller('http', http('GET', '/files/a/b'), [recv('GET', '/files/**')]).bucket).toBe('linked');
     expect(pairCaller('http', http('GET', '/other'), [recv('GET', '/users')]).bucket).toBe('caller-only');

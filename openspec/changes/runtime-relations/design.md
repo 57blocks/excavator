@@ -64,7 +64,7 @@
 4. `line-out-of-range`；
 5. `quote-mismatch`：引文去掉首尾空白、压缩空白后，不是该行起 3 行（压缩空白后拼接）的子串，或短于 4 个字符；
 6. `evidence-mismatch`：任一证据引文按第 5 条对不上；
-7. `address-not-quoted`：地址的字面部分不在端点行起 4 行与证据行（各自起 4 行）里。按种类：`http` 的每个非参数路径段与方法名（`GET` 例外，它是多数客户端的默认）；`rpc` 的方法名；`message`、`realtime` 的通道名去掉占位符后的每个字面片段；`external` 的端点名或主机（不分大小写）。路径与知识图里同一文件同一行的路由入口点的 `path` 规范化后相同的，地址按入口点核过（`addressBy: entry-point`）。
+7. `address-not-quoted`：地址的字面部分不在端点行起 4 行与证据行（各自起 4 行）里。按种类：`http` 的每个非参数路径段（须作为完整的词出现，前后不紧贴字母、数字或下划线：`oauth` 不算出现在 `oauthGp` 里）与方法名（`GET` 例外，它是多数客户端的默认）；`rpc` 的方法名；`message`、`realtime` 的通道名去掉占位符后的每个字面片段；`external` 的端点名或主机（不分大小写）。路径与知识图里同一文件同一行的路由入口点的 `path` 规范化后相同的，地址按入口点核过（`addressBy: entry-point`）。
 
 `nodeId`：给了且在知识图里、节点文件就是端点文件的，保留；否则计入 `nodeIdRejected` 并改为推导：同文件、行范围包含该行的最窄节点，再退到文件节点，再退到 `null`。来源写在 `nodeIdBy`（`analyzer`、`derived-range`、`derived-file`、`none`）。节点 id 是结构化事实，以脚本推导为准，模型给的只核对。
 
@@ -82,7 +82,7 @@
 没有地址、或地址里没有任何字面部分（整条路径是变量）的端点进 `address-unresolved`。
 
 配对只在不同的「侧」之间进行。侧是单元加语言族（`js`、`go`、`jvm`、`python`、`dotnet` 等，按扩展名）：一个 Spring 应用把 Angular 前端放在同一清单下时，浏览器代码与服务端是两侧，照样配对；同一个 Node 服务的两个文件是一侧，不配（同一进程内的调用不是单元间通信）。代价：同一单元、同一语言族的前后端（例如 Node 服务目录里的浏览器脚本）配不上，进 `caller-only`/`receiver-only`，看得见。调用端写了 `targetUnit`（指向哪个单元，须在单元清单里，可以是它自己的单元）时，只在该单元里找接收端；清单里没有的 `targetUnit` 计数后忽略：
-- `http`：段数相同（通配除外），逐段满足「接收端是参数则任意，是字面则调用端须为相同字面或参数」，方法相同。按字面段相同的数目取最多者：唯一则 `linked`，多个则 `ambiguous` 并列出候选，没有则 `caller-only`。
+- `http`：段数相同（通配除外），逐段满足「接收端是参数则任意，是字面则调用端须为相同字面或参数」，方法相同。按字面段相同的数目取最多者；并列时，不需要「调用端变量等于接收端字面段」的接收端胜出（调用端 `/policy/${id}` 配 `/policy/:id` 而不是 `/policy/tags`）。唯一则 `linked`，多个则 `ambiguous` 并列出候选，没有则 `caller-only`。
 - `rpc`、`message`、`realtime`：键相同即配；多个接收端都配上时，`message` 与 `realtime` 是一对多的广播，每个都 `linked`；`rpc` 多个为 `ambiguous`。
 - `external`：调用端核对通过即 `linked` 到具名外部端点。
 

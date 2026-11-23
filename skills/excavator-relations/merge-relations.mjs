@@ -28,7 +28,7 @@
  *                        escapes the root);
  *   address-not-quoted   a literal part of the address is in none of the 4
  *                        lines from the end's line and from each evidence
- *                        line: every literal path segment and the method
+ *                        line: every literal path segment (as a whole token) and the method
  *                        (GET excepted: the default of most clients) for http,
  *                        the method and service for rpc, every literal piece of
  *                        a message channel or realtime event, the name or host
@@ -99,6 +99,21 @@ const AREA_ID = /^area-\d+$/;
 
 const flat = (text) => text.replace(/\s+/g, ' ').trim();
 const ratio = (a, b) => (b > 0 ? Math.round((a / b) * 10000) / 10000 : null);
+
+/**
+ * Whether `word` occurs in `text` as a whole token: not glued to a letter,
+ * digit or underscore on either side, so a path segment `oauth` is not found
+ * in an identifier `oauthGroup`.
+ */
+export function containsToken(text, word) {
+  const isWord = (c) => c !== undefined && /[A-Za-z0-9_]/.test(c);
+  for (let i = text.indexOf(word); i >= 0; i = text.indexOf(word, i + 1)) {
+    const before = text[i - 1];
+    const after = text[i + word.length];
+    if ((!isWord(word[0]) || !isWord(before)) && (!isWord(word[word.length - 1]) || !isWord(after))) return true;
+  }
+  return false;
+}
 
 /** A project-relative POSIX path, or null when absolute or escaping the root. */
 export function insideRoot(path) {
@@ -250,7 +265,8 @@ export function checkEnd({ end, readLines, areaFiles, entryPoints = new Map() })
   if (addressBy !== 'entry-point') {
     const text = [windowText(lines, raw.line, ADDRESS_WINDOW), ...evidence.map((e) => windowText(e.lines, e.line, ADDRESS_WINDOW))].join('\n');
     const lower = text.toLowerCase();
-    const missing = normalized.literals.filter((part) => !text.includes(part));
+    const found = end.kind === 'http' ? (part) => containsToken(text, part) : (part) => text.includes(part);
+    const missing = normalized.literals.filter((part) => !found(part));
     for (const word of [normalized.methodWord, normalized.serviceWord, ...(normalized.externalWords ?? [])]) {
       if (word && !lower.includes(String(word).toLowerCase())) {
         if (end.kind !== 'external') missing.push(word);
