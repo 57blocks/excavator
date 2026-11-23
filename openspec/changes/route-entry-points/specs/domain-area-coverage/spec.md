@@ -6,7 +6,7 @@
 
 原 HTTP 正则 SHALL 只用作「像处理者的代码」检测：命中行不是任何 `entry` 或 `mount` 记录的注册行时，该文件进 `unrecognisedFiles`，带命中行与写法。
 
-没有知识图时，skill SHALL 先跑确定性的 Lazy 构建再抽取。知识图仍读不到时，产物 SHALL 记入口点来源为 `unavailable`，HTTP 入口点为 0，并告诉用户；MUST NOT 回退到正则。
+没有知识图或传了 `--full` 时，skill SHALL 先跑确定性的 Lazy 构建再抽取。知识图仍读不到时，产物 SHALL 记入口点来源为 `unavailable`，HTTP 入口点为 0，并告诉用户；MUST NOT 回退到正则。
 
 #### Scenario: 事实层的 Gin 入口点进入模块
 - **WHEN** 知识图有一个入口点，注册在 `svc/handlers/handlers.go`，处理者是 `svc/handlers/support/positions.go` 的函数节点

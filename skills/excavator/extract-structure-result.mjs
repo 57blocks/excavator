@@ -214,6 +214,112 @@ function isJsxFacts(value) {
       hasValidOptionalField(element, 'syntaxError', flag => flag === true));
 }
 
+// Route facts of a framework rule (route-entry-points). The unions are closed:
+// an unknown kind fails the file rather than reaching the fact graph.
+const isRoutePath = value => isPlainObject(value) && (
+  typeof value.literal === 'string' ||
+  ((value.unresolved === 'own' || value.unresolved === 'prefix') && typeof value.text === 'string'));
+
+const isRouteAnchor = value => isPlainObject(value) && (
+  value.kind === 'root' ||
+  (value.kind === 'local' && typeof value.name === 'string') ||
+  (value.kind === 'parameter' && typeof value.name === 'string' && typeof value.type === 'string'));
+
+const isRouteHandler = value => isPlainObject(value) && isFiniteInteger(value.line) && (
+  (value.kind === 'name' && typeof value.text === 'string' &&
+    hasValidOptionalField(value, 'wrappedBy', text => typeof text === 'string')) ||
+  (value.kind === 'inline' && isFiniteInteger(value.endLine) &&
+    hasValidOptionalField(value, 'wrappedBy', text => typeof text === 'string')) ||
+  (value.kind === 'module' && typeof value.source === 'string') ||
+  (value.kind === 'other' && typeof value.text === 'string'));
+
+const isRouteMountTarget = value => isPlainObject(value) && (
+  ((value.kind === 'local' || value.kind === 'binding') && typeof value.name === 'string') ||
+  (value.kind === 'require' && typeof value.source === 'string' && typeof value.called === 'boolean') ||
+  (value.kind === 'other' && typeof value.text === 'string'));
+
+const isRouteSite = value => isPlainObject(value) &&
+  typeof value.framework === 'string' &&
+  (value.form === 'call' || value.form === 'element' || value.form === 'object') &&
+  isFiniteInteger(value.line) &&
+  (value.method === null || typeof value.method === 'string') &&
+  isRoutePath(value.path) &&
+  isRouteAnchor(value.anchor) &&
+  (value.handler === null || isRouteHandler(value.handler));
+
+const isRouteMount = value => isPlainObject(value) &&
+  typeof value.framework === 'string' &&
+  isFiniteInteger(value.line) &&
+  isRoutePath(value.path) &&
+  isRouteAnchor(value.anchor) &&
+  isRouteMountTarget(value.target);
+
+function isRouteFacts(value) {
+  return isPlainObject(value) &&
+    Array.isArray(value.sites) && value.sites.every(isRouteSite) &&
+    Array.isArray(value.mounts) && value.mounts.every(isRouteMount) &&
+    isPlainObject(value.ignoredMounts) &&
+    Object.values(value.ignoredMounts).every(count => isFiniteInteger(count) && count >= 0) &&
+    isPlainObject(value.rules) &&
+    Object.values(value.rules).every(rule => isPlainObject(rule) &&
+      (rule.kind === 'http' || rule.kind === 'ui') &&
+      (rule.join === 'append' || rule.join === 'nested')) &&
+    hasValidOptionalField(value, 'exportsValue', exported => isPlainObject(exported) &&
+      typeof exported.local === 'string' &&
+      typeof exported.factory === 'boolean' &&
+      isFiniteInteger(exported.line));
+}
+
+// Whitelist copies, as for jsx: only the fields the validators read are kept.
+const copyRoutePath = path => (typeof path.literal === 'string'
+  ? { literal: path.literal }
+  : { unresolved: path.unresolved, text: path.text });
+
+const copyRouteAnchor = anchor => (anchor.kind === 'root' ? { kind: 'root' }
+  : anchor.kind === 'local' ? { kind: 'local', name: anchor.name }
+    : { kind: 'parameter', name: anchor.name, type: anchor.type });
+
+function copyRouteHandler(handler) {
+  if (handler === null) return null;
+  const wrapped = typeof handler.wrappedBy === 'string' ? { wrappedBy: handler.wrappedBy } : {};
+  if (handler.kind === 'name') return { kind: 'name', text: handler.text, line: handler.line, ...wrapped };
+  if (handler.kind === 'inline') return { kind: 'inline', line: handler.line, endLine: handler.endLine, ...wrapped };
+  if (handler.kind === 'module') return { kind: 'module', source: handler.source, line: handler.line };
+  return { kind: 'other', text: handler.text, line: handler.line };
+}
+
+function copyRouteTarget(target) {
+  if (target.kind === 'require') return { kind: 'require', source: target.source, called: target.called };
+  if (target.kind === 'other') return { kind: 'other', text: target.text };
+  return { kind: target.kind, name: target.name };
+}
+
+function copyRouteFacts(routes) {
+  return {
+    sites: routes.sites.map(site => ({
+      framework: site.framework,
+      form: site.form,
+      line: site.line,
+      method: site.method,
+      path: copyRoutePath(site.path),
+      anchor: copyRouteAnchor(site.anchor),
+      handler: copyRouteHandler(site.handler),
+    })),
+    mounts: routes.mounts.map(mount => ({
+      framework: mount.framework,
+      line: mount.line,
+      path: copyRoutePath(mount.path),
+      anchor: copyRouteAnchor(mount.anchor),
+      target: copyRouteTarget(mount.target),
+    })),
+    ignoredMounts: { ...routes.ignoredMounts },
+    rules: Object.fromEntries(Object.entries(routes.rules).map(([id, rule]) => [id, { kind: rule.kind, join: rule.join }])),
+    ...(routes.exportsValue === undefined ? {} : {
+      exportsValue: { local: routes.exportsValue.local, factory: routes.exportsValue.factory, line: routes.exportsValue.line },
+    }),
+  };
+}
+
 const STRUCTURE_ENTRY_VALIDATORS = {
   functions: entry =>
     typeof entry.name === 'string' &&
@@ -300,6 +406,7 @@ function isValidStructuralAnalysis(analysis) {
     // the file already lists.
     hasValidOptionalField(analysis, 'nestedTypes', isNestedTypeArray) &&
     hasValidOptionalField(analysis, 'jsx', isJsxFacts) &&
+    hasValidOptionalField(analysis, 'routes', isRouteFacts) &&
     // Not a symbol array: lines a reader could not place declare nothing.
     hasValidOptionalField(analysis, 'unplaced', isUnplacedArray);
 }
@@ -598,6 +705,9 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       intrinsic: analysis.jsx.intrinsic,
     };
   }
+
+  // Route registrations and mounts a framework rule matched in this file.
+  if (analysis.routes !== undefined) base.routes = copyRouteFacts(analysis.routes);
 
   if (analysis.sections && analysis.sections.length > 0) {
     base.sections = analysis.sections.map(s => ({

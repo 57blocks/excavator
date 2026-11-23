@@ -164,6 +164,7 @@ interface RouteMount {
 - 前缀来自：分组变量（Gin `Group`）、祖先路由元素或对象。
 - 任一部分不是字符串字面量时，路径为 `unresolved`：自身路径不是字面量 → `"own"`，某个前缀不是 → `"prefix"`；`text` 是第一个不是字面量的部分的写法（前 80 个字符）。
 - 去掉末尾 `/*` 不在这里做；它只在 D5 的「经处理者挂载」时用。
+- 跨文件拼接（D5）一律按 `append`：Core 的字面量都已规范成以 `/` 开头，写成绝对与相对的子路径在事实里是同一个串，所以挂载前缀下一律追加。代价：在被挂载前缀下写成绝对路径的子路由（`/my/*` 下的 `/my/x`）会重复前缀；React Router 嵌套路由通常写相对路径。
 
 ### D5 跨文件解析（`entry-point-resolution.mjs`，事实构建里）
 
@@ -236,7 +237,7 @@ interface RouteMount {
 
 ### D9 `/excavator-domain` 读事实
 
-- Phase 1：没有 `knowledge-graph.jsonl` 时，先跑 `lazy-analyze.mjs`（确定性、零模型）。陈旧时照旧只警告。
+- Phase 1：没有 `knowledge-graph.jsonl`，或传了 `--full` 时，先跑 `lazy-analyze.mjs`（确定性、零模型），入口点总来自当下的事实。陈旧时照旧只警告。
 - `extract-domain-context.py`：
   - 删掉 HTTP 类正则（Express/Koa、装饰器路由、Next.js 处理函数、GraphQL resolver、gRPC service）作为入口点来源；从知识图读 `kind: "entry"` 的记录作为入口点，`source: "script"`，`type` 取记录的 `routeKind`（`"http"` 或 `"ui"`），`file` 取处理者所在文件（处理者为 `node`/`module` 时），否则取注册文件；带注册处的片段。
   - 这五条 HTTP 正则改作「像处理者的代码」检测：命中行不是任何 `entry` 记录或 `mount` 记录的注册行（同文件同行）的，算未识别；有未识别命中的文件写进 `unrecognisedFiles: [{ file, lines: [...], matches: [...] }]`。
