@@ -9,8 +9,9 @@
  *   - a source file with a signal line (relations-signals.mjs);
  *   - a source file that imports a client definition (a file with a signal of
  *     a client family), so calls through a wrapped client are read; imports
- *     come from the knowledge graph's `imports` edges, or, without a graph,
- *     from relative import/require specifiers;
+ *     come from the knowledge graph's `imports` edges and, for JS-family
+ *     files, from their import/require specifiers: relative ones, and `@/` or
+ *     `~/`, the usual alias of the unit's `src/` directory;
  *   - a file holding an HTTP route entry point of the knowledge graph.
  * A candidate of a container unit (a build or tool script beside the
  * sub-projects) is counted as container-skipped and never analyzed.
@@ -71,17 +72,22 @@ export const IN_SCOPE_KINDS = Object.freeze(['http', 'rpc', 'message', 'realtime
 export const OUT_OF_SCOPE_KINDS = Object.freeze(['shared-database', 'shared-cache', 'shared-file', 'auth-trust', 'scheduled-trigger', 'deploy-config']);
 const DEPLOY_FILE = /(?:^|\/)(?:docker-compose[^/]*|Dockerfile[^/]*|nginx[^/]*|[^/]+\.conf|proxy\.conf[^/]*)$/i;
 const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue', '.svelte'];
-const RELATIVE_IMPORT = /(?:from\s+|require\(\s*|import\s*\(\s*|import\s+)['"](\.{1,2}\/[^'"]+)['"]/g;
+const RELATIVE_IMPORT = /(?:from\s+|require\(\s*|import\s*\(\s*|import\s+)['"]((?:\.{1,2}|@|~)\/[^'"]+)['"]/g;
 
 const clip = (text) => text.trim().slice(0, MAX_TEXT);
 
-/** Relative import specifiers of a JS-family file, resolved against `fileSet`. */
-export function relativeImports(file, lines, fileSet) {
+/**
+ * Import specifiers of a JS-family file, resolved against `fileSet`: relative
+ * ones against the file's directory, `@/` and `~/` against `<unitRoot>/src/`.
+ */
+export function relativeImports(file, lines, fileSet, unitRoot = '.') {
   const out = new Set();
   const dir = posix.dirname(file);
+  const srcDir = posix.join(unitRoot || '.', 'src');
   for (const line of lines) {
     for (const m of line.matchAll(RELATIVE_IMPORT)) {
-      const base = posix.normalize(posix.join(dir, m[1]));
+      const aliased = m[1].startsWith('@/') || m[1].startsWith('~/');
+      const base = posix.normalize(aliased ? posix.join(srcDir, m[1].slice(2)) : posix.join(dir, m[1]));
       if (base.startsWith('..')) continue;
       for (const ext of RESOLVE_EXTENSIONS) {
         const hit = [`${base}${ext}`, ext ? `${base}/index${ext}` : null].find((p) => p && fileSet.has(p));
@@ -182,11 +188,10 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
       const to = fileOfNode(target);
       if (from && to) addImport(from, to);
     }
-  } else {
-    for (const m of material.values()) {
-      if (languageFamilyOf(m.file) !== 'js') continue;
-      for (const to of relativeImports(m.file, m.source, fileSet)) addImport(m.file, to);
-    }
+  }
+  for (const m of material.values()) {
+    if (languageFamilyOf(m.file) !== 'js') continue;
+    for (const to of relativeImports(m.file, m.source, fileSet, unitById.get(m.unit)?.root)) addImport(m.file, to);
   }
 
   const nodesByFile = new Map();

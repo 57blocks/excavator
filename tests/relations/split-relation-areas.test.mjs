@@ -69,6 +69,23 @@ describe('planRelationAreas', () => {
     expect(result.counts.byClientImport).toBe(1);
   });
 
+  it('follows the src alias of a unit, also when a knowledge graph has no edge for it', () => {
+    const files = {
+      'shop/package.json': '{"name":"shop","scripts":{"dev":"vite"}}',
+      'shop/src/plugins/http.js': "import axios from 'axios';\nexport default (method, path) => axios({ method, url: path });",
+      'shop/src/views/Cart.vue': "<script>\nimport http from '@/plugins/http';\nhttp('get', '/api/cart');\n</script>",
+      'shop/src/views/Home.vue': "<script>\nimport http from '~/plugins/http.js';\n</script>",
+      'shop/src/views/Other.vue': "<script>\nimport x from '@/views/Missing';\n</script>",
+    };
+    for (const facts of [undefined, { nodes: new Map(), imports: [], entryPoints: [] }]) {
+      const result = plan(files, facts ? { facts } : {});
+      const reasons = Object.fromEntries(result.candidates.map((c) => [c.file, c.reasons]));
+      expect(reasons['shop/src/views/Cart.vue']).toEqual(['imports-client:shop/src/plugins/http.js']);
+      expect(reasons['shop/src/views/Home.vue']).toEqual(['imports-client:shop/src/plugins/http.js']);
+      expect(reasons['shop/src/views/Other.vue']).toBeUndefined();
+    }
+  });
+
   it('makes a graph route entry point a candidate and passes its nodes', () => {
     const files = { 'api/package.json': '{"name":"api"}', 'api/routes.js': 'module.exports = (r) => r.use(h);' };
     const facts = {
