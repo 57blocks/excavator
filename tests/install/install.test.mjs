@@ -44,8 +44,8 @@ describe('install.sh (Codex)', () => {
     rmSync(tempHome, { recursive: true, force: true });
   });
 
-  it('discovers exactly the 20 shipped service skills', () => {
-    expect(skillNames.length).toBe(19);
+  it('discovers exactly the 21 shipped service skills', () => {
+    expect(skillNames.length).toBe(20);
     expect(skillNames).toContain('excavator');
     expect(skillNames).toContain('excavator-chat');
     expect(skillNames).toContain('excavator-diff');
@@ -57,6 +57,7 @@ describe('install.sh (Codex)', () => {
     expect(skillNames).toContain('excavator-knowledge');
     expect(skillNames).toContain('excavator-onboard');
     expect(skillNames).toContain('excavator-prd');
+    expect(skillNames).toContain('excavator-relations');
     expect(skillNames).toContain('excavator-product-handbook');
     expect(skillNames).toContain('excavator-tour');
     expect(skillNames).toContain('excavator-unused-code');

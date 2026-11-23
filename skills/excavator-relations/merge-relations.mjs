@@ -92,6 +92,7 @@ export const FILE_BUCKETS = Object.freeze(['cited', 'declared-skip', 'silent-zer
 export const REJECTIONS = Object.freeze(['malformed', 'outside-root', 'outside-area', 'line-out-of-range', 'quote-mismatch', 'evidence-mismatch', 'address-not-quoted']);
 export const THRESHOLDS = Object.freeze({ agreement: 0.8, minAgreementUnion: 5, quoteFailureRate: 0.1, unresolvedShare: 0.3, minEnds: 10 });
 const QUOTE_WINDOW = 3;
+export const MAX_SILENT_LINES = 30;
 const ADDRESS_WINDOW = 4;
 const MIN_QUOTE = 4;
 const AREA_ID = /^area-\d+$/;
@@ -531,7 +532,9 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
       : `agreement=${m.agreement.status}`;
     lines.push(`kind ${kind} ends=${m.ends} linked=${m.linked} quote-failure=${m.quoteFailureRate ?? 'n/a'} unresolved=${m.unresolvedShare ?? 'n/a'} ${ag}${m.escalation.candidate ? ` escalation=${m.escalation.reasons.join('+')}` : ''}`);
   }
-  for (const row of merged.files.rows.filter((x) => x.status === 'silent-zero')) lines.push(`silent-zero ${row.file} unit=${row.unit}`);
+  const silent = merged.files.rows.filter((x) => x.status === 'silent-zero');
+  for (const row of silent.slice(0, MAX_SILENT_LINES)) lines.push(`silent-zero ${row.file} unit=${row.unit}`);
+  if (silent.length > MAX_SILENT_LINES) lines.push(`silent-zero ... ${silent.length - MAX_SILENT_LINES} more in the coverage report`);
   const cons = merged.conservation;
   lines.push(cons.ok ? `conservation ok ends=${cons.endsIn} duplicates=${cons.duplicates}` : `conservation FAILED ends=${cons.endsIn} in-buckets=${cons.inBuckets} duplicates=${cons.duplicates}`);
   if (graphPath) lines.push(`relations graph: ${graphPath}`);

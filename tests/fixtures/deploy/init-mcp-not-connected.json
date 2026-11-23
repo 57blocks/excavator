@@ -34,6 +34,7 @@
     "excavator:excavator-handbook-writer",
     "excavator:excavator-knowledge-graph-guide",
     "excavator:excavator-project-scanner",
+    "excavator:excavator-relations-analyzer",
     "excavator:excavator-summary-verifier",
     "excavator:excavator-tour-verifier",
     "excavator:excavator-view-translator",
