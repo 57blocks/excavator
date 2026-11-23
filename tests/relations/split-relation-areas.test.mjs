@@ -69,6 +69,16 @@ describe('planRelationAreas', () => {
     expect(result.counts.byClientImport).toBe(1);
   });
 
+  it('excludes load-test simulations with the tests', () => {
+    const files = {
+      'build.gradle': "plugins { id 'org.springframework.boot' }",
+      'src/main/kotlin/Api.kt': '@GetMapping("/api/a")\nfun a() = 1',
+      'src/gatling/scala/ApiSim.scala': 'val s = http("a").get("/api/a")',
+    };
+    const status = Object.fromEntries(plan(files).classified.map((c) => [c.file, c.status]));
+    expect(status).toEqual({ 'src/main/kotlin/Api.kt': 'candidate', 'src/gatling/scala/ApiSim.scala': 'test-excluded' });
+  });
+
   it('follows the src alias of a unit, also when a knowledge graph has no edge for it', () => {
     const files = {
       'shop/package.json': '{"name":"shop","scripts":{"dev":"vite"}}',

@@ -88,7 +88,7 @@ export const IGNORED_DIRS = Object.freeze(new Set([
   'site-packages', 'www', 'platforms', 'Pods', 'obj',
 ]));
 
-const TEST_FILE = /(?:\.test\.|\.spec\.|\.e2e\.|__tests__\/|__mocks__\/|_test\.go$|_test\.py$|(?:^|\/)test_\w+\.py$|(?:^|\/)(?:e2e|cypress|playwright|test|tests|spec|testing)\/|(?:^|\/)src\/test\/)/;
+const TEST_FILE = /(?:\.test\.|\.spec\.|\.e2e\.|__tests__\/|__mocks__\/|_test\.go$|_test\.py$|(?:^|\/)test_\w+\.py$|(?:^|\/)(?:e2e|cypress|playwright|test|tests|spec|testing)\/|(?:^|\/)src\/(?:test|gatling)\/)/;
 export function isTestFile(path) {
   return TEST_FILE.test(path);
 }
