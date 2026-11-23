@@ -132,6 +132,7 @@ export const COVERAGE_FORMAT = 'excavator-domain-coverage/1';
 export const EXIT_INCOMPLETE = 3;
 export const EXIT_NOT_CONSERVED = 4;
 export const MODULE_BUCKETS = Object.freeze(['covered', 'declared-skip', 'silent-zero', 'no-candidates']);
+export const ENTRY_POINT_BUCKETS = Object.freeze(['in-flow', 'declared-skip', 'silent', 'area-not-accepted', 'outside-areas']);
 const AREA_ID = /^area-\d+$/;
 /** Fields of an area output that describe the run, not the domain graph. */
 const IGNORED_EDGE_TYPES = new Set(['contains_flow', 'cross_domain']);
@@ -707,7 +708,7 @@ function countTypes(graph) {
  */
 export function computeCoverage({
   manifest, areaResults, merged, nodeFiles = new Map(), merge = null, plan = null, planStatus = null, conservation = null,
-  modelEntryPoints = null,
+  modelEntryPoints = null, entriesOf = new Map(),
 }) {
   const { fileModule } = moduleIndex(manifest);
 
@@ -761,17 +762,22 @@ export function computeCoverage({
   for (const entry of modelEntries) modelOfModule.set(entry.module, (modelOfModule.get(entry.module) ?? 0) + 1);
 
   const buckets = Object.fromEntries(MODULE_BUCKETS.map((b) => [b, 0]));
+  let skippedModulesWithoutCandidates = 0;
   const modules = manifest.modules.map((module) => {
     const flows = flowsOfModule.get(module.path)?.size ?? 0;
     const script = module.scriptEntryPoints ?? 0;
     const pattern = module.patternEntryPoints ?? 0;
     const model = modelOfModule.get(module.path) ?? 0;
     const unrecognised = module.unrecognisedFiles ?? 0;
+    const candidates = script + pattern + model > 0 || unrecognised > 0;
     let status;
     if (flows > 0) status = 'covered';
-    else if (declared.has(module.path)) status = 'declared-skip';
-    else if (script + pattern + model > 0 || unrecognised > 0) status = 'silent-zero';
-    else status = 'no-candidates';
+    else if (!candidates) {
+      // A skip declared for a module with nothing to skip does not change its bucket.
+      status = 'no-candidates';
+      if (declared.has(module.path)) skippedModulesWithoutCandidates += 1;
+    } else if (declared.has(module.path)) status = 'declared-skip';
+    else status = 'silent-zero';
     buckets[status] += 1;
     const row = {
       path: module.path, areas: module.areas, files: module.files.length,
@@ -859,7 +865,78 @@ export function computeCoverage({
     conservation,
     areas,
     modules,
-    merge: { ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason },
+    entryPointCoverage: entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared, fileModule }),
+    merge: { ...(merge ?? {}), skippedModulesUnknown, skippedModulesWithoutReason, skippedModulesWithoutCandidates },
+  };
+}
+
+/**
+ * One bucket per fact (script) entry point, in this order: area-not-accepted
+ * (its area's output was not accepted), in-flow (a merged flow cites it, or
+ * cites its group), declared-skip (its id is in its area's
+ * skippedEntryPoints with a reason, or its module was declared skipped),
+ * silent (none of these); outside-areas for the ids the split found in no
+ * module. `ok` is false when the buckets do not add up to the distinct ids.
+ */
+function entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared, fileModule }) {
+  const citedBy = new Map();
+  const groupCitedBy = new Map();
+  for (const node of merged.nodes) {
+    if (node.type !== 'flow' || !Array.isArray(node.domainMeta?.entryPointIds)) continue;
+    for (const id of node.domainMeta.entryPointIds) if (!citedBy.has(id)) citedBy.set(id, node.id);
+  }
+  const statusOf = new Map(areaResults.map((r) => [r.areaId, r]));
+  const buckets = Object.fromEntries(ENTRY_POINT_BUCKETS.map((b) => [b, 0]));
+  const inFlowBy = { cited: 0, group: 0 };
+  const declaredBy = { 'entry-point': 0, module: 0 };
+  let skippedEntryPointsUnknown = 0;
+  let skippedEntryPointsWithoutReason = 0;
+  const rows = [];
+  const silent = [];
+  for (const { areaId } of manifest.areas) {
+    const entries = entriesOf.get(areaId) ?? [];
+    for (const e of entries) if (citedBy.has(e.id)) groupCitedBy.set(e.group ?? e.id, citedBy.get(e.id));
+  }
+  for (const { areaId } of manifest.areas) {
+    const entries = entriesOf.get(areaId) ?? [];
+    const result = statusOf.get(areaId) ?? { status: 'missing' };
+    const known = new Set(entries.map((e) => e.id));
+    const skipped = new Map();
+    if (result.status === 'accepted') {
+      for (const entry of Array.isArray(result.graph?.skippedEntryPoints) ? result.graph.skippedEntryPoints : []) {
+        const id = isObject(entry) ? entry.id : undefined;
+        const reason = isObject(entry) && typeof entry.reason === 'string' ? entry.reason.trim() : '';
+        if (typeof id !== 'string' || !known.has(id)) { skippedEntryPointsUnknown += 1; continue; }
+        if (reason.length === 0) { skippedEntryPointsWithoutReason += 1; continue; }
+        if (!skipped.has(id)) skipped.set(id, reason);
+      }
+    }
+    for (const e of entries) {
+      const module = fileModule.get(relativeInsideRoot(e.file)) ?? null;
+      const row = {
+        id: e.id, method: e.method ?? null, path: e.path ?? e.pathText ?? null, type: e.type ?? null,
+        file: e.file, module, areaId, group: e.group ?? e.id,
+      };
+      if (result.status !== 'accepted') row.bucket = 'area-not-accepted';
+      else if (citedBy.has(e.id)) { row.bucket = 'in-flow'; row.flow = citedBy.get(e.id); inFlowBy.cited += 1; }
+      else if (groupCitedBy.has(row.group)) { row.bucket = 'in-flow'; row.flow = groupCitedBy.get(row.group); inFlowBy.group += 1; }
+      else if (skipped.has(e.id)) { row.bucket = 'declared-skip'; row.reason = skipped.get(e.id); declaredBy['entry-point'] += 1; }
+      else if (module !== null && declared.has(module)) { row.bucket = 'declared-skip'; row.reason = declared.get(module); declaredBy.module += 1; }
+      else { row.bucket = 'silent'; silent.push(e.id); }
+      buckets[row.bucket] += 1;
+      rows.push(row);
+    }
+  }
+  for (const id of manifest.entryPointsOutsideModules ?? []) {
+    rows.push({ id, bucket: 'outside-areas' });
+    buckets['outside-areas'] += 1;
+  }
+  const total = new Set(rows.map((r) => r.id)).size;
+  const sum = Object.values(buckets).reduce((n, v) => n + v, 0);
+  return {
+    total, buckets, ok: sum === total && rows.length === total,
+    inFlowBy, declaredBy, skippedEntryPointsUnknown, skippedEntryPointsWithoutReason,
+    silent, rows,
   };
 }
 
@@ -1072,11 +1149,13 @@ export async function runMerge({
     modelEntryPoints.accepted.push(...checked.accepted);
     for (const [reason, n] of Object.entries(checked.rejected)) modelEntryPoints.rejected[reason] += n;
   }
-  const coverage = computeCoverage({ manifest, areaResults, merged: graph, nodeFiles, merge, plan, planStatus, conservation, modelEntryPoints });
+  const coverage = computeCoverage({ manifest, areaResults, merged: graph, nodeFiles, merge, plan, planStatus, conservation, modelEntryPoints, entriesOf });
+  const epc = coverage.entryPointCoverage;
+  const conserved = conservation.ok && epc.ok;
 
   const outPath = resolve(out ?? join(intermediate, 'domain-analysis.json'));
   // A failed check leaves no merged graph behind, not even an earlier merge's.
-  if (conservation.ok) writeJson(outPath, graph);
+  if (conserved) writeJson(outPath, graph);
   else rmSync(outPath, { force: true });
   const coveragePath = resolve(coverageOut ?? join(dataDir, 'reports', 'domain-coverage.json'));
   writeJson(coveragePath, coverage);
@@ -1109,7 +1188,16 @@ export async function runMerge({
   lines.push(`flows homed entry-point=${coverage.flows.homedByEntryPoint} step=${coverage.flows.homedByStep} declared=${coverage.flows.homedByDeclared} unplaced=${coverage.flows.unplaced}`);
   for (const id of merge.flowHoming.unplacedFlows) lines.push(`unplaced ${id} area=${merge.flowHoming.unplacedAreas[id]}`);
   lines.push(...homingLines(coverage));
-  lines.push(conservation.ok ? 'conservation ok' : `conservation FAILED missing=${conservation.missing.length} extra=${conservation.extra.length}`);
+  lines.push(
+    `entry-point coverage total=${epc.total} ${ENTRY_POINT_BUCKETS.map((b) => `${b}=${epc.buckets[b]}`).join(' ')}` +
+    ` in-flow-by-group=${epc.inFlowBy.group} declared-by-module=${epc.declaredBy.module}`,
+  );
+  for (const row of epc.rows.filter((r) => r.bucket === 'silent')) {
+    lines.push(`silent-entry-point ${row.id} ${entryPointText(row)} area=${row.areaId}`);
+  }
+  lines.push(conserved
+    ? 'conservation ok'
+    : `conservation FAILED missing=${conservation.missing.length} extra=${conservation.extra.length}${epc.ok ? '' : ' entry-point-buckets'}`);
   for (const module of coverage.modules.filter((m) => m.status === 'silent-zero')) {
     lines.push(`silent-zero ${module.path} entryPoints=${module.entryPointsTotal} unrecognised=${module.unrecognisedFiles} areas=${module.areas.join(',')}`);
   }
@@ -1119,8 +1207,9 @@ export async function runMerge({
   lines.push(`coverage report: ${coveragePath}`);
   stdout(`${lines.join('\n')}\n`);
 
-  if (!conservation.ok) {
+  if (!conserved) {
     const detail = [...conservation.missing.map((m) => `missing ${m}`), ...conservation.extra.map((e) => `extra ${e}`)];
+    if (!epc.ok) detail.push(`entry-point buckets add up to ${Object.values(epc.buckets).reduce((n, v) => n + v, 0)}, not ${epc.total} distinct entry points`);
     stderr(`merge-domain-areas: merge did not conserve flows, steps and flow_step edges; domain-analysis.json not written\n${detail.join('\n')}\n`);
     return { exitCode: EXIT_NOT_CONSERVED };
   }

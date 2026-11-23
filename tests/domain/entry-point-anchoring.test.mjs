@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  acceptOutput, checkCitations, choiceLines, mergeAreas, runMerge,
+  acceptOutput, checkCitations, choiceLines, computeCoverage, mergeAreas, runMerge,
 } from '../../skills/excavator-domain/merge-domain-areas.mjs';
 import { PLAN_FORMAT, moduleSetDigest } from '../../skills/excavator-domain/plan-domains.mjs';
 import { entryRecord, writeEntryPointGraph } from './helpers/facts.mjs';
@@ -270,5 +270,85 @@ describe('flow ids derived from the cited entry points', () => {
     const { graph: merged, merge: m } = mergeAreas({ accepted: [{ areaId: 'area-001', graph }], plan, manifest, entriesOf: new Map([['area-001', entries]]) });
     expect(flowNodes(merged).map((f) => f.id).sort()).toEqual(['flow:http.get-orders', 'flow:http.get-orders--area-001']);
     expect(m.flowIdsDerived).toEqual([{ from: 'flow:list-orders', to: 'flow:http.get-orders', areaId: 'area-001' }]);
+  });
+});
+
+describe('one coverage bucket per fact entry point', () => {
+  it('puts every entry point in exactly one bucket and lists the silent ones', async () => {
+    const { root, manifest, output } = prepare();
+    const { exitCode, coverage, stdout } = await merge(root, output, areaOutput([
+      { name: 'orders', files: ['svc/orders/handlers.go'], ids: [IDS.getOrders] },
+    ], {
+      token: manifest.token,
+      skippedEntryPoints: [
+        { id: IDS.health, reason: 'Health check, no business behaviour.' },
+        { id: 'ep:http.get-nowhere', reason: 'x' },
+        { id: IDS.invoices, reason: '  ' },
+      ],
+      skippedModules: [{ module: 'web/pages', reason: 'Pages are covered by the backend flows.' }],
+    }));
+    expect(exitCode).toBe(0);
+    const epc = coverage.entryPointCoverage;
+    const bucketOf = Object.fromEntries(epc.rows.map((r) => [r.id, r.bucket]));
+    expect(bucketOf).toEqual({
+      [IDS.getOrders]: 'in-flow',
+      [IDS.postOrders]: 'in-flow',
+      [IDS.health]: 'declared-skip',
+      [IDS.invoices]: 'silent',
+      [IDS.profile]: 'declared-skip',
+    });
+    expect(epc).toMatchObject({
+      total: 5, ok: true,
+      buckets: { 'in-flow': 2, 'declared-skip': 2, silent: 1, 'area-not-accepted': 0, 'outside-areas': 0 },
+      inFlowBy: { cited: 1, group: 1 },
+      declaredBy: { 'entry-point': 1, module: 1 },
+      skippedEntryPointsUnknown: 1,
+      skippedEntryPointsWithoutReason: 1,
+      silent: [IDS.invoices],
+    });
+    expect(epc.rows.find((r) => r.id === IDS.postOrders).flow).toBe('flow:http.get-orders');
+    expect(stdout).toContain('entry-point coverage total=5 in-flow=2 declared-skip=2 silent=1 area-not-accepted=0 outside-areas=0');
+    expect(stdout).toContain(`silent-entry-point ${IDS.invoices} GET /invoices area=area-001`);
+  });
+
+  it('counts the entry points of an area that was not accepted, and those outside every module', async () => {
+    const { root, manifest, output } = prepare();
+    const manifestPath = join(root, '.excavator/intermediate/domain-areas/manifest.json');
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, entryPointsOutsideModules: ['ep:http.get-gone'] }));
+    const { exitCode, coverage } = await merge(root, output, { not: 'an area output' });
+    expect(exitCode).toBe(3);
+    expect(coverage.entryPointCoverage).toMatchObject({
+      total: 6, ok: true, buckets: { 'in-flow': 0, 'declared-skip': 0, silent: 0, 'area-not-accepted': 5, 'outside-areas': 1 },
+    });
+  });
+
+  it('keeps a module with nothing to skip in no-candidates when an analyzer declares it skipped', async () => {
+    const { root, manifest, output } = prepare();
+    const { coverage } = await merge(root, output, areaOutput([], {
+      token: manifest.token,
+      skippedModules: [
+        { module: 'svc/templates', reason: 'Mail templates only.' },
+        { module: 'svc/billing', reason: 'Read-only listing.' },
+      ],
+    }));
+    const statusOf = Object.fromEntries(coverage.modules.map((m) => [m.path, m.status]));
+    expect(statusOf['svc/templates']).toBe('no-candidates');
+    expect(statusOf['svc/billing']).toBe('declared-skip');
+    expect(coverage.merge.skippedModulesWithoutCandidates).toBe(1);
+  });
+
+  it('fails the bucket check when one id is counted twice', () => {
+    const entry = { id: IDS.health, group: IDS.health, file: 'svc/routes.go', method: 'GET', path: '/health', type: 'http' };
+    const manifest = {
+      modules: [{ path: 'svc', files: ['svc/routes.go'], areas: ['area-001', 'area-002'], entryPoints: 1, scriptEntryPoints: 1 }],
+      areas: [{ areaId: 'area-001' }, { areaId: 'area-002' }],
+    };
+    const coverage = computeCoverage({
+      manifest,
+      areaResults: [{ areaId: 'area-001', status: 'accepted', graph: {} }, { areaId: 'area-002', status: 'accepted', graph: {} }],
+      merged: { nodes: [], edges: [] },
+      entriesOf: new Map([['area-001', [entry]], ['area-002', [entry]]]),
+    });
+    expect(coverage.entryPointCoverage).toMatchObject({ total: 1, ok: false, buckets: { silent: 2 } });
   });
 });
