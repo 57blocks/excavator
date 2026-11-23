@@ -229,6 +229,24 @@ describe('mergeRelations sides and targets', () => {
     expect(merged.conservation.ok).toBe(true);
   });
 
+  it('pairs across every side when nothing in the target unit matches, and marks it', () => {
+    const merged = merge(
+      [recvEnd('src/main/java/Api.java'), callEnd('src/main/webapp/app/items.service.ts', 'unit:other')],
+      [callEnd('other/Client.java', 'unit:nowhere')],
+    );
+    const missed = merged.relations.find((r) => r.caller?.file === 'src/main/webapp/app/items.service.ts');
+    expect(missed).toMatchObject({ bucket: 'linked', targetUnit: 'unit:other', targetUnitMissed: true, receiver: { file: 'src/main/java/Api.java' } });
+    const unknown = merged.relations.find((r) => r.caller?.file === 'other/Client.java');
+    expect(unknown).toMatchObject({ bucket: 'linked', receiver: { file: 'src/main/java/Api.java' } });
+    expect(unknown.targetUnitMissed).toBeUndefined();
+    expect(merged.counts).toMatchObject({ targetUnitMissed: 1, targetUnitUnknown: 1 });
+    // Nothing matches anywhere: caller-only, not marked.
+    const alone = merge([callEnd('src/main/webapp/app/items.service.ts', 'unit:other')], []);
+    expect(alone.relations[0].bucket).toBe('caller-only');
+    expect(alone.relations[0].targetUnitMissed).toBeUndefined();
+    expect(alone.counts.targetUnitMissed).toBe(0);
+  });
+
   it('never pairs two ends of one side', () => {
     const merged = merge([recvEnd('src/main/java/Api.java')], [recvEnd('other/Api.java'), callEnd('other/Client.java')]);
     const own = merged.relations.find((r) => r.caller?.file === 'other/Client.java');

@@ -44,7 +44,10 @@
  * Pairing (relations-address.mjs) happens between sides only: a side is a
  * unit and a language family, so a browser bundle and its server in one unit
  * are two sides, while two files of one Node server are one. A caller whose
- * `targetUnit` names a known unit is paired only with receivers of that unit.
+ * `targetUnit` names a known unit is paired with receivers of that unit;
+ * when none of them matches its address, it is paired across every other
+ * side, marked `targetUnitMissed` and counted (`target units ... missed=`).
+ * A `targetUnit` that names no unit is counted and ignored.
  *
  * Buckets, one per end: a caller is linked, ambiguous, caller-only,
  * address-unresolved or quote-failed; a receiver is linked (some caller is
@@ -301,7 +304,7 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     nodesByFile.get(node.filePath).push(node);
   }
 
-  const counts = { nodeIdGiven: 0, nodeIdRejected: 0, nodeIdBy: { analyzer: 0, 'derived-range': 0, 'derived-file': 0, none: 0 }, targetUnitUnknown: 0, addressByEntryPoint: 0 };
+  const counts = { nodeIdGiven: 0, nodeIdRejected: 0, nodeIdBy: { analyzer: 0, 'derived-range': 0, 'derived-file': 0, none: 0 }, targetUnitUnknown: 0, targetUnitMissed: 0, addressByEntryPoint: 0 };
   const rejections = Object.fromEntries(REJECTIONS.map((r) => [r, 0]));
   const outOfScope = {};
   const declared = new Map();
@@ -381,12 +384,22 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
       if (unitIds.has(item.end.targetUnit)) target = item.end.targetUnit;
       else counts.targetUnitUnknown += 1;
     }
-    const pool = receivers
-      .filter((r) => r.end.kind === item.end.kind && sideOf(r.view) !== sideOf(item.view) && (target === null || r.view.unit === target))
-      .map((r) => ({ ...r.result.normalized, item: r }));
-    const paired = pairCaller(item.end.kind, n, pool);
+    const others = receivers.filter((r) => r.end.kind === item.end.kind && sideOf(r.view) !== sideOf(item.view));
+    const poolOf = (list) => list.map((r) => ({ ...r.result.normalized, item: r }));
+    let paired = pairCaller(item.end.kind, n, poolOf(target === null ? others : others.filter((r) => r.view.unit === target)));
+    let missed = false;
+    if (target !== null && paired.bucket === 'caller-only') {
+      // The target is the analyzer's reading; the address is the checked part.
+      // Nothing there matches it, so pair across every other side and say so.
+      const anywhere = pairCaller(item.end.kind, n, poolOf(others));
+      if (anywhere.bucket !== 'caller-only') {
+        paired = anywhere;
+        missed = true;
+        counts.targetUnitMissed += 1;
+      }
+    }
     bucketOf.set(item, paired.bucket);
-    const common = { ...base(item), address: n.address, addressKey: n.key, ...(target ? { targetUnit: target } : {}) };
+    const common = { ...base(item), address: n.address, addressKey: n.key, ...(target ? { targetUnit: target } : {}), ...(missed ? { targetUnitMissed: true } : {}) };
     if (paired.bucket === 'linked' && item.end.kind === 'external') {
       relations.push({ ...common, bucket: 'linked', key: `external|${item.view.file}|${n.key}|${n.key}`, caller: item.view, receiver: { external: n.key } });
     } else if (paired.bucket === 'linked') {
@@ -549,6 +562,7 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
   const u = merged.units;
   lines.push(`units has-candidates=${u.filter((x) => x.status === 'has-candidates').length} no-candidates=${u.filter((x) => x.status === 'no-candidates').length}`);
   const n = merged.counts;
+  lines.push(`target units unknown=${n.targetUnitUnknown} missed=${n.targetUnitMissed}`);
   lines.push(`node ids given=${n.nodeIdGiven} rejected=${n.nodeIdRejected} analyzer=${n.nodeIdBy.analyzer} derived-range=${n.nodeIdBy['derived-range']} derived-file=${n.nodeIdBy['derived-file']} none=${n.nodeIdBy.none}`);
   for (const [kind, m] of Object.entries(merged.measurements)) {
     const ag = m.agreement.status === 'measured' || m.agreement.status === 'insufficient'
