@@ -9,7 +9,7 @@
 - **THEN** 打印 `units=reused`，`relations-units.json` 逐字节不变
 
 #### Scenario: 没有入口的清单
-- **WHEN** 一个 `package.json` 没有 `bin`，也没有以 `start`、`dev`、`serve` 开头的脚本，单元内也没有路由入口点
+- **WHEN** 一个 `package.json` 没有 `bin`，也没有以 `start`、`dev`、`serve`、`preview` 开头的脚本，单元内也没有源码级入口证据与路由入口点
 - **THEN** 该单元的 `kind` 为 `library`，它的候选文件照样分区
 
 ### Requirement: 候选文件分区
@@ -42,15 +42,19 @@
 
 ### Requirement: 按地址配对与分桶守恒
 
-合并 SHALL 规范化地址并只在不同单元之间配对：`http` 按段逐一匹配、字面段多者胜，唯一为 `linked`、多个为 `ambiguous`；`message`、`realtime` 同键的每个接收端都 `linked`；`external` 核过即 `linked` 到具名外部端点。每个端点 SHALL 恰好落一个桶（调用端：`linked`、`ambiguous`、`caller-only`、`address-unresolved`、`quote-failed`；接收端：`linked`、`receiver-only`、`address-unresolved`、`quote-failed`），后续种类计入 `out-of-scope`；每个候选文件 SHALL 恰好落 `cited`、`declared-skip`、`silent-zero` 之一。端点守恒不成立时 SHALL 退出 4 且不写 `relations-graph.json`；有区缺失或被拒时 SHALL 退出 3。
+合并 SHALL 规范化地址并只在不同的侧（单元加语言族）之间配对：`http` 按段逐一匹配、字面段多者胜，唯一为 `linked`、多个为 `ambiguous`；`message`、`realtime` 同键的每个接收端都 `linked`；`external` 核过即 `linked` 到具名外部端点。每个端点 SHALL 恰好落一个桶（调用端：`linked`、`ambiguous`、`caller-only`、`address-unresolved`、`quote-failed`；接收端：`linked`、`receiver-only`、`address-unresolved`、`quote-failed`），后续种类计入 `out-of-scope`；每个候选文件 SHALL 恰好落 `cited`、`declared-skip`、`silent-zero` 之一。端点守恒不成立时 SHALL 退出 4 且不写 `relations-graph.json`；有区缺失或被拒时 SHALL 退出 3。
 
 #### Scenario: 参数路径配字面路由
 - **WHEN** 调用端 `GET /users/{}`，两个单元分别注册 `GET /users/:id` 与 `GET /users/me`
 - **THEN** 字面段数相同，调用端进 `ambiguous` 并列出两个候选
 
-#### Scenario: 同单元不配
-- **WHEN** 调用端与唯一能配上的接收端在同一单元
+#### Scenario: 同侧不配
+- **WHEN** 调用端与唯一能配上的接收端在同一单元、同一语言族
 - **THEN** 调用端进 `caller-only`，接收端进 `receiver-only`
+
+#### Scenario: 同单元的浏览器代码配服务端
+- **WHEN** 一个单元里 TypeScript 文件调用 `GET /api/items`，同单元的 Java 文件注册了它
+- **THEN** 两者是不同的侧，调用端 `linked` 到该接收端
 
 #### Scenario: 候选文件没有结果
 - **WHEN** 一个候选文件既没有端点引到它，也不在 `skippedFiles` 里

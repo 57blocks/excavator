@@ -26,8 +26,9 @@
 
 `plan-units.mjs` 遍历项目（跳过依赖、构建产物与点目录），找清单文件：`package.json`、`go.mod`、`pom.xml`、`build.gradle`/`build.gradle.kts`、`pyproject.toml`/`setup.py`/`requirements.txt`、`*.csproj`。每个清单所在目录是一个单元候选，按固定规则定 `kind`：
 
-- `container`：声明了子模块的清单（`workspaces`、`<modules>`、同目录的 `pnpm-workspace.yaml` 或 `settings.gradle` 的 `include`）；
-- `runtime`：有入口证据——`package.json` 的 `bin` 或以 `start`/`dev`/`serve` 开头的脚本；Go 模块里有 `package main`；JVM 源码里有 `static void main` 或 `@SpringBootApplication`；Python 有 `__main__` 守卫、`manage.py` 或 `[project.scripts]`；`.csproj` 的 `OutputType` 为 `Exe`、Web SDK 或有 `Program.cs`；或者知识图里有落在该单元的 `http` 路由入口点；
+- 源码级入口证据——Go 模块里有 `package main`；JVM 源码里有 `static void main` 或 `@SpringBootApplication`；Python 有 `__main__` 守卫、`FastAPI()`/`Flask()` 或 `manage.py`；`.cs` 里有 `Main` 或 `WebApplication.CreateBuilder`、或与 `.csproj` 同在的 `Program.cs`；或者知识图里有落在该单元的 `http` 路由入口点——先判，有则 `runtime`，即使它的清单也声明了子模块（一个构建里带库模块的应用）；
+- 否则声明了子模块的清单（`workspaces`、`<modules>`、同目录的 `pnpm-workspace.yaml`/`lerna.json` 或 `settings.gradle` 的 `include`）为 `container`；
+- 否则清单级入口证据——`package.json` 的 `bin` 或以 `start`/`dev`/`serve`/`preview` 开头的脚本、`.csproj` 的 `OutputType` 为 `Exe` 或 Web SDK、`[project.scripts]`——为 `runtime`；
 - `library`：其余清单；
 - 不在任何清单下的文件归一个合成单元 `unit:.`，`kind` 为 `unmanifested`。
 
@@ -35,11 +36,11 @@
 
 **存储与复用：** 单元清单写到 `.excavator/relations-units.json`（格式 `excavator-relations-units/1`），带输入摘要：规则版本、每个清单的路径与内容哈希、每条入口证据、路由入口点的单元计数。摘要相同则 `units=reused`，原样复用；不同则重新决定并写明哪些单元新增、消失或改了 `kind`。`--reunit` 强制重做。
 
-**为什么不派模型决定单元：** 清单与入口是结构化事实，规则能读准；模型产物要靠存储才稳定，而规则天然稳定、零花费。判断错一个单元的代价有限：配对按地址进行，单元只用于「排除同单元配对」与报告分组。代价是规则读不懂的入口写法会把运行单元判成 `library`，这时它的文件照样分区、照样分析，只是单元 `kind` 不准；单元清单在报告里逐条列出证据，看得见。
+**为什么不派模型决定单元：** 清单与入口是结构化事实，规则能读准；模型产物要靠存储才稳定，而规则天然稳定、零花费。判断错一个单元的代价有限：配对按地址进行，单元只用于「排除同侧配对」（D6）与报告分组。代价是规则读不懂的入口写法会把运行单元判成 `library`，这时它的文件照样分区、照样分析，只是单元 `kind` 不准；单元清单在报告里逐条列出证据，看得见。
 
 ### D2 分区：按单元、按行数上限
 
-`split-relation-areas.mjs` 对每个单元的源码文件（跳过测试文件）逐行跑 D3 的信号表。有命中的是候选文件；另外，引入了「客户端定义文件」（有客户端引入信号的文件，例如创建 axios 实例的文件）的文件也是候选，引入关系取知识图的 `imports` 边，没有知识图时解析相对路径的 `import`/`require`。知识图里有路由入口点的文件也是候选。
+`split-relation-areas.mjs` 对每个单元的源码文件（跳过测试文件）逐行跑 D3 的信号表。有命中的是候选文件；另外，引入了「客户端定义文件」（有客户端引入信号的文件，例如创建 axios 实例的文件）的文件也是候选，引入关系取知识图的 `imports` 边，没有知识图时解析相对路径的 `import`/`require`。知识图里有路由入口点的文件也是候选。`container` 单元自己的候选（子项目之外的构建与工具脚本）计为 `container-skipped`，不进区。
 
 候选文件按路径排序，在单元内装区，每区行数不超过 `--max-lines`（默认 4000）；单个超限的文件独占一区并标 `overBudget`，不切。区不跨单元。
 
@@ -47,7 +48,7 @@
 
 ### D3 信号表是数据
 
-`relations-signals.mjs` 导出一张表，每项是 `{id, family, pattern}`，`family` 为 `http-client`、`http-server`、`http-call`、`rpc`、`message`、`realtime`、`external`。模式只匹配一行文本：库的引入（`axios`、`@angular/common/http`、`socket.io-client`、`kafkajs`、`amqplib`、`google.golang.org/grpc`……）、注解与装饰器（`@GetMapping`、`@SubscribeMessage`、`@KafkaListener`……）、与框架无关的调用形状（`.get(` 后跟以 `/` 或 `${` 开头的字符串）。表只决定哪些文件进区、命中行作为提示给模型；关系由模型写，由 D5 核对。表漏掉的写法会让文件不进区，这类漏项在报告里看不见——由验收的抽查与留出语料估计，不靠表的完整性。
+`relations-signals.mjs` 导出一张表，每项是 `{id, family, pattern}`，`family` 为 `client`（HTTP 客户端）、`server`（路由注册）、`call`（带路径参数的调用形状）、`rpc`、`message`、`realtime`、`external`；除 `server` 与 `call` 外都算「客户端定义」，引入它们的文件也进区。模式只匹配一行文本：库的引入（`axios`、`@angular/common/http`、`socket.io-client`、`kafkajs`、`amqplib`、`google.golang.org/grpc`……）、注解与装饰器（`@GetMapping`、`@SubscribeMessage`、`@KafkaListener`……）、与框架无关的调用形状（`.get(` 后跟以 `/` 或 `${` 开头的字符串）。表只决定哪些文件进区、命中行作为提示给模型；关系由模型写，由 D5 核对。表漏掉的写法会让文件不进区，这类漏项在报告里看不见——由验收的抽查与留出语料估计，不靠表的完整性。
 
 ### D4 地址证据随区下发
 
@@ -80,7 +81,7 @@
 
 没有地址、或地址里没有任何字面部分（整条路径是变量）的端点进 `address-unresolved`。
 
-配对只在不同单元之间进行（同单元的调用不是单元间通信）。调用端写了 `targetUnit`（指向哪个单元，须在单元清单里）时，只在该单元里找接收端：
+配对只在不同的「侧」之间进行。侧是单元加语言族（`js`、`go`、`jvm`、`python`、`dotnet` 等，按扩展名）：一个 Spring 应用把 Angular 前端放在同一清单下时，浏览器代码与服务端是两侧，照样配对；同一个 Node 服务的两个文件是一侧，不配（同一进程内的调用不是单元间通信）。代价：同一单元、同一语言族的前后端（例如 Node 服务目录里的浏览器脚本）配不上，进 `caller-only`/`receiver-only`，看得见。调用端写了 `targetUnit`（指向哪个单元，须在单元清单里，可以是它自己的单元）时，只在该单元里找接收端；清单里没有的 `targetUnit` 计数后忽略：
 - `http`：段数相同（通配除外），逐段满足「接收端是参数则任意，是字面则调用端须为相同字面或参数」，方法相同。按字面段相同的数目取最多者：唯一则 `linked`，多个则 `ambiguous` 并列出候选，没有则 `caller-only`。
 - `rpc`、`message`、`realtime`：键相同即配；多个接收端都配上时，`message` 与 `realtime` 是一对多的广播，每个都 `linked`；`rpc` 多个为 `ambiguous`。
 - `external`：调用端核对通过即 `linked` 到具名外部端点。
@@ -93,7 +94,7 @@
 
 分析器注意到的后续种类按种类计入 `out-of-scope`。区内重复的端点（同端、同种类、同文件、同行、同地址键）保留一条并计数。守恒：分析器写出的端点数 = 各桶端点数之和 + 重复数，MUST 成立，否则退出 4、不写 `relations-graph.json`。
 
-候选文件的桶，恰好一个：`cited`（有端点或证据引到它）、`declared-skip`（分析器在 `skippedFiles` 里写了理由）、`silent-zero`（都没有）。非候选的源码文件计数 `not-candidate`；测试文件计数 `test-excluded`。单元的桶：`has-candidates`、`no-candidates`。各项之和等于源码文件总数与单元总数。
+候选文件的桶，恰好一个：`cited`（有端点或证据引到它）、`declared-skip`（分析器在 `skippedFiles` 里写了理由）、`silent-zero`（都没有）。非候选的源码文件计数 `not-candidate`；`container` 单元的候选计数 `container-skipped`；读不了的（超过 1 MB 或有超过 2000 字符的行）计数 `unreadable`；测试文件计数 `test-excluded`。单元的桶：`has-candidates`、`no-candidates`。各项之和等于源码文件总数与单元总数。
 
 区的验收同域 skill：没有本次令牌为 `rejected-stale`，不是 JSON 为 `rejected-parse`，没有文件为 `missing`；被拒区的东西不进合并，退出 3。
 
@@ -109,7 +110,7 @@
 | 引文失败率 | ≤ 10% |
 | 未解析占比 | ≤ 30% |
 
-任一不达标的种类列入 `escalation.candidates`，写明哪一项。这只是信号，本变更不建抽取器。
+引文失败率与未解析占比只在该种类的端点（未解析占比为核过的端点）至少 10 个时判，少于 10 个的不判。端点数按去重后计。任一不达标的种类列入 `escalation.candidates`，写明哪一项。这只是信号，本变更不建抽取器。
 
 ### D9 产物与新鲜度
 
