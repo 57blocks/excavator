@@ -26,9 +26,8 @@ The dispatching skill gives you the path of the file, not its content. Read all 
 - `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet;
 - `fileSignatures` — exports, imports and a preview of each of your files;
 - `graphNodes` — present only when a knowledge graph exists: the graph nodes of your files, with their real ids;
-- `otherAreas` — the modules other analyzers own; do not analyze them.
 
-You may read the source of your area's files to understand a flow. Analyze only your area.
+Other analyzers own the rest of the project. You may read the source of your area's files to understand a flow. Analyze only the modules and files listed in `modules`.
 
 The dispatching skill will tell you which option applies and provide the context data or its path in your prompt.
 

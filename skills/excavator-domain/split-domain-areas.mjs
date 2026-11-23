@@ -55,7 +55,10 @@ export const DEFAULT_BUDGET_BYTES = 150_000;
 export const DEFAULT_MAX_ENTRY_POINTS = 40;
 export const AREAS_DIR = 'domain-areas';
 
-/** Test files hold no business flow; the extractor skips the same shapes for entry points. */
+/**
+ * Test files hold no business flow. Each shape is anchored to a path
+ * segment, so an ordinary file such as latest_routes.py is not a test file.
+ */
 const TEST_FILE = /(?:\.test\.|\.spec\.|__tests__\/|_test\.go$|_test\.py$|(?:^|\/)test_\w+\.py$)/;
 
 export function isTestFile(path) {
@@ -113,7 +116,8 @@ export function planAreas({
     entryPointsOutsideModules: 0,
     graphNodesAttached: 0,
     graphNodesOutsideRoot: 0,
-    graphNodesOutsideModules: 0,
+    graphNodesOnTestFiles: 0,
+    graphOnlyFiles: 0,
     graphNodesWithoutFile: 0,
   };
 
@@ -146,8 +150,16 @@ export function planAreas({
       if (typeof node.filePath !== 'string' || node.filePath.length === 0) { counts.graphNodesWithoutFile += 1; continue; }
       const file = relativeInsideRoot(node.filePath);
       if (file === null) { counts.graphNodesOutsideRoot += 1; continue; }
-      const material = fileMaterial.get(file);
-      if (!material) { counts.graphNodesOutsideModules += 1; continue; }
+      if (isTestFile(file)) { counts.graphNodesOnTestFiles += 1; continue; }
+      // A file the graph knows but the extractor did not list (a language it
+      // does not scan, a directory it skips) is still a file of the project:
+      // it joins its module, so the module reaches an analyzer and the report.
+      let material = fileMaterial.get(file);
+      if (!material) {
+        material = { file, entryPoints: [], signature: null, graphNodes: [] };
+        fileMaterial.set(file, material);
+        counts.graphOnlyFiles += 1;
+      }
       material.graphNodes.push(graphNodeView(node, file));
       counts.graphNodesAttached += 1;
     }
@@ -307,10 +319,6 @@ async function main() {
   mkdirSync(areasDir, { recursive: true });
 
   const token = randomBytes(16).toString('hex');
-  const index = plan.areas.map((area) => ({
-    areaId: area.areaId,
-    modules: area.modules.map((m) => m.path),
-  }));
   const areas = plan.areas.map((area) => {
     const contextFile = join(areasDir, `${area.areaId}.context.json`);
     const outputFile = join(areasDir, `${area.areaId}.analysis.json`);
@@ -324,13 +332,12 @@ async function main() {
       fileSignatures: area.fileSignatures,
       ...(graphNodes ? { graphNodes: area.graphNodes } : {}),
       metadata: context?.metadata ?? {},
-      otherAreas: index.filter((other) => other.areaId !== area.areaId),
     });
     return {
       areaId: area.areaId,
       contextFile,
       outputFile,
-      modules: area.modules.map(({ path, part }) => ({ path, part })),
+      modules: area.modules.map(({ path, part, files }) => ({ path, part, files })),
       files: area.modules.reduce((n, m) => n + m.files.length, 0),
       entryPoints: area.entryPoints.length,
       graphNodes: area.graphNodes.length,
@@ -364,7 +371,7 @@ async function main() {
     `split-domain-areas: areas=${c.areas} modules=${c.modules} sourceFiles=${c.sourceFiles} ` +
     `entryPoints=${c.entryPoints} testFilesExcluded=${c.testFilesExcluded} ` +
     `contextFilesOutsideRoot=${c.contextFilesOutsideRoot} graphNodesAttached=${c.graphNodesAttached} ` +
-    `graphNodesOutsideRoot=${c.graphNodesOutsideRoot} graphNodesOutsideModules=${c.graphNodesOutsideModules}\n`,
+    `graphNodesOutsideRoot=${c.graphNodesOutsideRoot} graphNodesOnTestFiles=${c.graphNodesOnTestFiles} graphOnlyFiles=${c.graphOnlyFiles}\n`,
   );
 }
 

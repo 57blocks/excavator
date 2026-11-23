@@ -145,12 +145,31 @@ describe('planAreas', () => {
     ];
     const plan = planAreas({ context: contextFor(files), budgetBytes: 6000, graphNodes });
     const attached = plan.areas.flatMap((a) => a.graphNodes);
-    expect(attached.map((n) => n.id).sort()).toEqual(['file:svc/mod00/f1.js', 'function:svc/mod00/f0.js:create']);
+    expect(attached.map((n) => n.id).sort()).toEqual(['config:package.json', 'file:svc/mod00/f1.js', 'function:svc/mod00/f0.js:create']);
     expect(attached.find((n) => n.id === 'file:svc/mod00/f1.js').filePath).toBe('svc/mod00/f1.js');
     expect(plan.counts.graphNodesOutsideRoot).toBe(2);
-    expect(plan.counts.graphNodesOutsideModules).toBe(1);
     expect(plan.counts.graphNodesWithoutFile).toBe(1);
-    expect(plan.counts.graphNodesAttached).toBe(2);
+    // package.json is not in the extractor's file list but is a file of the
+    // project: its node is placed, in module '.'.
+    expect(plan.counts.graphNodesAttached).toBe(3);
+  });
+
+  it('places graph nodes on files the extractor does not list, so their modules reach an analyzer and the report', () => {
+    const graphNodes = [
+      { id: 'file:web/src/App.vue', type: 'file', name: 'App.vue', filePath: 'web/src/App.vue', summary: 's' },
+      { id: 'file:bin/tool.kts', type: 'file', name: 'tool.kts', filePath: 'bin/tool.kts', summary: 's' },
+      { id: 'file:package.json', type: 'config', name: 'package.json', filePath: 'package.json', summary: 's' },
+      { id: 'file:svc/mod00/f0.test.js', type: 'file', name: 'f0.test.js', filePath: 'svc/mod00/f0.test.js', summary: 's' },
+    ];
+    const plan = planAreas({ context: contextFor(files), budgetBytes: 6000, graphNodes });
+    const attached = plan.areas.flatMap((a) => a.graphNodes).map((n) => n.id).sort();
+    expect(attached).toEqual(['file:bin/tool.kts', 'file:package.json', 'file:web/src/App.vue']);
+    const modules = plan.modules.map((m) => m.path);
+    expect(modules).toEqual(expect.arrayContaining(['.', 'bin', 'web/src']));
+    expect(allAreaFiles(plan)).toEqual(expect.arrayContaining(['bin/tool.kts', 'package.json', 'web/src/App.vue']));
+    expect(plan.counts.graphOnlyFiles).toBe(3);
+    expect(plan.counts.graphNodesOnTestFiles).toBe(1);
+    expect(plan.counts).not.toHaveProperty('graphNodesOutsideModules');
   });
 
   it('counts context files that resolve outside the project root and places none of them', () => {
@@ -196,7 +215,9 @@ describe('split-domain-areas.mjs CLI', () => {
       const context = JSON.parse(readFileSync(area.contextFile, 'utf-8'));
       expect(context.areaRun).toEqual({ areaId: area.areaId, token: first.token });
       expect(context.output).toBe(area.outputFile);
-      expect(context.otherAreas.map((o) => o.areaId)).not.toContain(area.areaId);
+      // No index of the other areas: it grew with the project, and an area's
+      // context must not.
+      expect(context).not.toHaveProperty('otherAreas');
     }
     const second = run(root);
     expect(second.token).not.toBe(first.token);
