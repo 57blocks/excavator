@@ -26,6 +26,7 @@ The dispatching skill gives you the path of the file, not its content. Read all 
 - `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet;
 - `fileSignatures` — exports, imports and a preview of each of your files;
 - `graphNodes` — present only when a knowledge graph exists: the graph nodes of your files, with their real ids;
+- `domainPlan` — the project's domain plan: `domains`, the fixed list of domains (`id`, `kind` business or support, `name`, `summary`), and `modules`, for each module of your area its `domain` and `choose` (true when the module mixes several business areas or belongs to a support domain);
 
 Other analyzers own the rest of the project. You may read the source of your area's files to understand a flow. Analyze only the modules and files listed in `modules`.
 
@@ -33,6 +34,13 @@ Other analyzers own the rest of the project. You may read the source of your are
 - write no `domain` nodes and no `contains_flow` or `cross_domain` edges (a script ignores them if you do);
 - give every flow `domainMeta.module`: the path of the module of your area where the flow starts (its entry point), copied from `modules`;
 - order each flow's steps from its entry point, so the first step with a `filePath` is in that module.
+
+**Choosing a domain (Option C).** A module whose `domainPlan.modules` entry has `"choose": true` holds flows of several business areas (a legacy routes or services directory, a directory of scheduled jobs) or sits in a support domain, so its own domain cannot tell where its flows belong. For every flow that starts in such a module:
+- set `domainMeta.domain` to the id of the domain whose business the flow carries out, using only ids listed in `domainPlan.domains`. Read the flow's code and the domains' summaries: a route, service or scheduled job that creates, changes or checks records of a business area (orders, invoices, stock, customers, reminders, expiry, reconciliation) belongs to that business domain, even when it runs on a timer or lives in a shared directory;
+- choose a support domain only for a flow with no business behaviour: health checks, metrics, log rotation, database maintenance, cache warm-up;
+- set `domainMeta.domainReason` to one English sentence saying which business operation decided it (or why the flow has none).
+
+For a flow that starts in a module with `"choose": false`, write no `domainMeta.domain`: its module decides. If the context has no `domainPlan`, write no `domainMeta.domain` at all.
 
 The dispatching skill will tell you which option applies and provide the context data or its path in your prompt.
 
@@ -87,7 +95,9 @@ Produce a JSON object with this exact structure:
       "domainMeta": {
         "entryPoint": "<trigger, e.g. POST /api/orders>",
         "entryType": "http|cli|event|cron|manual",
-        "module": "<Option C only: the module path where the flow starts>"
+        "module": "<Option C only: the module path where the flow starts>",
+        "domain": "<Option C, module with choose true only: a domain id from domainPlan.domains>",
+        "domainReason": "<Option C, with domain only: one sentence on why>"
       }
     },
     {
@@ -145,7 +155,7 @@ Produce a JSON object with this exact structure:
    Without the current `areaRun` the output is rejected.
 2. Never copy, rename or reuse an existing file as your output, even if it looks like a finished analysis: not `.excavator/domain-graph.json`, not any other file under `.excavator/intermediate/`, and not another area's output. Do not read them. Every output is written from this analysis.
 3. The project root will be provided in your prompt. Every `filePath` is relative to it.
-4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, plus key domain or flow names.
+4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, how many flows got a `domainMeta.domain`, plus key domain or flow names.
 
 Do NOT include the full JSON in your text response.
 

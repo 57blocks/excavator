@@ -18,8 +18,8 @@
 
 ## 3. skill 与代理
 
-- [ ] 3.1 红测试（`tests/domain/domain-skill-contract.test.mjs`）：SKILL 在派区分析器之前接受规划、报告 `support-unchosen`；规划代理说明 `mixed` 与「支撑域只放没有业务行为的模块」；分析器 Option C 读 `domainPlan`、为需选域模块的流程写 `domainMeta.domain` 与 `domainReason`。
-- [ ] 3.2 改 `SKILL.md`、`agents/excavator-domain-planner.md`、`agents/excavator-domain-analyzer.md`。
+- [x] 3.1 红测试（`tests/domain/domain-skill-contract.test.mjs`）：SKILL 在派区分析器之前接受规划、报告 `support-unchosen`；规划代理说明 `mixed` 与「支撑域只放没有业务行为的模块」；分析器 Option C 读 `domainPlan`、为需选域模块的流程写 `domainMeta.domain` 与 `domainReason`。
+- [x] 3.2 改 `SKILL.md`、`agents/excavator-domain-planner.md`、`agents/excavator-domain-analyzer.md`。
   - **验证：** 3.1 绿；`node scripts/check-refs.mjs`；读这些文件的既有测试绿。
 
 ## 4. 实测与收尾

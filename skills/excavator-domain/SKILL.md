@@ -12,9 +12,10 @@ Extracts business domain knowledge — domains, business flows, and process step
 
 - A script lists the candidate material: the source files, their entry points (HTTP routes, CLI commands, event handlers, cron jobs, exported handlers) and a signature of every file.
 - A second script groups the files into modules (one per directory) and packs the modules into bounded **areas**. When a knowledge graph exists (`.excavator/knowledge-graph.jsonl`) and `--full` was not passed, each area also carries the graph nodes of its own files, so steps can cite real node ids.
-- The project's domains are decided **once**: a script lists every module, one domain-planner assigns each module to one business domain (or to a support domain for data models, shared libraries and infrastructure), and the script checks the assignment and stores it in `.excavator/domain-plan.json`. While the set of modules stays the same, later runs reuse that plan and dispatch no planner, so the domains do not drift from run to run; new modules are added to it, and only `--replan` decides it again.
-- One domain-analyzer runs per area, on that area only, and writes flows and steps, not domains. No analyzer has to fit the whole project.
-- A merge script hangs each flow under the planned domain of the module it starts in, checks that every flow and step of every area came through, and writes a coverage report: per area, per module and per entry-point file, which ones came back with no flow. A skipped module is listed, not hidden.
+- The project's domains are decided **once**: a script lists every module, one domain-planner assigns each module to one business domain (or to a support domain for data models, shared libraries and infrastructure) and marks the modules that mix several business areas (`mixed`), and the script checks the plan and stores it in `.excavator/domain-plan.json`. While the set of modules stays the same, later runs reuse that plan and dispatch no planner, so the domains do not drift from run to run; new modules are added to it, and only `--replan` decides it again.
+- Once the plan is settled, the script writes it into every area's context as `domainPlan`: the plan's domains, and for each module of the area its domain and whether the analyzer chooses the domain of its flows (`choose`: the module is mixed or belongs to a support domain).
+- One domain-analyzer runs per area, on that area only, and writes flows and steps, not domains. For a flow that starts in a module marked `choose`, it picks one of the plan's domains. No analyzer has to fit the whole project.
+- A merge script hangs each flow under the planned domain of the module it starts in, or, for a module marked `choose`, under the domain the analyzer picked (a missing or unknown pick falls back to the module's domain and is counted). It checks that every flow and step of every area came through, and writes a coverage report: per area, per module and per entry-point file, which ones came back with no flow, and every flow that ended in a support domain without a pick. A skipped module is listed, not hidden.
 - Use `--full` to leave the knowledge graph out of the areas even if one exists. Use `--replan` to discard the stored plan and decide the domains again.
 
 ## Instructions
@@ -134,7 +135,7 @@ node "$PLUGIN_ROOT/skills/excavator-domain/plan-domains.mjs" prepare "$PROJECT_R
 
 Add `--replan` only when the user passed `--replan`. It compares the modules of this split with the stored `$DATA_DIR/domain-plan.json` and prints one line:
 
-- `plan=reused ...` — the module set is unchanged (or only lost modules): the stored plan is used as it is. Dispatch no planner in Phase 4.
+- `plan=reused ... mixed=<n> areaContexts=<n>` — the module set is unchanged (or only lost modules): the stored plan is used as it is and is already written into every area context. Dispatch no planner in Phase 4.
 - `plan=new ... input=<plan input> output=<plan output>` — no usable stored plan (or `--replan`): one planner assigns every module.
 - `plan=extend ... input=<plan input> output=<plan output>` — new modules appeared: one planner assigns only those; every earlier assignment stays.
 
@@ -142,29 +143,30 @@ Keep the line; Phase 4 dispatches from it.
 
 ### Phase 4: Domain Analysis
 
+The analyzers choose domains from the plan, so the plan is settled first and the areas are dispatched after it.
+
 1. Read the domain-analyzer agent prompt from `$PLUGIN_ROOT/agents/excavator-domain-analyzer.md`.
-2. Unless Phase 3.5 printed `plan=reused`, read the planner prompt from `$PLUGIN_ROOT/agents/excavator-domain-planner.md` and dispatch **one planner subagent** with it. Give it only the project root, the plan input path and the plan output path from the Phase 3.5 line. Require every model-owned field in English.
-3. Dispatch **one subagent per area** with the analyzer prompt. Give each one only: the project root, the path of its area's context file, and the path of its output file (both from its Phase 3 line), and tell it to use **Option C**. Do not paste the context into the prompt, and do not give it any other area's files. Explicitly require every model-owned domain field to be written in English while preserving source-owned identifiers, paths, literals, and excerpts verbatim. The areas and the planner are independent; they may all run concurrently.
-4. When the planner has returned (skip this step after `plan=reused`), accept its plan:
+2. Unless Phase 3.5 printed `plan=reused`, read the planner prompt from `$PLUGIN_ROOT/agents/excavator-domain-planner.md` and dispatch **one planner subagent** with it. Give it only the project root, the plan input path and the plan output path from the Phase 3.5 line. Require every model-owned field in English. When it has returned, accept its plan:
 
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-domain/plan-domains.mjs" accept "$PROJECT_ROOT"
    ```
 
-   It exits 0 and stores `$DATA_DIR/domain-plan.json`, or exits 3 and prints one `rejected:` line per failed check (a module missing or extra, an unknown or empty domain, too many business or support domains, a stale token). On exit 3, dispatch a fresh planner once, exactly as in step 2, adding the `rejected:` lines to its prompt, then run `accept` again. If it exits 3 again, **STOP**: report the reasons and do not merge, save or publish a domain graph. Never write, copy or edit the plan output or `domain-plan.json` yourself.
-5. When every area subagent has returned, merge:
+   It exits 0, stores `$DATA_DIR/domain-plan.json` and writes the plan into every area context as `domainPlan`, or exits 3 and prints one `rejected:` line per failed check (a module missing or extra, an unknown or empty domain, a bad `mixed` entry, too many business or support domains, a stale token). On exit 3, dispatch a fresh planner once, exactly as above, adding the `rejected:` lines to its prompt, then run `accept` again. If it exits 3 again, **STOP**: report the reasons and do not merge, save or publish a domain graph. Never write, copy or edit the plan output, `domain-plan.json` or an area context yourself.
+3. Only now, with the plan reused or accepted, dispatch **one subagent per area** with the analyzer prompt. Give each one only: the project root, the path of its area's context file, and the path of its output file (both from its Phase 3 line), and tell it to use **Option C**. Do not paste the context into the prompt, and do not give it any other area's files. Explicitly require every model-owned domain field to be written in English while preserving source-owned identifiers, paths, literals, and excerpts verbatim. The areas are independent of each other; they may all run concurrently.
+4. When every area subagent has returned, merge:
 
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-domain/merge-domain-areas.mjs" "$PROJECT_ROOT"
    ```
 
-   It writes the merged graph to `$DATA_DIR/intermediate/domain-analysis.json` and the coverage report to `$DATA_DIR/reports/domain-coverage.json`, and prints one line per area, the plan status, how the flows were homed (one `unplaced` line per flow it could hang under no domain), the conservation check, the module buckets, one `silent-zero` line per module that has entry points but no flow and was not declared skipped, and one `silent-zero-part` line per part of a split module whose area cited none of its entry-point files.
+   It writes the merged graph to `$DATA_DIR/intermediate/domain-analysis.json` and the coverage report to `$DATA_DIR/reports/domain-coverage.json`, and prints one line per area, the plan status, how the flows were homed (one `unplaced` line per flow it could hang under no domain), how their domains were decided (`flows domain module=… choice=… fallback=… support=… support-chosen=… support-unchosen=…`, then one `fallback` line per flow of a `choose` module whose analyzer gave no valid pick, written `support-unchosen` when that flow ended in a support domain), the conservation check, the module buckets, one `silent-zero` line per module that has entry points but no flow and was not declared skipped, and one `silent-zero-part` line per part of a split module whose area cited none of its entry-point files.
 
-   If it exits 4, the merge lost or added a flow, a step or a step edge: report the `conservation FAILED` line and stderr and **STOP**; nothing was written. If it exits 1 because the plan does not match the modules, run Phase 3.5 again, then steps 2 and 4 unless it prints `plan=reused`.
+   If it exits 4, the merge lost or added a flow, a step or a step edge: report the `conservation FAILED` line and stderr and **STOP**; nothing was written. If it exits 1 because the plan does not match the modules, run Phase 3.5 again, then step 2 unless it prints `plan=reused`, then steps 3 and 4.
 
    If it exits 3, some areas were `missing` or rejected (`rejected-stale`: the output does not carry this run's token, for example an earlier file copied into place; `rejected-parse`: not JSON). Dispatch a fresh subagent for each of those areas once, exactly as in step 3, then run the merge again. If it still exits 3, continue with what was accepted and tell the user which areas are missing. Never write or copy an area's output yourself.
 
-6. Report to the user, from the merge output: the plan status (`new`, `extend` or `reused`) with its business and support domain counts; the number of areas accepted, domains, flows and steps; the number of `unplaced` flows; the module buckets `covered`, `declared-skip`, `silent-zero` and `no-candidates`; every `silent-zero` module and `silent-zero-part`; and how many entry-point files no step cites. These are the gaps of this run. Do not describe the coverage as complete while either is above 0.
+5. Report to the user, from the merge output: the plan status (`new`, `extend` or `reused`) with its business and support domain counts; the number of areas accepted, domains, flows and steps; the number of `unplaced` flows; how many flows took their domain from the module, from the analyzer's pick and by fallback, and every `support-unchosen` flow (a flow in a support domain that no analyzer judged non-business); the module buckets `covered`, `declared-skip`, `silent-zero` and `no-candidates`; every `silent-zero` module and `silent-zero-part`; and how many entry-point files no step cites. These are the gaps of this run. Do not describe the coverage as complete while either is above 0.
 
 ### Phase 4.5: Anchor Steps
 
