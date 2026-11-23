@@ -6,8 +6,8 @@
 
 ## 1. 规划：混合标记与区上下文
 
-- [ ] 1.1 红测试（`tests/domain/plan-domains.test.mjs`）：O1、O2。
-- [ ] 1.2 改 `plan-domains.mjs`：`mixed` 校验、存储、剪枝、格式 /2；导出 `writeAreaPlans`，`prepare`（reused）与 `accept`（接受）调用它。
+- [x] 1.1 红测试（`tests/domain/plan-domains.test.mjs`）：O1、O2。
+- [x] 1.2 改 `plan-domains.mjs`：`mixed` 校验、存储、剪枝、格式 /2；导出 `writeAreaPlans`，`prepare`（reused）与 `accept`（接受）调用它。
   - **验证：** 1.1 绿；既有规划测试绿。
 
 ## 2. 挂接
