@@ -2,7 +2,7 @@
 
 ### Requirement: 区输出的选域检查
 
-`merge-domain-areas.mjs` 接受区输出时，在令牌与解析检查之后，SHALL 对每条起始于需选域模块（规划标为 `mixed`，或归在支撑域）的流程检查选择；起始模块的求法 MUST 与流程挂接相同。流程的 `domainMeta.domain` 不是规划里的域 id，或 `domainMeta.domainReason` 去空白后为空时，该区 SHALL 记为 `rejected-choice`，内容 MUST NOT 进入合并结果，退出码 SHALL 为 3，并 SHALL 为每条这样的流程打印一行，写明区、流程、起始模块、问题（`missing`、`invalid` 或 `no-reason`）与规划的全部域 id。每个区上下文 SHALL 带 `check`：只读地对该区做同样检查的命令，接受时退出 0，否则退出 3 并打印同样的行；分析器 SHALL 在返回前运行它并按这些行补选。合并 SHALL 提供 `--accept-unchosen`：只放行仅未通过选域检查的区，区结果带 `unchosen` 列表，区行打印 `unchosen=<n>`，未选的流程按流程挂接的回落规则定域并计数。`/excavator-domain` SHALL 先对 `rejected-choice` 的区重派一次（提示词带该区的 `rejected-choice` 行）并重跑合并，仍被拒时才 SHALL 使用 `--accept-unchosen`。
+`merge-domain-areas.mjs` 接受区输出时，在令牌与解析检查之后，SHALL 对每条起始于需选域模块（规划标为 `mixed`，或归在支撑域）的流程检查选择；起始模块的求法 MUST 与流程挂接相同。流程的 `domainMeta.domain` 不是规划里的域 id，或 `domainMeta.domainReason` 去空白后为空时，该区 SHALL 记为 `rejected-choice`，内容 MUST NOT 进入合并结果，退出码 SHALL 为 3，并 SHALL 为每条这样的流程打印一行，写明区、流程、起始模块、问题（`missing`、`invalid` 或 `no-reason`）与规划的全部域 id。每个区上下文 SHALL 带 `check`：只读地对该区做同样检查的命令，接受时退出 0，否则退出 3 并打印同样的行；分析器 SHALL 在返回前运行它并按这些行补选。合并 SHALL 提供 `--accept-unchosen`：只放行仅未通过选域检查的区，区结果带 `unchosen` 列表，区行打印 `unchosen=<n>`，这些流程按流程挂接的规则定域并计数：没写或清单外的回落到起始模块的域并计入回落，没写理由的保留所选域并计入 `choicesWithoutReason`。`/excavator-domain` SHALL 先对 `rejected-choice` 的区重派一次（提示词带该区的 `rejected-choice` 行）并重跑合并，仍被拒时才 SHALL 使用 `--accept-unchosen`。
 
 #### Scenario: 混合目录里没选的流程
 - **WHEN** 一条流程起始于规划标为 `mixed` 的 `legacy/routes`，没有写 `domainMeta.domain`

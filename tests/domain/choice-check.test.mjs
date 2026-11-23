@@ -207,6 +207,17 @@ describe('choice check on the mixed legacy fixture', () => {
     expect(context.check).toMatch(/merge-domain-areas\.mjs' '.+' --check area-001$/);
   });
 
+  it('refuses --check with other options and for an area the manifest does not list', () => {
+    const { root } = prepareMixed();
+    const MERGE = resolve(repoRoot, 'skills/excavator-domain/merge-domain-areas.mjs');
+    const mixedOptions = spawnSync(process.execPath, [MERGE, root, '--check', 'area-001', '--accept-unchosen'], { encoding: 'utf-8' });
+    expect(mixedOptions.status).toBe(1);
+    expect(mixedOptions.stderr).toContain('--check takes no other option');
+    const unknown = spawnSync(process.execPath, [MERGE, root, '--check', 'area-999'], { encoding: 'utf-8' });
+    expect(unknown.status).toBe(1);
+    expect(unknown.stderr).toContain('no area "area-999" in the manifest');
+  });
+
   it('rejects a mixed-routes flow without a choice, at the check and at the merge, with no fallback', async () => {
     const { root, manifest, plan, context, output } = prepareMixed();
     writeFileSync(output, JSON.stringify(areaOutput([flowFrom()], { token: manifest.token })));

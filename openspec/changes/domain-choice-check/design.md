@@ -30,7 +30,7 @@
 
 ### D3 兜底：`--accept-unchosen`，只在一次重派之后
 
-重派后仍被拒时有两条路：丢掉整个区（今天对 `rejected-stale` 的做法），或接受并让回落计数。丢区会让该区所有流程消失，覆盖损失远大于几条流程挂到模块的域，所以选后者，但要显式：合并加 `--accept-unchosen`，这些区照常接受，区结果带 `unchosen`（每条未选流程及其问题），区行打印 `unchosen=<n>`，挂接的回落与计数原样生效。skill 只在那一次重派之后用它。`missing`、`rejected-stale`、`rejected-parse` 不受此开关影响。
+重派后仍被拒时有两条路：丢掉整个区（今天对 `rejected-stale` 的做法），或接受并让回落计数。丢区会让该区所有流程消失，覆盖损失远大于几条流程挂到模块的域，所以选后者，但要显式：合并加 `--accept-unchosen`，这些区照常接受，区结果带 `unchosen`（每条未选流程及其问题），区行打印 `unchosen=<n>`，挂接规则原样生效：没写或清单外的选择回落到模块的域并计入回落，没写理由的选择保留所选域并计入 `choicesWithoutReason`，落在支撑域的都计入 `support-unchosen`。skill 只在那一次重派之后用它。`missing`、`rejected-stale`、`rejected-parse` 不受此开关影响。
 
 ## Risks / Trade-offs
 

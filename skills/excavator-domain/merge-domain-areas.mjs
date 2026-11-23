@@ -22,7 +22,9 @@
  * ids, so the analyzer is sent back to choose instead of the merge placing
  * the flow by fallback. `--accept-unchosen` (used only after one re-dispatch)
  * accepts such an output anyway and records its flows on the area
- * (`unchosen`); the fallback below then places and counts them.
+ * (`unchosen`); homing then treats them as before: a missing or invalid
+ * pick falls back and is counted, a pick without a reason is kept and
+ * counted as choicesWithoutReason.
  * Nothing of a rejected area enters the merged graph. Exit code 3 when any
  * area is not accepted; the graph and the report are still written.
  *
