@@ -688,7 +688,10 @@ node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" apply-semantic --batch
 ```
 
 This writes only the ids batch `<i>` lists; an id that came back without a
-verdict stays unmarked, so a re-run selects it again. After every batch has
+verdict stays unmarked, so a re-run selects it again. So does a `verified` or
+`contradicted` verdict whose `evidence` does not quote a line of the slice
+other than its declaration line: it is not written, and is counted as
+`no-evidence`. After every batch has
 returned and been committed, close the phase:
 
 ```bash
@@ -696,7 +699,7 @@ node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" apply-semantic
 ```
 
 It reads only this run's verdict files, accepts only this run's selected ids,
-marks a selected id with no verdict `unverified`, and writes
+marks a selected id with no verdict, or with no evidence for its verdict, `unverified`, and writes
 `$DATA_DIR/intermediate/semantic-verification.json`. Report the counts, same
 format as Phase 2.5's report line below.
 

@@ -14,6 +14,9 @@ import {
 } from '../../skills/excavator/apply-verification.mjs';
 
 const okClassifier = () => 'ok';
+// These tests are about which ids a verdict may land on; the evidence rule
+// has its own tests in apply-verification-semantic-evidence.test.mjs.
+const acceptEvidence = () => ({ ok: true });
 
 describe('apply-verification.mjs — prepareSemanticVerification', () => {
   it('selects only fact nodes with a non-empty cached summary, anchored to a real file+lineRange', () => {
@@ -113,7 +116,7 @@ describe('apply-verification.mjs — applySemanticVerification', () => {
       { id: 'function:a.ts:helper', verdict: 'contradicted', reason: 'source says otherwise' },
     ];
 
-    const { semanticCache: updated, report, archive } = applySemanticVerification({ semanticCache, manifest, verdicts });
+    const { semanticCache: updated, report, archive } = applySemanticVerification({ checkEvidence: acceptEvidence, semanticCache, manifest, verdicts });
 
     expect(updated.entries['function:a.ts:run'].verification).toBe('verified');
     expect(updated.entries['function:a.ts:helper'].verification).toBe('contradicted');
@@ -130,7 +133,7 @@ describe('apply-verification.mjs — applySemanticVerification', () => {
 
   it('keeps the cache identity, so verified entries stay reusable', () => {
     const semanticCache = { version: '2.0.0', contentLanguage: 'en', entries: { 'n:a': { summary: 'A.' } } };
-    const { semanticCache: updated } = applySemanticVerification({
+    const { semanticCache: updated } = applySemanticVerification({ checkEvidence: acceptEvidence,
       semanticCache, verdicts: [{ id: 'n:a', verdict: 'verified' }],
     });
     expect(updated.version).toBe('2.0.0');
@@ -140,7 +143,7 @@ describe('apply-verification.mjs — applySemanticVerification', () => {
   it('drops a verdict for a node id absent from semantic-cache.json, counted as unknown-node — never fabricates an entry', () => {
     const semanticCache = { entries: { 'function:a.ts:run': { summary: 'x', semanticSourceHash: 'h1' } } };
     const verdicts = [{ id: 'function:a.ts:ghost', verdict: 'verified' }];
-    const { semanticCache: updated, report } = applySemanticVerification({ semanticCache, verdicts });
+    const { semanticCache: updated, report } = applySemanticVerification({ checkEvidence: acceptEvidence, semanticCache, verdicts });
 
     expect(updated.entries['function:a.ts:ghost']).toBeUndefined();
     expect(report.counts.verdictUnknownNode).toBe(1);
@@ -149,7 +152,7 @@ describe('apply-verification.mjs — applySemanticVerification', () => {
 
   it('never downgrades an existing contradicted marking with a later verified verdict', () => {
     const semanticCache = { entries: { 'function:a.ts:run': { summary: 'x', semanticSourceHash: 'h1', verification: 'contradicted' } } };
-    const { semanticCache: updated, report } = applySemanticVerification({
+    const { semanticCache: updated, report } = applySemanticVerification({ checkEvidence: acceptEvidence,
       semanticCache, verdicts: [{ id: 'function:a.ts:run', verdict: 'verified' }],
     });
     expect(updated.entries['function:a.ts:run'].verification).toBe('contradicted');
@@ -162,7 +165,7 @@ describe('apply-verification.mjs — per-batch commit and the closing apply', ()
 
   it('a batch commit writes only the ids its batch lists and leaves unanswered ones unmarked', () => {
     const semanticCache = { entries: { 'n:a': entry('A.'), 'n:b': entry('B.'), 'n:c': entry('C.') } };
-    const { semanticCache: updated, report } = applySemanticVerification({
+    const { semanticCache: updated, report } = applySemanticVerification({ checkEvidence: acceptEvidence,
       semanticCache,
       batchIds: ['n:a', 'n:b'],
       verdicts: [
@@ -183,7 +186,7 @@ describe('apply-verification.mjs — per-batch commit and the closing apply', ()
     // verdict for it can only come from a file some other run left behind.
     const semanticCache = { entries: { 'n:new': entry('New.'), 'n:old': entry('Regenerated.') } };
     const manifest = { mode: 'full', selectedIds: ['n:new'], batches: [{ batchIndex: 0, nodeCount: 1 }], counts: {} };
-    const { semanticCache: updated, report } = applySemanticVerification({
+    const { semanticCache: updated, report } = applySemanticVerification({ checkEvidence: acceptEvidence,
       semanticCache, manifest,
       verdicts: [{ id: 'n:old', verdict: 'contradicted', reason: 'about the previous text' }],
     });
@@ -195,7 +198,7 @@ describe('apply-verification.mjs — per-batch commit and the closing apply', ()
 
   it('gaps count markings already in the cache, not only this call\'s verdicts', () => {
     const semanticCache = { entries: { 'n:a': entry('A.', 'contradicted'), 'n:b': entry('B.', 'unverified') } };
-    const { report } = applySemanticVerification({ semanticCache, manifest: { selectedIds: [], batches: [] } });
+    const { report } = applySemanticVerification({ checkEvidence: acceptEvidence, semanticCache, manifest: { selectedIds: [], batches: [] } });
     const kinds = Object.fromEntries(report.gaps.map((g) => [g.kind, g.count]));
     expect(kinds['semantic-summary-contradicted']).toBe(1);
     expect(kinds['semantic-summary-unverified']).toBe(1);
@@ -209,7 +212,7 @@ describe('apply-verification.mjs — per-batch commit and the closing apply', ()
       { id: 'n:kept', summary: 'Same.', reason: 'r1' },
       { id: 'n:redone', summary: 'Old text.', reason: 'r2' },
     ];
-    const { archive } = applySemanticVerification({ semanticCache, batchIds: [], previousArchive });
+    const { archive } = applySemanticVerification({ checkEvidence: acceptEvidence, semanticCache, batchIds: [], previousArchive });
     expect(archive).toEqual([{ id: 'n:kept', summary: 'Same.', reason: 'r1' }]);
   });
 

@@ -26,3 +26,18 @@ describe('Phase F2 asks for read evidence', () => {
     expect(analyzer).toContain('Do not put the node\'s file path or any line number in `summary` or `displayName`.');
   });
 });
+
+describe('Phase F4 asks for read evidence', () => {
+  const verifier = read('agents/excavator-summary-verifier.md');
+
+  it('has the verifier quote the body line that decided a verified or contradicted verdict', () => {
+    expect(verifier).toContain('`evidence` is required with `verified` and `contradicted`');
+    expect(verifier).toContain('"evidence": { "line": 14, "quote": "if (!order.customerId) throw new ValidationError" }');
+    expect(verifier).toContain('which needs no `evidence`');
+  });
+
+  it('says in Phase F4 that a verdict without evidence is not written', () => {
+    expect(skill).toContain('is not written, and is counted as `no-evidence`');
+    expect(skill).toContain('marks a selected id with no verdict, or with no evidence for its verdict, `unverified`');
+  });
+});

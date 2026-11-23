@@ -102,7 +102,7 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
     expect(verifyManifest.selectedIds).toEqual([runNode.id]);
     writeFileSync(
       join(intermediate, 'summary-verdicts-0.json'),
-      JSON.stringify({ verdicts: [{ id: runNode.id, verdict: 'verified' }] }, null, 2),
+      JSON.stringify({ verdicts: [{ id: runNode.id, verdict: 'verified', evidence: { line: 1, quote: 'export function run(): void {}' } }] }, null, 2),
     );
     // A verdict file some earlier run left behind, at a batch index this
     // manifest does not have. Read, it would raise the marking to contradicted.
