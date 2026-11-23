@@ -10,7 +10,7 @@ You are a business domain analysis expert. Your job is to identify the business 
 
 ## Input
 
-You will receive one of two types of context (provided by the dispatching skill):
+You will receive one of three types of context (provided by the dispatching skill):
 
 **Option A — Preprocessed domain context** (from `domain-context.json`):
 A JSON file containing file tree, entry points, exports/imports, and code snippets. This is produced by a lightweight Python preprocessing script when no knowledge graph exists.
@@ -18,7 +18,18 @@ A JSON file containing file tree, entry points, exports/imports, and code snippe
 **Option B — Existing knowledge graph** (from `knowledge-graph.jsonl`):
 A full structural knowledge graph with nodes, edges, and layers. Derive domain knowledge from the node summaries, tags, and relationships without reading source files.
 
-The dispatching skill will tell you which option applies and provide the context data in your prompt.
+**Option C — One area of the project** (an area context file written by `split-domain-areas.mjs`):
+The dispatching skill gives you the path of the file, not its content. Read all of it, in parts if it is long. It holds:
+- `areaRun` — `{areaId, token}` for this run; you copy it into your output unchanged;
+- `output` — the only path you write;
+- `modules` — the modules (directories) of your area, each with its files; a module with a `part` is split across areas and you have only the files listed;
+- `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet;
+- `fileSignatures` — exports, imports and a preview of each of your files;
+- `graphNodes` — present only when a knowledge graph exists: the graph nodes of your files, with their real ids;
+
+Other analyzers own the rest of the project. You may read the source of your area's files to understand a flow. Analyze only the modules and files listed in `modules`.
+
+The dispatching skill will tell you which option applies and provide the context data or its path in your prompt.
 
 ## Task
 
@@ -105,7 +116,8 @@ Produce a JSON object with this exact structure:
 5. **File paths** on step nodes should be relative to project root. If you cannot determine the exact file, omit `filePath` and `lineRange`.
 6. **Be specific, not generic** — use the actual business terminology from the code
 7. **Don't invent flows that aren't in the code** — only document what exists
-8. **Scale appropriately**: Aim for 2-6 domains, 2-5 flows per domain, 3-8 steps per flow. Fewer is fine for small projects.
+8. **Scale to the code, not to a target count**: there is no upper bound on domains or flows. Typically 3-8 steps per flow.
+9. **Account for every module (Option C)**: each module of your area that has entry points either has at least one flow with a step whose `filePath` is one of that module's files, or is listed in `skippedModules` with a one-sentence reason (for example, a router with no business logic). A script counts modules with neither as `silent-zero` gaps of your area.
 
 ## Critical Constraints
 
@@ -119,9 +131,15 @@ Produce a JSON object with this exact structure:
 
 ## Writing Results
 
-1. Write the JSON to the `intermediate/domain-analysis.json` file inside the project's data directory (`.excavator/`). Use the exact output path given in your prompt.
-2. The project root will be provided in your prompt.
-3. Respond with ONLY a brief text summary: number of domains, flows, and steps created, plus key domain names.
+1. Write the JSON to the exact output path given in your prompt. Under Option C that is the context's `output`, and the JSON carries two more top-level fields:
+   ```json
+   "areaRun": { "areaId": "<copied from the context>", "token": "<copied from the context>" },
+   "skippedModules": [ { "module": "<module path>", "reason": "<why it has no flow>" } ]
+   ```
+   Without the current `areaRun` the output is rejected.
+2. Never copy, rename or reuse an existing file as your output, even if it looks like a finished analysis: not `.excavator/domain-graph.json`, not any other file under `.excavator/intermediate/`, and not another area's output. Do not read them. Every output is written from this analysis.
+3. The project root will be provided in your prompt. Every `filePath` is relative to it.
+4. Respond with ONLY a brief text summary: number of domains, flows, and steps created, the modules listed in `skippedModules`, plus key domain names.
 
 Do NOT include the full JSON in your text response.
 
@@ -131,7 +149,8 @@ Do NOT include the full JSON in your text response.
 
 Every `step` node SHOULD carry a `nodeIds` array holding the **real ids of the
 knowledge-graph nodes that implement that step** — copied verbatim from the
-graph you were given (Option B), never composed from a path and a name:
+graph you were given (Option B, or the `graphNodes` of your area under Option
+C), never composed from a path and a name:
 
 ```json
 {
@@ -148,7 +167,8 @@ graph you were given (Option B), never composed from a path and a name:
 ```
 
 If you cannot identify any implementing node — you are working from Option A
-(`domain-context.json`), where no graph ids exist, or the step is a business
+(`domain-context.json`) or an Option C area without `graphNodes`, where no
+graph ids exist, or the step is a business
 action with no single code home — then omit `nodeIds` and mark the step
 `"provenance": "inferred"`. That is an accepted, counted state; a `nodeIds`
 entry that is not in the graph is not.
