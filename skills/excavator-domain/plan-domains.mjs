@@ -186,9 +186,23 @@ export function buildPlanInput({ manifest, context, token, mode, plan, unassigne
     planRun: { token },
     mode,
     output: outputPath,
-    limits: { maxBusinessDomains: maxBusinessDomains(manifest.modules.length), maxSupportDomains: MAX_SUPPORT_DOMAINS },
+    limits: planLimits(manifest.modules.length, mode === 'extend' ? plan.domains : []),
     modules,
     domains: mode === 'extend' ? plan.domains : [],
+  };
+}
+
+/**
+ * The domain limits a plan is checked against. A project that shrank keeps
+ * every domain that still holds a module, so its stored plan may hold more
+ * than the smaller project's limit; extending it never makes that a
+ * rejection: the limit is never below what the plan already holds.
+ */
+function planLimits(moduleCount, existing) {
+  const count = (kind) => existing.filter((d) => d?.kind === kind).length;
+  return {
+    maxBusinessDomains: Math.max(maxBusinessDomains(moduleCount), count('business')),
+    maxSupportDomains: Math.max(MAX_SUPPORT_DOMAINS, count('support')),
   };
 }
 
@@ -269,8 +283,9 @@ export function acceptPlan({ input, output, plan = null, now = new Date() }) {
   const all = [...existing, ...newDomains];
   const business = all.filter((d) => d.kind === 'business').length;
   const support = all.filter((d) => d.kind === 'support').length;
-  if (business > input.limits.maxBusinessDomains) reasons.push(`business domains: ${business} exceeds the limit ${input.limits.maxBusinessDomains}`);
-  if (support > input.limits.maxSupportDomains) reasons.push(`support domains: ${support} exceeds the limit ${input.limits.maxSupportDomains}`);
+  const replan = extend ? '; existing domains cannot change here, run with --replan to decide every domain again' : '';
+  if (business > input.limits.maxBusinessDomains) reasons.push(`business domains: ${business} exceeds the limit ${input.limits.maxBusinessDomains}${replan}`);
+  if (support > input.limits.maxSupportDomains) reasons.push(`support domains: ${support} exceeds the limit ${input.limits.maxSupportDomains}${replan}`);
 
   if (reasons.length > 0) return { ok: false, reasons };
 

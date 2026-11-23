@@ -262,6 +262,47 @@ describe('O2 acceptPlan', () => {
   });
 });
 
+// A project can shrink below the size its stored plan was made for: pruning
+// keeps every domain that still holds a module, so the plan may hold more
+// domains than the smaller project's limit. Extending such a plan must not
+// fail on domains the planner cannot remove; only adding past the limit fails,
+// and the reason says how to decide again.
+describe('extend after a shrink', () => {
+  const five = ['domain:a', 'domain:b', 'domain:c', 'domain:d', 'domain:e'];
+  const ps = paths(10);
+  const plan = {
+    format: PLAN_FORMAT,
+    moduleSetDigest: moduleSetDigest(ps),
+    modules: Object.fromEntries(ps.map((p, i) => [p, five[i % 5]])),
+    domains: five.map((id) => dom(id)),
+    crossDomain: [],
+    history: [],
+  };
+  const added = 'src/zzz';
+  const build = () => {
+    const { manifest, context } = material([...ps, added]);
+    return buildPlanInput({ manifest, context, token: 't'.repeat(32), mode: 'extend', plan, unassigned: [added], outputPath: '/o' });
+  };
+
+  it('never sets the limit below the domains the plan already holds', () => {
+    expect(maxBusinessDomains(11)).toBe(4);
+    expect(build().limits.maxBusinessDomains).toBe(5);
+  });
+
+  it('accepts a new module assigned to an existing domain', () => {
+    const inp = build();
+    const r = acceptPlan({ input: inp, output: { planRun: inp.planRun, domains: [], assignments: { [added]: 'domain:a' } }, plan, now: NOW });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects adding a domain past the limit and names --replan', () => {
+    const inp = build();
+    const r = acceptPlan({ input: inp, output: { planRun: inp.planRun, domains: [dom('domain:f')], assignments: { [added]: 'domain:f' } }, plan, now: NOW });
+    expect(r.ok).toBe(false);
+    expect(r.reasons.join('\n')).toMatch(/business domains: 6 exceeds the limit 5.*--replan/);
+  });
+});
+
 describe('O3 reconcilePlan', () => {
   const stored = (modulePaths, over = {}) => {
     const modules = Object.fromEntries(modulePaths.map((p, i) => [p, i === modulePaths.length - 1 ? 'domain:beta' : 'domain:alpha']));
