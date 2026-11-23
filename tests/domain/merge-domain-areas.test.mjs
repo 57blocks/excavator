@@ -355,6 +355,19 @@ describe('id collisions across areas', () => {
     expect(result.flowsIn).toBe(2);
     expect(result.missing.join('\n')).toContain('flow:x');
   });
+
+  it('counts an edge an area repeats once, as the merge keeps it once', () => {
+    const edge = { source: 'flow:x', target: 'step:x:1', type: 'flow_step', direction: 'forward', weight: 1 };
+    const graph = out('area-001', ['flow:x']);
+    graph.nodes.push({ id: 'step:x:1', type: 'step', name: 's', summary: 's', tags: ['t'], complexity: 'simple' });
+    graph.edges.push(edge, { ...edge });
+    const list = [{ areaId: 'area-001', graph }];
+    const { graph: merged, merge } = mergeAreas({ accepted: list, plan, manifest });
+    expect(merge.edgesDuplicate).toBe(1);
+    const result = checkConservation({ accepted: list, merged, renames: merge.idsRenamed });
+    expect(result.flowStepEdgesIn).toBe(1);
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe('O5 conservation', () => {
