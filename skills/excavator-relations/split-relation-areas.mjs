@@ -20,7 +20,8 @@
  *
  * Address lines: from configuration files (relations-signals.mjs
  * isConfigFile), lines naming a URL, host, port, topic or queue, never a line
- * whose key looks like a secret. A unit's own lines go to its areas (at most
+ * whose key looks like a secret, and at most MAX_ADDRESS_LINES_PER_FILE of one
+ * file, so one large manifest cannot fill a unit's share. A unit's own lines go to its areas (at most
  * MAX_UNIT_ADDRESS_LINES); lines of container and unmanifested units and of
  * deployment files go to every area as project configuration (at most
  * MAX_PROJECT_ADDRESS_LINES); every area also gets a short summary of every
@@ -62,6 +63,7 @@ export const DEFAULT_MAX_LINES = 4000;
 export const MAX_UNIT_ADDRESS_LINES = 200;
 export const MAX_PROJECT_ADDRESS_LINES = 200;
 export const MAX_SUMMARY_ADDRESS_LINES = 20;
+export const MAX_ADDRESS_LINES_PER_FILE = 25;
 export const MAX_HITS_PER_FILE = 40;
 export const MAX_GRAPH_NODES_PER_FILE = 150;
 const MAX_TEXT = 200;
@@ -114,7 +116,7 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
   const entryPoints = httpEntryPointsByFile(facts);
   const counts = {
     files: files.length, sourceFiles: 0, testExcluded: 0, unreadable: 0, candidateFiles: 0, notCandidate: 0,
-    bySignal: 0, byClientImport: 0, byEntryPoint: 0, containerSkipped: 0, configFiles: 0, addressLines: 0, secretLinesSkipped: 0, areas: 0,
+    bySignal: 0, byClientImport: 0, byEntryPoint: 0, containerSkipped: 0, configFiles: 0, addressLines: 0, addressLinesOverFileCap: 0, secretLinesSkipped: 0, areas: 0,
   };
   const classified = [];
   const material = new Map();
@@ -141,6 +143,7 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
       counts.configFiles += 1;
       const kind = unitById.get(unit)?.kind;
       const toProject = DEPLOY_FILE.test(file) || kind === 'container' || kind === 'unmanifested' || unit === null;
+      let inFile = 0;
       lines.forEach((text, i) => {
         if (!text.trim()) return;
         const address = isAddressLine(text);
@@ -148,8 +151,10 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
           if (/(?:https?|wss?):\/\//i.test(text)) counts.secretLinesSkipped += 1;
           return;
         }
-        const row = { file, line: i + 1, text: clip(text) };
         counts.addressLines += 1;
+        inFile += 1;
+        if (inFile > MAX_ADDRESS_LINES_PER_FILE) { counts.addressLinesOverFileCap += 1; return; }
+        const row = { file, line: i + 1, text: clip(text) };
         if (toProject) { if (projectConfig.length < MAX_PROJECT_ADDRESS_LINES) projectConfig.push(row); return; }
         if (!unitConfig.has(unit)) unitConfig.set(unit, []);
         const n = addressCount.get(unit) ?? 0;

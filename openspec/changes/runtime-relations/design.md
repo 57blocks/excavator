@@ -52,7 +52,7 @@
 
 ### D4 地址证据随区下发
 
-模型要把调用端的地址写成服务端看到的完整路径，常常要读基地址。脚本从配置类文件（`.env*`、`*.yml`、`*.yaml`、`*.properties`、`*.toml`、`*.conf`、`environment*.ts`、`*config*.{js,ts,mjs,cjs}`、`docker-compose*`、`Dockerfile`、`proxy.conf*`）里取含 URL、主机、端口、主题、队列类键名的行，每单元至多 200 行；键名像密钥（`SECRET`、`PASSWORD`、`TOKEN`、`KEY`、`CREDENTIAL`、`PRIVATE`）的行不取。项目根与不属于任何运行单元的部署文件（`docker-compose*`、网关与代理配置）作为项目级配置，至多 200 行。
+模型要把调用端的地址写成服务端看到的完整路径，常常要读基地址。脚本从配置类文件（`.env*`、`*.yml`、`*.yaml`、`*.properties`、`*.toml`、`*.conf`、`environment*.ts`、`*config*.{js,ts,mjs,cjs}`、`docker-compose*`、`Dockerfile`、`proxy.conf*`）里取含 URL、主机、端口、主题、队列类键名的行，每个文件至多 25 行（免得一份大的部署清单占满整个单元的份额），每单元至多 200 行；键名像密钥（`SECRET`、`PASSWORD`、`TOKEN`、`KEY`、`CREDENTIAL`、`PRIVATE`）的行不取。项目根与不属于任何运行单元的部署文件（`docker-compose*`、网关与代理配置）作为项目级配置，至多 200 行。
 
 ### D5 每个端点都能被对回所引的行
 

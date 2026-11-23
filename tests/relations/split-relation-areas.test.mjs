@@ -72,6 +72,18 @@ describe('planRelationAreas', () => {
     expect(result.counts.secretLinesSkipped).toBe(1);
   });
 
+  it('keeps at most 25 address lines of one configuration file', () => {
+    const files = {
+      'api/package.json': '{"name":"api","scripts":{"start":"x"}}',
+      'api/deploy/values.yaml': Array.from({ length: 30 }, (_, i) => `SERVICE_${i}_URL: http://s${i}`).join('\n'),
+      'api/.env': 'API_BASE=/v1',
+    };
+    const result = plan(files);
+    expect(result.unitConfig['unit:api'].filter((r) => r.file === 'api/deploy/values.yaml')).toHaveLength(25);
+    expect(result.unitConfig['unit:api'].some((r) => r.file === 'api/.env')).toBe(true);
+    expect(result.counts.addressLinesOverFileCap).toBe(5);
+  });
+
   it('packs areas within the line cap and one unit, and marks an oversized file', () => {
     const result = plan(FILES, { maxLines: 11 });
     for (const area of result.areas) {
