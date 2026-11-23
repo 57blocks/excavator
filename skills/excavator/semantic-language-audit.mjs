@@ -18,6 +18,8 @@ const SOURCE_OWNED_NODE_FIELDS = Object.freeze([
 const DOMAIN_META_NON_PROSE_FIELDS = new Set([
   'entryType', 'id', 'type', 'kind', 'status', 'filePath', 'lineRange',
   'nodeIds', 'source', 'target', 'direction', 'provenance',
+  // Module paths a domain plan records (source-owned, not model prose).
+  'module', 'modules',
 ]);
 
 function compareStrings(a, b) {
