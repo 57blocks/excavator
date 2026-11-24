@@ -362,14 +362,14 @@ describe('splitUnmatched', () => {
   it('tells a site keyed two ways from a site one run alone linked, and says what the other run had there', () => {
     const previous = [
       linked('external', 'a.js', 10, 'k-shared'),
-      linked('external', 'a.js', 48, 'k-old'),
+      { ...linked('external', 'a.js', 48, 'k-old'), caller: { file: 'a.js', line: 48, quote: 'await t.sendMail(message);' } },
       linked('external', 'b.go', 5, 'k-recall'),
       linked('external', 'c.go', 7, 'k-unlinked-now'),
       linked('http', 'a.js', 48, 'other-kind'),
     ];
     const current = [
       linked('external', 'a.js', 10, 'k-shared'),
-      linked('external', 'a.js', 46, 'k-new'),
+      { ...linked('external', 'a.js', 46, 'k-new'), caller: { file: 'a.js', line: 46, quote: 't.sendMail(message)' } },
       { kind: 'external', bucket: 'address-unresolved', caller: { file: 'c.go', line: 8 } },
       linked('external', 'd.go', 1, 'k-fresh'),
     ];
@@ -380,6 +380,22 @@ describe('splitUnmatched', () => {
       { key: 'k-unlinked-now', file: 'c.go', lines: [7], current: ['address-unresolved'] },
     ]);
     expect(split.currentOnly).toEqual([{ key: 'k-fresh', file: 'd.go', lines: [1], previous: ['absent'] }]);
+    // Two different calls close together, each linked by one run only, are two one-run sites.
+    const near = splitUnmatched({
+      kind: 'http',
+      previous: [{ ...linked('http', 'a.js', 10, 'GET /users'), caller: { file: 'a.js', line: 10, quote: "api.get('/users')" } }],
+      current: [{ ...linked('http', 'a.js', 12, 'GET /orders'), caller: { file: 'a.js', line: 12, quote: "api.get('/orders')" } }],
+    });
+    expect(near.keyMismatch).toEqual([]);
+    expect(near.previousOnly[0]).toMatchObject({ key: 'GET /users', current: ['linked'] });
+    expect(near.currentOnly[0]).toMatchObject({ key: 'GET /orders', previous: ['linked'] });
+    // One call quoted from two lines of its statement is one site keyed two ways.
+    const drift = splitUnmatched({
+      kind: 'external',
+      previous: [{ ...linked('external', 'm.js', 48, 'k1'), caller: { file: 'm.js', line: 48, quote: 'await t.sendMail(message);' } }],
+      current: [{ ...linked('external', 'm.js', 46, 'k2'), caller: { file: 'm.js', line: 46, quote: 't.sendMail(message)' } }],
+    });
+    expect(drift.keyMismatch).toHaveLength(1);
     // Far lines in one file are two sites, not one keyed two ways.
     const far = splitUnmatched({ kind: 'external', previous: [linked('external', 'a.js', 10, 'x')], current: [linked('external', 'a.js', 90, 'y')] });
     expect(far.keyMismatch).toEqual([]);

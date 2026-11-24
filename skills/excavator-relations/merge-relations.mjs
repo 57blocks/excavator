@@ -299,13 +299,16 @@ export function checkEnd({ end, readLines, areaFiles, entryPoints = new Map() })
   return { ok: true, end: { ...checked, addressBy }, normalized };
 }
 
-/** Linked keys of one kind, each with its caller file and caller lines. */
+/** Linked keys of one kind, each with its caller file, caller lines and the calls (line and quote). */
 function linkedSites(list, kind) {
   const sites = new Map();
   for (const r of list ?? []) {
     if (r?.kind !== kind || r.bucket !== 'linked' || typeof r.key !== 'string') continue;
-    const site = sites.get(r.key) ?? { file: r.caller?.file ?? null, lines: [] };
-    if (Number.isInteger(r.caller?.line) && !site.lines.includes(r.caller.line)) site.lines.push(r.caller.line);
+    const site = sites.get(r.key) ?? { file: r.caller?.file ?? null, lines: [], calls: [] };
+    if (Number.isInteger(r.caller?.line)) {
+      if (!site.lines.includes(r.caller.line)) site.lines.push(r.caller.line);
+      site.calls.push({ line: r.caller.line, quote: typeof r.caller.quote === 'string' ? flat(r.caller.quote) : '' });
+    }
     sites.set(r.key, site);
   }
   for (const site of sites.values()) site.lines.sort((a, b) => a - b);
@@ -313,11 +316,21 @@ function linkedSites(list, kind) {
 }
 
 const nearLines = (a, b) => a.some((x) => b.some((y) => Math.abs(x - y) <= QUOTE_WINDOW));
+/**
+ * One call in both runs: the same line, or lines within QUOTE_WINDOW whose
+ * quotes overlap (one holds the other). Two different calls close together
+ * quote different text and stay two sites.
+ */
+const sameCall = (a, b) => a.line === b.line
+  || (Math.abs(a.line - b.line) <= QUOTE_WINDOW && a.quote.length > 0 && b.quote.length > 0 && (a.quote.includes(b.quote) || b.quote.includes(a.quote)));
+const sameSite = (a, b) => a.file === b.file && a.calls.some((x) => b.calls.some((y) => sameCall(x, y)));
+const siteView = ({ calls: _c, ...rest }) => rest;
 
 /**
  * Split the linked keys two runs do not share. A key of one run and a key of
- * the other with the same caller file and a caller line within QUOTE_WINDOW
- * are one site keyed two ways (`keyMismatch`). Every other key was linked in
+ * the other with one call in common (same caller file, and the same line or
+ * near lines with overlapping quotes: sameCall) are one site keyed two ways
+ * (`keyMismatch`). Every other key was linked in
  * one run only; it carries the buckets the other run gave ends of that kind
  * near its lines (`absent` when there were none), so a reader can tell a site
  * the other run never wrote from one it wrote and did not link.
@@ -332,7 +345,7 @@ export function splitUnmatched({ kind, previous, current }) {
   const paired = new Set();
   for (const p of previousOnly) {
     const ps = before.get(p);
-    const c = currentOnly.find((k) => !used.has(k) && now.get(k).file === ps.file && nearLines(ps.lines, now.get(k).lines));
+    const c = currentOnly.find((k) => !used.has(k) && sameSite(ps, now.get(k)));
     if (c === undefined) continue;
     used.add(c);
     paired.add(p);
@@ -345,8 +358,8 @@ export function splitUnmatched({ kind, previous, current }) {
   };
   return {
     keyMismatch,
-    previousOnly: previousOnly.filter((k) => !paired.has(k)).map((k) => ({ key: k, ...before.get(k), current: otherBuckets(current, before.get(k)) })),
-    currentOnly: currentOnly.filter((k) => !used.has(k)).map((k) => ({ key: k, ...now.get(k), previous: otherBuckets(previous, now.get(k)) })),
+    previousOnly: previousOnly.filter((k) => !paired.has(k)).map((k) => ({ key: k, ...siteView(before.get(k)), current: otherBuckets(current, before.get(k)) })),
+    currentOnly: currentOnly.filter((k) => !used.has(k)).map((k) => ({ key: k, ...siteView(now.get(k)), previous: otherBuckets(previous, now.get(k)) })),
   };
 }
 

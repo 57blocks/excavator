@@ -81,6 +81,21 @@ describe('external ids', () => {
     expect(ext({ name: 'axios', host: 'api.vendor.io' })).toMatchObject({ ok: true, key: 'external:vendor', keyBy: 'host' });
   });
 
+  it('reads a dotted call written as the name as a library call, not as a host', () => {
+    for (const name of ['http.Get', 'axios.get', 'requests.post', 'nodemailer.createTransport']) {
+      expect(ext({ name }), name).toMatchObject({ ok: false, transport: true });
+    }
+    expect(id({ name: 'stripe.charges' })).toBe('external:stripe');
+    expect(ext({ name: 'vendor.io' })).toMatchObject({ key: 'external:vendor', keyBy: 'host' });
+  });
+
+  it('keeps every host under a private or unknown top-level domain apart', () => {
+    expect(id({ host: 'orders.prod.svc.cluster.local' })).toBe('external:orders.prod.svc.cluster.local');
+    expect(id({ host: 'orders.prod.svc.cluster.local' })).not.toBe(id({ host: 'billing.prod.svc.cluster.local' }));
+    expect(id({ host: 'a.service.consul' })).not.toBe(id({ host: 'b.service.consul' }));
+    expect(id({ host: 'ledger.corp.internal' })).toBe('external:ledger.corp.internal');
+  });
+
   it('keeps a name it cannot canonicalise as its own id, never merged with another', () => {
     expect(id({ name: 'Acme-Billing' })).toBe('external:acmebilling');
     expect(id({ name: 'acme-billing' })).not.toBe(id({ name: 'acme' }));

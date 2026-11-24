@@ -176,8 +176,11 @@ const PREFIXES = new Set(EXTERNAL_SERVICES.affixes.prefixes);
 const SUFFIXES = new Set(EXTERNAL_SERVICES.affixes.suffixes);
 const SECOND_LEVEL = new Set(EXTERNAL_SERVICES.secondLevelLabels);
 const HOSTING = EXTERNAL_SERVICES.hostingDomains;
+const PUBLIC_TLDS = new Set(EXTERNAL_SERVICES.publicTopLevelDomains);
+/** A top-level domain of the public internet: any two-letter country domain or one listed. */
+const isPublicTld = (label) => /^[a-z]{2}$/.test(label) || PUBLIC_TLDS.has(label);
 const HOST_SHAPE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
-const DOMAIN_SHAPE = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
+const DOMAIN_SHAPE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
 
 /** A host as a bare lower-case host name (scheme, path and port removed), or null when it is not one. */
@@ -190,13 +193,16 @@ export function hostOf(raw) {
 /**
  * The organization label of a host: the label before its public suffix
  * (`api.openai.com` -> `openai`, `m.agency.gov.cn` -> `agency`). A host
- * under a hosting domain is a tenant's own system and keeps its whole host;
- * an IP address or a one-label host is itself.
+ * under a hosting domain is a tenant's own system and keeps its whole host,
+ * as does a host under any other than a public top-level domain (cluster,
+ * service-discovery and private names: `orders.svc.cluster.local`); an IP
+ * address or a one-label host is itself.
  */
 export function hostLabel(host) {
   if (IPV4.test(host) || !host.includes('.')) return host;
   if (HOSTING.some((d) => host.endsWith(`.${d}`))) return host;
   const labels = host.split('.');
+  if (!isPublicTld(labels.at(-1))) return host;
   const twoLevel = labels.length >= 3 && labels.at(-1).length === 2 && SECOND_LEVEL.has(labels.at(-2));
   return labels.at(twoLevel ? -3 : -2);
 }
@@ -230,7 +236,10 @@ export function externalIdentity({ name = null, host = null }) {
   if (bare !== null) return fromHost(bare);
   if (!isText(name)) return { ok: false, reason: 'no name and no usable host' };
   const lower = name.trim().toLowerCase();
-  if (DOMAIN_SHAPE.test(lower)) return fromHost(lower);
+  // A dotted name is a domain only under a public top-level domain and when its
+  // first word is not a library: `http.Get` and `axios.post` are calls, not hosts.
+  const dotted = lower.split('.');
+  if (DOMAIN_SHAPE.test(lower) && isPublicTld(dotted.at(-1)) && !TRANSPORTS.has(compact(dotted[0]))) return fromHost(lower);
   const tokens = nameTokens(lower);
   const whole = compact(tokens.join(''));
   if (whole.length === 0) return { ok: false, reason: 'no name and no usable host' };
