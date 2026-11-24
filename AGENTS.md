@@ -26,8 +26,8 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
 
 | 改动范围 | 要跑的检查 |
 |---|---|
-| `docs/` 下的散文 | 不跑。例外：`docs/benchmarks/` 的 schema 被测试读取，改它跑 `pnpm test` |
-| 根目录 Markdown（`AGENTS.md`、`README.md`、`CLAUDE.md`） | `pnpm vitest run tests/refs/legacy-literals.test.mjs`（旧名字门禁扫描 `docs/` 以外的所有跟踪文件） |
+| `docs/` 下的散文 | 不跑。例外：`docs/benchmarks/` 的 schema 被测试读取，改它跑 `pnpm test`；`docs/deploy.md` 被 `tests/deploy/docs-contract.test.mjs` 读取，改它跑这个测试 |
+| 根目录 Markdown（`AGENTS.md`、`README.md`、`CLAUDE.md`） | `pnpm vitest run tests/refs/legacy-literals.test.mjs`（旧名字门禁扫描 `docs/` 以外的所有跟踪文件）。改 `README.md` 另跑 `node scripts/check-refs.mjs`（它核对 README 里的 `/excavator` 引用） |
 | `skills/**/SKILL.md`、`agents/`、`hooks/`、插件清单 | `node scripts/check-refs.mjs` + `pnpm test`（多个测试读这些文件） |
 | `skills/**/*.mjs`、`src/`、`tests/` | 三件套 |
 | `packages/core/` | 三件套 + `pnpm --filter @excavator/core test` + `pnpm run typecheck`。根目录的 `pnpm test` 不含 core 测试 |
