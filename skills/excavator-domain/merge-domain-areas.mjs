@@ -290,6 +290,29 @@ export function uncoveredEntryPoints({ graph, entries = [], fileModule = new Map
     && !skippedIds.has(e.id) && !skippedModules.has(fileModule.get(e.file)));
 }
 
+/**
+ * The entry points one area output added for its unrecognised files (its
+ * top-level `entryPoints`) that carry no non-blank skipReason and whose module
+ * has no step of the area's flows (located as the merge locates steps). Not
+ * checked against the source here; the merge does that. Used by --check to
+ * show the analyzer what it left unexplained.
+ */
+export function uncoveredModelEntryPoints({ graph, fileModule = new Map(), nodeFiles = new Map() }) {
+  const { areaNodes, areaStepEdges } = areaParts(graph);
+  const modulesWithSteps = new Set();
+  for (const edge of areaStepEdges) {
+    if (areaNodes.get(edge.source)?.type !== 'flow') continue;
+    const { file } = locateStep(areaNodes.get(edge.target), fileModule, nodeFiles);
+    if (file !== null) modulesWithSteps.add(fileModule.get(file));
+  }
+  return (Array.isArray(graph.entryPoints) ? graph.entryPoints : []).filter((e) => {
+    if (!isObject(e) || typeof e.file !== 'string') return false;
+    if (typeof e.skipReason === 'string' && e.skipReason.trim()) return false;
+    const file = relativeInsideRoot(e.file);
+    return !modulesWithSteps.has(file === null ? undefined : fileModule.get(file));
+  });
+}
+
 /** Flow nodes and flow_step edges of one raw area output, read as mergeAreas reads them. */
 function areaParts(graph) {
   const areaNodes = new Map();
@@ -1170,6 +1193,9 @@ export async function runCheck({ projectRoot, areaId, stdout = (t) => process.st
     const { fileModule } = moduleIndex(manifest);
     for (const e of uncoveredEntryPoints({ graph: result.graph, entries, fileModule })) {
       lines.push(`uncovered-entry-point ${areaId} ${e.id} ${entryPointText(e)}`);
+    }
+    for (const e of uncoveredModelEntryPoints({ graph: result.graph, fileModule, nodeFiles })) {
+      lines.push(`uncovered-model-entry-point ${areaId} ${e.file}:${e.line} ${entryPointText(e)}`);
     }
   }
   stdout(`${lines.join('\n')}\n`);

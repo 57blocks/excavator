@@ -387,6 +387,21 @@ describe('one coverage bucket per fact entry point', () => {
       expect(billingOf(scriptUnexplained.coverage).status).toBe('silent-zero');
       expect(scriptUnexplained.coverage.entryPointCoverage.silent).toContain(IDS.invoices);
     });
+
+    it('is named by check while the added entry point has neither a reason nor a step of the area in its module', () => {
+      const { manifest, context, output } = prepare({ extraFiles: STATUS });
+      const skips = { token: manifest.token, skippedEntryPoints: invoicesSkipped };
+      const checkWith = (flows, entryPoints) => {
+        writeFileSync(output, JSON.stringify(areaOutput(flows, { ...skips, entryPoints })));
+        const check = runCheckCommand(context);
+        expect(check.status, check.stderr).toBe(0);
+        return check.stdout.trim().split('\n').filter((l) => l.startsWith('uncovered-model-entry-point'));
+      };
+      expect(checkWith([], [status()])).toEqual(['uncovered-model-entry-point area-001 svc/billing/status.go:4 GET /billing/status']);
+      expect(checkWith([], [status({ skipReason: ' ' })])).toHaveLength(1);
+      expect(checkWith([], [status({ skipReason: 'Status probe.' })])).toEqual([]);
+      expect(checkWith([{ name: 'billing-status', files: ['svc/billing/status.go'] }], [status()])).toEqual([]);
+    });
   });
 
   it('counts a module as covered when a flow starts at one of its entry points but has no step in it', async () => {
