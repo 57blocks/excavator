@@ -10,7 +10,9 @@ import {
 import type { Edge, Node } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import DomainClusterNode from "./DomainClusterNode";
+import BandHeadingNode from "./BandHeadingNode";
+import type { BandHeadingFlowNode } from "./BandHeadingNode";
+import DomainClusterNode, { DOMAIN_CARD_HEIGHT, DOMAIN_CARD_WIDTH } from "./DomainClusterNode";
 import type { DomainClusterFlowNode } from "./DomainClusterNode";
 import FlowNode from "./FlowNode";
 import type { FlowFlowNode } from "./FlowNode";
@@ -19,11 +21,13 @@ import type { StepFlowNode } from "./StepNode";
 import { useDashboardStore, activeTranslations } from "../store";
 import { domainTitle, translatorOf, type Translate } from "../excavator/nameTranslations";
 import { useI18n } from "../contexts/I18nContext";
+import { BAND_HEADINGS, domainBands, gridPositions } from "../excavator/domainLayout";
 import { mergeElkPositions, nodesToElkInput } from "../utils/layout";
 import { applyElkLayout } from "../utils/elk-layout";
 import type { KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
 
 const nodeTypes = {
+  "band-heading": BandHeadingNode,
   "domain-cluster": DomainClusterNode,
   "flow-node": FlowNode,
   "step-node": StepNode,
@@ -39,41 +43,64 @@ interface BuiltGraph {
   dims: Map<string, { width: number; height: number }>;
 }
 
-function buildDomainOverview(graph: KnowledgeGraph, translate?: Translate): BuiltGraph {
-  const dims = new Map<string, { width: number; height: number }>();
-  const domainNodes = graph.nodes.filter((n) => n.type === "domain");
+const GRID_COLUMNS = 4;
+const GRID_GAP_X = 40;
+const GRID_GAP_Y = 32;
+const HEADING_HEIGHT = 32;
+const HEADING_GAP = 16;
+const BAND_GAP = 48;
 
-  // Count flows per domain
-  const flowCountMap = new Map<string, number>();
-  for (const edge of graph.edges) {
-    if (edge.type === "contains_flow") {
-      flowCountMap.set(edge.source, (flowCountMap.get(edge.source) ?? 0) + 1);
-    }
+/** The overview's cards on an aligned grid, in bands, laid out without a layout engine. */
+function buildDomainOverview(graph: KnowledgeGraph, translate?: Translate): Node[] {
+  const byId = new Map(graph.nodes.map((node) => [node.id, node]));
+  const rfNodes: Node[] = [];
+  const gridWidth = GRID_COLUMNS * DOMAIN_CARD_WIDTH + (GRID_COLUMNS - 1) * GRID_GAP_X;
+  let top = 0;
+  for (const band of domainBands(graph)) {
+    const heading: BandHeadingFlowNode = {
+      id: `band:${band.kind}`,
+      type: "band-heading",
+      position: { x: 0, y: top },
+      data: { label: BAND_HEADINGS[band.kind] },
+      style: { width: gridWidth, height: HEADING_HEIGHT },
+      selectable: false,
+      draggable: false,
+      connectable: false,
+      focusable: false,
+    };
+    rfNodes.push(heading);
+    const cardsTop = top + HEADING_HEIGHT + HEADING_GAP;
+    const positions = gridPositions(band.domainIds.length, {
+      columns: GRID_COLUMNS,
+      cardWidth: DOMAIN_CARD_WIDTH,
+      cardHeight: DOMAIN_CARD_HEIGHT,
+      gapX: GRID_GAP_X,
+      gapY: GRID_GAP_Y,
+      top: cardsTop,
+    });
+    band.domainIds.forEach((id, index) => {
+      const node = byId.get(id)!;
+      const title = domainTitle(node.name, translate);
+      const card: DomainClusterFlowNode = {
+        id,
+        type: "domain-cluster",
+        position: positions[index],
+        data: { label: title.label, original: title.original, summary: node.summary, domainId: id },
+        draggable: false,
+      };
+      rfNodes.push(card);
+    });
+    const rows = Math.ceil(band.domainIds.length / GRID_COLUMNS);
+    top = cardsTop + rows * DOMAIN_CARD_HEIGHT + (rows - 1) * GRID_GAP_Y + BAND_GAP;
   }
+  return rfNodes;
+}
 
-  const rfNodes: DomainClusterFlowNode[] = domainNodes.map((node) => {
-    const meta = getDomainMeta(node);
-    const title = domainTitle(node.name, translate);
-    const data = {
-      label: title.label,
-      original: title.original,
-      summary: node.summary,
-      entities: meta?.entities as string[] | undefined,
-      flowCount: flowCountMap.get(node.id) ?? 0,
-      businessRules: meta?.businessRules as string[] | undefined,
-      domainId: node.id,
-    };
-    dims.set(node.id, { width: 320, height: 180 });
-    return {
-      id: node.id,
-      type: "domain-cluster" as const,
-      position: { x: 0, y: 0 },
-      data,
-    };
-  });
-
-  const rfEdges: Edge[] = graph.edges
-    .filter((e) => e.type === "cross_domain")
+/** The cross-domain edges touching any of `focusIds`, with their description as the label; none for no focus. */
+function crossDomainEdges(graph: KnowledgeGraph, focusIds: ReadonlySet<string>): Edge[] {
+  if (focusIds.size === 0) return [];
+  return graph.edges
+    .filter((e) => e.type === "cross_domain" && (focusIds.has(e.source) || focusIds.has(e.target)))
     .map((e, i) => ({
       id: `cd-${i}-${e.source}-${e.target}`,
       source: e.source,
@@ -86,8 +113,6 @@ function buildDomainOverview(graph: KnowledgeGraph, translate?: Translate): Buil
       labelBgBorderRadius: 4,
       animated: true,
     }));
-
-  return { nodes: rfNodes as unknown as Node[], edges: rfEdges, dims };
 }
 
 function buildDomainDetail(
@@ -176,19 +201,28 @@ function DomainGraphViewInner() {
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const activeDomainId = useDashboardStore((s) => s.activeDomainId);
   const clearActiveDomain = useDashboardStore((s) => s.clearActiveDomain);
+  const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
   const nameTranslations = useDashboardStore(activeTranslations);
   const { t } = useI18n();
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
-  // Build structural nodes/edges/dims synchronously; only the layout call
-  // itself is async, so we memo the structural pieces and run ELK in an
-  // effect.
+  // The overview is placed deterministically; only the open domain still goes through ELK.
+  const overviewNodes = useMemo<Node[]>(() => {
+    if (!domainGraph || activeDomainId) return [];
+    return buildDomainOverview(domainGraph, translatorOf(nameTranslations));
+  }, [domainGraph, activeDomainId, nameTranslations]);
+
+  const overviewEdges = useMemo<Edge[]>(() => {
+    if (!domainGraph || activeDomainId) return [];
+    const focus = new Set<string>();
+    if (hoveredId) focus.add(hoveredId);
+    if (selectedNodeId) focus.add(selectedNodeId);
+    return crossDomainEdges(domainGraph, focus);
+  }, [domainGraph, activeDomainId, hoveredId, selectedNodeId]);
+
   const built = useMemo<BuiltGraph | null>(() => {
-    if (!domainGraph) return null;
-    const translate = translatorOf(nameTranslations);
-    if (activeDomainId) {
-      return buildDomainDetail(domainGraph, activeDomainId, translate);
-    }
-    return buildDomainOverview(domainGraph, translate);
+    if (!domainGraph || !activeDomainId) return null;
+    return buildDomainDetail(domainGraph, activeDomainId, translatorOf(nameTranslations));
   }, [domainGraph, activeDomainId, nameTranslations]);
 
   const [layout, setLayout] = useState<{ nodes: Node[]; edges: Edge[] }>({
@@ -203,7 +237,6 @@ function DomainGraphViewInner() {
     }
     let cancelled = false;
     const { nodes: nodesArray, edges: edgesArray, dims } = built;
-    // DomainGraphView used dagre LR; preserve that direction with ELK.
     const elkInput = nodesToElkInput(nodesArray, edgesArray, dims, {
       "elk.direction": "RIGHT",
     });
@@ -228,7 +261,8 @@ function DomainGraphViewInner() {
     };
   }, [built]);
 
-  const { nodes, edges } = layout;
+  const nodes = activeDomainId ? layout.nodes : overviewNodes;
+  const edges = activeDomainId ? layout.edges : overviewEdges;
 
   // Double-click is handled by individual node components (e.g. DomainClusterNode)
 
@@ -254,9 +288,12 @@ function DomainGraphViewInner() {
         </div>
       )}
       <ReactFlow
+        key={activeDomainId ?? "overview"}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onNodeMouseEnter={(_, node) => !activeDomainId && node.type === "domain-cluster" && setHoveredId(node.id)}
+        onNodeMouseLeave={() => setHoveredId(null)}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.1}
