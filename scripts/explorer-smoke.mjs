@@ -447,6 +447,16 @@ const probe = (body) => `(async () => { const h = (${makeHelpers})(); return awa
 
 /** The page as it opens: defaults, header, domain overview, language switch, status line. */
 async function mainBody(h) {
+  const opacities = () => [...document.querySelectorAll('.react-flow__node:not(.react-flow__node-band-heading)')].map((n) => Number(getComputedStyle(n).opacity));
+  // The cards' bounding box (not headings or lane separators) is centred in the canvas when the content is narrower than the pane.
+  const centred = () => {
+    const rects = [...document.querySelectorAll('.react-flow__node:not(.react-flow__node-band-heading):not(.react-flow__node-lane-band)')].map((n) => n.getBoundingClientRect());
+    const pane = document.querySelector('.react-flow')?.getBoundingClientRect();
+    if (rects.length === 0 || !pane) return false;
+    const left = Math.min(...rects.map((r) => r.left));
+    const right = Math.max(...rects.map((r) => r.right));
+    return right - left >= pane.width - 80 || Math.abs((left + right) / 2 - (pane.left + pane.right) / 2) <= 40;
+  };
   const started = Date.now();
   const out = { title: document.title };
   await h.until(() => h.cards().length > 0 || /Failed to load|Invalid knowledge graph/.test(document.body.innerText));
@@ -471,12 +481,135 @@ async function mainBody(h) {
   await h.sleep(300);
   out.french = { rows: h.domainRows(), lit: h.lit(h.headerButton('French')) };
   // Opening a domain shows its node; Escape returns to the list.
+  out.overviewCentred = centred();
+  const firstBack = document.querySelector('[data-excavator-back]');
+  out.backDisabledOnLoad = Boolean(firstBack) && firstBack.disabled === true && !document.querySelector('[data-excavator-panel-back]');
   const row = document.querySelector('aside [data-excavator-domain-row="domain:run"]');
+  // A panel list selects and never navigates: the panel shows the domain with an Open button; Open enters it.
   h.press(row);
+  out.rowOpenButton = await h.until(() => Boolean(h.aside()?.querySelector('[data-excavator-open="node"]')));
+  out.rowStayedOnOverview = !h.buttonIn(h.aside(), (t) => /All domains/.test(t));
+  h.press(h.aside()?.querySelector('[data-excavator-open="node"]'));
   out.opened = await h.until(() => h.buttonIn(h.aside(), (t) => /All domains/.test(t)));
   out.openedTitle = h.asideText();
-  h.esc();
+  // At domain level every flow is listed once: no "contains flow" connection rows beside the Flows list.
+  const flowRows = () => h.section('Flows')?.querySelectorAll('button').length ?? 0;
+  out.containsRows = /contains flow/i.test(h.asideText());
+  out.domainFlowRows = flowRows();
+  // A click on a panel list item goes to that node: from the group level a flow row opens the lanes of its group,
+  // selects the flow and pans it into the canvas; a row already on screen changes nothing but the selection.
+  const crumb = () => document.querySelector('[data-excavator-domain-breadcrumb]')?.textContent ?? '';
+  const flowButton = h.section('Flows')?.querySelector('button');
+  const flowName = flowButton?.textContent ?? '';
+  // Move the view a little, as a user would, so a restored viewport differs from a fresh placement.
+  await h.sleep(300);
+  const transformBefore = document.querySelector('.react-flow__viewport')?.style.transform;
+  const pane = document.querySelector('.react-flow__pane');
+  pane?.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, ctrlKey: true, clientX: 300, clientY: 300 }));
+  await h.sleep(400);
+  const viewportOf = () => {
+    const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale\(([-\d.]+)\)/.exec(document.querySelector('.react-flow__viewport')?.style.transform ?? '');
+    return m ? { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) } : null;
+  };
+  const viewportBefore = viewportOf();
+  out.viewMoved = document.querySelector('.react-flow__viewport')?.style.transform !== transformBefore;
+  const beforeCrumb = crumb();
+  out.beforeCrumbName = beforeCrumb.split('/').pop();
+  if (flowButton) h.press(flowButton);
+  await h.sleep(900);
+  const goCard = [...document.querySelectorAll('.react-flow__node-flow-node')].find((n) => n.textContent.includes(flowName.trim().split(' ')[0]));
+  const frame = document.querySelector('.react-flow')?.getBoundingClientRect();
+  const box = goCard?.getBoundingClientRect();
+  out.goLanes = Boolean(document.querySelector('.react-flow__node-lane-band')) && crumb() !== beforeCrumb;
+  out.goSelected = Boolean(goCard) && Number(getComputedStyle(goCard).opacity) === 1 && h.asideText().includes(flowName.trim()) && !h.buttonIn(h.aside(), (t) => /go to/i.test(t));
+  out.goInside = Boolean(box && frame) && box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom;
+  // The Domain view shows names, not code: no route or path on the cards; one muted Code line in the panel.
+  out.noCodeOnCards = ![...document.querySelectorAll('.react-flow__node-flow-node, .react-flow__node-step-node, [data-excavator-group-card]')].some((n) => /src\/main\.js/.test(n.textContent));
+  out.codeLines = [...(h.aside()?.querySelectorAll('[data-excavator-code-line]') ?? [])].map((n) => n.textContent);
+  out.codeNowhereElse = (h.asideText().match(/src\/main\.js/g) ?? []).length === 1;
+  const crumbOnLanes = crumb();
+  const nodeCount = document.querySelectorAll('.react-flow__node').length;
+  const stepButton = h.section('Steps')?.querySelector('button');
+  if (stepButton) h.press(stepButton);
+  await h.sleep(500);
+  out.goStable = Boolean(stepButton) && crumb() === crumbOnLanes && document.querySelectorAll('.react-flow__node').length === nodeCount;
+  // Back is a history back: it returns to the group level just left, with the viewport it had and nothing selected.
+  // The panel's Back is the same history Back, named after the view it returns to.
+  const panelBack = document.querySelector('[data-excavator-panel-back]');
+  out.panelBackLabel = panelBack?.textContent ?? null;
+  out.canvasBackEnabled = document.querySelector('[data-excavator-back]')?.disabled === false;
+  if (panelBack) panelBack.click();
+  await h.sleep(800);
+  const viewportAfter = viewportOf();
+  out.backRestored =
+    crumb() === beforeCrumb &&
+    Boolean(document.querySelector('[data-excavator-group-card]')) &&
+    Boolean(viewportBefore && viewportAfter) &&
+    Math.abs(viewportBefore.x - viewportAfter.x) <= 1 &&
+    Math.abs(viewportBefore.y - viewportAfter.y) <= 1 &&
+    Math.abs(viewportBefore.zoom - viewportAfter.zoom) <= 0.01 &&
+    !h.aside()?.querySelector('[data-excavator-code-line]');
+  // Inside a group the panel lists that group's flows only; the canvas breadcrumb is the only trail.
+  // A view switch is a navigation: Back from Structural returns to the Domain level that was left.
+  const levelCrumb = crumb();
+  h.press(h.headerButton('Structural'));
+  await h.until(() => h.section('Runtime units'));
+  const structuralBack = document.querySelector('[data-excavator-back]');
+  out.structuralBackEnabled = Boolean(structuralBack) && structuralBack.disabled === false;
+  if (structuralBack && !structuralBack.disabled) structuralBack.click();
+  await h.sleep(900);
+  out.switchBack = h.lit(h.headerButton('Domain')) && crumb() === levelCrumb && Boolean(document.querySelector('[data-excavator-group-card]'));
+  const groupCard = document.querySelector('[data-excavator-group-card]');
+  out.groupCardFlows = Number(/(\d+) flows/.exec(groupCard?.textContent ?? '')?.[1] ?? -1);
+  // One rule on every level: a single click selects and never enters; click, click (detail 2) and dblclick enters.
+  const mouse = (el, type, detail) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, detail }));
+  if (groupCard) mouse(groupCard, 'click', 1);
+  await h.sleep(300);
+  out.groupLevelKept = Boolean(document.querySelector('[data-excavator-group-card]')) && !document.querySelector('.react-flow__node-flow-node');
+  if (groupCard) {
+    mouse(groupCard, 'click', 1);
+    mouse(groupCard, 'click', 2);
+    mouse(groupCard, 'dblclick', 2);
+  }
+  await h.sleep(400);
+  out.groupFlowRows = flowRows();
+  out.lanesCentred = centred();
+  out.lanesUndimmed = opacities().length > 0 && opacities().every((o) => o === 1);
+  out.groupContainsRows = /contains flow/i.test(h.asideText());
+  const flowCard = document.querySelector('.react-flow__node-flow-node > div');
+  const stepCard = document.querySelector('.react-flow__node-step-node > div');
+  if (flowCard) flowCard.click();
+  await h.sleep(200);
+  if (stepCard) stepCard.click();
+  await h.sleep(300);
+  out.panelTrail = Boolean(h.aside()?.querySelector('[data-excavator-panel-breadcrumb]'));
+  for (let i = 0; i < 4; i += 1) {
+    h.esc();
+    await h.sleep(250);
+  }
   out.listBack = await h.until(() => h.domainRows().length > 0);
+  // A double click on a domain card opens the domain too (the zoom pane must not swallow it).
+  const card = document.querySelector('.react-flow__node[data-id="domain:run"] > div');
+  if (card) {
+    // The first click selects the card; entering must leave nothing selected, so one Escape returns to the list.
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+    card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+  }
+  out.dblOpened = await h.until(() => h.buttonIn(h.aside(), (t) => /All domains/.test(t)));
+  h.esc();
+  out.dblBack = await h.until(() => h.domainRows().length > 0);
+  // Selecting a domain card dims the others to 0.3; the same click again restores them; entering shows nothing dimmed.
+  const domainCard = document.querySelector('.react-flow__node[data-id="domain:run"] > div');
+  const clickOf = (el, detail) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail }));
+  clickOf(domainCard, 1);
+  await h.sleep(250);
+  out.dimmedOnSelect = opacities().some((o) => o < 0.5) && Number(getComputedStyle(document.querySelector('.react-flow__node[data-id="domain:run"]')).opacity) === 1;
+  clickOf(domainCard, 1);
+  await h.sleep(250);
+  out.undimmedOnToggle = opacities().every((o) => o === 1);
+  // React Flow's own selection must follow the store: after the second click nothing keeps the selected class.
+  out.noSelectedClass = document.querySelectorAll('.react-flow__node.selected').length === 0;
   // The status line: the summary, then the details behind it.
   out.summary = h.statusSummary();
   const details = h.buttonIn(document.querySelector('[data-excavator-status-line]'), (t) => t === 'Details');
@@ -534,11 +667,14 @@ async function structBody(h) {
   out.nodeCounts = h.countsSeen();
   h.esc();
   await h.sleep(300);
-  // A layer row drills in; a file's code opens from the inlined sources.
+  // A layer row selects the layer (the panel shows it with Open); Open drills in.
   h.press(document.querySelector('aside [data-excavator-layer-row="layer:lib"]'));
+  await h.until(() => Boolean(h.aside()?.querySelector('[data-excavator-open="layer"]')));
+  h.press(h.aside()?.querySelector('[data-excavator-open="layer"]'));
   const container = () => document.querySelector('.react-flow__node [aria-expanded="false"]');
   out.drilled = await h.until(() => container());
-  h.press(container());
+  // A folder box opens on a double click; a single click would only select it.
+  container()?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
   await h.until(() => h.card('file:src/util.js'));
   h.press(h.card('file:src/util.js')?.firstElementChild);
   await h.until(() => h.buttonIn(h.aside(), (t) => /open code/i.test(t)));
@@ -665,6 +801,22 @@ export function judgeMain(result) {
       ['each shows its kind word', same(rows.map((r) => r.kindWord), ['business', 'support', null])],
       ['a translated name has its English original under it', rows[0]?.label === 'Paiements' && rows[0]?.original === 'Payments'],
       ['a click opens the domain, Escape returns to the list', p.opened === true && has(p.openedTitle, 'All domains') && p.listBack === true],
+      ['the panel lists each flow once: no contains-flow rows, and inside a group only that group\'s flows', p.containsRows === false && p.groupContainsRows === false && p.groupCardFlows > 0 && p.groupFlowRows === p.groupCardFlows && p.domainFlowRows === p.groupCardFlows],
+      ['the panel shows no navigation trail of its own in the domain view', p.panelTrail === false],
+      ['a panel list item goes to its node: the lanes of its group open, the flow is selected and inside the canvas', p.goLanes === true && p.goSelected === true && p.goInside === true],
+      ['the cards show names, not routes or paths; the panel has one Code line', p.noCodeOnCards === true && p.codeLines.length === 1 && /src\/main\.js/.test(p.codeLines[0]) && p.codeNowhereElse === true],
+      ['Back is a history back: same level, selection and viewport', p.viewMoved === true && p.backRestored === true],
+      ['the panel Back names the view it returns to and the canvas Back is enabled with it', typeof p.panelBackLabel === 'string' && p.panelBackLabel.startsWith('\u2190 ') && p.panelBackLabel.endsWith(p.beforeCrumbName) && p.canvasBackEnabled === true],
+      ['a view switch to Structural and Back returns to the Domain level left', p.structuralBackEnabled === true && p.switchBack === true],
+      ['Back is disabled on first load, and the panel has no Back', p.backDisabledOnLoad === true],
+      ['a panel item already on screen changes only the selection', p.goStable === true],
+      ['a single click on a group card leaves the group level in place', p.groupLevelKept === true],
+      ['the panel list selects: the domain shows with an Open button and the canvas stays on the overview', p.rowOpenButton === true && p.rowStayedOnOverview === true],
+      ['a click on a domain card dims the others, and the same click again restores them', p.dimmedOnSelect === true && p.undimmedOnToggle === true],
+      ['after the second click no node keeps the selected class', p.noSelectedClass === true],
+      ['entering a group by double click shows the lanes with nothing selected or dimmed', p.lanesUndimmed === true],
+      ['the overview and the lanes are centred in the canvas', p.overviewCentred === true && p.lanesCentred === true],
+      ['a double click on a domain card opens it too', p.dblOpened === true && p.dblBack === true],
     ]),
     verdict('language switch', [
       ['the translations show first, the language button lit', p.language?.lit === true && p.language?.englishLit === false],
@@ -717,7 +869,7 @@ export function judgeStruct(result) {
       ['headings carry no count', p.communicationHeading === 'Communication' && (p.connectionsHeading === null || p.connectionsHeading === 'Connections')],
     ]),
     verdict('content', [
-      ['a layer row drills in', p.drilled === true],
+      ['a layer row selects the layer and its Open button drills in', p.drilled === true],
       ['a file\'s code opens from the inlined sources', p.codeShown === true],
     ]),
     { name: 'probe time', ok: typeof p.elapsedMs === 'number' && p.elapsedMs < 12000, detail: `${p.elapsedMs} ms of the 15000 ms the page's script is given` },

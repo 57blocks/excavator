@@ -20,10 +20,13 @@ export function useKeyboardShortcuts(
 
     const handleKeyDown = (event: KeyboardEvent) => {
       // Prevent shortcuts from firing when typing in input fields
-      const target = event.target as HTMLElement;
-      const tagName = target.tagName.toLowerCase();
-      if (tagName === 'input' || tagName === 'textarea' || target.isContentEditable) {
-        if (event.key !== 'Escape') return;
+      // The target can be the document itself (a synthetic event); it is not a field then.
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target !== null) {
+        const tagName = target.tagName.toLowerCase();
+        if (tagName === 'input' || tagName === 'textarea' || target.isContentEditable) {
+          if (event.key !== 'Escape') return;
+        }
       }
 
       for (const shortcut of shortcuts) {

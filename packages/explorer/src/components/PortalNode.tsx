@@ -25,7 +25,6 @@ function PortalNode({
         border: `2px dashed ${color.border}`,
         boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
       }}
-      onClick={() => data.onNavigate(data.targetLayerId)}
     >
       <Handle
         type="target"

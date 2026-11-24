@@ -45,7 +45,6 @@ function ContainerNodeComponent({ data, width, height }: NodeProps<ContainerFlow
         border: `${borderWidth}px solid ${borderColor}`,
         position: "relative",
       }}
-      onClick={handleToggle}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();

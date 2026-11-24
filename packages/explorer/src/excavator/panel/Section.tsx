@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 
 /** A panel section: a heading with a divider line under it, then its content. No box around it. */
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, note, children }: { title: string; /** Text after the heading, in its own case (a group's name). */ note?: ReactNode; children: ReactNode }) {
   return (
     <section className="px-5 pt-4 pb-2" data-excavator-section={title}>
-      <h3 className="mb-2 border-b border-border-subtle pb-1 text-[11px] font-semibold uppercase tracking-wider text-accent">{title}</h3>
+      <h3 className="mb-2 border-b border-border-subtle pb-1 text-[11px] font-semibold uppercase tracking-wider text-accent">{title}
+        {note ? <span className="ml-2 normal-case tracking-normal text-text-secondary" data-excavator-section-note>{note}</span> : null}
+      </h3>
       {children}
     </section>
   );

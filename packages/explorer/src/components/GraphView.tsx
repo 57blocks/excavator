@@ -24,6 +24,10 @@ import type { ContainerFlowNode, ContainerNodeData } from "./ContainerNode";
 import Breadcrumb from "./Breadcrumb";
 import { useDashboardStore } from "../store";
 import { drawnInLayer } from "../excavator/views/graphTarget";
+import { runCanvasClick } from "../excavator/canvasActions";
+import type { CanvasNodeType } from "../excavator/canvasSelection";
+import { DIMMED_OPACITY, emphasis } from "../excavator/emphasis";
+import { isStandInId } from "../excavator/graphRelations";
 import { relationNodeTypes, RelationsPanel, useRelationsOverlay, useStandInClick } from "../excavator/RelationsOverlay";
 import type {
   GraphEdge,
@@ -91,30 +95,28 @@ export const STRUCTURAL_VISIBLE_TYPES = new Set<string>([
 
 // ── Helper components that must live inside <ReactFlow> ────────────────
 
-/** Centers the graph on the selected node (e.g. from search). */
+/** Scrolls a node chosen outside the canvas (a panel list or search) to the centre; the zoom is not changed. */
 function SelectedNodeFitView() {
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
-  const { fitView } = useReactFlow();
+  const revealNodeId = useDashboardStore((s) => s.revealNodeId);
+  const { getNode, getZoom, setCenter } = useReactFlow();
   const prevRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (selectedNodeId && selectedNodeId !== prevRef.current) {
-      // Delay slightly so this runs after any layer-level fitView triggered
-      // by navigateToNodeInLayer (which also changes activeLayerId).
+    if (selectedNodeId && selectedNodeId !== prevRef.current && selectedNodeId === revealNodeId) {
+      // Delay slightly so this runs after any layer-level fit triggered by navigateToNodeInLayer.
       const timer = setTimeout(() => {
-        fitView({
-          nodes: [{ id: selectedNodeId }],
-          duration: 500,
-          padding: 0.3,
-          maxZoom: 1.2,
-          minZoom: 0.01,
-        });
+        const node = getNode(selectedNodeId);
+        if (!node) return;
+        const width = node.measured?.width ?? node.width ?? 0;
+        const height = node.measured?.height ?? node.height ?? 0;
+        setCenter(node.position.x + width / 2, node.position.y + height / 2, { zoom: getZoom(), duration: 300 });
       }, 100);
       prevRef.current = selectedNodeId;
       return () => clearTimeout(timer);
     }
     prevRef.current = selectedNodeId;
-  }, [selectedNodeId, fitView]);
+  }, [selectedNodeId, revealNodeId, getNode, getZoom, setCenter]);
 
   return null;
 }
@@ -900,13 +902,17 @@ function useLayerDetailGraph() {
     const searchMap = new Map(searchResults.map((r) => [r.nodeId, r.score]));
 
     // Build neighbor set for selection highlighting
-    const neighborNodeIds = new Set<string>();
-    if (selectedNodeId) {
-      for (const edge of topo.filteredEdges) {
-        if (edge.source === selectedNodeId) neighborNodeIds.add(edge.target);
-        if (edge.target === selectedNodeId) neighborNodeIds.add(edge.source);
-      }
-      neighborNodeIds.add(selectedNodeId);
+    const neighborNodeIds = new Set<string>(
+      emphasis({
+        level: "structural",
+        selectedId: selectedNodeId,
+        nodes: [],
+        edges: topo.filteredEdges.map((edge, index) => ({ id: String(index), source: edge.source, target: edge.target })),
+      })?.nodes ?? [],
+    );
+    // A selected folder box keeps its own files at full strength.
+    if (selectedNodeId && topo.nodeToContainer) {
+      for (const [nodeId, containerId] of topo.nodeToContainer) if (containerId === selectedNodeId) neighborNodeIds.add(nodeId);
     }
 
     return combined.map((node) => {
@@ -1068,7 +1074,7 @@ function useLayerDetailGraph() {
         return { ...edge, animated: true, style: { stroke: "color-mix(in srgb, var(--color-accent) 80%, transparent)", strokeWidth: 2.5 }, labelStyle: { fill: "var(--color-accent)", fontSize: 11, fontWeight: 600 } };
       }
       // Fade unrelated edges
-      return { ...edge, animated: false, style: { stroke: "color-mix(in srgb, var(--color-accent) 8%, transparent)", strokeWidth: 1 }, labelStyle: { fill: "color-mix(in srgb, var(--color-text-secondary) 20%, transparent)", fontSize: 10 } };
+      return { ...edge, animated: false, style: { ...(edge.style as Record<string, unknown>), opacity: DIMMED_OPACITY } };
     });
   }, [expandedEdges, topo.portalEdges, selectedNodeId]);
 
@@ -1092,6 +1098,9 @@ function useLayerDetailGraph() {
 
 function GraphViewInner() {
   const graph = useDashboardStore((s) => s.graph);
+  const nodesById = useDashboardStore((s) => s.nodesById);
+  const nodeIdToLayerIdForEmphasis = useDashboardStore((s) => s.nodeIdToLayerId);
+  const selectedForEmphasis = useDashboardStore((s) => s.selectedNodeId);
   const navigationLevel = useDashboardStore((s) => s.navigationLevel);
   const activeLayerId = useDashboardStore((s) => s.activeLayerId);
   const selectNode = useDashboardStore((s) => s.selectNode);
@@ -1120,13 +1129,25 @@ function GraphViewInner() {
   // Excavator: the relations product's edges and stand-in nodes, added to the graph above (excavator/RelationsOverlay.tsx).
   const relations = useRelationsOverlay(baseNodes, baseEdges, navigationLevel, nodeToContainer);
   const standInClick = useStandInClick();
-  const initialNodes = relations.nodes;
-  const initialEdges = relations.edges;
+  // The layer overview dims what the selected layer (or the layer of the selected node) is not linked to.
+  const styled = useMemo(() => {
+    if (navigationLevel !== "overview" || selectedForEmphasis === null) return { nodes: relations.nodes, edges: relations.edges };
+    const layerId = graph?.layers.some((layer) => layer.id === selectedForEmphasis) ? selectedForEmphasis : (nodeIdToLayerIdForEmphasis.get(selectedForEmphasis) ?? null);
+    const full = layerId === null ? null : emphasis({ level: "structural", selectedId: layerId, nodes: relations.nodes, edges: relations.edges });
+    if (full === null) return { nodes: relations.nodes, edges: relations.edges };
+    return {
+      nodes: relations.nodes.map((node) => (full.nodes.has(node.id) ? node : { ...node, style: { ...node.style, opacity: DIMMED_OPACITY } })),
+      edges: relations.edges.map((edge) => (full.edges.has(edge.id) ? edge : { ...edge, style: { ...edge.style, opacity: DIMMED_OPACITY } })),
+    };
+  }, [navigationLevel, selectedForEmphasis, relations.nodes, relations.edges, graph, nodeIdToLayerIdForEmphasis]);
+  const initialNodes = styled.nodes;
+  const initialEdges = styled.edges;
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  const { fitView, getViewport, setCenter } = useReactFlow();
+  const { fitView, getViewport, setCenter, setViewport } = useReactFlow();
+  const setViewportState = useDashboardStore((s) => s.setViewportState);
 
   useEffect(() => {
     setNodes(initialNodes);
@@ -1151,10 +1172,17 @@ function GraphViewInner() {
     pendingFitRef.current = false;
     // One frame so React Flow has positioned the nodes before fit.
     const raf = requestAnimationFrame(() => {
+      // Back restores the viewport the level had, instead of fitting it.
+      const restored = useDashboardStore.getState().pendingViewport;
+      if (restored !== null) {
+        useDashboardStore.getState().clearPendingViewport();
+        void setViewport(restored);
+        return;
+      }
       fitView({ duration: 400, padding: 0.2 });
     });
     return () => cancelAnimationFrame(raf);
-  }, [nodes, fitView]);
+  }, [nodes, fitView, setViewport]);
 
   // Excavator: a node chosen from outside the graph (Show in graph, search,
   // the file list) is revealed: the container holding it opens, and the view
@@ -1273,19 +1301,34 @@ function GraphViewInner() {
     };
   }, [onMove]);
 
-  const onNodeClick = useCallback(
-    (_: React.MouseEvent, node: { id: string }) => {
-      if (standInClick(node.id)) return;
-      if (navigationLevel === "overview") {
-        drillIntoLayer(node.id);
-      } else if (node.id.startsWith("portal:")) {
-        const targetLayerId = node.id.replace("portal:", "");
-        drillIntoLayer(targetLayerId);
-      } else {
-        selectNode(node.id);
-      }
+  // One rule: a click selects (a second click deselects) and never navigates; a double click enters the next level
+  // (a layer card, a folder box, a portal or a stand-in for another layer) and only selects a file or a function.
+  const canvasTypeOf = useCallback(
+    (node: { id: string; type?: string }): CanvasNodeType => {
+      if (isStandInId(node.id)) return "stand-in";
+      if (node.type === "layer-cluster") return "layer";
+      if (node.type === "container") return "container";
+      if (node.type === "portal") return "portal";
+      return nodesById.get(node.id)?.type === "function" ? "function" : "file";
     },
-    [navigationLevel, drillIntoLayer, selectNode, standInClick],
+    [nodesById],
+  );
+  const onNodeClick = useCallback(
+    (event: React.MouseEvent, node: { id: string; type?: string }) => {
+      runCanvasClick(canvasTypeOf(node), node.id, "click", event.detail);
+    },
+    [canvasTypeOf],
+  );
+  const onNodeDoubleClick = useCallback(
+    (event: React.MouseEvent, node: { id: string; type?: string }) => {
+      if (standInClick(node.id)) return;
+      if (node.type === "portal") {
+        drillIntoLayer(node.id.replace("portal:", ""));
+        return;
+      }
+      runCanvasClick(canvasTypeOf(node), node.id, "dblclick", event.detail);
+    },
+    [canvasTypeOf, drillIntoLayer, standInClick],
   );
 
   const onPaneClick = useCallback(() => {
@@ -1320,8 +1363,13 @@ function GraphViewInner() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick}
+        // The zoom pane would swallow a double click on a node.
+        zoomOnDoubleClick={false}
         onPaneClick={onPaneClick}
         onMove={navigationLevel === "layer-detail" ? onMove : undefined}
+        // The live viewport is kept in the store so a navigation can record it for Back.
+        onMoveEnd={(_, viewport) => setViewportState(viewport)}
         nodeTypes={nodeTypes}
         nodesDraggable={false}
         nodesConnectable={false}

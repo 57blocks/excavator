@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { activeTranslations, useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
+import { displayFlowName } from "../excavator/displayFlowName";
 import { nodeTitles } from "../excavator/nodeTitle";
 import { translatorOf } from "../excavator/nameTranslations";
 
@@ -26,9 +27,14 @@ const typeBadgeColors: Record<string, string> = {
 export default function SearchBar() {
   const searchQuery = useDashboardStore((s) => s.searchQuery);
   const searchResults = useDashboardStore((s) => s.searchResults);
-  const graph = useDashboardStore((s) => s.graph);
+  const structuralGraph = useDashboardStore((s) => s.graph);
+  const domainGraph = useDashboardStore((s) => s.domainGraph);
+  const viewMode = useDashboardStore((s) => s.viewMode);
+  // In the Domain view a search runs over the domain graph's nodes (the store picks the engine by mode).
+  const inDomain = viewMode === "domain" && domainGraph !== null;
+  const graph = inDomain ? domainGraph : structuralGraph;
   const setSearchQuery = useDashboardStore((s) => s.setSearchQuery);
-  const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
+  const goToNode = useDashboardStore((s) => s.goToNode);
   const nameTranslations = useDashboardStore(activeTranslations);
   const translate = useMemo(() => translatorOf(nameTranslations), [nameTranslations]);
   const { t } = useI18n();
@@ -55,10 +61,10 @@ export default function SearchBar() {
 
   const handleResultClick = useCallback(
     (nodeId: string) => {
-      navigateToNodeInLayer(nodeId);
+      goToNode(nodeId);
       setDropdownOpen(false);
     },
-    [navigateToNodeInLayer],
+    [goToNode],
   );
 
   // Close dropdown on Escape
@@ -140,7 +146,7 @@ export default function SearchBar() {
 
                 {/* Node name */}
                 <span className="text-sm text-text-primary truncate flex-1">
-                  {nodeTitles(node, translate).title}
+                  {inDomain ? displayFlowName(nodeTitles(node, translate).title) : nodeTitles(node, translate).title}
                   {nodeTitles(node, translate).subtitle !== null && (
                     <span className="ml-2 text-[11px] font-mono text-text-muted">
                       {nodeTitles(node, translate).subtitle}

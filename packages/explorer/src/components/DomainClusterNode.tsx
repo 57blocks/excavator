@@ -18,9 +18,7 @@ export const DOMAIN_CARD_HEIGHT = 140;
 export type DomainClusterFlowNode = Node<DomainClusterData, "domain-cluster">;
 
 function DomainClusterNode({ data }: NodeProps<DomainClusterFlowNode>) {
-  const navigateToDomain = useDashboardStore((s) => s.navigateToDomain);
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
-  const selectNode = useDashboardStore((s) => s.selectNode);
   const isSelected = selectedNodeId === data.domainId;
 
   return (
@@ -31,8 +29,6 @@ function DomainClusterNode({ data }: NodeProps<DomainClusterFlowNode>) {
           ? "border-accent bg-accent/10 shadow-lg shadow-accent/10"
           : "border-accent/40 bg-surface hover:border-accent/70"
       }`}
-      onClick={() => selectNode(data.domainId)}
-      onDoubleClick={() => navigateToDomain(data.domainId)}
     >
       <Handle type="target" position={Position.Left} className="!bg-accent/60 !w-2 !h-2" />
       <Handle type="source" position={Position.Right} className="!bg-accent/60 !w-2 !h-2" />

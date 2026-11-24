@@ -124,7 +124,7 @@ function CustomNodeComponent({
 
   // Selection-based dimming (when another node is selected, fade unrelated nodes)
   if (data.isSelectionFaded) {
-    extraClass += " opacity-20 pointer-events-auto";
+    extraClass += " opacity-30 pointer-events-auto";
   } else if (data.isNeighbor) {
     extraClass += " ring-1 ring-gold-dim/50";
   }
@@ -137,7 +137,6 @@ function CustomNodeComponent({
   return (
     <div
       className={`relative rounded-lg bg-elevated border border-border-subtle ${extraClass} min-w-[180px] max-w-[220px] overflow-hidden transition-[box-shadow,outline,opacity,filter] duration-200 cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.3)]`}
-      onClick={() => data.onNodeClick?.(id)}
     >
       {/* Left color bar */}
       <div

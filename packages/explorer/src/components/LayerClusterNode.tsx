@@ -35,7 +35,6 @@ function LayerClusterNode({
         width: 300,
         boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
       }}
-      onClick={() => data.onDrillIn(data.layerId)}
     >
       {/* Left color bar */}
       <div

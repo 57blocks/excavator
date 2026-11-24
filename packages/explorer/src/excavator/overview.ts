@@ -1,4 +1,5 @@
 import type { KnowledgeGraph } from "../core/types";
+import { domainBands } from "./domainLayout";
 import { domainTitle, type Translate } from "./nameTranslations";
 import { externalLabel, unitsOf, type UnitInfo } from "./products/relations";
 import { topFiles } from "./products/hotspots-charts";
@@ -58,28 +59,17 @@ export interface DomainRow {
   kind: DomainKind | null;
 }
 
-const KIND_ORDER: Record<string, number> = { business: 0, support: 1 };
-
-/** The domain nodes of the domain graph: business first, then support, then no kind, each in product order. */
+/** The domain nodes of the domain graph in the order the canvas draws them (`domainBands`): business, support, then no kind. */
 export function domainList(domainGraph: KnowledgeGraph | null, translate?: Translate): DomainRow[] {
-  const rows: DomainRow[] = [];
-  for (const node of domainGraph?.nodes ?? []) {
-    if (node.type !== "domain") continue;
-    const kind = (node.domainMeta as Table | undefined)?.kind;
-    const { label, original } = domainTitle(node.name, translate);
-    rows.push({
-      id: node.id,
-      label,
-      original,
-      summary: (node.summary ?? "").split("\n")[0].trim(),
-      kind: kind === "business" || kind === "support" ? kind : null,
-    });
-  }
-  const rank = (row: DomainRow) => (row.kind === null ? 2 : KIND_ORDER[row.kind]);
-  return rows
-    .map((row, index) => ({ row, index }))
-    .sort((a, b) => rank(a.row) - rank(b.row) || a.index - b.index)
-    .map((item) => item.row);
+  if (domainGraph === null) return [];
+  const byId = new Map(domainGraph.nodes.map((node) => [node.id, node]));
+  return domainBands(domainGraph).flatMap((band) =>
+    band.domainIds.map((id) => {
+      const node = byId.get(id)!;
+      const { label, original } = domainTitle(node.name, translate);
+      return { id, label, original, summary: (node.summary ?? "").split("\n")[0].trim(), kind: band.kind === "none" ? null : band.kind };
+    }),
+  );
 }
 
 /** Every runtime unit of the relations product, of every kind, in product order. */

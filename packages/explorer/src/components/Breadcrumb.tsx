@@ -1,3 +1,4 @@
+import BackButton from "./BackButton";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 
@@ -12,6 +13,7 @@ export default function Breadcrumb() {
 
   return (
     <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+      <BackButton />
       {navigationLevel === "overview" && (
         <div className="px-4 py-2 rounded-full bg-elevated border border-border-subtle text-xs font-semibold tracking-wider uppercase text-text-secondary shadow-lg">
           {t.breadcrumb.projectOverview}

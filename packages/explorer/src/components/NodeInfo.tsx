@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useDashboardStore, activeTranslations } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
 import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
 import { nodeTitles } from "../excavator/nodeTitle";
+import { displayFlowName, flowTitle } from "../excavator/displayFlowName";
 import { domainTitle, translatorOf, type Translate } from "../excavator/nameTranslations";
+import { panelFlows } from "../excavator/domainLevels";
+import GroupName from "./GroupName";
 import { NodeProductFacts } from "../excavator/panel/NodeProductFacts";
 import { LIST_CLASS, Section } from "../excavator/panel/Section";
 import { NodeCommunication } from "../excavator/views/relations/NodeCommunication";
@@ -65,6 +68,8 @@ function getDirectionalLabel(edgeType: string, isSource: boolean, t: ReturnType<
   return isSource ? labels.forward : labels.backward;
 }
 
+const OPEN_BUTTON = "ml-2 rounded border border-accent/40 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-accent hover:bg-accent/10";
+
 const LINK_ROW = "block w-full py-1.5 text-left text-[11px] text-text-secondary transition-colors hover:text-accent";
 
 function FigmaThumbnail({ node }: { node: GraphNode }) {
@@ -97,7 +102,7 @@ function LinkList({ nodes, onOpen }: { nodes: GraphNode[]; onOpen: (id: string) 
 }
 
 function KnowledgeNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeGraph }) {
-  const navigateToNode = useDashboardStore((s) => s.navigateToNode);
+  const navigateToNode = useDashboardStore((s) => s.goToNode);
   const { t } = useI18n();
   const meta = node.knowledgeMeta;
 
@@ -158,9 +163,19 @@ function KnowledgeNodeDetails({ node, graph }: { node: GraphNode; graph: Knowled
   );
 }
 
+/** The one place the Domain view shows code: a small muted line with a flow's entry point or a step's file. */
+function CodeLine({ children }: { children: ReactNode }) {
+  return (
+    <p className="m-0 px-5 pt-3 text-[10px] text-text-muted" data-excavator-code-line>
+      <span className="mr-2 uppercase tracking-wider">Code</span>
+      <span className="font-mono [overflow-wrap:anywhere]">{children}</span>
+    </p>
+  );
+}
+
 /** A flow or step name with the English original beside it when the name table translated it. */
 function NameWithOriginal({ name, translate }: { name: string; translate?: Translate }) {
-  const { label, original } = domainTitle(name, translate);
+  const { label, original } = flowTitle(name, translate);
   return (
     <>
       {label}
@@ -170,18 +185,24 @@ function NameWithOriginal({ name, translate }: { name: string; translate?: Trans
 }
 
 function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeGraph }) {
-  const navigateToDomain = useDashboardStore((s) => s.navigateToDomain);
-  const selectNode = useDashboardStore((s) => s.selectNode);
+  const goToNode = useDashboardStore((s) => s.goToNode);
+  const enterNode = useDashboardStore((s) => s.enterNode);
+  const selectedGroupId = useDashboardStore((s) => s.selectedGroupId);
   const table = useDashboardStore(activeTranslations);
   const translate = translatorOf(table);
+  const featureGroups = useDashboardStore((s) => s.featureGroups);
+  const activeDomainId = useDashboardStore((s) => s.activeDomainId);
+  const activeGroupId = useDashboardStore((s) => s.activeGroupId);
   const { t } = useI18n();
   const meta = node.domainMeta;
 
   if (node.type === "domain") {
-    const flows = graph.edges
-      .filter((e) => e.type === "contains_flow" && e.source === node.id)
-      .map((e) => graph.nodes.find((n) => n.id === e.target))
+    // The open group's flows, in group order, when a group of this domain is open; else every flow of the domain.
+    const listed = panelFlows(featureGroups, graph, node.id, activeDomainId, activeGroupId ?? selectedGroupId);
+    const flows = listed.flowIds
+      .map((id) => graph.nodes.find((n) => n.id === id))
       .filter((n): n is GraphNode => n !== undefined);
+    const groupName = listed.group ? domainTitle(listed.group.label, translate).label : null;
 
     return (
       <>
@@ -209,11 +230,25 @@ function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeG
           </Section>
         ) : null}
         {flows.length > 0 && (
-          <Section title={t.nodeInfo.flows}>
+          <Section
+            title={t.nodeInfo.flows}
+            note={
+              listed.group && groupName !== null ? (
+                <>
+                  <GroupName label={groupName} qualifier={listed.group.qualifier} />
+                  {activeGroupId === null && (
+                    <button type="button" data-excavator-open="group" onClick={() => enterNode("group", listed.group!.id)} className={OPEN_BUTTON}>
+                      Open
+                    </button>
+                  )}
+                </>
+              ) : undefined
+            }
+          >
             <ul className={LIST_CLASS}>
               {flows.map((f) => (
                 <li key={f.id}>
-                  <button type="button" onClick={() => { navigateToDomain(node.id); selectNode(f.id); }} className={LINK_ROW}>
+                  <button type="button" onClick={() => goToNode(f.id)} className={LINK_ROW}>
                     <NameWithOriginal name={f.name} translate={translate} />
                   </button>
                 </li>
@@ -234,17 +269,13 @@ function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeG
 
     return (
       <>
-        {meta?.entryPoint ? (
-          <Section title={t.nodeInfo.entryPoint}>
-            <div className="pb-2 font-mono text-[11px] text-accent">{meta.entryPoint}</div>
-          </Section>
-        ) : null}
+        {meta?.entryPoint ? <CodeLine>{meta.entryPoint}</CodeLine> : null}
         {steps.length > 0 && (
           <Section title={t.nodeInfo.steps}>
             <ol className={LIST_CLASS}>
               {steps.map((s, i) => (
                 <li key={s.id}>
-                  <button type="button" onClick={() => selectNode(s.id)} className={LINK_ROW}>
+                  <button type="button" onClick={() => goToNode(s.id)} className={LINK_ROW}>
                     <span className="mr-1.5 text-accent/60">{i + 1}.</span>
                     <NameWithOriginal name={s.name} translate={translate} />
                   </button>
@@ -260,12 +291,10 @@ function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeG
   if (node.type === "step") {
     if (!node.filePath) return null;
     return (
-      <Section title={t.nodeInfo.implementation}>
-        <div className="pb-2 font-mono text-[11px] text-text-secondary">
-          {node.filePath}
-          {node.lineRange && <span className="text-text-muted">:{node.lineRange[0]}-{node.lineRange[1]}</span>}
-        </div>
-      </Section>
+      <CodeLine>
+        {node.filePath}
+        {node.lineRange ? `:${node.lineRange[0]}-${node.lineRange[1]}` : ""}
+      </CodeLine>
     );
   }
 
@@ -282,7 +311,7 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
   const [languageExpanded, setLanguageExpanded] = useState(true);
   const { t } = useI18n();
 
-  const navigateToNode = useDashboardStore((s) => s.navigateToNode);
+  const navigateToNode = useDashboardStore((s) => s.goToNode);
   const navigateToHistoryIndex = useDashboardStore((s) => s.navigateToHistoryIndex);
   const setFocusNode = useDashboardStore((s) => s.setFocusNode);
   const openCodeViewer = useDashboardStore((s) => s.openCodeViewer);
@@ -290,6 +319,9 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
   const viewMode = useDashboardStore((s) => s.viewMode);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const nameTranslations = useDashboardStore(activeTranslations);
+  const panelDomainId = useDashboardStore((s) => s.activeDomainId);
+  const panelGroupId = useDashboardStore((s) => s.activeGroupId);
+  const enterNodeAction = useDashboardStore((s) => s.enterNode);
 
   const activeGraph = viewMode === "domain" && domainGraph ? domainGraph : graph;
   const node = activeGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
@@ -309,7 +341,9 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
   }
 
   // Excavator: the title, with the English original when the name table translated it.
-  const titles = nodeTitles(node, translatorOf(nameTranslations));
+  const rawTitles = nodeTitles(node, translatorOf(nameTranslations));
+  // The Domain view shows names, not code: a flow's route in parentheses is left out of its title.
+  const titles = viewMode === "domain" ? { ...rawTitles, title: displayFlowName(rawTitles.title), original: rawTitles.original === null ? null : displayFlowName(rawTitles.original) } : rawTitles;
 
   const allEdges = activeGraph?.edges ?? [];
   const connections = allEdges.filter(
@@ -320,8 +354,9 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
   const childEdges = connections.filter(
     (e) => e.type === "contains" && e.source === node.id,
   );
+  // A domain lists its flows under Flows; its contains_flow edges are not repeated as connections.
   const otherConnections = connections.filter(
-    (e) => !(e.type === "contains" && e.source === node.id),
+    (e) => !(e.type === "contains" && e.source === node.id) && !(node.type === "domain" && e.type === "contains_flow" && e.source === node.id),
   );
 
   // Resolve child nodes
@@ -335,6 +370,10 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
     complexityBadgeColors[node.complexity] ?? complexityBadgeColors.simple;
   const verdict = verdictOf(node);
 
+  // Open enters a domain's groups (a double click on its card does the same); a list item never navigates by itself:
+  // it goes to the node's own level. No other node has a next level in this panel.
+  const canOpen = viewMode === "domain" && node.type === "domain" && node.id !== panelDomainId;
+
   if (import.meta.env.DEV && !(knownType in typeBadgeColors)) {
     console.warn(`[NodeInfo] Unknown node type "${node.type}" — using "file" badge colors`);
   }
@@ -343,8 +382,8 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
     <div className="w-full animate-fade-slide-in pb-3">
       <div className="px-5 pt-5">
         {/* Navigation history trail */}
-        {historyNodes.length > 0 && (
-          <div className="mb-3 flex flex-wrap items-center gap-1">
+        {historyNodes.length > 0 && viewMode !== "domain" && (
+          <div className="mb-3 flex flex-wrap items-center gap-1" data-excavator-panel-breadcrumb>
             <button
               onClick={goBackNode}
               className="flex items-center gap-1 text-[10px] font-semibold text-gold transition-colors hover:text-gold-bright"
@@ -390,6 +429,11 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
               </div>
             )}
           </div>
+          {canOpen && (
+            <button type="button" data-excavator-open="node" onClick={() => enterNodeAction("domain", node.id)} className={`shrink-0 ${OPEN_BUTTON}`}>
+              Open
+            </button>
+          )}
           <button
             onClick={() => setFocusNode(focusNodeId === node.id ? null : node.id)}
             className={`shrink-0 rounded px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
@@ -418,7 +462,7 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
         )}
       </div>
 
-      {node.filePath && (
+      {node.filePath && viewMode !== "domain" && (
         <Section title={t.common.file}>
           <div className="flex items-start justify-between gap-3 pb-2 text-xs text-text-secondary">
             <div className="min-w-0 truncate font-mono" title={node.filePath}>
@@ -514,8 +558,10 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
                   >
                     <span className="font-mono text-gold">{arrow}</span>
                     <span className="text-text-muted">{dirLabel}</span>
-                    <span className="truncate text-text-primary">{otherNode?.name ?? otherId}</span>
-                    {evidence && (
+                    <span className="truncate text-text-primary">
+                      {otherNode ? (viewMode === "domain" ? flowTitle(otherNode.name, translatorOf(nameTranslations)).label : otherNode.name) : otherId}
+                    </span>
+                    {evidence && viewMode !== "domain" && (
                       <span className="basis-full truncate pl-5 font-mono text-[10px] text-text-muted" title={evidence}>
                         {evidence}
                       </span>

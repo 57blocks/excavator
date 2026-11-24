@@ -8,7 +8,7 @@ const ROWS_DRAWN = 300;
 /** The unused-code candidates, most confident first: name, file and line, confidence. */
 export function UnusedList({ rows, onBack }: { rows: readonly UnusedRow[]; onBack: () => void }) {
   const nodesById = useDashboardStore((s) => s.nodesById);
-  const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
+  const goToNode = useDashboardStore((s) => s.goToNode);
   const shown = rows.slice(0, ROWS_DRAWN);
   return (
     <div>
@@ -39,7 +39,7 @@ export function UnusedList({ rows, onBack }: { rows: readonly UnusedRow[]; onBac
               return (
                 <li key={row.id}>
                   {nodesById.has(row.id) ? (
-                    <button type="button" className={ROW_BUTTON_CLASS} onClick={() => navigateToNodeInLayer(row.id)}>
+                    <button type="button" className={ROW_BUTTON_CLASS} onClick={() => goToNode(row.id)}>
                       {body}
                     </button>
                   ) : (

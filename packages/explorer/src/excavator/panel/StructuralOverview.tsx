@@ -24,8 +24,9 @@ export function StructuralOverview() {
   const graph = useDashboardStore((s) => s.graph);
   const table = useDashboardStore(activeTranslations);
   const nodesById = useDashboardStore((s) => s.nodesById);
-  const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
-  const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
+  const goToNode = useDashboardStore((s) => s.goToNode);
+  const enterNode = useDashboardStore((s) => s.enterNode);
+  const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
   const [showUnused, setShowUnused] = useState(false);
   const relations = useProductValue("relations", "relations-graph.json");
   const hotspots = useProductValue("hotspots", "hotspots.json");
@@ -42,8 +43,28 @@ export function StructuralOverview() {
   const layers = graph?.layers ?? [];
   const stateLine = (state: { line: string | null }) => (state.line === null ? null : <MutedLine>{state.line}</MutedLine>);
 
+  const selectedLayer = layers.find((layer) => layer.id === selectedNodeId) ?? null;
+
   return (
     <div>
+      {selectedLayer && (
+        <Section title="Layer">
+          <div className="flex items-start justify-between gap-2 pb-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm text-text-primary" data-excavator-selected-layer>{selectedLayer.name}</div>
+              {selectedLayer.description && <div className="text-[11px] text-text-secondary">{selectedLayer.description}</div>}
+            </div>
+            <button
+              type="button"
+              data-excavator-open="layer"
+              onClick={() => enterNode("layer", selectedLayer.id)}
+              className="shrink-0 rounded border border-accent/40 px-2 py-0.5 text-[10px] font-semibold text-accent hover:bg-accent/10"
+            >
+              Open
+            </button>
+          </div>
+        </Section>
+      )}
       <Section title="Runtime units">
         {stateLine(relations)}
         {relations.ready &&
@@ -77,7 +98,7 @@ export function StructuralOverview() {
           <ul className={LIST_CLASS}>
             {layers.map((layer) => (
               <li key={layer.id}>
-                <button type="button" className={ROW_BUTTON_CLASS} data-excavator-layer-row={layer.id} onClick={() => drillIntoLayer(layer.id)}>
+                <button type="button" className={ROW_BUTTON_CLASS} data-excavator-layer-row={layer.id} onClick={() => goToNode(layer.id)}>
                   <span className="block truncate text-sm text-text-primary">{layer.name}</span>
                   {layer.description && <span className="line-clamp-2 text-[11px] text-text-secondary">{layer.description}</span>}
                 </button>
@@ -127,7 +148,7 @@ export function StructuralOverview() {
                 return (
                   <li key={file.path}>
                     {nodesById.has(id) ? (
-                      <button type="button" className={ROW_BUTTON_CLASS} onClick={() => navigateToNodeInLayer(id)}>
+                      <button type="button" className={ROW_BUTTON_CLASS} onClick={() => goToNode(id)}>
                         {body}
                       </button>
                     ) : (

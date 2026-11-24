@@ -42,7 +42,7 @@ export function NodeCommunication({ nodeId }: { nodeId: string }) {
 function Entry({ entry, nodeId, units, home, translate }: { entry: CommunicationEntry; nodeId: string; units: ReadonlyMap<string, UnitInfo>; home: (id: string) => string; translate?: Translate }) {
   const { row, role, endNodeId, other } = entry;
   const nodesById = useDashboardStore((s) => s.nodesById);
-  const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
+  const goToNode = useDashboardStore((s) => s.goToNode);
   const nameOf = (id: string) => nodesById.get(id)?.name ?? id;
 
   return (
@@ -66,7 +66,7 @@ function Entry({ entry, nodeId, units, home, translate }: { entry: Communication
         )}
         {other.kind === "node" ? (
           <span className="[overflow-wrap:anywhere]" data-excavator-communication-other={other.nodeId}>
-            <LinkButton title={`Show ${other.nodeId} in the graph`} onClick={() => navigateToNodeInLayer(home(other.nodeId))}>{nameOf(other.nodeId)}</LinkButton>
+            <LinkButton title={`Show ${other.nodeId} in the graph`} onClick={() => goToNode(home(other.nodeId))}>{nameOf(other.nodeId)}</LinkButton>
             <span className="ml-2"><SiteLink site={other.site} /></span>
           </span>
         ) : other.kind === "not-in-graph" ? (

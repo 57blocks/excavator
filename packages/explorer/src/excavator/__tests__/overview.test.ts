@@ -49,7 +49,7 @@ describe("domainList", () => {
     domain("d:orders", "Orders", "Order intake.", "business"),
   ]);
 
-  it("lists only domain nodes, business first, then support, then no kind, each in product order", () => {
+  it("lists only domain nodes, business first, then support, then no kind", () => {
     expect(domainList(dg).map((r) => [r.id, r.kind])).toEqual([
       ["d:billing", "business"],
       ["d:orders", "business"],
@@ -57,6 +57,18 @@ describe("domainList", () => {
       ["d:misc", null],
       ["d:odd", null],
     ]);
+  });
+
+  it("orders each band like the canvas: by cross-domain edges, then flow count, then name", () => {
+    const flows = [{ id: "f:1", type: "flow", name: "x", summary: "", tags: [], complexity: "simple" }, { id: "f:2", type: "flow", name: "y", summary: "", tags: [], complexity: "simple" }];
+    const g = graph({}, [domain("d:a", "Alpha", "", "business"), domain("d:b", "Beta", "", "business"), domain("d:c", "Gamma", "", "business"), ...flows]);
+    g.edges = [
+      { source: "d:c", target: "d:a", type: "cross_domain", direction: "forward", weight: 1 },
+      { source: "d:b", target: "f:1", type: "contains_flow", direction: "forward", weight: 1 },
+      { source: "d:b", target: "f:2", type: "contains_flow", direction: "forward", weight: 1 },
+    ] as KnowledgeGraph["edges"];
+    // Beta (2 flows) first, then Gamma (feeds Alpha), then Alpha.
+    expect(domainList(g).map((r) => r.id)).toEqual(["d:b", "d:c", "d:a"]);
   });
 
   it("takes the summary's first line trimmed and leaves an empty summary empty", () => {

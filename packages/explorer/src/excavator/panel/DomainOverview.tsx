@@ -11,20 +11,13 @@ export function DomainOverview() {
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const table = useDashboardStore(activeTranslations);
   const activeDomainId = useDashboardStore((s) => s.activeDomainId);
-  const navigateToDomain = useDashboardStore((s) => s.navigateToDomain);
-  const clearActiveDomain = useDashboardStore((s) => s.clearActiveDomain);
-  const selectNode = useDashboardStore((s) => s.selectNode);
+  const goToNode = useDashboardStore((s) => s.goToNode);
   const intro = useMemo(() => projectIntroduction(graph, domainGraph), [graph, domainGraph]);
   const rows = useMemo(() => domainList(domainGraph, translatorOf(table)), [domainGraph, table]);
 
   if (activeDomainId !== null && domainGraph?.nodes.some((n) => n.id === activeDomainId)) {
     return (
       <div>
-        <div className="px-5 pt-3">
-          <button type="button" onClick={clearActiveDomain} className="text-[11px] font-semibold text-gold hover:text-gold-bright">
-            {"\u2190 All domains"}
-          </button>
-        </div>
         <NodeInfo nodeId={activeDomainId} />
       </div>
     );
@@ -51,10 +44,7 @@ export function DomainOverview() {
                   className={ROW_BUTTON_CLASS}
                   data-excavator-domain-row={row.id}
                   data-excavator-domain-kind={row.kind ?? ""}
-                  onClick={() => {
-                    navigateToDomain(row.id);
-                    selectNode(null);
-                  }}
+                  onClick={() => goToNode(row.id)}
                 >
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="min-w-0 truncate text-sm text-text-primary" data-excavator-domain-label>{row.label}</span>

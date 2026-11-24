@@ -43,6 +43,7 @@ function Dashboard({ accessToken }: { accessToken: string }) {
   const setGraph = useDashboardStore((s) => s.setGraph);
   const setDomainGraph = useDashboardStore((s) => s.setDomainGraph);
   const setNameTranslations = useDashboardStore((s) => s.setNameTranslations);
+  const setFeatureGroups = useDashboardStore((s) => s.setFeatureGroups);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [graphIssues, setGraphIssues] = useState<GraphIssue[]>([]);
   const [graphFreshness, setGraphFreshness] =
@@ -147,6 +148,14 @@ function Dashboard({ accessToken }: { accessToken: string }) {
       .catch(() => {});
   }, [setNameTranslations]);
 
+  // Excavator: the feature groups of each domain; a page without them shows each domain's flows as one group.
+  useEffect(() => {
+    readInlineFile("feature-groups.json")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: unknown) => setFeatureGroups(data))
+      .catch(() => {});
+  }, [setFeatureGroups]);
+
   useEffect(() => {
     readInlineFile("domain-graph.json")
       .then((res) => {
@@ -210,22 +219,20 @@ function DashboardContent({
     () => [
       {
         key: "Escape",
-        description: "Close the code viewer, clear the selection, leave the layer or domain",
+        description: "Close the code viewer, clear the selection, go up one level in the domain view, leave the layer",
         action: () => {
           // Read from store at invocation time to avoid stale closures
-          const state = useDashboardStore.getState();
-          if (state.codeViewerExpanded) {
-            state.collapseCodeViewer();
-          } else if (state.codeViewerOpen) {
-            state.closeCodeViewer();
-          } else if (state.selectedNodeId) {
-            state.selectNode(null);
-          } else if (state.viewMode === "domain" && state.activeDomainId !== null) {
-            state.clearActiveDomain();
-          } else if (state.navigationLevel === "layer-detail") {
-            state.navigateToOverview();
-          }
+          const focused = document.activeElement as HTMLElement | null;
+          const typing = focused !== null && (focused.tagName === "INPUT" || focused.tagName === "TEXTAREA" || focused.isContentEditable);
+          useDashboardStore.getState().pressEscape(typing);
         },
+        category: "Navigation",
+      },
+      {
+        key: "ArrowLeft",
+        altKey: true,
+        description: "Back to the previous place in the history",
+        action: () => useDashboardStore.getState().goBack(),
         category: "Navigation",
       },
       {
