@@ -8,7 +8,12 @@
  *   - it names one of the area's `unrecognisedFiles`;
  *   - its `line` is inside that file as it is on disk;
  *   - its `quote`, trimmed, is non-empty, at most MAX_QUOTE_CHARS long and a
- *     substring of that line.
+ *     substring of that line;
+ *   - its optional `skipReason` (why the entry point starts no business flow)
+ *     is a string.
+ * An accepted entry keeps `skipReason`, trimmed, when it is not blank, and
+ * counts as skipped; a blank one is dropped and counted in skipWithoutReason.
+ * A rejected entry's reason has no effect.
  * Everything else is counted under a named reason and never reaches the merged
  * graph. Pure over `readLines`, so a test can supply the file text.
  */
@@ -40,21 +45,23 @@ export function readProjectLines(projectRoot, file) {
 
 /**
  * @param {{ entries: unknown, unrecognisedFiles: Iterable<string>, readLines: (file: string) => string[] | null }} input
- * @returns {{ accepted: object[], rejected: Record<string, number> }}
- *   accepted entries are { file, line, method, path, quote, source: 'model' }
+ * @returns {{ accepted: object[], rejected: Record<string, number>, skipWithoutReason: number }}
+ *   accepted entries are { file, line, method, path, quote, source: 'model', skipReason? }
  */
 export function checkModelEntryPoints({ entries, unrecognisedFiles, readLines }) {
   const rejected = Object.fromEntries(MODEL_ENTRY_REJECTIONS.map((reason) => [reason, 0]));
   const accepted = [];
-  if (entries === undefined) return { accepted, rejected };
+  let skipWithoutReason = 0;
+  if (entries === undefined) return { accepted, rejected, skipWithoutReason };
   if (!Array.isArray(entries)) {
     rejected.malformed += 1;
-    return { accepted, rejected };
+    return { accepted, rejected, skipWithoutReason };
   }
   const allowed = new Set(unrecognisedFiles);
   for (const entry of entries) {
     if (!isObject(entry) || typeof entry.file !== 'string' || !Number.isInteger(entry.line)
-      || typeof entry.quote !== 'string' || !optionalText(entry.method) || !optionalText(entry.path)) {
+      || typeof entry.quote !== 'string' || !optionalText(entry.method) || !optionalText(entry.path)
+      || (entry.skipReason !== undefined && typeof entry.skipReason !== 'string')) {
       rejected.malformed += 1;
       continue;
     }
@@ -67,9 +74,13 @@ export function checkModelEntryPoints({ entries, unrecognisedFiles, readLines })
       rejected['quote-mismatch'] += 1;
       continue;
     }
-    accepted.push({ file, line: entry.line, method: entry.method ?? null, path: entry.path ?? null, quote, source: 'model' });
+    const record = { file, line: entry.line, method: entry.method ?? null, path: entry.path ?? null, quote, source: 'model' };
+    const skipReason = typeof entry.skipReason === 'string' ? entry.skipReason.trim() : null;
+    if (skipReason) record.skipReason = skipReason;
+    else if (skipReason !== null) skipWithoutReason += 1;
+    accepted.push(record);
   }
-  return { accepted, rejected };
+  return { accepted, rejected, skipWithoutReason };
 }
 
 export default { checkModelEntryPoints, readProjectLines, MAX_QUOTE_CHARS, MODEL_ENTRY_REJECTIONS };

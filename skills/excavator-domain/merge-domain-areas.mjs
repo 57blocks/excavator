@@ -96,8 +96,10 @@
  * not even through its nodeIds.
  * Each module lands in exactly one bucket: covered (a flow has a step in
  * it, or a flow cites one of its entry points), declared-skip (no flow, its area listed it in skippedModules with a
- * reason, or its only candidates are script entry points and each of them is
- * declared-skip in entryPointCoverage), silent-zero (no flow, not declared, and script + pattern + accepted
+ * reason, or every candidate is skipped one by one: no pattern entry point,
+ * each script entry point declared-skip in entryPointCoverage, each accepted
+ * model entry point with a skipReason, and each unrecognised file answered by
+ * at least one accepted model entry point), silent-zero (no flow, not declared, and script + pattern + accepted
  * model entry points > 0 or it has files with unrecognised registrations) or
  * no-candidates (no flow, not declared, none of those).
  *
@@ -106,7 +108,8 @@
  * reaches the merged graph. model-entry-points.mjs checks each element against
  * the area's unrecognised files and the file text; accepted ones are written
  * to the report with `source: "model"` and their module, rejected ones are
- * counted per reason. A module split
+ * counted per reason. An accepted one may carry a skipReason; `model.skipped`
+ * counts those, `model.skipWithoutReason` the blank ones. A module split
  * into parts is covered when any part is; each area also names the parts
  * it holds that have entry points, no cited file and no declared skip
  * (silentZeroParts), so an area that returned nothing for its part shows.
@@ -762,13 +765,19 @@ export function computeCoverage({
   // Model entry points the merge accepted, by module.
   const modelEntries = (modelEntryPoints?.accepted ?? []).map((e) => ({ ...e, module: fileModule.get(e.file) ?? null }));
   const modelOfModule = new Map();
-  for (const entry of modelEntries) modelOfModule.set(entry.module, (modelOfModule.get(entry.module) ?? 0) + 1);
+  const modelUnskippedOfModule = new Map();
+  const modelFilesOfModule = new Map();
+  for (const entry of modelEntries) {
+    modelOfModule.set(entry.module, (modelOfModule.get(entry.module) ?? 0) + 1);
+    if (!entry.skipReason) modelUnskippedOfModule.set(entry.module, (modelUnskippedOfModule.get(entry.module) ?? 0) + 1);
+    if (!modelFilesOfModule.has(entry.module)) modelFilesOfModule.set(entry.module, new Set());
+    modelFilesOfModule.get(entry.module).add(entry.file);
+  }
 
   // Per-entry-point buckets first, so the module account agrees with them: a
   // module that a merged flow starts in (one of its entry points is in-flow)
-  // is covered even when no step lands in it, and a module whose only
-  // candidates are script entry points, every one declared skipped, is
-  // declared-skip.
+  // is covered even when no step lands in it, and a module whose candidates
+  // are all skipped one by one is declared-skip.
   const epc = entryPointCoverage({ manifest, areaResults, merged, entriesOf, declared, fileModule });
   const entryBucketsOf = new Map();
   for (const row of epc.rows) {
@@ -777,9 +786,16 @@ export function computeCoverage({
     entryBucketsOf.get(row.module).push(row.bucket);
   }
   const anyEntryInFlow = (path) => (entryBucketsOf.get(path) ?? []).includes('in-flow');
-  const allEntriesSkipped = (path, script) => {
+  // Every candidate skipped one by one: no pattern entry point (they have no
+  // per-item skip), every script entry point declared-skip, every accepted
+  // model entry point with a reason, and every unrecognised file answered by
+  // at least one accepted model entry point (a file with none is still open).
+  const allCandidatesSkipped = ({ path, script, pattern, model, unrecognised }) => {
     const list = entryBucketsOf.get(path) ?? [];
-    return script > 0 && list.length === script && list.every((b) => b === 'declared-skip');
+    return pattern === 0 && script + model > 0
+      && list.length === script && list.every((b) => b === 'declared-skip')
+      && (modelUnskippedOfModule.get(path) ?? 0) === 0
+      && (modelFilesOfModule.get(path)?.size ?? 0) === unrecognised;
   };
 
   const buckets = Object.fromEntries(MODULE_BUCKETS.map((b) => [b, 0]));
@@ -806,7 +822,7 @@ export function computeCoverage({
       status = 'no-candidates';
       if (declared.has(module.path)) skippedModulesWithoutCandidates += 1;
     } else if (declared.has(module.path)) status = 'declared-skip';
-    else if (pattern + model === 0 && unrecognised === 0 && allEntriesSkipped(module.path, script)) {
+    else if (allCandidatesSkipped({ path: module.path, script, pattern, model, unrecognised })) {
       status = 'declared-skip';
       skippedByEntryPoints = true;
       modulesSkippedByEntryPoints += 1;
@@ -870,7 +886,13 @@ export function computeCoverage({
       source: manifest.entryPointSource ?? null,
       script: sumOf('scriptEntryPoints'),
       pattern: sumOf('patternEntryPoints'),
-      model: { accepted: modelEntries.length, rejected: rejectedByReason, entries: modelEntries },
+      model: {
+        accepted: modelEntries.length,
+        skipped: modelEntries.filter((e) => e.skipReason).length,
+        skipWithoutReason: modelEntryPoints?.skipWithoutReason ?? 0,
+        rejected: rejectedByReason,
+        entries: modelEntries,
+      },
     },
     candidateFiles: { total: candidates.length, cited: candidates.length - uncited.length, uncited },
     silentZeroParts: areas.reduce((n, a) => n + a.silentZeroParts.length, 0),
@@ -1186,7 +1208,7 @@ export async function runMerge({
   const accepted = areaResults.filter((r) => r.status === 'accepted').map(({ areaId, graph }) => ({ areaId, graph }));
   const { graph, merge } = mergeFn({ accepted, plan, manifest, nodeFiles, entriesOf });
   const conservation = checkConservation({ accepted, merged: graph, renames: merge.renames ?? merge.idsRenamed });
-  const modelEntryPoints = { accepted: [], rejected: Object.fromEntries(MODEL_ENTRY_REJECTIONS.map((r) => [r, 0])) };
+  const modelEntryPoints = { accepted: [], skipWithoutReason: 0, rejected: Object.fromEntries(MODEL_ENTRY_REJECTIONS.map((r) => [r, 0])) };
   const lineCache = new Map();
   const readLines = (file) => {
     if (!lineCache.has(file)) lineCache.set(file, readProjectLines(root, file));
@@ -1195,6 +1217,7 @@ export async function runMerge({
   for (const { areaId, graph: areaGraph } of accepted) {
     const checked = checkModelEntryPoints({ entries: areaGraph.entryPoints, unrecognisedFiles: unrecognisedOf.get(areaId) ?? [], readLines });
     modelEntryPoints.accepted.push(...checked.accepted);
+    modelEntryPoints.skipWithoutReason += checked.skipWithoutReason;
     for (const [reason, n] of Object.entries(checked.rejected)) modelEntryPoints.rejected[reason] += n;
   }
   const coverage = computeCoverage({ manifest, areaResults, merged: graph, nodeFiles, merge, plan, planStatus, conservation, modelEntryPoints, entriesOf });
@@ -1227,7 +1250,7 @@ export async function runMerge({
   const ep = coverage.entryPoints;
   const modelRejected = Object.values(ep.model.rejected).reduce((n, v) => n + v, 0);
   lines.push(
-    `entry-points source=${ep.source ?? 'unknown'} script=${ep.script} pattern=${ep.pattern} model=${ep.model.accepted} model-rejected=${modelRejected}`,
+    `entry-points source=${ep.source ?? 'unknown'} script=${ep.script} pattern=${ep.pattern} model=${ep.model.accepted} model-rejected=${modelRejected} model-skipped=${ep.model.skipped}`,
   );
   lines.push(`candidate files cited=${coverage.candidateFiles.cited}/${coverage.candidateFiles.total}`);
   lines.push(`totals domains=${coverage.totals.domains} flows=${coverage.totals.flows} steps=${coverage.totals.steps}`);
