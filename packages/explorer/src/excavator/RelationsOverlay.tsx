@@ -92,17 +92,20 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
   const nameTranslations = useDashboardStore((s) => s.nameTranslations);
 
   // Counted whatever the mode and view: the overview's placer gives null for an end that no layer holds.
-  const inNoLayer = useMemo(() => {
+  // They are left out of what a view picks, so "of M in this view" and this count do not hold the same relation.
+  const unplaced = useMemo(() => {
     if (data.status !== "ready") return null;
     const home = (id: string) => drawnHome(id, data.drawn, data.parentOf);
-    return unplacedRelations(data.index.drawable, overviewPlacer(home, nodeIdToLayerId)).length;
+    return new Set(unplacedRelations(data.index.drawable, overviewPlacer(home, nodeIdToLayerId)));
   }, [data, nodeIdToLayerId]);
+  const inNoLayer = unplaced === null ? null : unplaced.size;
 
   return useMemo(() => {
     const none = { nodes: baseNodes, edges: baseEdges, data, mode, projection: null, picked: 0, inNoLayer };
     if (data.status !== "ready" || mode === "off" || baseNodes.length === 0) return none;
     if (level === "layer-detail" && activeLayerId === null) return none;
-    const picked = level === "overview" || mode === "all" ? data.index.drawable : selectedNodeId === null ? [] : relationsOfNode(data.index, selectedNodeId);
+    const picked = (level === "overview" || mode === "all" ? data.index.drawable : selectedNodeId === null ? [] : relationsOfNode(data.index, selectedNodeId))
+      .filter((relation) => !(unplaced?.has(relation) ?? false));
     const homes = new Map<string, string | null>();
     const home = (id: string) => {
       if (!homes.has(id)) homes.set(id, drawnHome(id, data.drawn, data.parentOf));
@@ -159,7 +162,7 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
       };
     });
     return { nodes: [...baseNodes, ...anchors.values(), ...standIns], edges: [...baseEdges, ...edges], data, mode, projection, picked: picked.length, inNoLayer };
-  }, [baseNodes, baseEdges, data, mode, level, selectedNodeId, activeLayerId, nodeIdToLayerId, nodeIdToLayerIds, boxOf, graph, nameTranslations, inNoLayer]);
+  }, [baseNodes, baseEdges, data, mode, level, selectedNodeId, activeLayerId, nodeIdToLayerId, nodeIdToLayerIds, boxOf, graph, nameTranslations, unplaced, inNoLayer]);
 }
 
 /** A click on a stand-in: another layer opens that layer, an external system opens it in the Relations view. True when it was one. */
@@ -217,11 +220,11 @@ export function RelationsPanel({ overlay, level }: { overlay: RelationsOverlay; 
     title = [
       `The relations product holds ${formatNumber(index.total)} relations: ${formatNumber(index.linked)} linked, ${formatNumber(index.notLinked)} in other buckets.`,
       `${formatNumber(index.drawable.length)} linked relations have both ends in the knowledge graph (or call an external system).`,
-      `${formatNumber(inNoLayer)} of them have an end that no layer holds (no node a layer draws is the end's node or contains it); no view draws them.`,
+      `${formatNumber(inNoLayer)} of them have an end that no layer holds (no node a layer draws is the end's node or contains it); no view draws them, and no view counts them as in it.`,
       `${formatNumber(index.notInGraph.length)} linked relations have an end whose node is not in the graph; they are not drawn.`,
       "Relations in other buckets (caller-only, receiver-only, address-unresolved, ambiguous, quote-failed) are never drawn; the node panel and the Relations view list them.",
       "A relation whose two ends sit on one node or box, or whose end this view hides, is not drawn here.",
-      level === "overview" ? "The overview draws every drawable relation as one edge per layer pair and kind." : "A layer draws the selected node's relations, or all of the layer's.",
+      level === "overview" ? "The overview draws every other drawable relation between two layers, or between a layer and an external system, as one edge per layer pair and kind." : "A layer draws the selected node's relations, or all of the layer's.",
     ].join("\n");
   }
 
