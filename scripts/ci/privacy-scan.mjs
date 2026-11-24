@@ -10,7 +10,7 @@
  *   names-file   one name per line, matched as a fixed string ignoring case;
  *                forbidden everywhere except the root pnpm-lock.yaml
  *   corpus-file  one regular expression per line, ignoring case; forbidden
- *                outside openspec/, docs/, the Markdown files at the root and
+ *                outside docs/, the Markdown files at the root and
  *                the root pnpm-lock.yaml
  *   text-file    more text to check against both lists (the pull request's
  *                title, branch name and body)
@@ -50,7 +50,7 @@ import { readFileSync } from 'node:fs';
 // The corpus list reads what the names list reads, less the places where an
 // acceptance record may name a corpus; so both skip the lockfile.
 const NAMES_PATHS = ['.', ':(exclude)pnpm-lock.yaml'];
-const CORPUS_PATHS = [...NAMES_PATHS, ':(exclude)openspec', ':(exclude)docs', ':(exclude,glob)*.md'];
+const CORPUS_PATHS = [...NAMES_PATHS, ':(exclude)docs', ':(exclude,glob)*.md'];
 const LOG = [
   '-c', 'core.quotePath=false', 'log', '--full-history', '--diff-merges=remerge',
   '--text', '--no-color', '--no-ext-diff', '--no-textconv', '--format=',
