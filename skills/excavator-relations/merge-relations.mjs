@@ -292,7 +292,8 @@ export function checkEnd({ end, readLines, areaFiles, entryPoints = new Map() })
     // The id rests only on a quoted word: a host no cited line holds is a label, never the id.
     const host = end.kind === 'external' && normalized.keyBy === 'host' ? hostOf(normalized.address.host) : null;
     if (host !== null && !lower.includes(host)) {
-      const byName = normalizeAddress('external', { name: normalized.address.name });
+      // The name as the analyzer wrote it: its case tells a method call from a domain.
+      const byName = normalizeAddress('external', { name: end.address?.name });
       return { ok: true, end: { ...checked, addressBy, hostNotQuoted: true }, normalized: { ...byName, address: normalized.address } };
     }
   }

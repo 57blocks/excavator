@@ -304,6 +304,7 @@ describe('external ids across runs', () => {
     'svc/storage.js': "const s3 = new AWS.S3();\nawait s3.upload(params).promise();",
     'svc/mail.js': "const nodemailer = require('nodemailer');\nconst t = nodemailer.createTransport({ host: 'email-smtp.us-east-1.amazonaws.com' });\nawait t.sendMail(message);",
     'svc/crm.js': "await acmeCrm.contacts.create(contact);",
+    'svc/pay.go': 'resp, err := svc.Do(req)',
   };
   const readLines = (f) => (files[f] === undefined ? null : files[f].split('\n'));
   const at = (file, line, quote, evidence) => ({ file, line, quote, ...(evidence ? { evidence } : {}) });
@@ -354,6 +355,12 @@ describe('external ids across runs', () => {
     const lib = merge([ext({ name: 'nodemailer', host: 'mail.vendor.example' }, at('svc/mail.js', 3, 'await t.sendMail(message);', [at('svc/mail.js', 1, "require('nodemailer')")]))]);
     expect(lib.relations[0]).toMatchObject({ bucket: 'address-unresolved' });
     expect(lib.counts.externalKeys).toMatchObject({ transport: 1, hostNotQuoted: 1 });
+    // Falling back from an unquoted host reads the name as written, so a method call keys as it does with no host.
+    const pay = at('svc/pay.go', 1, 'svc.Do(req)');
+    const withHost = merge([ext({ name: 'svc.Do', host: 'api.vendor.example' }, pay)]).relations[0];
+    const noHost = merge([ext({ name: 'svc.Do' }, pay)]).relations[0];
+    expect(noHost).toMatchObject({ bucket: 'linked', keyBy: 'name' });
+    expect(withHost).toMatchObject({ bucket: 'linked', keyBy: 'name', hostNotQuoted: true, receiver: { external: noHost.receiver.external } });
   });
 });
 
