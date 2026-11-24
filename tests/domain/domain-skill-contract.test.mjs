@@ -195,7 +195,7 @@ describe('/excavator-domain entry points from the facts', () => {
 
   it('documents the unrecognised count and the entry-points merge line', () => {
     expect(skill).toContain('unrecognised=2');
-    expect(skill).toContain('`entry-points source=… script=… pattern=… model=… model-rejected=…`');
+    expect(skill).toContain('`entry-points source=… script=… pattern=… model=… model-rejected=… model-skipped=…`');
   });
 
   it('has the analyzer read unrecognised files and quote the source line', () => {
@@ -222,6 +222,17 @@ describe('/excavator-domain flows anchored to fact entry points', () => {
     expect(agent).toContain('rejected-entry-point <areaId> <flow> problem=<malformed|unknown|mixed-groups|shared-group> ids=<ids>');
     expect(agent).toContain('uncovered-entry-point <areaId> <id> <method path>');
     expect(agent).toMatch(/these do not reject the output/);
+  });
+
+  it('has the analyzer give a skipReason on each entry point it adds and writes no flow for, and act on uncovered-model-entry-point lines', () => {
+    expect(agent).toContain('"skipReason": "<why it starts no business flow; omit when a flow covers it>"');
+    expect(agent).toMatch(/Account for every entry point you add \(Option C\)/);
+    expect(agent).toContain('uncovered-model-entry-point <areaId> <file>:<line> <method path>');
+  });
+
+  it('reports the skipped added entry points and the per-item module rule', () => {
+    expect(skill).toContain('model-rejected=… model-skipped=…');
+    expect(skill).toMatch(/a module whose candidates are each skipped one by one with a reason[^.]*counts as declared skipped/);
   });
 
   it('retries rejected-entry-point areas like rejected-choice ones and reports the entry-point buckets', () => {
