@@ -116,7 +116,11 @@ describe('merge-relations end to end', () => {
       caller: { linked: 4, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 2, 'quote-failed': 7 },
       receiver: { linked: 4, 'receiver-only': 3, 'address-unresolved': 0, 'quote-failed': 0 },
     });
-    expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true });
+    expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true, callLines: 14, callLinesInBuckets: 14, callLinesExpected: 14 });
+    // Call lines: every one has a bucket; the planted quote-mismatch is the only end on admin.js:2, and the skipped widget is file-skipped.
+    expect(coverage.callLines.buckets).toEqual({ ended: 12, evidence: 0, 'ends-rejected': 1, 'declared-skip': 0, 'file-skipped': 1, unaccounted: 0, 'area-missing': 0 });
+    expect(coverage.callLines.rows.find((r) => r.file === 'web/src/admin.js')).toMatchObject({ line: 2, status: 'ends-rejected' });
+    expect(result.stdout).toMatch(/^call lines total=14 ended=12 evidence=0 ends-rejected=1 declared-skip=0 file-skipped=1 unaccounted=0 area-missing=0$/m);
     expect(coverage.outOfScope).toEqual({ 'shared-database': 1, 'auth-trust': 1 });
     expect(graph.status).toBe('complete');
     expect(graph.factDigest).toBe('facts-1');
@@ -159,7 +163,7 @@ describe('merge-relations end to end', () => {
     expect(coverage.measurements.http).toMatchObject({ ends: 17, quoteFailed: 7, escalation: { candidate: true, reasons: ['quote-failure'] } });
     expect(coverage.escalationCandidates).toEqual([{ kind: 'http', reasons: ['quote-failure'] }]);
     expect(coverage.measurements.message.agreement.status).toBe('no-previous-run');
-    expect(result.stdout).toMatch(/^conservation ok ends=23 duplicates=1$/m);
+    expect(result.stdout).toMatch(/^conservation ok ends=23 duplicates=1 call-lines=14$/m);
   });
 
   it('compares a second run on the same input with the first', () => {
@@ -218,7 +222,7 @@ describe('mergeRelations sides and targets', () => {
   });
   const merge = (first, second) => mergeRelations({
     accepted: [{ areaId: 'area-001', output: { relations: first } }, { areaId: 'area-002', output: { relations: second } }],
-    manifest: { areas, candidates: [], inputDigest: 'd' }, units, readLines,
+    manifest: { areas, candidates: [], counts: { callLines: 0 }, inputDigest: 'd' }, units, readLines,
   });
 
   it('pairs a browser file with the server in its own unit, and targets a named unit', () => {
@@ -281,14 +285,14 @@ describe('agreement and escalation', () => {
         { areaId: 'area-001', output: { relations: [{ kind: 'message', address: { channel: 't1' }, caller: { file: 'a/x.js', line: 1, quote: "pub.publish('t1', x)" } }] } },
         { areaId: 'area-002', output: { relations: [{ kind: 'message', address: { channel: 't1' }, receiver: { file: 'b/y.go', line: 1, quote: 'Subscribe(ctx, "t1")' } }] } },
       ],
-      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], inputDigest: 'd' },
+      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], counts: { callLines: 0 }, inputDigest: 'd' },
       units: [{ id: 'unit:a' }, { id: 'unit:b' }], readLines, previous,
     });
     expect(merged.measurements.message.agreement).toMatchObject({ status: 'measured', jaccard: 0.2, union: 5 });
     expect(merged.measurements.message.escalation).toEqual({ candidate: true, reasons: ['agreement'] });
     expect(THRESHOLDS.agreement).toBe(0.8);
     const changed = mergeRelations({
-      accepted: [], manifest: { areas: [], candidates: [], inputDigest: 'other' }, units: [], readLines, previous,
+      accepted: [], manifest: { areas: [], candidates: [], counts: { callLines: 0 }, inputDigest: 'other' }, units: [], readLines, previous,
     });
     expect(changed.measurements.message.agreement.status).toBe('input-changed');
   });
@@ -327,7 +331,7 @@ describe('external ids across runs', () => {
     ext({ name: 'smtp', host: 'email-smtp.us-east-1.amazonaws.com' }, at('svc/mail.js', 3, 't.sendMail(message)', [at('svc/mail.js', 2, "host: 'email-smtp.us-east-1.amazonaws.com'")])),
     ext({ name: 'AcmeCrm' }, at('svc/crm.js', 1, 'await acmeCrm.contacts.create')),
   ];
-  const manifest = { areas: [{ areaId: 'area-001', unit: 'unit:svc', files: Object.keys(files) }], candidates: [], inputDigest: 'd' };
+  const manifest = { areas: [{ areaId: 'area-001', unit: 'unit:svc', files: Object.keys(files) }], candidates: [], counts: { callLines: 0 }, inputDigest: 'd' };
   const merge = (relations, previous = null) => mergeRelations({
     accepted: [{ areaId: 'area-001', output: { relations } }], manifest, units: [{ id: 'unit:svc' }], readLines, previous,
   });
@@ -417,7 +421,7 @@ describe('splitUnmatched', () => {
         { areaId: 'area-001', output: { relations: [{ kind: 'message', address: { channel: 't1' }, caller: { file: 'a/x.js', line: 1, quote: "pub.publish('t1', x)" } }] } },
         { areaId: 'area-002', output: { relations: [{ kind: 'message', address: { channel: 't1' }, receiver: { file: 'b/y.go', line: 1, quote: 'Subscribe(ctx, "t1")' } }] } },
       ],
-      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], inputDigest: 'd' },
+      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], counts: { callLines: 0 }, inputDigest: 'd' },
       units: [{ id: 'unit:a' }, { id: 'unit:b' }], readLines: (f) => files[f].split('\n'), previous,
     });
     const ag = merged.measurements.message.agreement;

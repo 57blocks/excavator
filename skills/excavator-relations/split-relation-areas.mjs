@@ -15,6 +15,10 @@
  *   - a file holding an HTTP route entry point of the knowledge graph.
  * A candidate of a container unit (a build or tool script beside the
  * sub-projects) is counted as container-skipped and never analyzed.
+ * Each candidate carries its call lines (relations-signals.mjs scanSource),
+ * all of them, in its area context and in the manifest: the analyzer accounts
+ * for each one and the merge counts the ones it did not. The other hits
+ * (imports, client types) are hints, at most MAX_HITS_PER_FILE.
  * Areas: a unit's candidates in path order, packed while their line total
  * stays within --max-lines; a file over the cap is its own area, marked
  * overBudget, never cut. An area never spans two units.
@@ -48,8 +52,8 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  CLIENT_FAMILIES, SIGNALS, SIGNALS_VERSION, SOURCE_EXTENSIONS, compare, extensionOf, httpEntryPointsByFile, isAddressLine,
-  isConfigFile, isTestFile, languageFamilyOf, readGraphFacts, readSourceLines, sha256, walkProject,
+  CLIENT_FAMILIES, SIGNALS_VERSION, SOURCE_EXTENSIONS, compare, extensionOf, httpEntryPointsByFile, isAddressLine,
+  isConfigFile, isTestFile, languageFamilyOf, readGraphFacts, readSourceLines, scanSource, sha256, walkProject,
 } from './relations-signals.mjs';
 import { UNITS_FILE, UNITS_FORMAT, unitOfFile } from './plan-units.mjs';
 
@@ -78,6 +82,12 @@ const RELATIVE_IMPORT = /(?:from\s+|require\(\s*|import\s*\(\s*|import\s+)['"]((
 
 const clip = (text) => text.trim().slice(0, MAX_TEXT);
 
+/** The hits that are not call lines, as hints: at most MAX_HITS_PER_FILE, the rest counted. */
+function hintsOf(hits) {
+  const hints = hits.filter((h) => !h.callLine).map(({ line, signal, family, text }) => ({ line, signal, family, text }));
+  return { hits: hints.slice(0, MAX_HITS_PER_FILE), hitsOmitted: Math.max(0, hints.length - MAX_HITS_PER_FILE) };
+}
+
 /**
  * Import specifiers of a JS-family file, resolved against `fileSet`: relative
  * ones against the file's directory, `@/` and `~/` against `<unitRoot>/src/`.
@@ -100,15 +110,9 @@ export function relativeImports(file, lines, fileSet, unitRoot = '.') {
   return [...out];
 }
 
-/** Signal hits of one file's lines. */
+/** Signal hits of one file's lines (relations-signals.mjs scanSource). */
 export function scanSignals(lines) {
-  const hits = [];
-  lines.forEach((text, i) => {
-    for (const signal of SIGNALS) {
-      if (signal.regex.test(text)) hits.push({ line: i + 1, signal: signal.id, family: signal.family, text: clip(text) });
-    }
-  });
-  return hits;
+  return scanSource(lines).hits;
 }
 
 /**
@@ -124,7 +128,7 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
   const entryPoints = httpEntryPointsByFile(facts);
   const counts = {
     files: files.length, sourceFiles: 0, testExcluded: 0, unreadable: 0, candidateFiles: 0, notCandidate: 0,
-    bySignal: 0, byClientImport: 0, byEntryPoint: 0, containerSkipped: 0, configFiles: 0, addressLines: 0, addressLinesOverFileCap: 0, secretLinesSkipped: 0, areas: 0,
+    bySignal: 0, byClientImport: 0, byEntryPoint: 0, callLines: 0, containerSkipped: 0, configFiles: 0, addressLines: 0, addressLinesOverFileCap: 0, secretLinesSkipped: 0, areas: 0,
   };
   const classified = [];
   const material = new Map();
@@ -171,7 +175,8 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
       });
     }
     if (isSource) {
-      material.set(file, { file, unit, lines: lines.length, hits: scanSignals(lines), source: lines });
+      const scan = scanSource(lines);
+      material.set(file, { file, unit, lines: lines.length, hits: scan.hits, callLines: scan.callLines, source: lines });
     }
   }
 
@@ -222,6 +227,7 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
       continue;
     }
     counts.candidateFiles += 1;
+    counts.callLines += m.callLines.length;
     // Each candidate is counted once, by its first reason.
     if (m.hits.length > 0) counts.bySignal += 1;
     else if (imported) counts.byClientImport += 1;
@@ -232,8 +238,9 @@ export function planRelationAreas({ files, readLines, units, facts = null, maxLi
       unit: m.unit,
       lines: m.lines,
       reasons,
-      hits: m.hits.slice(0, MAX_HITS_PER_FILE),
-      hitsOmitted: Math.max(0, m.hits.length - MAX_HITS_PER_FILE),
+      // Call lines are all given: the analyzer accounts for each. Other hits are hints.
+      callLines: m.callLines.map(({ line, to, signal, text }) => ({ line, ...(to > line ? { to } : {}), signal, text })),
+      ...hintsOf(m.hits),
       ...(facts ? { graphNodes: (nodesByFile.get(m.file) ?? []).sort((a, b) => a[1] - b[1]).slice(0, MAX_GRAPH_NODES_PER_FILE) } : {}),
       ...(routes ? { entryPoints: [...routes].sort((a, b) => (a.line ?? 0) - (b.line ?? 0)) } : {}),
       sha256: sha256(m.source.join('\n')),
@@ -398,7 +405,10 @@ async function main() {
     graphPath,
     areas,
     files: plan.classified,
-    candidates: plan.candidates.map((c) => ({ file: c.file, unit: c.unit, lines: c.lines, reasons: c.reasons })),
+    candidates: plan.candidates.map((c) => ({
+      file: c.file, unit: c.unit, lines: c.lines, reasons: c.reasons,
+      callLines: c.callLines.map((x) => [x.line, x.to ?? x.line, x.signal]),
+    })),
     configFiles: [...new Set([...Object.values(plan.unitConfig).flat(), ...plan.projectConfig].map((r) => r.file))].sort(compare),
     counts: plan.counts,
   });
@@ -413,7 +423,7 @@ async function main() {
   process.stdout.write(
     `areas=${c.areas} candidates=${c.candidateFiles} (signal=${c.bySignal} client-import=${c.byClientImport} entry-point=${c.byEntryPoint}) ` +
     `sourceFiles=${c.sourceFiles} not-candidate=${c.notCandidate} container-skipped=${c.containerSkipped} test-excluded=${c.testExcluded} unreadable=${c.unreadable} ` +
-    `addressLines=${c.addressLines} inputDigest=${inputDigest.slice(0, 12)}\n`,
+    `addressLines=${c.addressLines} callLines=${c.callLines} inputDigest=${inputDigest.slice(0, 12)}\n`,
   );
 }
 
