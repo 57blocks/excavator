@@ -65,8 +65,10 @@
  * ends that are address-unresolved, linked relations, and, when the previous
  * relations-graph.json was made from the same input digest, the Jaccard of
  * the two runs' linked keys (`kind|caller file|address key|receiver file or
- * external id`). A kind below THRESHOLDS is an escalation candidate: a sign
- * that a deterministic extractor may be needed. Nothing is built from it.
+ * external id`), with the keys the runs do not share split into one site
+ * keyed two ways and sites one run alone linked (splitUnmatched). A kind below
+ * THRESHOLDS is an escalation candidate: a sign that a deterministic extractor
+ * may be needed. Nothing is built from it.
  *
  * Usage:
  *   node merge-relations.mjs <projectRoot> [--out <path>] [--coverage <path>]
@@ -280,6 +282,57 @@ export function checkEnd({ end, readLines, areaFiles, entryPoints = new Map() })
     if (missing.length > 0) return reject('address-not-quoted', missing.join(', '));
   }
   return { ok: true, end: { ...checked, addressBy }, normalized };
+}
+
+/** Linked keys of one kind, each with its caller file and caller lines. */
+function linkedSites(list, kind) {
+  const sites = new Map();
+  for (const r of list ?? []) {
+    if (r?.kind !== kind || r.bucket !== 'linked' || typeof r.key !== 'string') continue;
+    const site = sites.get(r.key) ?? { file: r.caller?.file ?? null, lines: [] };
+    if (Number.isInteger(r.caller?.line) && !site.lines.includes(r.caller.line)) site.lines.push(r.caller.line);
+    sites.set(r.key, site);
+  }
+  for (const site of sites.values()) site.lines.sort((a, b) => a - b);
+  return sites;
+}
+
+const nearLines = (a, b) => a.some((x) => b.some((y) => Math.abs(x - y) <= QUOTE_WINDOW));
+
+/**
+ * Split the linked keys two runs do not share. A key of one run and a key of
+ * the other with the same caller file and a caller line within QUOTE_WINDOW
+ * are one site keyed two ways (`keyMismatch`). Every other key was linked in
+ * one run only; it carries the buckets the other run gave ends of that kind
+ * near its lines (`absent` when there were none), so a reader can tell a site
+ * the other run never wrote from one it wrote and did not link.
+ */
+export function splitUnmatched({ kind, previous, current }) {
+  const before = linkedSites(previous, kind);
+  const now = linkedSites(current, kind);
+  const previousOnly = [...before.keys()].filter((k) => !now.has(k)).sort(compare);
+  const currentOnly = [...now.keys()].filter((k) => !before.has(k)).sort(compare);
+  const keyMismatch = [];
+  const used = new Set();
+  const paired = new Set();
+  for (const p of previousOnly) {
+    const ps = before.get(p);
+    const c = currentOnly.find((k) => !used.has(k) && now.get(k).file === ps.file && nearLines(ps.lines, now.get(k).lines));
+    if (c === undefined) continue;
+    used.add(c);
+    paired.add(p);
+    keyMismatch.push({ file: ps.file, previous: p, current: c, previousLines: ps.lines, currentLines: now.get(c).lines });
+  }
+  const otherBuckets = (list, site) => {
+    const found = new Set((list ?? []).filter((r) => r?.kind === kind && r.caller?.file === site.file
+      && Number.isInteger(r.caller?.line) && nearLines([r.caller.line], site.lines)).map((r) => r.bucket));
+    return found.size > 0 ? [...found].sort(compare) : ['absent'];
+  };
+  return {
+    keyMismatch,
+    previousOnly: previousOnly.filter((k) => !paired.has(k)).map((k) => ({ key: k, ...before.get(k), current: otherBuckets(current, before.get(k)) })),
+    currentOnly: currentOnly.filter((k) => !used.has(k)).map((k) => ({ key: k, ...now.get(k), previous: otherBuckets(previous, now.get(k)) })),
+  };
 }
 
 /**
@@ -499,9 +552,11 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
       const b = now.get(kind) ?? new Set();
       const intersection = [...a].filter((k) => b.has(k)).length;
       const union = new Set([...a, ...b]).size;
+      const unmatched = splitUnmatched({ kind, previous: previous.relations, current: relations });
       agreement = {
         status: union >= THRESHOLDS.minAgreementUnion ? 'measured' : 'insufficient',
         jaccard: union > 0 ? ratio(intersection, union) : null, previous: a.size, current: b.size, intersection, union,
+        keyMismatch: unmatched.keyMismatch.length, previousOnly: unmatched.previousOnly.length, currentOnly: unmatched.currentOnly.length, unmatched,
       };
     }
     const quoteFailureRate = ratio(failed, ends);
@@ -566,7 +621,7 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
   lines.push(`node ids given=${n.nodeIdGiven} rejected=${n.nodeIdRejected} analyzer=${n.nodeIdBy.analyzer} derived-range=${n.nodeIdBy['derived-range']} derived-file=${n.nodeIdBy['derived-file']} none=${n.nodeIdBy.none}`);
   for (const [kind, m] of Object.entries(merged.measurements)) {
     const ag = m.agreement.status === 'measured' || m.agreement.status === 'insufficient'
-      ? `agreement=${m.agreement.jaccard ?? 'n/a'} (${m.agreement.intersection}/${m.agreement.union}${m.agreement.status === 'insufficient' ? ', insufficient' : ''})`
+      ? `agreement=${m.agreement.jaccard ?? 'n/a'} (${m.agreement.intersection}/${m.agreement.union}${m.agreement.status === 'insufficient' ? ', insufficient' : ''}; key-mismatch=${m.agreement.keyMismatch} previous-only=${m.agreement.previousOnly} current-only=${m.agreement.currentOnly})`
       : `agreement=${m.agreement.status}`;
     lines.push(`kind ${kind} ends=${m.ends} linked=${m.linked} quote-failure=${m.quoteFailureRate ?? 'n/a'} unresolved=${m.unresolvedShare ?? 'n/a'} ${ag}${m.escalation.candidate ? ` escalation=${m.escalation.reasons.join('+')}` : ''}`);
   }
@@ -717,4 +772,4 @@ if (isCliEntry()) {
   }
 }
 
-export default { acceptOutput, endsOf, checkEnd, anchorNode, mergeRelations, reportLines, runMerge, insideRoot };
+export default { acceptOutput, endsOf, checkEnd, anchorNode, mergeRelations, splitUnmatched, reportLines, runMerge, insideRoot };

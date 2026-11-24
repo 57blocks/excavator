@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  REJECTIONS, THRESHOLDS, containsToken, mergeRelations, runMerge,
+  REJECTIONS, THRESHOLDS, containsToken, mergeRelations, reportLines, runMerge, splitUnmatched,
 } from '../../skills/excavator-relations/merge-relations.mjs';
 import { isRelationsGraphUsable } from '../../skills/excavator-relations/relations-freshness.mjs';
 import { makeProject, removeProject, run, writeGraph } from './fixture.mjs';
@@ -289,6 +289,54 @@ describe('agreement and escalation', () => {
       accepted: [], manifest: { areas: [], candidates: [], inputDigest: 'other' }, units: [], readLines, previous,
     });
     expect(changed.measurements.message.agreement.status).toBe('input-changed');
+  });
+});
+
+describe('splitUnmatched', () => {
+  const linked = (kind, file, line, key) => ({ kind, bucket: 'linked', key, caller: { file, line } });
+  it('tells a site keyed two ways from a site one run alone linked, and says what the other run had there', () => {
+    const previous = [
+      linked('external', 'a.js', 10, 'k-shared'),
+      linked('external', 'a.js', 48, 'k-old'),
+      linked('external', 'b.go', 5, 'k-recall'),
+      linked('external', 'c.go', 7, 'k-unlinked-now'),
+      linked('http', 'a.js', 48, 'other-kind'),
+    ];
+    const current = [
+      linked('external', 'a.js', 10, 'k-shared'),
+      linked('external', 'a.js', 46, 'k-new'),
+      { kind: 'external', bucket: 'address-unresolved', caller: { file: 'c.go', line: 8 } },
+      linked('external', 'd.go', 1, 'k-fresh'),
+    ];
+    const split = splitUnmatched({ kind: 'external', previous, current });
+    expect(split.keyMismatch).toEqual([{ file: 'a.js', previous: 'k-old', current: 'k-new', previousLines: [48], currentLines: [46] }]);
+    expect(split.previousOnly).toEqual([
+      { key: 'k-recall', file: 'b.go', lines: [5], current: ['absent'] },
+      { key: 'k-unlinked-now', file: 'c.go', lines: [7], current: ['address-unresolved'] },
+    ]);
+    expect(split.currentOnly).toEqual([{ key: 'k-fresh', file: 'd.go', lines: [1], previous: ['absent'] }]);
+    // Far lines in one file are two sites, not one keyed two ways.
+    const far = splitUnmatched({ kind: 'external', previous: [linked('external', 'a.js', 10, 'x')], current: [linked('external', 'a.js', 90, 'y')] });
+    expect(far.keyMismatch).toEqual([]);
+    expect([far.previousOnly.length, far.currentOnly.length]).toEqual([1, 1]);
+  });
+
+  it('accounts for every key outside the intersection, and prints the split', () => {
+    const files = { 'a/x.js': "pub.publish('t1', x)", 'b/y.go': 'Subscribe(ctx, "t1")' };
+    const previous = { inputDigest: 'd', relations: ['t1', 't2', 't3'].map((t, i) => ({ kind: 'message', bucket: 'linked', key: `message|a/x.js|${t}|b/y.go`, caller: { file: 'a/x.js', line: 1 + 20 * i } })) };
+    const merged = mergeRelations({
+      accepted: [
+        { areaId: 'area-001', output: { relations: [{ kind: 'message', address: { channel: 't1' }, caller: { file: 'a/x.js', line: 1, quote: "pub.publish('t1', x)" } }] } },
+        { areaId: 'area-002', output: { relations: [{ kind: 'message', address: { channel: 't1' }, receiver: { file: 'b/y.go', line: 1, quote: 'Subscribe(ctx, "t1")' } }] } },
+      ],
+      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], inputDigest: 'd' },
+      units: [{ id: 'unit:a' }, { id: 'unit:b' }], readLines: (f) => files[f].split('\n'), previous,
+    });
+    const ag = merged.measurements.message.agreement;
+    expect(ag).toMatchObject({ intersection: 1, union: 3, keyMismatch: 0, previousOnly: 2, currentOnly: 0 });
+    expect(ag.union - ag.intersection).toBe(2 * ag.keyMismatch + ag.previousOnly + ag.currentOnly);
+    const lines = reportLines({ areaResults: [], merged, coveragePath: 'c.json' });
+    expect(lines).toContain('kind message ends=2 linked=1 quote-failure=0 unresolved=0 agreement=0.3333 (1/3, insufficient; key-mismatch=0 previous-only=2 current-only=0)');
   });
 });
 
