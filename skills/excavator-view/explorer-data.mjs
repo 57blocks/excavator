@@ -18,8 +18,12 @@
  *   hotspots.json         made from a different revision; absent otherwise
  *   doc-map.json
  *   doc-map-checks.json   the doc map's `doc-map/checks.json`, only when the doc map is there and has one
+ *   relations-graph.json  the relations graph as `relations.mjs` keeps it, when its entry is included or made from a
+ *                         different revision; absent otherwise
+ *   relations-coverage.json  its coverage report, only when the relations graph is there and the report is from the
+ *                         same run (the entry's `coverage` says why it is absent otherwise)
  *   products.json         { snapshotRevision, products: [{ name, status, reason, revision, revisionNote, command }] } for
- *                         unused-code, hotspots and doc-map, from the entries `products.mjs` judged, so each
+ *                         unused-code, hotspots, doc-map and relations (which adds `coverage`), from the entries `products.mjs` judged, so each
  *                         product view states its product the way the pack's reply does
  *   sources               { <filePath>: { path, content, sizeBytes, lineCount } } for the files the
  *                         pack embeds (`sources.mjs` rules); no table under `--no-source`
@@ -84,12 +88,14 @@ export const SOURCES_KEY = 'sources';
 export const STALENESS_KEY = 'staleness.json';
 export const PRODUCTS_KEY = 'products.json';
 export const DOC_MAP_CHECKS_KEY = 'doc-map-checks.json';
+export const RELATIONS_COVERAGE_KEY = 'relations-coverage.json';
 
 /** The product files the page shows: the entry name, the data key and the payload id `products.mjs` holds its bytes under. */
 const PRODUCT_FILES = [
   { name: 'unused-code', key: 'unused-code.json' },
   { name: 'hotspots', key: 'hotspots.json' },
   { name: 'doc-map', key: 'doc-map.json' },
+  { name: 'relations', key: 'relations-graph.json' },
 ];
 
 /** Keys the offline page may carry that nothing in the products produces. */
@@ -283,11 +289,20 @@ function readDocMapChecks(products, docMapHeld) {
   return { value: JSON.parse(payload.bytes.toString('utf-8')), row: { key: DOC_MAP_CHECKS_KEY, status: 'included' } };
 }
 
+/** The relations graph's coverage report; it belongs to the graph, so without the graph there is nothing to hold it. */
+function readRelationsCoverage(products, graphHeld) {
+  if (!graphHeld) return { row: { key: RELATIONS_COVERAGE_KEY, status: 'unused', reason: 'there is no relations graph to hold it' } };
+  const payload = payloadOf(products, 'relations-coverage');
+  const { coverage } = entryOf(products, 'relations');
+  if (!payload) return { row: { key: RELATIONS_COVERAGE_KEY, status: coverage.state, reason: coverage.reason } };
+  return { value: JSON.parse(payload.bytes.toString('utf-8')), row: { key: RELATIONS_COVERAGE_KEY, status: 'included' } };
+}
+
 /** Each product's state in the shape the page reads, taken from the entries as judged. */
 function productStates(products, snapshotRevision) {
   const states = PRODUCT_FILES.map(({ name }) => {
-    const { status, reason, revision, revisionNote, command } = entryOf(products, name);
-    return { name, status, reason, revision, revisionNote, command };
+    const { status, reason, revision, revisionNote, command, coverage } = entryOf(products, name);
+    return { name, status, reason, revision, revisionNote, command, ...(coverage ? { coverage } : {}) };
   });
   const words = states.map((state) => `${state.name} ${state.status}`);
   return { value: { snapshotRevision, products: states }, row: { key: PRODUCTS_KEY, status: 'included', reason: words.join('; ') } };
@@ -382,6 +397,11 @@ export function buildExplorerData({ root, dataDir, snapshotRevision, products, s
       const checks = readDocMapChecks(products, Boolean(read.value));
       rows.push(checks.row);
       if (checks.value) data[DOC_MAP_CHECKS_KEY] = checks.value;
+    }
+    if (file.name === 'relations') {
+      const coverage = readRelationsCoverage(products, Boolean(read.value));
+      rows.push(coverage.row);
+      if (coverage.value) data[RELATIONS_COVERAGE_KEY] = coverage.value;
     }
   }
   const states = productStates(products, snapshotRevision);

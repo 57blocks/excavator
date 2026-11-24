@@ -10,7 +10,7 @@
  *
  * An entry is { name, label, status, reason, revision, revisionNote, command,
  * file, payloads } with `payloads` the ids of the bytes read for it; the
- * semantics and domain-graph entries also have `counts`. The bytes are returned
+ * semantics, domain-graph and relations entries also have `counts`, and the relations entry `coverage`. The bytes are returned
  * next to the entries, never inside them: `explorer-data.mjs` builds the page
  * data from them and `sources.mjs` the list of files to embed. The two report
  * Markdown files are not read (changes/retire-view-html).
@@ -20,6 +20,7 @@ import { join } from 'node:path';
 
 import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT, readKnowledgeGraph } from '../excavator/knowledge-graph-store.mjs';
 import { readDomain } from './domain.mjs';
+import { readRelations, RELATIONS_FILE } from './relations.mjs';
 import { describeFormat, parseJsonObject, readRegularFile } from './product-files.mjs';
 import { readSemantics } from './semantics.mjs';
 import { readTour } from './tour.mjs';
@@ -73,6 +74,13 @@ const TOUR_DEF = {
   label: 'Tour',
   file: 'tour.json',
   command: '/excavator-tour',
+};
+
+const RELATIONS_DEF = {
+  name: 'relations',
+  label: 'Relations',
+  file: RELATIONS_FILE,
+  command: '/excavator-relations',
 };
 
 const SEMANTICS_DEF = {
@@ -266,6 +274,25 @@ function readTourProduct(dataDir, graph) {
 }
 
 /**
+ * The relations graph is read against the knowledge graph's facts digest and the snapshot's revision, as the domain
+ * graph is (relations.mjs). Its entry carries `counts` and `coverage` (the coverage report's own state and reason);
+ * the coverage report is a second payload only when it was written by the same run.
+ */
+function readRelationsProduct(dataDir, graph, snapshotRevision) {
+  const def = RELATIONS_DEF;
+  const read = readRelations(dataDir, graph.graphIdentity ?? null, snapshotRevision);
+  if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
+  if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  const payloads = [{ id: def.name, bytes: read.bytes }];
+  if (read.coverage.bytes) payloads.push({ id: 'relations-coverage', bytes: read.coverage.bytes });
+  const fields = { status: read.differs ? 'different-revision' : 'included', reason: read.reason, revision: read.revision, payloads: payloads.map((p) => p.id) };
+  return {
+    entry: { ...entry(def, fields), counts: read.counts, coverage: { state: read.coverage.state, reason: read.coverage.reason } },
+    payloads,
+  };
+}
+
+/**
  * Every product's state, in the reply's order, with the bytes the page data and the source table are made from,
  * and the knowledge graph as the store read it (null unless that product is readable).
  * @returns {{ entries: object[], payloads: {id: string, bytes: Buffer}[], graph: object|null }}
@@ -273,7 +300,7 @@ function readTourProduct(dataDir, graph) {
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
   const [unused, docMap, hotspots] = JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision));
-  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readTourProduct(dataDir, graph)];
+  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readTourProduct(dataDir, graph), readRelationsProduct(dataDir, graph, snapshotRevision)];
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),

@@ -1,6 +1,6 @@
 ---
 name: excavator-view
-description: Pack the products in a project's .excavator/ folder (knowledge graph, domain graph, unused-code, doc-map, hotspots and the tour) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
+description: Pack the products in a project's .excavator/ folder (knowledge graph, domain graph, unused-code, doc-map, hotspots, the tour and the relations graph) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
 argument-hint: "[project-path] [--source] [--no-source] [--out <path>] [--language <lang>]"
 ---
 
@@ -10,14 +10,14 @@ Write one HTML file that shows the products already in `.excavator/`, and open i
 
 | Who | What |
 |---|---|
-| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision; semantics and the tour are not shown when they pass their own checks but no knowledge graph can be read whole), and writes `.excavator/explorer.html` through a temporary file and a rename. The page is the template `packages/explorer` builds (`pnpm build` writes it to `packages/explorer/dist/explorer.html`) with the policy and the products inserted: an index block and the data as gzip-compressed parts (`data-chunks.mjs`), each part small enough to be one string, so a very large project still opens; the page decodes a product the first time its view is opened. It prints one JSON result. |
+| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision; semantics and the tour are not shown when they pass their own checks but no knowledge graph can be read whole; the relations graph's coverage report has a state of its own and is packed only when the same run wrote it), and writes `.excavator/explorer.html` through a temporary file and a rename. The page is the template `packages/explorer` builds (`pnpm build` writes it to `packages/explorer/dist/explorer.html`) with the policy and the products inserted: an index block and the data as gzip-compressed parts (`data-chunks.mjs`), each part small enough to be one string, so a very large project still opens; the page decodes a product the first time its view is opened. It prints one JSON result. |
 | `translations.mjs` | Only for a language other than English: lists the names the page shows that the translation table beside the page lacks (`plan`), then checks the translations a subagent wrote and merges the good ones into the table (`check`). It makes no model call. |
 | `excavator-view-translator` | The only model call of this skill, made only for a language other than English: translates the names of one batch file into the result file. |
 | You | Translate first when a language other than English was asked for, run the packer, open the file, and print the reply lines. |
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory), `--source`: put the source text of the files the products name into the file (without it the page holds no source text; `--no-source` says the same explicitly), `--out <path>`: write the page there instead of `.excavator/explorer.html`, and `--language <lang>`: show the names of nodes, domains, flows and steps in that language, with the English original beside each (`en`, `english`, `en-...` and `en_...` mean English, which is also what no `--language` means). The language name is trimmed and lower-cased, may hold only letters, digits, `-` and `_`, and is the file name of the translation table. The table is written beside the page, so `--out` moves it too.
+`$ARGUMENTS` may contain the project path (default: the current working directory), `--source`: put the source text of the files the products name into the file (without it the page holds no source text; `--no-source` says the same explicitly), `--out <path>`: write the page there instead of `.excavator/explorer.html`, and `--language <lang>`: show the names of nodes, domains, flows and steps, and the relations graph's unit names, external system labels and reasons of at most 60 characters, in that language, with the English original beside each (`en`, `english`, `en-...` and `en_...` mean English, which is also what no `--language` means). The language name is trimmed and lower-cased, may hold only letters, digits, `-` and `_`, and is the file name of the translation table. The table is written beside the page, so `--out` moves it too.
 
 ---
 
@@ -94,7 +94,7 @@ esac
 true
 ```
 
-Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map`, `/excavator-hotspots` or `/excavator-tour` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/` than the page and its translation table (`view-translations/`, with its work directory). With `--out` the table sits beside the page and nothing under `.excavator/` is written.
+Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map`, `/excavator-hotspots`, `/excavator-tour` or `/excavator-relations` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/` than the page and its translation table (`view-translations/`, with its work directory). With `--out` the table sits beside the page and nothing under `.excavator/` is written.
 
 ## Step 4 — Reply
 
@@ -112,7 +112,7 @@ It prints, in this order:
 Explorer: <absolute path>
 Size: <size in MB, one decimal> MB
 Issues: <N | not counted; knowledge graph <state>>
-Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>
+Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; relations <state>
 Source: <embedded (N files) | not embedded>
 ```
 

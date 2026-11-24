@@ -52,7 +52,7 @@ describe('product states', () => {
     const packed = pack();
     expect(packed.result.products.map((p) => [p.name, p.status])).toEqual([
       ['knowledge-graph', 'not-run'], ['semantics', 'not-run'], ['domain-graph', 'not-run'], ['unused-code', 'not-run'],
-      ['doc-map', 'not-run'], ['hotspots', 'not-run'], ['tour', 'not-run'],
+      ['doc-map', 'not-run'], ['hotspots', 'not-run'], ['tour', 'not-run'], ['relations', 'not-run'],
     ]);
     expect(packed.manifest.products).toEqual(packed.result.products.map((p) => ({ name: p.name, status: p.status })));
     expect(packed.result.out).toBe(join(project.root, '.excavator', 'explorer.html'));
@@ -64,6 +64,7 @@ describe('product states', () => {
     expect(entryOf('semantics').command).toBe('/excavator --full');
     expect(entryOf('domain-graph').command).toBe('/excavator-domain');
     expect(entryOf('tour').command).toBe('/excavator-tour');
+    expect(entryOf('relations').command).toBe('/excavator-relations');
   });
 
   it('shows a domain graph file that lacks the identity the Domain skill writes as unreadable with a reason', () => {

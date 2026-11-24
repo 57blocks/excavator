@@ -324,8 +324,8 @@ describe('a product that is missing is a missing key', () => {
     const { data, manifest, result } = pack();
     expect(Object.keys(data)).toEqual(['products.json']);
     expect(result.issues).toBeNull();
-    expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'diff-overlay.json']);
-    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'products.json', 'sources', 'diff-overlay.json', 'config.json']);
+    expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'relations-graph.json', 'diff-overlay.json']);
+    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'relations-graph.json', 'relations-coverage.json', 'products.json', 'sources', 'diff-overlay.json', 'config.json']);
   });
 
   it('gives no domain-graph.json key when there is no domain graph, and no meta.json key without meta.json', () => {
@@ -446,8 +446,9 @@ describe('the unused-code, hotspots and doc-map products', () => {
     expect(data['doc-map.json']).toEqual(docMap);
     expect(data['doc-map-checks.json']).toEqual(CHECKS);
     expect(data['products.json'].snapshotRevision).toBe(project.revision);
-    expect(data['products.json'].products.map((item) => item.name)).toEqual(['unused-code', 'hotspots', 'doc-map']);
-    for (const item of data['products.json'].products) {
+    expect(data['products.json'].products.map((item) => item.name)).toEqual(['unused-code', 'hotspots', 'doc-map', 'relations']);
+    expect(stateOf(data, 'relations')).toMatchObject({ status: 'not-run', command: '/excavator-relations' });
+    for (const item of data['products.json'].products.filter((p) => p.name !== 'relations')) {
       expect(Object.keys(item)).toEqual(['name', 'status', 'reason', 'revision', 'revisionNote', 'command']);
       expect(item).toMatchObject({ status: 'included', reason: null, revision: project.revision });
     }
