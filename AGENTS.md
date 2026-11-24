@@ -2,7 +2,7 @@
 
 Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 NOTICE 里的原始仓库地址）基础上重建的 AI-first 可辩护代码调查插件。事实由确定性脚本写，散文由宿主 agent 写；每条陈述要么带证据，要么标 inferred。每个开发步是一个 PR：目标、不做什么、验收 oracle 在动手前写进 PR 正文的 Summary 节，设计决定也写在那里。
 
-代码注释里引用的 OpenSpec 记录（`openspec: changes/<名>`、`openspec change <名>`、`openspec/specs/...` 等）已从仓库删除，只在 git 历史里。归档的目录带日期前缀，先用 `git ls-tree -r --name-only 59f287b5 openspec | grep <名>` 找到文件，再用 `git show 59f287b5:<路径>` 读。
+代码注释引用的 OpenSpec 设计记录已删除，要看原文：`git ls-tree -r --name-only 59f287b5 openspec | grep <名>` 找到路径，再 `git show 59f287b5:<路径>`。
 
 ## 执行纪律
 - 无人守：判断题自己拍板并写下理由；不问用户。
@@ -26,8 +26,8 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
 
 | 改动范围 | 要跑的检查 |
 |---|---|
-| `docs/` 下的散文 | 不跑。例外：`docs/benchmarks/` 的 schema 被测试读取，改它跑 `pnpm test` |
-| 根目录 Markdown（`AGENTS.md`、`README.md`、`CLAUDE.md`） | `pnpm vitest run tests/refs/legacy-literals.test.mjs`（旧名字门禁扫描 `docs/` 以外的所有跟踪文件） |
+| `docs/` 下的散文 | 不跑。例外：`docs/benchmarks/` 的 schema 被测试读取，改它跑 `pnpm test`；`docs/deploy.md` 被 `tests/deploy/docs-contract.test.mjs` 读取，改它跑这个测试 |
+| 根目录 Markdown（`AGENTS.md`、`README.md`、`CLAUDE.md`） | `pnpm vitest run tests/refs/legacy-literals.test.mjs`（旧名字门禁扫描 `docs/` 以外的所有跟踪文件）。改 `README.md` 另跑 `node scripts/check-refs.mjs` 与 `pnpm vitest run tests/language/storage-language-control.test.mjs`（两者都读 README） |
 | `skills/**/SKILL.md`、`agents/`、`hooks/`、插件清单 | `node scripts/check-refs.mjs` + `pnpm test`（多个测试读这些文件） |
 | `skills/**/*.mjs`、`src/`、`tests/` | 三件套 |
 | `packages/core/` | 三件套 + `pnpm --filter @excavator/core test` + `pnpm run typecheck`。根目录的 `pnpm test` 不含 core 测试 |
