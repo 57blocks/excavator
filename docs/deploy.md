@@ -2,7 +2,7 @@
 
 The runner image bundles a pinned Excavator checkout (built) and a pinned Claude Code into one non-root container. It has no build toolchain, no cloud or git credentials, and no target-repository source or `.excavator/` products baked in. One container processes one mounted repository and performs one run.
 
-This document lists what a deployment needs and how to configure it. The design decisions are in the removed design record `runner-image`: `git show 0bb6837b:openspec/changes/archive/2026-10-09-runner-image/design.md`.
+This document lists what a deployment needs and how to configure it. The design decisions are in the removed design record `runner-image`: `git show 42138e04:openspec/changes/archive/2026-10-09-runner-image/design.md`.
 
 ## 1. Requirements
 
