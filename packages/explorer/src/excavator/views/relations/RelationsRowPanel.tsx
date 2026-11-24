@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useDashboardStore } from "../../../store";
 import type { Translate } from "../../nameTranslations";
 import { EMPTY, formatNumber } from "../../products/format";
-import { BUCKET_WORDS, externalLabel, unitsOf, type RelationRow, type RelationSite, type UnitInfo } from "../../products/relations";
+import { BUCKET_WORDS, externalLabel, missingEndText, unitsOf, type RelationRow, type RelationSite, type UnitInfo } from "../../products/relations";
 import { useProductFile } from "../productFiles";
 import { Quote } from "../shared/Controls";
 import { Missing, RowDetail, RowFields, RowSection } from "../shared/RowDetail";
@@ -44,6 +44,12 @@ function SiteSection({ title, site, units, translate }: { title: string; site: R
   );
 }
 
+/** An end the relation has no site for, with the sentence that says why; nothing when the other end already says it. */
+function MissingEnd({ title, text }: { title: string; text: string | null }) {
+  if (text === null) return null;
+  return <RowSection title={title}><Missing>{text}</Missing></RowSection>;
+}
+
 function RelationPanel({ row, onClose }: { row: RelationRow; onClose: () => void }) {
   const units = useUnits();
   const translate = useTranslate();
@@ -60,13 +66,13 @@ function RelationPanel({ row, onClose }: { row: RelationRow; onClose: () => void
           ...(row.targetUnitMissed ? [{ label: "Target unit", value: "the unit the analyzer named had no receiver with this address; paired across every other unit" }] : []),
         ]}
       />
-      {row.caller === null ? <RowSection title="Caller"><Missing>No caller site: no caller on another unit reaches this address.</Missing></RowSection> : <SiteSection title="Caller" site={row.caller} units={units} translate={translate} />}
+      {row.caller === null ? <MissingEnd title="Caller" text={missingEndText(row, "caller")} /> : <SiteSection title="Caller" site={row.caller} units={units} translate={translate} />}
       {row.external !== null ? (
         <RowSection title="External system">
           <Translated english={externalLabel(row.external)} translate={translate} />
         </RowSection>
       ) : row.receiver === null ? (
-        row.caller === null ? null : <RowSection title="Receiver"><Missing>{`No receiving site (${row.bucket}).`}</Missing></RowSection>
+        <MissingEnd title="Receiver" text={missingEndText(row, "receiver")} />
       ) : (
         <SiteSection title="Receiver" site={row.receiver} units={units} translate={translate} />
       )}

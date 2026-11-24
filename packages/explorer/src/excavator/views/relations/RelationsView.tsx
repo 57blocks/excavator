@@ -3,7 +3,7 @@ import { useDashboardStore } from "../../../store";
 import type { Translate } from "../../nameTranslations";
 import { EMPTY, formatNumber } from "../../products/format";
 import {
-  bucketRows, candidatesOf, escalationLines, externalLabel, externalSystems, measurementRows, relationRows, siteText, unitLinks, unitSummaries, unitsOf,
+  bucketRows, candidatesOf, endsWithoutUnit, escalationLines, externalLabel, externalSystems, measurementRows, relationRows, siteText, unitLinks, unitSummaries, unitsOf,
   type ExternalRow, type LinkRow, type RelationRow, type UnitInfo,
 } from "../../products/relations";
 import { Badge, BulletList, Facts, SearchInput, Segmented } from "../shared/Controls";
@@ -91,9 +91,15 @@ function Units({ units, rows, links, coverage, ctx }: { units: UnitInfo[]; rows:
   const summaries = useMemo(() => unitSummaries(units, rows), [units, rows]);
   const candidateFiles = new Map(listOf(coverage?.units).map((u) => [u.id, u.candidateFiles]));
   const linkOf = (unit: string, kind: string, target: string) => links.find((l) => l.from === unit && l.kind === kind && l.to === target);
+  const unitless = useMemo(() => endsWithoutUnit(rows), [rows]);
   return (
     <Section title="Units" count={formatNumber(units.length)}>
       <Note>What each unit calls and receives, by bucket, and the units and external systems its linked relations reach. Click a target to see the relations.</Note>
+      {unitless.total === 0 ? null : (
+        <p className="text-xs text-text-muted" data-excavator-unitless={String(unitless.total)}>
+          {`${formatNumber(unitless.total)} ends name no unit (${countsText(unitless.byBucket)}): the product keeps an end that failed its quote check as the analyzer wrote it, without its unit, so no unit below counts it. The Sites table lists them.`}
+        </p>
+      )}
       <ul className="m-0 list-none divide-y divide-border-subtle p-0" data-excavator-units="">
         {summaries.map(({ unit, calls, receives, reaches }) => (
           <li key={unit.id} className="space-y-1 py-2.5" data-excavator-unit={unit.id}>
@@ -105,7 +111,7 @@ function Units({ units, rows, links, coverage, ctx }: { units: UnitInfo[]; rows:
             </div>
             <div className="text-xs">
               {countsText(calls) === null && countsText(receives) === null ? (
-                <span className="text-text-muted">No call site or receiving site recorded.</span>
+                <span className="text-text-muted">No call site or receiving site recorded with this unit.</span>
               ) : (
                 <span className="flex flex-wrap gap-x-4">
                   <span><span className="text-text-muted">Calls: </span>{countsText(calls) ?? EMPTY}</span>

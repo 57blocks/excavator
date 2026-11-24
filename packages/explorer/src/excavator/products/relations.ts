@@ -66,6 +66,8 @@ export interface RelationRow {
   external: string | null;
   candidates: Candidate[];
   targetUnitMissed: boolean;
+  /** The role of an end the merge kept alone (`caller` or `receiver`), as the product records it. */
+  role: string | null;
 }
 
 export interface UnitInfo {
@@ -113,6 +115,7 @@ export function relationRows(product: unknown): RelationRow[] {
         external,
         candidates: listOf(raw.candidates).map((c) => ({ unit: text(c.unit), file: text(c.file), line: integer(c.line), addressKey: text(c.addressKey) })),
         targetUnitMissed: raw.targetUnitMissed === true,
+        role: text(raw.role),
       };
     });
 }
@@ -177,6 +180,42 @@ export function unitSummaries(units: readonly UnitInfo[], rows: readonly Relatio
     const reaches = [...reach.values()].sort((a, b) => byText(a.kind, b.kind) || byText(a.target, b.target));
     return { unit, calls, receives, reaches };
   });
+}
+
+/**
+ * The relations whose sites name no unit, by bucket. A quote-failed end keeps the site as the analyzer wrote it,
+ * without its unit, so the unit list cannot count it; the page says how many there are instead of leaving them out.
+ */
+export function endsWithoutUnit(rows: readonly RelationRow[]): { total: number; byBucket: Record<string, number> } {
+  const byBucket: Record<string, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    if (typeof row.caller?.unit === 'string' || typeof row.receiver?.unit === 'string') continue;
+    total += 1;
+    bump(byBucket, row.bucket);
+  }
+  return { total, byBucket };
+}
+
+/**
+ * What the details of a relation say for an end it has no site for, or null when it has one (or when the other end's
+ * sentence already says it). Only a receiver-only end is one no caller reaches; an unpaired receiving end in another
+ * bucket was never paired, and an end whose own site could not be read says so.
+ */
+export function missingEndText(row: RelationRow, side: 'caller' | 'receiver'): string | null {
+  const hasReceiver = row.receiver !== null || row.external !== null;
+  if (side === 'caller') {
+    if (row.caller !== null) return null;
+    if (row.bucket === 'receiver-only') return 'No caller site: no caller on another unit reaches this address.';
+    if (row.role === 'receiver' && hasReceiver) return `No caller site: this receiving site is ${row.bucket}, and the merge pairs only ends that pass the quote check and resolve an address.`;
+    if (row.role === 'caller') return `The caller site the analyzer wrote could not be read (${row.bucket}).`;
+    return `No caller site recorded (${row.bucket}).`;
+  }
+  if (hasReceiver) return null;
+  if (row.role === 'receiver') return `The receiving site the analyzer wrote could not be read (${row.bucket}).`;
+  if (row.caller === null) return null;
+  if (row.bucket === 'ambiguous') return 'No single receiving site: several receivers match this address (ambiguous).';
+  return `No receiving site (${row.bucket}).`;
 }
 
 export interface LinkRow {
