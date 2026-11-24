@@ -279,8 +279,9 @@ function RelationsBody({ primary, secondary, state, detail }: ViewBodyProps) {
   const links = useMemo(() => unitLinks(rows), [rows]);
   const externals = useMemo(() => externalSystems(product, rows), [product, rows]);
   const unitMap = useMemo(() => new Map(units.map((u) => [u.id, u])), [units]);
-  const [table, setTable] = useState<TableName>("units");
   const chosen = useDashboardStore((s) => s.productRow);
+  // A relation or an external system chosen from the graph (the node panel, an external system's node) opens on its table.
+  const [table, setTable] = useState<TableName>(() => (isRelationsRowRef(chosen) && chosen.table !== "links" ? chosen.table : "units"));
   const setProductRow = useDashboardStore((s) => s.setProductRow);
   if (product === null) return <Notice tone="error" title="This product could not be drawn" data-excavator-notice="error">The file is not in the expected shape.</Notice>;
   const ctx: Context = { units: unitMap, translate, chosen, choose: (ref) => setProductRow(ref) };

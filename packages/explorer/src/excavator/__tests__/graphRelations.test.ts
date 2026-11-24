@@ -83,13 +83,14 @@ describe('placing ends', () => {
   });
 
   it('draws one overview edge per layer pair and kind, with every relation on it', () => {
-    const { edges, standIns, drawn: count } = projectRelations(INDEX.drawable, overviewPlacer(home, layerOf));
+    const { edges, standIns, drawn: count, inView } = projectRelations(INDEX.drawable, overviewPlacer(home, layerOf));
     expect(edges.map((e) => `${e.id}=${e.relations.length}`)).toEqual([
       'relation|external|layer:api|relations:external:mail=1',
       'relation|http|layer:web|layer:api=3',
     ]);
     expect(standIns).toEqual([{ id: externalStandInId('external:mail'), kind: 'external', key: 'external:mail' }]);
     expect(count).toBe(4);
+    expect(inView).toBe(4);
   });
 
   it('in a layer, draws to the drawn file, the closed box, or the other layer stand-in', () => {
@@ -103,6 +104,7 @@ describe('placing ends', () => {
     expect(inWeb.standIns).toEqual([{ id: layerStandInId('layer:api'), kind: 'layer', key: 'layer:api' }]);
     // The external call starts in the api layer; from the web layer both of its ends are elsewhere, so it is no edge here.
     expect(inWeb.drawn).toBe(3);
+    expect(inWeb.inView).toBe(3);
 
     const api = layerPlacer({ home, layerOf, layersOf, activeLayerId: 'layer:api', shown: new Set(['file:api/r.js']), boxOf: new Map() });
     const inApi = projectRelations(INDEX.drawable, api);
@@ -114,10 +116,14 @@ describe('placing ends', () => {
 
   it('draws no edge for an end the view does not show, nor for two ends on one node', () => {
     const hidden = layerPlacer({ home, layerOf, layersOf, activeLayerId: 'layer:web', shown: new Set(), boxOf: new Map() });
-    expect(projectRelations(INDEX.drawable, hidden).edges.filter((e) => !e.source.startsWith('relations:'))).toEqual([]);
+    const none = projectRelations(INDEX.drawable, hidden);
+    expect(none.edges).toEqual([]);
+    expect(none.inView).toBe(0);
+    // Both ends of the three http relations on one box: counted in the view, no edge.
     const together = projectRelations(INDEX.drawable, () => 'one-box');
     expect(together.edges.map((e) => e.id)).toEqual(['relation|external|one-box|relations:external:mail']);
     expect(together.drawn).toBe(1);
+    expect(together.inView).toBe(4);
   });
 
   it('a node in two layers is drawn in either', () => {

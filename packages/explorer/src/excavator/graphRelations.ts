@@ -130,6 +130,8 @@ export interface Projection {
   standIns: StandIn[];
   /** Relations that are an edge in this view. */
   drawn: number;
+  /** Relations with at least one end on a node or box the view draws (not a stand-in); `drawn` of them are edges. */
+  inView: number;
 }
 
 /**
@@ -144,9 +146,12 @@ export function projectRelations(relations: readonly GraphRelation[], place: (no
     if (id.startsWith(prefix)) standIns.set(id, { id, kind: "layer", key: id.slice(prefix.length) });
   };
   let drawn = 0;
+  let inView = 0;
+  const onView = (id: string | null) => id !== null && !isStandInId(id);
   for (const relation of relations) {
     const source = place(relation.caller);
     const target = relation.external ? externalStandInId(relation.receiver) : place(relation.receiver);
+    if (onView(source) || onView(target)) inView += 1;
     // Two stand-ins: neither end is in the view shown, so the relation is not this view's.
     if (source === null || target === null || source === target || (isStandInId(source) && isStandInId(target))) continue;
     note(source);
@@ -159,7 +164,7 @@ export function projectRelations(relations: readonly GraphRelation[], place: (no
     drawn += 1;
   }
   const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  return { edges: [...edges.values()].sort(byId), standIns: [...standIns.values()].sort(byId), drawn };
+  return { edges: [...edges.values()].sort(byId), standIns: [...standIns.values()].sort(byId), drawn, inView };
 }
 
 /** The nearest node in `drawn` that is the node or contains it, or null when none is. */
