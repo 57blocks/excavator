@@ -81,7 +81,7 @@ function Buckets({ product }: { product: Table }) {
   };
   return (
     <Section title="Ends by bucket">
-      <Note>Every call site and receiving site the analyzers wrote is in exactly one bucket. A bucket that does not apply to a role is left empty.</Note>
+      <Note>Every call site and receiving site the analyzers wrote is in exactly one bucket. A bucket that does not apply to a role shows a dash.</Note>
       <SimpleTable columns={[{ label: "Bucket" }, { label: "Caller ends", num: true }, { label: "Receiver ends", num: true }]} rows={names.map((b) => [b, of(caller, b), of(receiver, b)])} />
     </Section>
   );
@@ -107,10 +107,10 @@ function Units({ units, rows, links, coverage, ctx }: { units: UnitInfo[]; rows:
               {countsText(calls) === null && countsText(receives) === null ? (
                 <span className="text-text-muted">No call site or receiving site recorded.</span>
               ) : (
-                <>
-                  <span className="text-text-muted">Calls: </span>{countsText(calls) ?? EMPTY}
-                  <span className="text-text-muted">{"  Receives: "}</span>{countsText(receives) ?? EMPTY}
-                </>
+                <span className="flex flex-wrap gap-x-4">
+                  <span><span className="text-text-muted">Calls: </span>{countsText(calls) ?? EMPTY}</span>
+                  <span><span className="text-text-muted">Receives: </span>{countsText(receives) ?? EMPTY}</span>
+                </span>
               )}
             </div>
             {reaches.length === 0 ? null : (
