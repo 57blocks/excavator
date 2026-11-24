@@ -966,6 +966,91 @@ describe('model entry points', () => {
     expect(skipped.coverage.modules[0].status).toBe('declared-skip');
   });
 
+  describe('skipped one by one', () => {
+    // A small service whose only entry point is a health route the scripts did
+    // not recognise: one unrecognised file, one other file, no flow.
+    const SERVER = ['package main', '', 'func main() {', '\thttp.HandleFunc("/health", health)', '}', ''].join('\n');
+    const HEALTH_FILES = { 'svc/health/main.go': SERVER, 'svc/health/util.go': 'package main\n' };
+    const health = (over = {}) => ({ file: 'svc/health/main.go', line: 4, method: 'GET', path: '/health', quote: 'http.HandleFunc("/health", health)', ...over });
+    const runHealth = (entryPoints, extra = {}) => mergeWith({ files: HEALTH_FILES, unrecognised: ['svc/health/main.go'], entryPoints, ...extra });
+
+    it('puts a module whose only candidate is a health route the analyzer added and skipped with a reason in declared-skip', async () => {
+      const { coverage, stdout } = await runHealth([health({ skipReason: '  Liveness probe with no business behaviour.  ' })]);
+      const row = coverage.modules.find((m) => m.path === 'svc/health');
+      expect(row).toMatchObject({
+        status: 'declared-skip', skippedBy: 'entry-points', skipReason: 'every entry point declared skipped',
+        entryPoints: { script: 0, pattern: 0, model: 1 }, unrecognisedFiles: 1, flows: 0,
+      });
+      expect(coverage.entryPoints.model).toMatchObject({ accepted: 1, skipped: 1, skipWithoutReason: 0 });
+      expect(coverage.entryPoints.model.entries[0].skipReason).toBe('Liveness probe with no business behaviour.');
+      expect(coverage.merge.modulesSkippedByEntryPoints).toBe(1);
+      expect(coverage.buckets).toMatchObject({ 'declared-skip': 1, 'silent-zero': 0 });
+      expect(stdout).toContain('model=1 model-rejected=0 model-skipped=1');
+      expect(stdout).not.toContain('silent-zero svc/health');
+    });
+
+    it('keeps the module silent-zero when the added entry point has no reason or a blank one', async () => {
+      const none = await runHealth([health()]);
+      expect(none.coverage.modules.find((m) => m.path === 'svc/health').status).toBe('silent-zero');
+      expect(none.coverage.entryPoints.model).toMatchObject({ accepted: 1, skipped: 0, skipWithoutReason: 0 });
+      expect(none.coverage.entryPoints.model.entries[0]).not.toHaveProperty('skipReason');
+      expect(none.coverage.merge.modulesSkippedByEntryPoints).toBe(0);
+      expect(none.stdout).toContain('silent-zero svc/health entryPoints=0 unrecognised=1');
+
+      const blank = await runHealth([health({ skipReason: '   ' })]);
+      expect(blank.coverage.modules.find((m) => m.path === 'svc/health').status).toBe('silent-zero');
+      expect(blank.coverage.entryPoints.model).toMatchObject({ accepted: 1, skipped: 0, skipWithoutReason: 1 });
+      expect(blank.coverage.entryPoints.model.entries[0]).not.toHaveProperty('skipReason');
+    });
+
+    it('reads a null skipReason as no reason, as it reads a null method or path', async () => {
+      const { coverage } = await runHealth([health({ skipReason: null })]);
+      expect(coverage.entryPoints.model).toMatchObject({ accepted: 1, skipped: 0, skipWithoutReason: 0 });
+      expect(coverage.entryPoints.model.rejected.malformed).toBe(0);
+      expect(coverage.entryPoints.model.entries[0]).not.toHaveProperty('skipReason');
+      expect(coverage.modules.find((m) => m.path === 'svc/health').status).toBe('silent-zero');
+    });
+
+    it('rejects an entry whose skipReason is not a string as malformed', async () => {
+      const { coverage } = await runHealth([health({ skipReason: 5 })]);
+      expect(coverage.entryPoints.model).toMatchObject({ accepted: 0, skipped: 0 });
+      expect(coverage.entryPoints.model.rejected.malformed).toBe(1);
+      expect(coverage.modules.find((m) => m.path === 'svc/health').status).toBe('silent-zero');
+    });
+
+    it('ignores the reason on an entry the merge rejects', async () => {
+      const { coverage } = await runHealth([health({ quote: 'http.HandleFunc("/ready", ready)', skipReason: 'Readiness probe.' })]);
+      expect(coverage.entryPoints.model).toMatchObject({ accepted: 0, skipped: 0 });
+      expect(coverage.entryPoints.model.rejected['quote-mismatch']).toBe(1);
+      expect(coverage.modules.find((m) => m.path === 'svc/health').status).toBe('silent-zero');
+    });
+
+    it('keeps the module silent-zero while one of its unrecognised files has no accepted entry point', async () => {
+      const { coverage } = await mergeWith({
+        files: { ...HEALTH_FILES, 'svc/health/admin.go': 'package main\n\nfunc admin() {}\n' },
+        unrecognised: ['svc/health/main.go', 'svc/health/admin.go'],
+        entryPoints: [health({ skipReason: 'Liveness probe.' })],
+      });
+      const row = coverage.modules.find((m) => m.path === 'svc/health');
+      expect(row).toMatchObject({ status: 'silent-zero', unrecognisedFiles: 2, entryPoints: { model: 1 } });
+    });
+
+    it('needs a reason on every added entry point of the module', async () => {
+      const files = { 'svc/health/main.go': `${SERVER}\thttp.HandleFunc("/metrics", metrics)\n` };
+      const metrics = { file: 'svc/health/main.go', line: 6, method: 'GET', path: '/metrics', quote: 'http.HandleFunc("/metrics", metrics)' };
+      const both = await mergeWith({ files, unrecognised: ['svc/health/main.go'], entryPoints: [health({ skipReason: 'Liveness probe.' }), { ...metrics, skipReason: 'Metrics scrape.' }] });
+      expect(both.coverage.modules[0].status).toBe('declared-skip');
+      const one = await mergeWith({ files, unrecognised: ['svc/health/main.go'], entryPoints: [health({ skipReason: 'Liveness probe.' }), metrics] });
+      expect(one.coverage.modules[0].status).toBe('silent-zero');
+    });
+
+    it('lets a flow cover the module whatever the reasons say', async () => {
+      const { coverage } = await runHealth([health({ skipReason: 'Liveness probe.' })], { flows: [{ name: 'health', files: ['svc/health/main.go'], module: 'svc/health' }] });
+      expect(coverage.modules.find((m) => m.path === 'svc/health').status).toBe('covered');
+      expect(coverage.merge.modulesSkippedByEntryPoints).toBe(0);
+    });
+  });
+
   it('rejects an entry in a file the area context does not flag, so the module stays no-candidates', async () => {
     const { coverage } = await mergeWith({ files: { 'app/views.py': VIEWS }, unrecognised: [], entryPoints: [entry()] });
     expect(coverage.entryPoints.model.rejected['file-not-unrecognised']).toBe(1);

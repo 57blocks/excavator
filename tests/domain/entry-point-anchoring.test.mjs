@@ -46,10 +46,11 @@ const IDS = {
  * a UI route, a module with no candidates, and a cron job found by pattern.
  * Extracted and split into one area; one stored plan.
  */
-function prepare() {
+function prepare({ extraFiles = {} } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'domain-anchor-'));
   roots.push(root);
   const files = {
+    ...extraFiles,
     'svc/routes.go': 'package svc\n\nfunc register(e E) {\n\te.GET("/orders", orders.Handle)\n\te.POST("/orders", orders.Handle)\n\te.GET("/health", func(c C) {})\n\te.GET("/invoices", billing.Invoices)\n}\n',
     'svc/orders/handlers.go': 'package orders\n\nfunc Handle() {}\n',
     'svc/billing/invoices.go': 'package billing\n\nfunc Invoices() {}\n',
@@ -93,7 +94,7 @@ function prepare() {
 }
 
 /** An area output; each flow is { name, files, ids?, type? } with one step per file. */
-function areaOutput(flows, { token, skippedModules = [], skippedEntryPoints = [] }) {
+function areaOutput(flows, { token, skippedModules = [], skippedEntryPoints = [], entryPoints = [] }) {
   const nodes = [];
   const edges = [];
   for (const flow of flows) {
@@ -109,7 +110,7 @@ function areaOutput(flows, { token, skippedModules = [], skippedEntryPoints = []
   }
   return {
     version: '1.0.0', project: { name: 'fixture' }, nodes, edges, layers: [], tour: [],
-    areaRun: { areaId: 'area-001', token }, skippedModules, skippedEntryPoints, entryPoints: [],
+    areaRun: { areaId: 'area-001', token }, skippedModules, skippedEntryPoints, entryPoints,
   };
 }
 
@@ -354,6 +355,70 @@ describe('one coverage bucket per fact entry point', () => {
     }));
     expect(unexplained.coverage.modules.find((m) => m.path === 'svc/billing').status).toBe('silent-zero');
     expect(unexplained.coverage.merge.modulesSkippedByEntryPoints).toBe(0);
+  });
+
+  describe('a module with a script entry point and an entry point the analyzer added', () => {
+    // svc/billing gets a second route the facts do not know: an unrecognised file.
+    const STATUS = { 'svc/billing/status.go': 'package billing\n\nfunc routes(e E) {\n\te.GET("/billing/status", status)\n}\n' };
+    const status = (over = {}) => ({
+      file: 'svc/billing/status.go', line: 4, method: 'GET', path: '/billing/status', quote: 'e.GET("/billing/status", status)', ...over,
+    });
+    const invoicesSkipped = [{ id: IDS.invoices, reason: 'Read-only listing.' }];
+    const billingOf = (coverage) => coverage.modules.find((m) => m.path === 'svc/billing');
+
+    it('is declared-skip only when the script and the added entry point each have a reason', async () => {
+      const { root, manifest, context, output } = prepare({ extraFiles: STATUS });
+      expect(context.unrecognisedFiles.map((u) => u.file)).toEqual(['svc/billing/status.go']);
+      const both = await merge(root, output, areaOutput([], {
+        token: manifest.token, skippedEntryPoints: invoicesSkipped, entryPoints: [status({ skipReason: 'Status probe.' })],
+      }));
+      expect(billingOf(both.coverage)).toMatchObject({
+        status: 'declared-skip', skippedBy: 'entry-points', entryPoints: { script: 1, pattern: 0, model: 1 }, unrecognisedFiles: 1,
+      });
+
+      const modelUnexplained = await merge(root, output, areaOutput([], {
+        token: manifest.token, skippedEntryPoints: invoicesSkipped, entryPoints: [status()],
+      }));
+      expect(billingOf(modelUnexplained.coverage).status).toBe('silent-zero');
+
+      const scriptUnexplained = await merge(root, output, areaOutput([], {
+        token: manifest.token, entryPoints: [status({ skipReason: 'Status probe.' })],
+      }));
+      expect(billingOf(scriptUnexplained.coverage).status).toBe('silent-zero');
+      expect(scriptUnexplained.coverage.entryPointCoverage.silent).toContain(IDS.invoices);
+    });
+
+    it('is named by check while the added entry point has neither a reason nor a step of the area in its module', () => {
+      const { manifest, context, output } = prepare({ extraFiles: STATUS });
+      const skips = { token: manifest.token, skippedEntryPoints: invoicesSkipped };
+      const checkWith = (flows, entryPoints) => {
+        writeFileSync(output, JSON.stringify(areaOutput(flows, { ...skips, entryPoints })));
+        const check = runCheckCommand(context);
+        expect(check.status, check.stderr).toBe(0);
+        return check.stdout.trim().split('\n').filter((l) => l.startsWith('uncovered-model-entry-point'));
+      };
+      expect(checkWith([], [status()])).toEqual(['uncovered-model-entry-point area-001 svc/billing/status.go:4 GET /billing/status']);
+      expect(checkWith([], [status({ skipReason: ' ' })])).toHaveLength(1);
+      expect(checkWith([], [status({ skipReason: 'Status probe.' })])).toEqual([]);
+      expect(checkWith([{ name: 'billing-status', files: ['svc/billing/status.go'] }], [status()])).toEqual([]);
+      writeFileSync(output, JSON.stringify(areaOutput([], {
+        ...skips, entryPoints: [status()], skippedModules: [{ module: 'svc/billing', reason: 'Read-only listing.' }],
+      })));
+      expect(runCheckCommand(context).stdout).not.toContain('uncovered-model-entry-point');
+    });
+  });
+
+  it('keeps a module with a pattern entry point silent-zero though the entry point the analyzer added there is skipped', async () => {
+    // jobs/ holds a cron job found by pattern; pattern entry points have no per-item skip.
+    const { root, manifest, context, output } = prepare({ extraFiles: { 'jobs/server.js': "app.get('/jobs/health', h);\n" } });
+    expect(context.unrecognisedFiles.map((u) => u.file)).toEqual(['jobs/server.js']);
+    const { coverage } = await merge(root, output, areaOutput([], {
+      token: manifest.token,
+      entryPoints: [{ file: 'jobs/server.js', line: 1, method: 'GET', path: '/jobs/health', quote: "app.get('/jobs/health', h);", skipReason: 'Health check.' }],
+    }));
+    const jobs = coverage.modules.find((m) => m.path === 'jobs');
+    expect(jobs).toMatchObject({ status: 'silent-zero', entryPoints: { pattern: 1, model: 1 }, unrecognisedFiles: 1 });
+    expect(coverage.entryPoints.model.skipped).toBe(1);
   });
 
   it('counts a module as covered when a flow starts at one of its entry points but has no step in it', async () => {
