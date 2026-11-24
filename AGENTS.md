@@ -2,7 +2,7 @@
 
 Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 NOTICE 里的原始仓库地址）基础上重建的 AI-first 可辩护代码调查插件。事实由确定性脚本写，散文由宿主 agent 写；每条陈述要么带证据，要么标 inferred。每个开发步是一个 PR：目标、不做什么、验收 oracle 在动手前写进 PR 正文的 Summary 节，设计决定也写在那里。
 
-代码注释里的 `openspec: changes/<名>` 指向已删除的旧设计记录，用 `git show 0bb6837b:openspec/changes/<名>/design.md` 查（已归档的在 `openspec/changes/archive/` 下）。
+代码注释里引用的 OpenSpec 记录（`openspec: changes/<名>`、`openspec change <名>`、`openspec/specs/...` 等）已从仓库删除，只在 git 历史里。归档的目录带日期前缀，先用 `git ls-tree -r --name-only 0bb6837b openspec | grep <名>` 找到文件，再用 `git show 0bb6837b:<路径>` 读。
 
 ## 执行纪律
 - 无人守：判断题自己拍板并写下理由；不问用户。
