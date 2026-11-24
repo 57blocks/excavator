@@ -19,10 +19,11 @@ export const TRANSLATIONS_SCRIPT = join(repoRoot, 'skills/excavator-view/transla
 
 export const sha256 = (text) => createHash('sha256').update(text, 'utf-8').digest('hex');
 
-// What the page shows for the fixture, sorted: the fresh node display names (one of them on two nodes) and the domain graph's names.
+// What the page shows for the fixture, sorted: the fresh node display names (one of them on two nodes), the domain graph's names and its feature group labels.
 // "Old stale name" (a stale entry) and "Secret contradicted name" (a contradicted entry) are not shown.
 export const DISPLAYED = [
   'Billing',
+  'CLI commands',
   'Charge a customer',
   'Dispatch a parcel',
   'Handle GET request',
@@ -31,6 +32,7 @@ export const DISPLAYED = [
   'Start the application',
   'Validate OAuth2 token',
   'capture',
+  'charge',
   'pick',
   'receipt',
   'validate',

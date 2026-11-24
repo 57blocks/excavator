@@ -15,6 +15,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { writeKnowledgeGraphAtomic } from '../../../skills/excavator/knowledge-graph-store.mjs';
 import { CONTENT_SECURITY_POLICY } from '../../../skills/excavator-view/page-assembly.mjs';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
+import { displayedNames } from '../../../skills/excavator-view/translation-names.mjs';
 import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { docMapProduct, domainGraph, hotspotsProduct, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, tourProduct, unusedProduct, writeProduct } from './fixture.mjs';
 import { blockText, explorerPage, pageContent } from './page.mjs';
@@ -151,7 +152,7 @@ describe('the data keeps the content of the products', () => {
     writeGraph();
     writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
     writeProduct(project.root, 'meta.json', '{}');
-    expect(Object.keys(pack().data)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'staleness.json', 'products.json', 'sources']);
+    expect(Object.keys(pack().data)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'staleness.json', 'feature-groups.json', 'products.json', 'sources']);
   });
 
   it('packs the same bytes twice', () => {
@@ -159,6 +160,29 @@ describe('the data keeps the content of the products', () => {
     writeProduct(project.root, 'meta.json', '{}');
     const first = pack().html;
     expect(pack().html).toBe(first);
+  });
+});
+
+describe('the feature groups of the domain graph', () => {
+  it('packs feature-groups.json from the domain graph and shows the group labels as names to translate', () => {
+    writeGraph();
+    writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const { data, manifest } = pack();
+    const groups = data['feature-groups.json'];
+    expect(groups.format).toBe('excavator-view-feature-groups/3');
+    expect(groups.domains['domain:billing']).toHaveLength(1);
+    const label = groups.domains['domain:billing'][0].label;
+    expect(label).toBe('charge');
+    expect(displayedNames(data)).toContain(label);
+    expect(displayedNames(data)).toContain('CLI commands');
+    expect(manifest.rows.find((row) => row.key === 'feature-groups.json')).toMatchObject({ status: 'included' });
+  });
+
+  it('writes no feature-groups.json without a domain graph, and says so', () => {
+    writeGraph();
+    const { data, manifest } = pack();
+    expect(data).not.toHaveProperty('feature-groups.json');
+    expect(manifest.rows.find((row) => row.key === 'feature-groups.json')).toMatchObject({ status: 'unused' });
   });
 });
 
@@ -325,7 +349,7 @@ describe('a product that is missing is a missing key', () => {
     expect(Object.keys(data)).toEqual(['products.json']);
     expect(result.issues).toBeNull();
     expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'relations-graph.json', 'diff-overlay.json']);
-    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'relations-graph.json', 'relations-coverage.json', 'products.json', 'sources', 'diff-overlay.json', 'config.json']);
+    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'relations-graph.json', 'relations-coverage.json', 'feature-groups.json', 'products.json', 'sources', 'diff-overlay.json', 'config.json']);
   });
 
   it('gives no domain-graph.json key when there is no domain graph, and no meta.json key without meta.json', () => {

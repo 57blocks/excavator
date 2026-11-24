@@ -54,6 +54,7 @@ export type InlineDataFile =
   | "relations-graph.json"
   | "relations-coverage.json"
   | "products.json"
+  | "feature-groups.json"
   // Excavator: the name table of a page packed with `--language` (openspec: changes/view-name-translation).
   | "name-translations.json";
 

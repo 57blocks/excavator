@@ -32,6 +32,8 @@ const merged = () => Object.values(table().entries).filter((entry) => entry.text
 // One answer per displayed name: the good ones pass, each bad one fails for one reason (the comment says which).
 const ANSWERS = {
   Billing: 'Facturation',
+  'CLI commands': 'Commandes CLI',
+  charge: 'Facturer',
   'Charge a customer': undefined, // missing-key
   'Dispatch a parcel': '', // empty
   'Handle GET request': 'Traiter la requete', // lost-code-token (GET)
@@ -44,7 +46,7 @@ const ANSWERS = {
   receipt: 'Recu',
   validate: 'Valider',
 };
-const PASSING = ['Billing', 'Run `make build`', 'pick', 'receipt', 'validate'];
+const PASSING = ['Billing', 'CLI commands', 'Run `make build`', 'charge', 'pick', 'receipt', 'validate'];
 const FAILING = DISPLAYED.filter((name) => !PASSING.includes(name));
 
 describe('one result file, each reason', () => {

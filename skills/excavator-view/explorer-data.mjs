@@ -22,6 +22,8 @@
  *                         different revision; absent otherwise
  *   relations-coverage.json  its coverage report, only when the relations graph is there and the report is from the
  *                         same run (the entry's `coverage` says why it is absent otherwise)
+ *   feature-groups.json   the feature groups of each domain (`feature-groups.mjs`), computed here from the domain graph,
+ *                         the relations graph and the knowledge graph; only when the domain graph is there
  *   products.json         { snapshotRevision, products: [{ name, status, reason, revision, revisionNote, command }] } for
  *                         unused-code, hotspots, doc-map and relations (which adds `coverage`), from the entries `products.mjs` judged, so each
  *                         product view states its product the way the pack's reply does
@@ -79,6 +81,7 @@
 import { basename, join } from 'node:path';
 
 import { isSnapshotDirName } from '../excavator/source-snapshot/snapshot-dir.mjs';
+import { FEATURE_GROUPS_KEY, featureGroups } from './feature-groups.mjs';
 import { parseJsonObject, readRegularFile } from './product-files.mjs';
 
 export const GRAPH_KEY = 'knowledge-graph.json';
@@ -403,6 +406,12 @@ export function buildExplorerData({ root, dataDir, snapshotRevision, products, s
       rows.push(coverage.row);
       if (coverage.value) data[RELATIONS_COVERAGE_KEY] = coverage.value;
     }
+  }
+  if (data[DOMAIN_KEY]) {
+    data[FEATURE_GROUPS_KEY] = featureGroups(data[DOMAIN_KEY], { relations: data['relations-graph.json'] ?? null, knowledgeGraph: data[GRAPH_KEY] ?? null });
+    rows.push({ key: FEATURE_GROUPS_KEY, status: 'included', reason: 'computed from the domain graph' });
+  } else {
+    rows.push({ key: FEATURE_GROUPS_KEY, status: 'unused', reason: 'there is no domain graph to group' });
   }
   const states = productStates(products, snapshotRevision);
   rows.push(states.row);
