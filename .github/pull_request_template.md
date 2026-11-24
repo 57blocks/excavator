@@ -1,6 +1,8 @@
 ## Summary
 
-<!-- What changes and why, in a few lines. -->
+<!-- What changes and why, in a few lines. Written before the work starts:
+     the goal, what is out of scope, the acceptance check that decides "done",
+     and the design decisions with their reasons. -->
 
 ## Testing
 

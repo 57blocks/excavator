@@ -60,11 +60,6 @@ jobs:
       - name: Check references
         run: node scripts/check-refs.mjs
 
-      # The OpenSpec CLI is not a repository dependency; pin the version the
-      # changes are validated with locally.
-      - name: Validate OpenSpec
-        run: npx --yes @fission-ai/openspec@1.10.0 validate --all --strict
-
       - name: Core tests
         run: pnpm --filter @excavator/core test
 
