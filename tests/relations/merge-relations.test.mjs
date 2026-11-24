@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  REJECTIONS, THRESHOLDS, containsToken, mergeRelations, runMerge,
+  REJECTIONS, THRESHOLDS, containsToken, mergeRelations, reportLines, runMerge, splitUnmatched,
 } from '../../skills/excavator-relations/merge-relations.mjs';
 import { isRelationsGraphUsable } from '../../skills/excavator-relations/relations-freshness.mjs';
 import { makeProject, removeProject, run, writeGraph } from './fixture.mjs';
@@ -58,6 +58,7 @@ function outputs() {
     { kind: 'http', address: httpAddr('GET', '/api/items/:id'), caller: null, receiver: end('server/app.js', 13, "app.get('/api/items/:id'") },
     { kind: 'message', address: { channel: 'orders.created', broker: 'redis' }, caller: end('server/app.js', 7, "pub.publish('orders.created', JSON.stringify(req.body));"), receiver: null },
     { kind: 'realtime', address: { event: 'order:created' }, caller: end('server/app.js', 8, "io.emit('order:created', req.body);"), receiver: null },
+    // A mail library with no host names no system: address-unresolved, counted, never an external id.
     {
       kind: 'external', address: { name: 'nodemailer' }, receiver: null,
       caller: end('server/app.js', 9, "mailer.sendMail({ to: 'a@b.c' });", { evidence: [end('server/app.js', 3, "const nodemailer = require('nodemailer');")] }),
@@ -112,7 +113,7 @@ describe('merge-relations end to end', () => {
 
     expect(coverage.rejections).toEqual(Object.fromEntries(REJECTIONS.map((r) => [r, 1])));
     expect(coverage.buckets).toEqual({
-      caller: { linked: 5, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 1, 'quote-failed': 7 },
+      caller: { linked: 4, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 2, 'quote-failed': 7 },
       receiver: { linked: 4, 'receiver-only': 3, 'address-unresolved': 0, 'quote-failed': 0 },
     });
     expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true });
@@ -123,13 +124,17 @@ describe('merge-relations end to end', () => {
 
     const linked = graph.relations.filter((r) => r.bucket === 'linked').map((r) => r.key).sort();
     expect(linked).toEqual([
-      'external|server/app.js|external:nodemailer|external:nodemailer',
       'http|web/src/users.js|GET /api/users/{}|server/app.js',
       'http|web/src/users.js|POST /api/orders|server/app.js',
       'message|server/app.js|orders.created|worker/main.go',
       'realtime|server/app.js|order:created|web/src/live.js',
     ]);
-    expect(graph.externals).toEqual([{ id: 'external:nodemailer' }]);
+    expect(graph.externals).toEqual([]);
+    const mail = graph.relations.find((r) => r.kind === 'external');
+    expect(mail).toMatchObject({ bucket: 'address-unresolved', address: { name: 'nodemailer' } });
+    expect(mail.unresolved).toMatch(/library or protocol \(nodemailer\)/);
+    expect(coverage.anchors.externalKeys).toEqual({ host: 0, service: 0, name: 0, transport: 1, hostNotQuoted: 0 });
+    expect(result.stdout).toMatch(/^external keys host=0 service=0 name=0 transport=1 host-not-quoted=0$/m);
     const ambiguous = graph.relations.find((r) => r.bucket === 'ambiguous');
     expect(ambiguous.candidates.map((c) => c.file).sort()).toEqual(['server/app.js', 'worker/main.go']);
 
@@ -289,6 +294,140 @@ describe('agreement and escalation', () => {
   });
 });
 
+describe('external ids across runs', () => {
+  // One project, two runs whose analyzers name the same external sites differently.
+  const files = {
+    'svc/ai.go': 'resp, err := client.CreateChatCompletion(ctx, req) // openai',
+    'svc/ai_client.go': 'const baseURL = "https://api.openai.com/v1"',
+    'svc/maps.go': 'url := "https://maps.googleapis.com/maps/api/place/textsearch/json?query=" + q',
+    'svc/upload.js': "const upload = multer({ storage: multerS3({ s3: s3, bucket: 'files' }) });",
+    'svc/storage.js': "const s3 = new AWS.S3();\nawait s3.upload(params).promise();",
+    'svc/mail.js': "const nodemailer = require('nodemailer');\nconst t = nodemailer.createTransport({ host: 'email-smtp.us-east-1.amazonaws.com' });\nawait t.sendMail(message);",
+    'svc/crm.js': "await acmeCrm.contacts.create(contact);",
+    'svc/pay.go': 'resp, err := svc.Do(req)',
+  };
+  const readLines = (f) => (files[f] === undefined ? null : files[f].split('\n'));
+  const at = (file, line, quote, evidence) => ({ file, line, quote, ...(evidence ? { evidence } : {}) });
+  const ai = at('svc/ai.go', 1, 'client.CreateChatCompletion(ctx, req)');
+  const aiHost = [at('svc/ai_client.go', 1, 'const baseURL = "https://api.openai.com/v1"')];
+  const ext = (address, caller) => ({ kind: 'external', address, caller, receiver: null });
+  const runA = [
+    ext({ name: 'openai' }, ai),
+    ext({ name: 'google', host: 'maps.googleapis.com' }, at('svc/maps.go', 1, 'url := "https://maps.googleapis.com/maps/api/place')),
+    ext({ name: 'multerS3' }, at('svc/upload.js', 1, 'multerS3({ s3: s3')),
+    ext({ name: 's3' }, at('svc/storage.js', 2, 'await s3.upload(params)')),
+    ext({ name: 'nodemailer', host: 'email-smtp.us-east-1.amazonaws.com' }, at('svc/mail.js', 3, 'await t.sendMail(message);', [at('svc/mail.js', 2, "host: 'email-smtp.us-east-1.amazonaws.com'")])),
+    ext({ name: 'acmeCrm' }, at('svc/crm.js', 1, 'acmeCrm.contacts.create(contact)')),
+  ];
+  const runB = [
+    ext({ name: 'openai', host: 'api.openai.com' }, { ...ai, evidence: aiHost }),
+    ext({ name: 'googleapis', host: 'maps.googleapis.com' }, at('svc/maps.go', 1, 'maps.googleapis.com/maps/api/place/textsearch')),
+    ext({ name: 's3' }, at('svc/upload.js', 1, 'storage: multerS3({ s3: s3')),
+    ext({ name: 'S3' }, at('svc/storage.js', 2, 's3.upload(params).promise()', [at('svc/storage.js', 1, 'new AWS.S3()')])),
+    ext({ name: 'smtp', host: 'email-smtp.us-east-1.amazonaws.com' }, at('svc/mail.js', 3, 't.sendMail(message)', [at('svc/mail.js', 2, "host: 'email-smtp.us-east-1.amazonaws.com'")])),
+    ext({ name: 'AcmeCrm' }, at('svc/crm.js', 1, 'await acmeCrm.contacts.create')),
+  ];
+  const manifest = { areas: [{ areaId: 'area-001', unit: 'unit:svc', files: Object.keys(files) }], candidates: [], inputDigest: 'd' };
+  const merge = (relations, previous = null) => mergeRelations({
+    accepted: [{ areaId: 'area-001', output: { relations } }], manifest, units: [{ id: 'unit:svc' }], readLines, previous,
+  });
+
+  it('links the same sites to the same ids in both runs', () => {
+    const a = merge(runA);
+    expect(a.relations.filter((r) => r.bucket !== 'linked')).toEqual([]);
+    expect(a.relations.every((r) => r.bucket === 'linked')).toBe(true);
+    const b = merge(runB, { inputDigest: 'd', relations: a.relations });
+    expect(b.relations.filter((r) => r.bucket !== 'linked')).toEqual([]);
+    expect(b.relations.every((r) => r.bucket === 'linked')).toBe(true);
+    expect(b.measurements.external.agreement).toMatchObject({ status: 'measured', jaccard: 1, keyMismatch: 0, previousOnly: 0, currentOnly: 0 });
+    expect(b.externals.map((e) => e.id)).toEqual(['external:acmecrm', 'external:aws', 'external:google', 'external:openai']);
+    expect(b.externals.find((e) => e.id === 'external:aws')).toMatchObject({ keyBy: ['host', 'service'], names: ['s3', 'smtp'], hosts: ['email-smtp.us-east-1.amazonaws.com'], callers: 3 });
+    // A name no table lists is its own id and is counted, never merged into another.
+    expect(b.counts.externalKeys).toEqual({ host: 3, service: 2, name: 1, transport: 0, hostNotQuoted: 0 });
+    expect(b.externals.find((e) => e.id === 'external:acmecrm').keyBy).toEqual(['name']);
+  });
+
+  it('keys on a host only when a cited line holds it', () => {
+    const merged = merge([ext({ name: 'openai', host: 'api.openai.com' }, ai)]);
+    expect(merged.relations[0]).toMatchObject({ bucket: 'linked', keyBy: 'service', hostNotQuoted: true, receiver: { external: 'external:openai' }, address: { host: 'api.openai.com' } });
+    expect(merged.counts.externalKeys).toMatchObject({ service: 1, host: 0, hostNotQuoted: 1 });
+    // An unquoted host over a library name leaves the site unresolved, not keyed by the host.
+    const lib = merge([ext({ name: 'nodemailer', host: 'mail.vendor.example' }, at('svc/mail.js', 3, 'await t.sendMail(message);', [at('svc/mail.js', 1, "require('nodemailer')")]))]);
+    expect(lib.relations[0]).toMatchObject({ bucket: 'address-unresolved' });
+    expect(lib.counts.externalKeys).toMatchObject({ transport: 1, hostNotQuoted: 1 });
+    // Falling back from an unquoted host reads the name as written, so a method call keys as it does with no host.
+    const pay = at('svc/pay.go', 1, 'svc.Do(req)');
+    const withHost = merge([ext({ name: 'svc.Do', host: 'api.vendor.example' }, pay)]).relations[0];
+    const noHost = merge([ext({ name: 'svc.Do' }, pay)]).relations[0];
+    expect(noHost).toMatchObject({ bucket: 'linked', keyBy: 'name' });
+    expect(withHost).toMatchObject({ bucket: 'linked', keyBy: 'name', hostNotQuoted: true, receiver: { external: noHost.receiver.external } });
+  });
+});
+
+describe('splitUnmatched', () => {
+  const linked = (kind, file, line, key) => ({ kind, bucket: 'linked', key, caller: { file, line } });
+  it('tells a site keyed two ways from a site one run alone linked, and says what the other run had there', () => {
+    const previous = [
+      linked('external', 'a.js', 10, 'k-shared'),
+      { ...linked('external', 'a.js', 48, 'k-old'), caller: { file: 'a.js', line: 48, quote: 'await t.sendMail(message);' } },
+      linked('external', 'b.go', 5, 'k-recall'),
+      linked('external', 'c.go', 7, 'k-unlinked-now'),
+      linked('http', 'a.js', 48, 'other-kind'),
+    ];
+    const current = [
+      linked('external', 'a.js', 10, 'k-shared'),
+      { ...linked('external', 'a.js', 46, 'k-new'), caller: { file: 'a.js', line: 46, quote: 't.sendMail(message)' } },
+      { kind: 'external', bucket: 'address-unresolved', caller: { file: 'c.go', line: 8 } },
+      linked('external', 'd.go', 1, 'k-fresh'),
+    ];
+    const split = splitUnmatched({ kind: 'external', previous, current });
+    expect(split.keyMismatch).toEqual([{ file: 'a.js', previous: 'k-old', current: 'k-new', previousLines: [48], currentLines: [46] }]);
+    expect(split.previousOnly).toEqual([
+      { key: 'k-recall', file: 'b.go', lines: [5], current: ['absent'] },
+      { key: 'k-unlinked-now', file: 'c.go', lines: [7], current: ['address-unresolved'] },
+    ]);
+    expect(split.currentOnly).toEqual([{ key: 'k-fresh', file: 'd.go', lines: [1], previous: ['absent'] }]);
+    // Two different calls close together, each linked by one run only, are two one-run sites.
+    const near = splitUnmatched({
+      kind: 'http',
+      previous: [{ ...linked('http', 'a.js', 10, 'GET /users'), caller: { file: 'a.js', line: 10, quote: "api.get('/users')" } }],
+      current: [{ ...linked('http', 'a.js', 12, 'GET /orders'), caller: { file: 'a.js', line: 12, quote: "api.get('/orders')" } }],
+    });
+    expect(near.keyMismatch).toEqual([]);
+    expect(near.previousOnly[0]).toMatchObject({ key: 'GET /users', current: ['linked'] });
+    expect(near.currentOnly[0]).toMatchObject({ key: 'GET /orders', previous: ['linked'] });
+    // One call quoted from two lines of its statement is one site keyed two ways.
+    const drift = splitUnmatched({
+      kind: 'external',
+      previous: [{ ...linked('external', 'm.js', 48, 'k1'), caller: { file: 'm.js', line: 48, quote: 'await t.sendMail(message);' } }],
+      current: [{ ...linked('external', 'm.js', 46, 'k2'), caller: { file: 'm.js', line: 46, quote: 't.sendMail(message)' } }],
+    });
+    expect(drift.keyMismatch).toHaveLength(1);
+    // Far lines in one file are two sites, not one keyed two ways.
+    const far = splitUnmatched({ kind: 'external', previous: [linked('external', 'a.js', 10, 'x')], current: [linked('external', 'a.js', 90, 'y')] });
+    expect(far.keyMismatch).toEqual([]);
+    expect([far.previousOnly.length, far.currentOnly.length]).toEqual([1, 1]);
+  });
+
+  it('accounts for every key outside the intersection, and prints the split', () => {
+    const files = { 'a/x.js': "pub.publish('t1', x)", 'b/y.go': 'Subscribe(ctx, "t1")' };
+    const previous = { inputDigest: 'd', relations: ['t1', 't2', 't3'].map((t, i) => ({ kind: 'message', bucket: 'linked', key: `message|a/x.js|${t}|b/y.go`, caller: { file: 'a/x.js', line: 1 + 20 * i } })) };
+    const merged = mergeRelations({
+      accepted: [
+        { areaId: 'area-001', output: { relations: [{ kind: 'message', address: { channel: 't1' }, caller: { file: 'a/x.js', line: 1, quote: "pub.publish('t1', x)" } }] } },
+        { areaId: 'area-002', output: { relations: [{ kind: 'message', address: { channel: 't1' }, receiver: { file: 'b/y.go', line: 1, quote: 'Subscribe(ctx, "t1")' } }] } },
+      ],
+      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], inputDigest: 'd' },
+      units: [{ id: 'unit:a' }, { id: 'unit:b' }], readLines: (f) => files[f].split('\n'), previous,
+    });
+    const ag = merged.measurements.message.agreement;
+    expect(ag).toMatchObject({ intersection: 1, union: 3, keyMismatch: 0, previousOnly: 2, currentOnly: 0 });
+    expect(ag.union - ag.intersection).toBe(2 * ag.keyMismatch + ag.previousOnly + ag.currentOnly);
+    const lines = reportLines({ areaResults: [], merged, coveragePath: 'c.json' });
+    expect(lines).toContain('kind message ends=2 linked=1 quote-failure=0 unresolved=0 agreement=0.3333 (1/3, insufficient; key-mismatch=0 previous-only=2 current-only=0)');
+  });
+});
+
 describe('containsToken', () => {
   it('finds a path segment only as a whole token', () => {
     expect(containsToken('oauthGp.GET("/authorize"', 'oauth')).toBe(false);
@@ -300,7 +439,7 @@ describe('containsToken', () => {
 });
 
 describe('relations freshness', () => {
-  const graph = { format: 'excavator-relations/1', sourceRevision: 'r1', factDigest: 'f1' };
+  const graph = { format: 'excavator-relations/2', sourceRevision: 'r1', factDigest: 'f1' };
   it('is fresh only when the source revision and the fact digest match', () => {
     expect(isRelationsGraphUsable({ graph, currentSourceRevision: 'r1', currentFactDigest: 'f1' }).status).toBe('fresh');
     expect(isRelationsGraphUsable({ graph, currentSourceRevision: 'r2', currentFactDigest: 'f1' }).status).toBe('stale');
@@ -308,5 +447,7 @@ describe('relations freshness', () => {
     expect(isRelationsGraphUsable({ graph: { ...graph, factDigest: null }, currentSourceRevision: 'r1', currentFactDigest: null }).usable).toBe(true);
     expect(isRelationsGraphUsable({ graph: null }).status).toBe('missing');
     expect(isRelationsGraphUsable({ graph: { ...graph, format: 'x' } }).status).toBe('unknown-format');
+    // A graph keyed by the earlier external rules is not used.
+    expect(isRelationsGraphUsable({ graph: { ...graph, format: 'excavator-relations/1' } }).status).toBe('unknown-format');
   });
 });

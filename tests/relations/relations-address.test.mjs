@@ -31,10 +31,95 @@ describe('normalizeAddress', () => {
     expect(normalizeAddress('message', { channel: 'orders.${region}.created' })).toMatchObject({ key: 'orders.{}.created', literals: ['orders.', '.created'] });
   });
 
-  it('keys rpc by short service and method, external by host or name', () => {
+  it('keys rpc by short service and method', () => {
     expect(normalizeAddress('rpc', { service: 'pkg.v1.UserService', method: 'GetUser' }).key).toBe('UserService/GetUser');
-    expect(normalizeAddress('external', { name: 'Mailer', host: 'www.Mail.example.com:443' }).key).toBe('external:mail.example.com');
-    expect(normalizeAddress('external', { name: 'Mailer' }).key).toBe('external:mailer');
+  });
+});
+
+describe('external ids', () => {
+  const ext = (address) => normalizeAddress('external', address);
+  const id = (address) => ext(address).key;
+
+  it('gives one site the same id however the analyzer names it', () => {
+    // A name alone and the same name with the provider's API host.
+    expect(id({ name: 'acmeai' })).toBe(id({ name: 'acmeai', host: 'api.acmeai.com' }));
+    expect(id({ name: 'openai' })).toBe(id({ name: 'openai', host: 'api.openai.com' }));
+    // Two names for one host: the host decides, and a provider's API domain joins the provider.
+    expect(id({ name: 'google', host: 'maps.googleapis.com' })).toBe(id({ name: 'googleapis', host: 'maps.googleapis.com' }));
+    expect(id({ name: 'google', host: 'docs.google.com' })).toBe(id({ name: 'googleapis', host: 'maps.googleapis.com' }));
+    // A short name and a domain written as the name, under a two-label public suffix.
+    expect(id({ name: 'registry', host: 'm.registry.gov.uk' })).toBe(id({ name: 'registry.gov.uk', host: 'm.registry.gov.uk' }));
+    expect(id({ name: 'registry.gov.uk' })).toBe('external:registry');
+    // A storage SDK, a library bound to that storage service and the service's own name.
+    expect(id({ name: 'S3' })).toBe(id({ name: 'multer-s3' }));
+    expect(id({ name: 's3' })).toBe(id({ name: 'aws-s3', host: 'amazonaws.com' }));
+    expect(id({ name: '@aws-sdk/client-s3' })).toBe('external:aws');
+    // A tenant subdomain of a SaaS provider and the provider's product name.
+    expect(id({ name: 'jira' })).toBe(id({ name: 'atlassian', host: 'team.atlassian.net' }));
+    expect(id({ name: 'go-jira' })).toBe('external:atlassian');
+    expect(id({ name: 'slack-go' })).toBe(id({ name: '@slack/web-api' }));
+    expect(id({ name: 'google-sheets' })).toBe('external:google');
+    // A mail transport that names its SMTP host keys on the host's provider.
+    expect(id({ name: 'nodemailer', host: 'email-smtp.us-east-1.amazonaws.com' })).toBe(id({ name: 'smtp', host: 'email-smtp.us-east-1.amazonaws.com' }));
+    expect(id({ name: 'x', host: 'https://API.Example.com:8443/v1/chat' })).toBe('external:example');
+  });
+
+  it('says what the id rests on and keeps the analyzer\'s words as labels only', () => {
+    expect(ext({ name: 'OpenAI', host: 'api.openai.com' })).toMatchObject({ ok: true, key: 'external:openai', keyBy: 'host', address: { name: 'openai', host: 'api.openai.com' } });
+    expect(ext({ name: 'Stripe' })).toMatchObject({ ok: true, key: 'external:stripe', keyBy: 'service' });
+    expect(ext({ name: 'acmeai' })).toMatchObject({ ok: true, key: 'external:acmeai', keyBy: 'name' });
+  });
+
+  it('never makes a library or transport the service', () => {
+    for (const name of ['axios', 'fetch', 'node-fetch', 'nodemailer', 'multer', 'ldapjs', 'ldap', 'smtp', 'mail', 'requests', 'resty']) {
+      const result = ext({ name });
+      expect(result.ok, name).toBe(false);
+      expect(result.reason, name).toMatch(/library or protocol/);
+      expect(result.transport, name).toBe(true);
+    }
+    // With a host, the host decides.
+    expect(ext({ name: 'axios', host: 'api.vendor.io' })).toMatchObject({ ok: true, key: 'external:vendor', keyBy: 'host' });
+  });
+
+  it('reads a dotted call written as the name as a library call, not as a host', () => {
+    for (const name of ['http.Get', 'axios.get', 'requests.post', 'nodemailer.createTransport']) {
+      expect(ext({ name }), name).toMatchObject({ ok: false, transport: true });
+    }
+    // A two-letter method on a client is a call, not a country domain.
+    for (const name of ['s.client.Do', 'h.httpClient.Do', 'client.do']) {
+      expect(ext({ name }), name).toMatchObject({ ok: false, transport: true });
+    }
+    expect(ext({ name: 'svc.Do' }).keyBy).toBe('name');
+    // A domain whose first label is a protocol word is still a domain.
+    expect(id({ name: 'api.openai.com' })).toBe(id({ name: 'openai' }));
+    expect(id({ name: 'smtp.gmail.com' })).toBe('external:google');
+    expect(id({ name: 'oauth2.googleapis.com' })).toBe('external:google');
+    expect(ext({ name: 'mail.vendor.com' })).toMatchObject({ key: 'external:vendor', keyBy: 'host' });
+    expect(id({ name: 'api.vendor.io' })).toBe(id({ name: 'vendor', host: 'api.vendor.io' }));
+    expect(id({ name: 'stripe.charges' })).toBe('external:stripe');
+    expect(ext({ name: 'vendor.io' })).toMatchObject({ key: 'external:vendor', keyBy: 'host' });
+  });
+
+  it('keeps every host under a private or unknown top-level domain apart', () => {
+    expect(id({ host: 'orders.prod.svc.cluster.local' })).toBe('external:orders.prod.svc.cluster.local');
+    expect(id({ host: 'orders.prod.svc.cluster.local' })).not.toBe(id({ host: 'billing.prod.svc.cluster.local' }));
+    expect(id({ host: 'a.service.consul' })).not.toBe(id({ host: 'b.service.consul' }));
+    expect(id({ host: 'ledger.corp.internal' })).toBe('external:ledger.corp.internal');
+  });
+
+  it('keeps a name it cannot canonicalise as its own id, never merged with another', () => {
+    expect(id({ name: 'Acme-Billing' })).toBe('external:acmebilling');
+    expect(id({ name: 'acme-billing' })).not.toBe(id({ name: 'acme' }));
+    expect(ext({ name: 'acme-billing' }).keyBy).toBe('name');
+  });
+
+  it('keys a hosted app by its whole host, an address or a bare host by itself, and ignores a host that is not one', () => {
+    expect(id({ host: 'one.herokuapp.com' })).not.toBe(id({ host: 'two.herokuapp.com' }));
+    expect(id({ host: 'one.herokuapp.com' })).toBe('external:one.herokuapp.com');
+    expect(id({ host: '10.0.0.5:8080' })).toBe('external:10.0.0.5');
+    expect(id({ host: 'billing' })).toBe('external:billing');
+    expect(ext({ name: 'stripe', host: '${API_HOST}' })).toMatchObject({ key: 'external:stripe', keyBy: 'service' });
+    expect(ext({ host: '${API_HOST}' })).toMatchObject({ ok: false });
   });
 });
 

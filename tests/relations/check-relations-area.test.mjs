@@ -80,6 +80,23 @@ describe('check-relations-area', () => {
     expect(check('unit:web').status).toBe(0);
   });
 
+  it('notes an external end the merge cannot key on what was written, without failing the check', () => {
+    const mail = (address, quote, evidence) => ({ kind: 'external', address, receiver: null, caller: { file: 'server/app.js', line: 9, quote, ...(evidence ? { evidence } : {}) } });
+    write('unit:server', [
+      mail({ name: 'nodemailer' }, "mailer.sendMail({ to: 'a@b.c' });", [{ file: 'server/app.js', line: 3, quote: "require('nodemailer')" }]),
+      mail({ name: 'mailer', host: 'smtp.vendor.example' }, 'mailer.sendMail('),
+    ]);
+    const { status, lines } = check('unit:server');
+    expect(status).toBe(0);
+    const id = area('unit:server').areaId;
+    expect(lines).toEqual([
+      `check ${id}: ends=2 accepted=2 rejected=0 notices=3`,
+      'notice relations[0].caller server/app.js:9 transport-name: names a library or protocol (nodemailer), not the system it reaches, and gives no host',
+      'notice relations[1].caller server/app.js:9 host-not-quoted: no cited line holds smtp.vendor.example',
+      'notice relations[1].caller server/app.js:9 transport-name: names a library or protocol (mailer), not the system it reaches, and gives no host',
+    ]);
+  });
+
   it('exits 2 for a missing output or another run\'s token', () => {
     expect(check('unit:web')).toEqual({ status: 2, lines: [`check ${area('unit:web').areaId}: missing`] });
     write('unit:web', [], 'another-token');

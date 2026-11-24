@@ -12,11 +12,16 @@
  *             eats every following segment. Key: `METHOD /a/{}/b`.
  *   rpc       service name after its last `.`, then the method: `Service/Method`.
  *   message   channel, realtime event: trimmed, placeholders written `{}`.
- *   external  host lower-cased without port and `www.`, else the name
- *             lower-cased: `external:<name>`.
+ *   external  `external:<id>`, never the analyzer's free-form name
+ *             (externalIdentity): a host's organization label, else the name
+ *             looked up in the fixed table external-services.json; a library
+ *             or protocol name is unresolved; any other name is its own id,
+ *             marked `keyBy: 'name'`. The name and host stay as labels.
  * An address with no literal part (a path that is only a variable) is
  * unresolved, as is one the analyzer marked `unresolved`.
  */
+
+import EXTERNAL_SERVICES from './external-services.json' with { type: 'json' };
 
 export const KINDS = Object.freeze(['http', 'rpc', 'message', 'realtime', 'external']);
 const ANY_METHODS = new Set(['ANY', 'ALL', '*']);
@@ -155,11 +160,101 @@ export function normalizeAddress(kind, address) {
   if (kind === 'external') {
     const host = normalizeHost(address.host);
     const name = isText(address.name) ? address.name.trim().toLowerCase() : null;
-    const id = host ?? name;
-    if (id === null) return { ok: false, reason: 'no name or host' };
-    return { ok: true, key: `external:${id}`, address: { ...(name ? { name } : {}), ...(host ? { host } : {}) }, literals: [], externalWords: [name, host].filter(Boolean) };
+    if (host === null && name === null) return { ok: false, reason: 'no name or host' };
+    const words = { address: { ...(name ? { name } : {}), ...(host ? { host } : {}) }, literals: [], externalWords: [name, host].filter(Boolean) };
+    const identity = externalIdentity({ name: address.name, host: address.host });
+    if (!identity.ok) return { ...identity, ...words };
+    return { ok: true, key: `external:${identity.id}`, keyBy: identity.by, ...words };
   }
   return { ok: false, reason: `unknown kind ${JSON.stringify(kind)}` };
+}
+
+const compact = (text) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
+const SERVICE_OF = new Map(Object.entries(EXTERNAL_SERVICES.services).flatMap(([id, aliases]) => aliases.map((a) => [compact(a), id])));
+const TRANSPORTS = new Set(EXTERNAL_SERVICES.transports.map(compact));
+const PREFIXES = new Set(EXTERNAL_SERVICES.affixes.prefixes);
+const SUFFIXES = new Set(EXTERNAL_SERVICES.affixes.suffixes);
+const SECOND_LEVEL = new Set(EXTERNAL_SERVICES.secondLevelLabels);
+const HOSTING = EXTERNAL_SERVICES.hostingDomains;
+const PUBLIC_TLDS = new Set(EXTERNAL_SERVICES.publicTopLevelDomains);
+/** A top-level domain of the public internet: any two-letter country domain or one listed. */
+const isPublicTld = (label) => /^[a-z]{2}$/.test(label) || PUBLIC_TLDS.has(label);
+const HOST_SHAPE = /^[a-z0-9-]+(\.[a-z0-9-]+)*$/;
+const DOMAIN_SHAPE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/** A host as a bare lower-case host name (scheme, path and port removed), or null when it is not one. */
+export function hostOf(raw) {
+  if (!isText(raw)) return null;
+  const bare = normalizeHost(raw.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#]/)[0]);
+  return bare !== null && HOST_SHAPE.test(bare) && /[a-z0-9]/.test(bare) ? bare : null;
+}
+
+/**
+ * The organization label of a host: the label before its public suffix
+ * (`api.openai.com` -> `openai`, `m.agency.gov.cn` -> `agency`). A host
+ * under a hosting domain is a tenant's own system and keeps its whole host,
+ * as does a host under any other than a public top-level domain (cluster,
+ * service-discovery and private names: `orders.svc.cluster.local`); an IP
+ * address or a one-label host is itself.
+ */
+export function hostLabel(host) {
+  if (IPV4.test(host) || !host.includes('.')) return host;
+  if (HOSTING.some((d) => host.endsWith(`.${d}`))) return host;
+  const labels = host.split('.');
+  if (!isPublicTld(labels.at(-1))) return host;
+  const twoLevel = labels.length >= 3 && labels.at(-1).length === 2 && SECOND_LEVEL.has(labels.at(-2));
+  return labels.at(twoLevel ? -3 : -2);
+}
+
+/** The words of a name: a scoped package gives its scope, a module path its last part; affixes go. */
+function nameTokens(name) {
+  let text = name.trim().toLowerCase();
+  if (text.startsWith('@') && text.includes('/')) text = text.slice(1).split('/')[0];
+  else if (text.includes('/')) text = text.split('/').filter(Boolean).pop() ?? '';
+  const tokens = text.split(/[-_\s.]+/).filter(Boolean);
+  while (tokens.length > 1 && PREFIXES.has(tokens[0])) tokens.shift();
+  while (tokens.length > 1 && SUFFIXES.has(tokens.at(-1))) tokens.pop();
+  return tokens;
+}
+
+/**
+ * The id of an external system, by fixed rules: a host the address gives
+ * wins (its organization label, joined to a listed service); a name shaped
+ * like a domain is read as a host; otherwise the name, in compact form, is
+ * looked up in the service table, then its first word (every word of the
+ * receiver for a dotted call such as `s.client.Do`). A library or protocol
+ * (`axios`, `nodemailer`, `ldap`) names no system: unresolved, marked
+ * `transport`. Any other name is its own id, marked `by: 'name'`.
+ * Returns { ok: true, id, by: host|service|name } or { ok: false, reason, transport? }.
+ */
+export function externalIdentity({ name = null, host = null }) {
+  const fromHost = (h) => {
+    const label = hostLabel(h);
+    return { ok: true, id: SERVICE_OF.get(compact(label)) ?? label, by: 'host' };
+  };
+  const bare = hostOf(host);
+  if (bare !== null) return fromHost(bare);
+  if (!isText(name)) return { ok: false, reason: 'no name and no usable host' };
+  const lower = name.trim().toLowerCase();
+  // A dotted name is a domain only under a public top-level domain written in
+  // lower case, and only when its organization label is not a library:
+  // `http.Get`, `axios.post` and `client.Do` are calls; `smtp.vendor.com` is a host.
+  const last = name.trim().split('.').at(-1);
+  if (DOMAIN_SHAPE.test(lower) && isPublicTld(last) && !TRANSPORTS.has(compact(hostLabel(lower)))) return fromHost(lower);
+  const tokens = nameTokens(lower);
+  const whole = compact(tokens.join(''));
+  if (whole.length === 0) return { ok: false, reason: 'no name and no usable host' };
+  if (SERVICE_OF.has(whole)) return { ok: true, id: SERVICE_OF.get(whole), by: 'service' };
+  const transport = { ok: false, transport: true, reason: `names a library or protocol (${lower}), not the system it reaches, and gives no host` };
+  if (TRANSPORTS.has(whole)) return transport;
+  // A package name is read by its first word; a call chain (`s.client.Do`) by
+  // every word of its receiver, the method left out.
+  const words = (lower.includes('.') ? tokens.slice(0, -1) : tokens.slice(0, 1)).map(compact);
+  const service = words.find((w) => SERVICE_OF.has(w));
+  if (service !== undefined) return { ok: true, id: SERVICE_OF.get(service), by: 'service' };
+  if (words.some((w) => TRANSPORTS.has(w))) return transport;
+  return { ok: true, id: whole, by: 'name' };
 }
 
 export function methodsMatch(a, b) {
@@ -216,4 +311,4 @@ export function pairCaller(kind, caller, receivers) {
   return { bucket: 'linked', receivers: same };
 }
 
-export default { KINDS, normalizeAddress, parsePath, pathText, matchSegments, methodsMatch, pairCaller, normalizeChannel, normalizeHost };
+export default { KINDS, normalizeAddress, externalIdentity, hostLabel, hostOf, parsePath, pathText, matchSegments, methodsMatch, pairCaller, normalizeChannel, normalizeHost };
