@@ -12,6 +12,8 @@
  *   - an end is placed at the nearest node the view draws that is the end's node or contains it (a function end at its
  *     file), then at the folder box that holds that node while the box is closed, as the copy's own edges are;
  *   - an end in another layer is placed at one stand-in node for that layer, an external system at one node per id;
+ *   - a drawable relation with an end that no layer holds (no node a layer draws is the end's node or contains it) is
+ *     drawn in no view, and is counted;
  *   - relations whose two ends land on the same pair of drawn nodes are one edge per kind, labelled with their count;
  *     two ends on the same drawn node give no edge, and neither does a relation whose two ends are both stand-ins.
  */
@@ -165,6 +167,11 @@ export function projectRelations(relations: readonly GraphRelation[], place: (no
   }
   const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return { edges: [...edges.values()].sort(byId), standIns: [...standIns.values()].sort(byId), drawn, inView };
+}
+
+/** The relations `place` cannot place an end of: with the overview's placer, those with an end that no layer holds. */
+export function unplacedRelations(relations: readonly GraphRelation[], place: (nodeId: string) => string | null): GraphRelation[] {
+  return relations.filter((relation) => place(relation.caller) === null || (!relation.external && place(relation.receiver) === null));
 }
 
 /** The nearest node in `drawn` that is the node or contains it, or null when none is. */

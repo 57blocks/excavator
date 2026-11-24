@@ -1034,7 +1034,7 @@ export function judgeGraphRelations(result) {
   const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
   const [network, consoleCheck] = judge({ ...result, evalResult: null });
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const counts = '1 linked with an end not in the graph · 3 not linked';
+  const counts = '0 linked with an end in no layer · 1 linked with an end not in the graph · 3 not linked';
   const utilEdges = ['relation|external|file:src/util.js|relations:external:mail', 'relation|http|relations:layer:layer:app|file:src/util.js'];
   return [
     network,

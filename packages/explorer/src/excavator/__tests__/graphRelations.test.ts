@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  communicationEntries, drawnHome, externalStandInId, layerPlacer, layerStandInId, overviewPlacer, projectRelations, relationIndex, relationsOfNode,
+  communicationEntries, drawnHome, externalStandInId, layerPlacer, layerStandInId, overviewPlacer, projectRelations, relationIndex, relationsOfNode, unplacedRelations,
 } from '../graphRelations';
 import { relationRows } from '../products/relations';
 
@@ -91,6 +91,19 @@ describe('placing ends', () => {
     expect(standIns).toEqual([{ id: externalStandInId('external:mail'), kind: 'external', key: 'external:mail' }]);
     expect(count).toBe(4);
     expect(inView).toBe(4);
+  });
+
+  it('counts a relation with an end that no layer holds, which the overview cannot place', () => {
+    const all = overviewPlacer(home, layerOf);
+    expect(unplacedRelations(INDEX.drawable, all)).toEqual([]);
+    // api/r.js in no layer: the http calls it receives and the mail call it makes have an end nowhere.
+    const noApi = overviewPlacer(home, new Map([...layerOf].filter(([n]) => n !== 'file:api/r.js')));
+    expect(ids(unplacedRelations(INDEX.drawable, noApi))).toEqual(['rel:1', 'rel:2', 'rel:3', 'rel:4']);
+    const projection = projectRelations(INDEX.drawable, noApi);
+    expect(projection.drawn + unplacedRelations(INDEX.drawable, noApi).length).toBe(INDEX.drawable.length);
+    // A file no view draws (its home is null) has an end nowhere too; an external receiver needs no layer.
+    const noWeb = overviewPlacer((id) => (id.startsWith('function:web/') || id.startsWith('file:web/') ? null : home(id)), layerOf);
+    expect(ids(unplacedRelations(INDEX.drawable, noWeb))).toEqual(['rel:1', 'rel:2', 'rel:3']);
   });
 
   it('in a layer, draws to the drawn file, the closed box, or the other layer stand-in', () => {
