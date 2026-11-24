@@ -621,16 +621,18 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
   });
   conservation.callLines = callLines.total;
   conservation.callLinesInBuckets = Object.values(callLines.buckets).reduce((a, b) => a + b, 0);
-  // The split counted the call lines it wrote into the manifest; the merge must read as many.
+  // The split counted the call lines it wrote into the manifest; the merge must read as many. A missing count fails too.
   const expected = manifest.counts?.callLines;
-  if (Number.isInteger(expected)) conservation.callLinesExpected = expected;
-  conservation.ok = conservation.ok && callLines.ok && (!Number.isInteger(expected) || expected === callLines.total);
+  conservation.callLinesExpected = Number.isInteger(expected) ? expected : 'missing';
+  conservation.ok = conservation.ok && callLines.ok && expected === callLines.total;
 
+  // A file with no end, whose analyzer skipped some of its call lines one by one, was read and declared, not silent.
+  const lineSkipOf = new Map();
+  for (const r of callLines.rows) if (r.status === 'declared-skip' && !lineSkipOf.has(r.file)) lineSkipOf.set(r.file, r);
   const fileRows = [];
   const fileBuckets = Object.fromEntries(FILE_BUCKETS.map((b) => [b, 0]));
   for (const candidate of manifest.candidates ?? []) {
-    // A file with no end, whose analyzer skipped some of its call lines one by one, was read and declared, not silent.
-    const lineSkip = callLines.rows.find((r) => r.file === candidate.file && r.status === 'declared-skip');
+    const lineSkip = lineSkipOf.get(candidate.file);
     const status = cited.has(candidate.file) ? 'cited'
       : declared.has(candidate.file) ? 'declared-skip'
         : rejectedIn.has(candidate.file) ? 'ends-rejected'
@@ -776,7 +778,7 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
   const cons = merged.conservation;
   lines.push(cons.ok
     ? `conservation ok ends=${cons.endsIn} duplicates=${cons.duplicates} call-lines=${cons.callLines}`
-    : `conservation FAILED ends=${cons.endsIn} in-buckets=${cons.inBuckets} duplicates=${cons.duplicates} call-lines=${cons.callLines} call-lines-in-buckets=${cons.callLinesInBuckets}${cons.callLinesExpected !== undefined ? ` call-lines-expected=${cons.callLinesExpected}` : ''}`);
+    : `conservation FAILED ends=${cons.endsIn} in-buckets=${cons.inBuckets} duplicates=${cons.duplicates} call-lines=${cons.callLines} call-lines-in-buckets=${cons.callLinesInBuckets} call-lines-expected=${cons.callLinesExpected}`);
   if (graphPath) lines.push(`relations graph: ${graphPath}`);
   lines.push(`coverage report: ${coveragePath}`);
   return lines;

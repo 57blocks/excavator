@@ -222,7 +222,7 @@ describe('mergeRelations sides and targets', () => {
   });
   const merge = (first, second) => mergeRelations({
     accepted: [{ areaId: 'area-001', output: { relations: first } }, { areaId: 'area-002', output: { relations: second } }],
-    manifest: { areas, candidates: [], inputDigest: 'd' }, units, readLines,
+    manifest: { areas, candidates: [], counts: { callLines: 0 }, inputDigest: 'd' }, units, readLines,
   });
 
   it('pairs a browser file with the server in its own unit, and targets a named unit', () => {
@@ -285,14 +285,14 @@ describe('agreement and escalation', () => {
         { areaId: 'area-001', output: { relations: [{ kind: 'message', address: { channel: 't1' }, caller: { file: 'a/x.js', line: 1, quote: "pub.publish('t1', x)" } }] } },
         { areaId: 'area-002', output: { relations: [{ kind: 'message', address: { channel: 't1' }, receiver: { file: 'b/y.go', line: 1, quote: 'Subscribe(ctx, "t1")' } }] } },
       ],
-      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], inputDigest: 'd' },
+      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], counts: { callLines: 0 }, inputDigest: 'd' },
       units: [{ id: 'unit:a' }, { id: 'unit:b' }], readLines, previous,
     });
     expect(merged.measurements.message.agreement).toMatchObject({ status: 'measured', jaccard: 0.2, union: 5 });
     expect(merged.measurements.message.escalation).toEqual({ candidate: true, reasons: ['agreement'] });
     expect(THRESHOLDS.agreement).toBe(0.8);
     const changed = mergeRelations({
-      accepted: [], manifest: { areas: [], candidates: [], inputDigest: 'other' }, units: [], readLines, previous,
+      accepted: [], manifest: { areas: [], candidates: [], counts: { callLines: 0 }, inputDigest: 'other' }, units: [], readLines, previous,
     });
     expect(changed.measurements.message.agreement.status).toBe('input-changed');
   });
@@ -331,7 +331,7 @@ describe('external ids across runs', () => {
     ext({ name: 'smtp', host: 'email-smtp.us-east-1.amazonaws.com' }, at('svc/mail.js', 3, 't.sendMail(message)', [at('svc/mail.js', 2, "host: 'email-smtp.us-east-1.amazonaws.com'")])),
     ext({ name: 'AcmeCrm' }, at('svc/crm.js', 1, 'await acmeCrm.contacts.create')),
   ];
-  const manifest = { areas: [{ areaId: 'area-001', unit: 'unit:svc', files: Object.keys(files) }], candidates: [], inputDigest: 'd' };
+  const manifest = { areas: [{ areaId: 'area-001', unit: 'unit:svc', files: Object.keys(files) }], candidates: [], counts: { callLines: 0 }, inputDigest: 'd' };
   const merge = (relations, previous = null) => mergeRelations({
     accepted: [{ areaId: 'area-001', output: { relations } }], manifest, units: [{ id: 'unit:svc' }], readLines, previous,
   });
@@ -421,7 +421,7 @@ describe('splitUnmatched', () => {
         { areaId: 'area-001', output: { relations: [{ kind: 'message', address: { channel: 't1' }, caller: { file: 'a/x.js', line: 1, quote: "pub.publish('t1', x)" } }] } },
         { areaId: 'area-002', output: { relations: [{ kind: 'message', address: { channel: 't1' }, receiver: { file: 'b/y.go', line: 1, quote: 'Subscribe(ctx, "t1")' } }] } },
       ],
-      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], inputDigest: 'd' },
+      manifest: { areas: [{ areaId: 'area-001', unit: 'unit:a', files: ['a/x.js'] }, { areaId: 'area-002', unit: 'unit:b', files: ['b/y.go'] }], candidates: [], counts: { callLines: 0 }, inputDigest: 'd' },
       units: [{ id: 'unit:a' }, { id: 'unit:b' }], readLines: (f) => files[f].split('\n'), previous,
     });
     const ag = merged.measurements.message.agreement;

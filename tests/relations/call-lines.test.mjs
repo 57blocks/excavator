@@ -241,6 +241,18 @@ describe('call lines through split, self-check and merge', () => {
     expect(result.stdout).toMatch(new RegExp(`^conservation FAILED .* call-lines=${CALLS - 1} call-lines-in-buckets=${CALLS - 1} call-lines-expected=${CALLS}$`, 'm'));
   });
 
+  it('fails conservation when the manifest has no call-line count to compare with', () => {
+    const path = join(areasDir(), 'manifest.json');
+    const tampered = JSON.parse(readFileSync(path, 'utf-8'));
+    tampered.candidates.find((c) => c.file === API_FILE).callLines.pop();
+    delete tampered.counts.callLines;
+    writeFileSync(path, JSON.stringify(tampered));
+    write({ relations: oneLine.map(endOf), skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }] });
+    const result = run('merge-relations.mjs', [root]);
+    expect(result.status).toBe(4);
+    expect(result.stdout).toMatch(new RegExp(`^conservation FAILED .* call-lines=${CALLS - 1} call-lines-in-buckets=${CALLS - 1} call-lines-expected=missing$`, 'm'));
+  });
+
   it('counts the call lines of a skipped file and of a missing area apart from the unaccounted ones', () => {
     write({ relations: [], skippedFiles: [{ file: API_FILE, reason: 'generated client, not used' }, { file: 'web/src/http.ts', reason: 'only creates the client' }] });
     expect(merge().stdout).toMatch(new RegExp(`^call lines total=${CALLS} .* file-skipped=${CALLS} unaccounted=0 area-missing=0$`, 'm'));

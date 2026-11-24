@@ -91,7 +91,7 @@ then a summary line (`areas=... candidates=... not-candidate=... container-skipp
 
    It writes `$DATA_DIR/relations-graph.json` and `$DATA_DIR/reports/relations-coverage.json` and prints one line per area, then the summary lines from `callers` to `coverage report:`.
 
-   - Exit 4: the buckets do not add up to the ends the analyzers wrote. Report the `conservation FAILED` line and stderr, and **STOP**; no relations graph was written.
+   - Exit 4: the buckets do not add up to the ends the analyzers wrote, or the call lines the merge read do not match the count the split wrote in the manifest. Report the `conservation FAILED` line and stderr, and **STOP**; no relations graph was written.
    - Exit 3: some areas are `missing`, `rejected-stale` (the output does not carry this run's token) or `rejected-parse` (not JSON). Dispatch a fresh subagent once for each of those areas, exactly as in step 2, then merge again. If it exits 3 again, continue with what was accepted and tell the user which areas are missing.
    - Never write, copy or edit an area's output, the relations graph or the coverage report yourself.
 
