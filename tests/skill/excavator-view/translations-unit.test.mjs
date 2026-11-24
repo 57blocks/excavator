@@ -110,6 +110,32 @@ describe('displayedNames', () => {
     };
     expect(displayedNames(data)).toEqual(['D', 'F', 'Kept', 'S']);
   });
+
+  it('takes the relations graph\'s unit names, external system labels and reasons of at most 60 characters', () => {
+    const long = `Sends ${'x'.repeat(60)}`;
+    const data = {
+      'relations-graph.json': {
+        units: [{ id: 'unit:web', name: 'Web shop' }, { id: 'unit:api', name: ' api ' }, { id: 'unit:x', name: '' }],
+        externals: [{ id: 'external:mail' }, { id: 'external:' }, { id: 'payments' }, { id: 7 }],
+        relations: [
+          { id: 'rel:1', reason: ' Loads the order list ' },
+          { id: 'rel:2', reason: long },
+          { id: 'rel:3', reason: 'Two\nlines' },
+          { id: 'rel:4', reason: 'Web shop' },
+          { id: 'rel:5' },
+        ],
+      },
+    };
+    expect(displayedNames(data)).toEqual(['Loads the order list', 'Web shop', 'api', 'mail', 'payments']);
+  });
+
+  it('counts a relations name once when the graph or the domain graph shows the same words', () => {
+    const data = {
+      'knowledge-graph.json': { nodes: [{ displayName: 'Billing' }] },
+      'relations-graph.json': { units: [{ id: 'unit:b', name: 'Billing' }], externals: [], relations: [] },
+    };
+    expect(displayedNames(data)).toEqual(['Billing']);
+  });
 });
 
 describe('nameTranslationsFor', () => {

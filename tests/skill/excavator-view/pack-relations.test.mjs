@@ -13,9 +13,11 @@ import { GRAPH_FORMAT } from '../../../skills/excavator-relations/merge-relation
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
 import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { replyLines } from '../../../skills/excavator-view/reply.mjs';
+import { displayedNames } from '../../../skills/excavator-view/translation-names.mjs';
 import { factGraphJsonl, makeGitProject, relationsCoverage, relationsGraph, writeProduct } from './fixture.mjs';
 import { explorerPage } from './page.mjs';
 import { writeTemplate } from './plugin-fixture.mjs';
+import { pageDirOf, writeTable } from './translation-fixture.mjs';
 
 const DIGEST = 'a'.repeat(64);
 const OTHER_DIGEST = 'b'.repeat(64);
@@ -195,5 +197,17 @@ describe('relations product', () => {
     expect(packed.result.products.find((p) => p.name === 'relations')).toMatchObject({ status: 'included', counts: { units: 3, relations: 6, linked: 2, externals: 1 } });
     expect(packed.manifest.products.map((p) => p.name)).toContain('relations');
     expect(replyLines('/x/p.html', 1, packed.manifest)[3]).toMatch(/; tour not run; relations included$/);
+  });
+
+  it('with --language, names its units, external systems and reasons from the table, and the counts hold', () => {
+    writeGraph();
+    writeRelations();
+    writeTable(pageDirOf(project), 'fr', [{ en: 'web', text: 'site' }, { en: 'mail', text: 'courrier' }, { en: 'Loads the order list', text: 'Charge la liste des commandes' }]);
+    const packed = pack({ language: 'fr' });
+    const names = displayedNames(packed.data);
+    expect(names).toEqual(expect.arrayContaining(['web', 'api', 'worker', 'mail', 'Loads the order list', 'Health check']));
+    const table = packed.data['name-translations.json'];
+    expect(table.names).toEqual({ web: 'site', mail: 'courrier', 'Loads the order list': 'Charge la liste des commandes' });
+    expect(table.counts).toMatchObject({ names: names.length, translated: 3, english: names.length - 3 });
   });
 });
