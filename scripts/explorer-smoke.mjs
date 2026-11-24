@@ -306,6 +306,13 @@ export function withMovedRelationEnd(data) {
   return { ...data, 'relations-graph.json': { ...product, relations: product.relations.map(moved) } };
 }
 
+/** The fixture with main.js and main in no layer: main's call to helper has an end that no layer holds. */
+export function withMainInNoLayer(data) {
+  const graph = data['knowledge-graph.json'];
+  const out = new Set(['file:src/main.js', 'function:src/main.js:main']);
+  return { ...data, 'knowledge-graph.json': { ...graph, layers: graph.layers.map((l) => ({ ...l, nodeIds: l.nodeIds.filter((n) => !out.has(n)) })) } };
+}
+
 /** The fixture with its products not run or unreadable: no product file, and a state each. */
 export function withUnavailableProducts(data) {
   const rest = { ...data };
@@ -1082,6 +1089,20 @@ export function judgeGraphRelations(result) {
   ];
 }
 
+/**
+ * The page whose main.js no layer holds: rel:1 (main calls helper) is drawn in no view and counted once, as an end in
+ * no layer, not also as a relation in the overview; rel:2 (helper calls the mail system) is still drawn.
+ */
+export function judgeGraphRelationsNoLayer(result) {
+  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
+  return [
+    verdict('graph relations in no layer', [
+      ['the relation with an end in no layer is no edge', JSON.stringify(probe.overview?.edges) === JSON.stringify(['relation|external|layer:lib|relations:external:mail'])],
+      ['it is counted once, as an end in no layer', probe.overview?.status === '1 drawn · 1 linked with an end in no layer · 1 linked with an end not in the graph · 3 not linked'],
+    ]),
+  ];
+}
+
 /** The page whose relations product was not run: no relation edge, no Communication section, and the control says why. */
 export function judgeGraphRelationsUnavailable(result) {
   const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
@@ -1163,6 +1184,7 @@ function main(argv) {
   let ok = report('clean', judge(clean));
   ok = report('relations', judgeRelations(runChrome(assemble(template, data), { probe: PROBE_RELATIONS }))) && ok;
   ok = report('graph-relations', judgeGraphRelations(runChrome(assemble(template, data), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
+  ok = report('graph-relations-no-layer', judgeGraphRelationsNoLayer(runChrome(assemble(template, withMainInNoLayer(data)), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
   ok = report('graph-relations-not-run', judgeGraphRelationsUnavailable(runChrome(assemble(template, withUnavailableProducts(data)), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
   ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data))))) && ok;
   ok = report('unavailable-products', judgeStates(runChrome(assemble(template, withUnavailableProducts(data)), { probe: PROBE_STATES }))) && ok;
