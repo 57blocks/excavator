@@ -1,7 +1,7 @@
 // Legacy-literal gate (design D3): pnpm test must fail if any pre-rename
 // literal (the old product name, the old ignore-file name, the old env var,
 // or the old dot-prefixed data-dir token) leaks into a tracked file outside
-// the accepted exemptions (NOTICE, docs/, openspec/, two byte-matched
+// the accepted exemptions (NOTICE, docs/, two byte-matched
 // upstream schema-URL lines in scripts/lib/large-repo-benchmark.mjs, and the
 // lines of the copied upstream dashboard listed by hash in
 // packages/explorer/upstream-lines.json).
@@ -11,7 +11,7 @@
 // defines (the same convention used elsewhere in this suite for "prove no
 // fallback" scenarios).
 import { describe, it, expect, afterEach } from 'vitest';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -74,7 +74,7 @@ function upstreamLineHash(relPath, line) {
 const SLASH_REFERENCE_PATTERN = /(^|[^a-z])\/understand(-[a-z]+)?\b/;
 
 function isPathWideExempt(relPath) {
-  return relPath === 'NOTICE' || relPath.startsWith('docs/') || relPath.startsWith('openspec/');
+  return relPath === 'NOTICE' || relPath.startsWith('docs/');
 }
 
 function readLines(baseDir, relPath) {
@@ -137,7 +137,7 @@ function gitTrackedFiles(pathspecs = []) {
 }
 
 describe('legacy-literal gate (design D3)', () => {
-  it('no tracked file outside NOTICE/docs/openspec and the listed upstream lines carries a legacy literal', () => {
+  it('no tracked file outside NOTICE/docs and the listed upstream lines carries a legacy literal', () => {
     const files = gitTrackedFiles();
     const violations = findLegacyLiteralViolations(repoRoot, files);
     expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
@@ -164,6 +164,18 @@ describe('legacy-literal gate (design D3)', () => {
       const violations = findLegacyLiteralViolations(tmpDir, ['planted.txt']);
       expect(violations.length).toBeGreaterThan(0);
       expect(violations[0].file).toBe('planted.txt');
+    });
+
+    it('flags a literal under openspec/, which is no longer exempt, and not one under docs/', () => {
+      tmpDir = mkdtempSync(join(tmpdir(), 'legacy-literal-paths-'));
+      const plantedToken = join_(['.', 'ua', '/config.json']);
+      for (const dir of ['openspec', 'docs']) {
+        mkdirSync(join(tmpDir, dir));
+        writeFileSync(join(tmpDir, dir, 'planted.md'), `stale reference: ${plantedToken}\n`);
+      }
+
+      const violations = findLegacyLiteralViolations(tmpDir, ['openspec/planted.md', 'docs/planted.md']);
+      expect(violations.map((v) => v.file)).toEqual(['openspec/planted.md']);
     });
 
     it('does not flag NOTICE-style content even when it names the upstream project', () => {

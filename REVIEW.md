@@ -10,7 +10,7 @@ A pull request's tier is the highest tier that any of its changed paths gives, a
 |---|---|---|
 | High | `.github/`, `scripts/ci/`, `REVIEW.md`, `.claude/agents/reviewer.md` | Reviewed; every thread resolved; merged by the user |
 | Medium | Every path in neither the high nor the low tier | Reviewed; every thread resolved; the agent may merge |
-| Low | Markdown files under `openspec/` or `docs/`, `.openspec.yaml` files, and root Markdown files other than `AGENTS.md`, `CLAUDE.md` and `REVIEW.md` | The two required checks pass |
+| Low | Markdown files under `docs/` and root Markdown files other than `AGENTS.md`, `CLAUDE.md` and `REVIEW.md` | The two required checks pass |
 
 ## What Important means here
 
@@ -44,9 +44,8 @@ Report at most five Nits per review.
 
 ## Do not report
 
-- What CI already enforces: types, build, reference checks, OpenSpec validation, failing tests and the privacy scan.
-- Anything in `pnpm-lock.yaml`, `dist/` or `openspec/changes/archive/`.
-- The wording of the Chinese OpenSpec documents, unless a document contradicts the code or another document.
+- What CI already enforces: types, build, reference checks, failing tests and the privacy scan.
+- Anything in `pnpm-lock.yaml` or `dist/`.
 - A finding already raised on this pull request, whether it was fixed or answered.
 
 ## Always check
