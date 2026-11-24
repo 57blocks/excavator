@@ -16,7 +16,7 @@
  *     two ends on the same drawn node give no edge, and neither does a relation whose two ends are both stand-ins.
  */
 
-import type { RelationRow } from "./products/relations";
+import { missingEndText, type RelationRow, type RelationSite } from "./products/relations";
 
 export type RelationsMode = "off" | "selected" | "all";
 
@@ -204,4 +204,53 @@ export function layerPlacer(args: {
     const box = boxOf.get(at);
     return box !== undefined && shown.has(box) ? box : null;
   };
+}
+
+/** The other end of an entry in the node panel. */
+export type OtherEnd =
+  | { kind: "external"; id: string }
+  | { kind: "node"; nodeId: string; site: RelationSite }
+  | { kind: "not-in-graph"; site: RelationSite }
+  | { kind: "missing"; text: string };
+
+/** One relation as the node panel lists it. */
+export interface CommunicationEntry {
+  key: string;
+  row: RelationRow;
+  role: "caller" | "receiver";
+  /** The end's own node; the node listed under is it or contains it. */
+  endNodeId: string;
+  /** This end's site. */
+  site: RelationSite | null;
+  /** The other end's unit id, or the external system's id. */
+  otherUnit: string | null;
+  other: OtherEnd;
+}
+
+const entryOrder = (a: CommunicationEntry, b: CommunicationEntry): number => {
+  const key = (e: CommunicationEntry) => [e.row.bucket === "linked" ? "0" : "1", e.row.kind ?? "", e.row.address ?? "", e.row.id, e.role].join("\u0000");
+  const x = key(a);
+  const y = key(b);
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+
+/**
+ * The relations listed under a node, linked first, then by kind, address and id. The other end is the external system,
+ * the other site's node when the graph has it, the other site alone when it does not, or the sentence the Relations
+ * view gives for an end with no site.
+ */
+export function communicationEntries(index: RelationIndex, nodeId: string, inGraph: (id: string) => boolean): CommunicationEntry[] {
+  return (index.byNode.get(nodeId) ?? [])
+    .map(({ row, role, endNodeId }): CommunicationEntry => {
+      const site = role === "caller" ? row.caller : row.receiver;
+      const otherSite = role === "caller" ? row.receiver : row.caller;
+      let other: OtherEnd;
+      if (row.external !== null && role === "caller") other = { kind: "external", id: row.external };
+      else if (otherSite === null) {
+        other = { kind: "missing", text: missingEndText(row, role === "caller" ? "receiver" : "caller") ?? `No ${role === "caller" ? "receiving" : "caller"} site recorded (${row.bucket}).` };
+      } else if (otherSite.nodeId !== null && inGraph(otherSite.nodeId)) other = { kind: "node", nodeId: otherSite.nodeId, site: otherSite };
+      else other = { kind: "not-in-graph", site: otherSite };
+      return { key: `${row.id}:${role}`, row, role, endNodeId, site, otherUnit: row.external ?? otherSite?.unit ?? null, other };
+    })
+    .sort(entryOrder);
 }

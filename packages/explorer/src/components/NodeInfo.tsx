@@ -5,6 +5,7 @@ import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-
 import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
 import { nodeTitles } from "../excavator/nodeTitle";
 import { translatorOf } from "../excavator/nameTranslations";
+import { NodeCommunication } from "../excavator/views/relations/NodeCommunication";
 
 // Badge color classes keyed by NodeType — must be kept in sync with core NodeType union.
 const typeBadgeColors: Record<NodeType, string> = {
@@ -517,6 +518,9 @@ export default function NodeInfo() {
       {activeGraph && node && (node.type === "domain" || node.type === "flow" || node.type === "step") && (
         <DomainNodeDetails node={node} graph={activeGraph} />
       )}
+
+      {/* Excavator: the relations product's calls this node makes and receives (excavator/views/relations/NodeCommunication.tsx). */}
+      {viewMode !== "domain" && <NodeCommunication nodeId={node.id} />}
 
       {/* Child classes/functions within this file */}
       {childNodes.length > 0 && (

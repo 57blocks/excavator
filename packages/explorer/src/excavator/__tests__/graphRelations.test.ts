@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  drawnHome, externalStandInId, layerPlacer, layerStandInId, overviewPlacer, projectRelations, relationIndex, relationsOfNode,
+  communicationEntries, drawnHome, externalStandInId, layerPlacer, layerStandInId, overviewPlacer, projectRelations, relationIndex, relationsOfNode,
 } from '../graphRelations';
 import { relationRows } from '../products/relations';
 
@@ -131,5 +131,39 @@ describe('placing ends', () => {
     both.set('file:api/r.js', new Set(['layer:api', 'layer:web']));
     const web = layerPlacer({ home, layerOf, layersOf: both, activeLayerId: 'layer:web', shown: new Set(['file:web/a.js', 'file:web/b.js', 'file:api/r.js']), boxOf: new Map() });
     expect(projectRelations(INDEX.drawable, web).edges.map((e) => e.id)).toContain('relation|http|file:web/a.js|file:api/r.js');
+  });
+});
+
+describe('communicationEntries', () => {
+  const inGraph = (id: string) => NODES.has(id);
+  const brief = (nodeId: string) => communicationEntries(INDEX, nodeId, inGraph).map((e) => {
+    const other = e.other.kind === 'node' ? `node ${e.other.nodeId}` : e.other.kind === 'external' ? `external ${e.other.id}` : e.other.kind === 'not-in-graph' ? `not-in-graph ${e.other.site.file}` : `missing ${e.other.text}`;
+    return `${e.key} ${e.row.bucket} ${e.row.kind} ${e.otherUnit} ${e.endNodeId} | ${other}`;
+  });
+
+  it('lists a file\'s relations through its functions, linked first, with the other end', () => {
+    expect(brief('file:api/r.js')).toEqual([
+      'rel:4:caller linked external external:mail function:api/r.js:post | external external:mail',
+      'rel:1:receiver linked http unit:web function:api/r.js:get | node function:web/a.js:load',
+      'rel:2:receiver linked http unit:web function:api/r.js:get | node function:web/a.js:load',
+      'rel:3:receiver linked http unit:web function:api/r.js:post | node function:web/b.js:save',
+      'rel:10:caller address-unresolved external null function:api/r.js:post | missing No receiving site (address-unresolved).',
+      'rel:8:receiver receiver-only http null function:api/r.js:get | missing No caller site: no caller on another unit reaches this address.',
+    ]);
+  });
+
+  it('names an other end whose node is not in the graph by its site', () => {
+    expect(brief('file:web/b.js')).toEqual([
+      'rel:5:caller linked http unit:api function:web/b.js:save | not-in-graph api/old.js',
+      'rel:3:caller linked http unit:api function:web/b.js:save | node function:api/r.js:post',
+    ]);
+  });
+
+  it('gives each unpaired end the Relations view\'s sentence, and nothing for a node with no relation', () => {
+    expect(brief('function:web/a.js:load').filter((line) => !line.includes(' linked '))).toEqual([
+      'rel:9:caller ambiguous http null function:web/a.js:load | missing No single receiving site: several receivers match this address (ambiguous).',
+      'rel:7:caller caller-only http null function:web/a.js:load | missing No receiving site (caller-only).',
+    ]);
+    expect(communicationEntries(INDEX, 'file:none', inGraph)).toEqual([]);
   });
 });
