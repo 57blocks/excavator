@@ -24,7 +24,9 @@ const PRODUCT = {
     { id: 'rel:7', kind: 'http', bucket: 'quote-failed', role: 'caller', rejection: { reason: 'quote-mismatch', detail: 'not near' }, caller: { file: 'api/gone.js', line: 9, quote: 'call()' } },
     { id: 'rel:9', kind: 'http', bucket: 'quote-failed', role: 'receiver', rejection: { reason: 'file-missing', detail: null }, receiver: { file: 'api/old.js', line: 3, quote: 'get()' } },
     { id: 'rel:10', kind: 'http', bucket: 'address-unresolved', role: 'receiver', unresolved: 'path built at run time', receiver: site('unit:api', 'api/dyn.js', 4) },
-    { id: 'rel:11', kind: 'http', bucket: 'quote-failed', role: 'caller', rejection: { reason: 'malformed', detail: null }, caller: null },
+    { id: 'rel:11', kind: 'http', bucket: 'quote-failed', role: 'caller', rejection: { reason: 'malformed', detail: 'relation has no end' }, caller: null },
+    { id: 'rel:12', kind: 'http', bucket: 'quote-failed', role: 'receiver', rejection: { reason: 'quote-mismatch', detail: null }, receiver: null },
+    { id: 'rel:13', kind: null, bucket: 'quote-failed', role: 'caller', rejection: { reason: 'malformed', detail: 'unknown kind 7' }, caller: { file: 'api/odd.js', line: 2, quote: 'odd()' } },
     { id: 'rel:8', kind: 'http', bucket: 'ambiguous', addressKey: 'GET /x', caller: site('unit:web', 'web/d.js', 1), receiver: null, candidates: [{ unit: 'unit:api', file: 'api/x1.js', line: 2, addressKey: 'GET /x' }] },
   ],
   buckets: {
@@ -40,7 +42,7 @@ const PRODUCT = {
 describe('relationRows', () => {
   it('reads every relation, keeping what it does not have as null, and says each one\'s address in words', () => {
     const rows = relationRows(PRODUCT);
-    expect(rows.map((r) => r.id)).toEqual(['rel:1', 'rel:2', 'rel:3', 'rel:4', 'rel:5', 'rel:6', 'rel:7', 'rel:9', 'rel:10', 'rel:11', 'rel:8']);
+    expect(rows.map((r) => r.id)).toEqual(['rel:1', 'rel:2', 'rel:3', 'rel:4', 'rel:5', 'rel:6', 'rel:7', 'rel:9', 'rel:10', 'rel:11', 'rel:12', 'rel:13', 'rel:8']);
     expect(rows[0]).toMatchObject({ kind: 'http', bucket: 'linked', address: 'GET /orders', reason: 'Loads orders', external: null });
     expect(rows[0].caller).toMatchObject({ unit: 'unit:web', file: 'web/a.js', line: 3 });
     expect(rows[2]).toMatchObject({ external: 'external:mail', receiver: null });
@@ -48,7 +50,8 @@ describe('relationRows', () => {
     expect(rows[6]).toMatchObject({ address: 'rejected: quote-mismatch (not near)', caller: { unit: null, file: 'api/gone.js', line: 9 } });
     expect(rows[6].role).toBe('caller');
     expect(rows[0].role).toBeNull();
-    expect(rows[10].candidates).toEqual([{ unit: 'unit:api', file: 'api/x1.js', line: 2, addressKey: 'GET /x' }]);
+    expect(rows[11]).toMatchObject({ id: 'rel:13', kind: null, caller: { unit: null, file: 'api/odd.js', line: 2 } });
+    expect(rows[12].candidates).toEqual([{ unit: 'unit:api', file: 'api/x1.js', line: 2, addressKey: 'GET /x' }]);
   });
 
   it('reads a product that is not in the expected shape as no rows', () => {
@@ -91,7 +94,7 @@ describe('units', () => {
 
 describe('ends without a unit', () => {
   it('counts by bucket the ends whose sites name no unit, as a quote-failed end keeps the site the analyzer wrote', () => {
-    expect(endsWithoutUnit(relationRows(PRODUCT))).toEqual({ total: 3, byBucket: { 'quote-failed': 3 } });
+    expect(endsWithoutUnit(relationRows(PRODUCT))).toEqual({ total: 5, byBucket: { 'quote-failed': 5 } });
     expect(endsWithoutUnit([])).toEqual({ total: 0, byBucket: {} });
   });
 });
@@ -106,9 +109,11 @@ describe('a missing end', () => {
     expect(missingEndText(row('rel:9'), 'caller')).toBe('No caller site: this receiving site is quote-failed, and the merge pairs only ends that pass the quote check and resolve an address.');
     expect(missingEndText(row('rel:10'), 'caller')).toBe('No caller site: this receiving site is address-unresolved, and the merge pairs only ends that pass the quote check and resolve an address.');
   });
-  it('says an end whose own site could not be read so, once', () => {
-    expect(missingEndText(row('rel:11'), 'caller')).toBe('The caller site the analyzer wrote could not be read (quote-failed).');
+  it('says once, for either role, that a relation has no readable site, without claiming one was written', () => {
+    expect(missingEndText(row('rel:11'), 'caller')).toBe('The analyzer wrote no readable site for this relation (quote-failed).');
     expect(missingEndText(row('rel:11'), 'receiver')).toBeNull();
+    expect(missingEndText(row('rel:12'), 'caller')).toBe('The analyzer wrote no readable site for this relation (quote-failed).');
+    expect(missingEndText(row('rel:12'), 'receiver')).toBeNull();
   });
   it('says a calling end has no receiver in its own bucket, and an ambiguous one has several', () => {
     expect(missingEndText(row('rel:4'), 'receiver')).toBe('No receiving site (caller-only).');

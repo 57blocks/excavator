@@ -167,6 +167,18 @@ describe('relations product', () => {
     expect(pack().product.reason).toMatch(/relations\[0\] has no string bucket/);
   });
 
+  it('keeps a relation the merge wrote without a string kind, as it does for a malformed analyzer relation', () => {
+    writeGraph();
+    const base = relationsGraph({ format: GRAPH_FORMAT, sourceRevision: project.revision, factDigest: DIGEST }).relations;
+    const malformed = [
+      { id: 'rel:7', kind: null, bucket: 'quote-failed', role: 'caller', area: 'area-001', rejection: { reason: 'malformed', detail: 'relation is not an object' }, address: null, caller: null },
+      { id: 'rel:8', kind: 7, bucket: 'quote-failed', role: 'caller', area: 'area-001', rejection: { reason: 'malformed', detail: 'unknown kind 7' }, address: null, caller: { file: 'web/src/orders.js', line: 1, quote: 'x' } },
+    ];
+    writeRelations({ extra: { relations: [...base, ...malformed] } });
+    const packed = pack();
+    expect(packed.product).toMatchObject({ status: 'included', counts: { relations: 8 } });
+  });
+
   it('is unreadable when the file is not JSON', () => {
     writeGraph();
     writeProduct(project.root, 'relations-graph.json', '{ not json');
