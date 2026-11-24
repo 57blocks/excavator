@@ -63,6 +63,16 @@ describe('relations analyzer prompt', () => {
     expect(agent).toMatch(/after three runs, stop/);
   });
 
+  it('asks the analyzer to account for every call line, and never to write an end only to account for one', () => {
+    expect(agent).toContain('## Call lines');
+    expect(agent).toContain('`callLines` is a floor, not the list of relations.');
+    expect(agent).toContain('Never write an end only to account for a line');
+    expect(agent).toContain('"skippedLines"');
+    expect(agent).toContain('`unaccounted <file>:<line> <pattern>: <text>`');
+    expect(skill).toContain('the `unaccounted` call lines');
+    expect(skill).toMatch(/never a relation by itself/);
+  });
+
   it('asks for the service or its host, never a library, as an external name, and explains the notices', () => {
     expect(agent).toContain('never the library that carries the call');
     expect(agent).toContain('your `name` is kept only as a label');

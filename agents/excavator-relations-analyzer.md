@@ -17,7 +17,7 @@ The dispatching skill gives you three things: the project root, the path of your
 - `check` — a command that checks your output the way the merge script will (see "Check before you finish");
 - `unit` — the runtime unit your files belong to (`id`, `name`, `root`, `kind`);
 - `units` — every unit of the project: `id`, `name`, `root`, `kind`, its languages, and up to 20 address lines of its configuration (URLs, hosts, ports, topics);
-- `files` — your files. Each has `lines`, `reasons` (why it was chosen), `hits` (lines that matched a signal: a client import, a route registration, a call with a path, a message or socket library; these are hints, not findings), and, when a knowledge graph exists, `graphNodes` (`[id, startLine, endLine]` of its functions and classes) and `entryPoints` (HTTP routes the graph found in that file, with `line`, `method` and the full `path`);
+- `files` — your files. Each has `lines`, `reasons` (why it was chosen), `callLines` (every line where a fixed pattern found a call or a registration written: a request with a path argument, even when the argument starts on the next line or the method takes type arguments, a request object with a `url`, a route, a subscription, an emitted event; `line` is where the call starts and `to`, when present, the last line of the match; see "Call lines"), `hits` (other lines that matched a signal: a client import, a library, a client type; these are hints, not findings), and, when a knowledge graph exists, `graphNodes` (`[id, startLine, endLine]` of its functions and classes) and `entryPoints` (HTTP routes the graph found in that file, with `line`, `method` and the full `path`);
 - `unitConfig` — address lines of your unit's configuration files (`file`, `line`, `text`);
 - `projectConfig` — address lines of the project's shared and deployment configuration;
 - `kinds` — the kinds you record (`inScope`) and the kinds you only note (`outOfScope`).
@@ -39,6 +39,16 @@ Kinds:
 **Do not record:** calls between functions of one program (imports, method calls, in-process event emitters, dependency injection), database queries, cache reads and writes, file reads and writes, authentication checks, cron schedules, deployment wiring. When you notice one that crosses programs — two units using the same database table, cache key or file, one unit trusting another's tokens, a schedule that triggers another unit, a deployment file that wires units together — add a note to `outOfScope`: `{"kind": "shared-database", "file": "...", "line": 12, "note": "one English sentence"}`, with `kind` one of `kinds.outOfScope`.
 
 **One relation per site.** Two calls to the same address from two places are two relations. A route registered once is one receiver, however many callers it has. A helper that wraps a client (a function `getUser(id)` that calls `api.get(...)`) is one caller at the line inside the helper that issues the request; its callers are not.
+
+## Call lines
+
+`callLines` is a floor, not the list of relations. Account for **every** call line of your files, one of three ways:
+
+- write the end that is there (its `line` may be any line from the call line's `line` to its `to`);
+- cite it as an `evidence` line of an end (a route group, a base URL, a prefix);
+- or list it in `skippedLines` with a one-sentence reason: what the line is, when it is no relation (a lookup in a map, a query builder, a log call, a call inside a test helper, a call that stays in the process).
+
+Never write an end only to account for a line: an end is a call or a registration you read, with its address, and it is checked like any other. Never skip a line that sends a request, a message or an event because the address is hard to read: write it as `unresolved`. The patterns do not see every call (a call through a variable with no path in sight, an SDK method, a generated client): read every file in full and write those ends too; they need no call line. The `check` command lists every call line you have not accounted for.
 
 ## The address
 
@@ -81,11 +91,12 @@ Write one JSON object, and only this, to `output`:
     { "kind": "http", "address": { "method": "POST", "path": "/api/orders" }, "caller": { "file": "...", "line": 6, "quote": "..." }, "receiver": null, "confidence": "high", "reason": "..." }
   ],
   "outOfScope": [],
-  "skippedFiles": [ { "file": "web/src/api/types.ts", "reason": "only declares request and response types" } ]
+  "skippedFiles": [ { "file": "web/src/api/types.ts", "reason": "only declares request and response types" } ],
+  "skippedLines": [ { "file": "web/src/api/cache.ts", "line": 12, "reason": "reads a key from an in-memory map, not a request" } ]
 }
 ```
 
-Every file in `files` either has an end or an evidence line citing it, or is listed in `skippedFiles` with a one-sentence reason (for example: the client wrapper's calls carry no address of their own; it only defines a socket connection; the matched line is a comment). A file you leave out of both is reported as silently skipped.
+Every file in `files` either has an end or an evidence line citing it, or is listed in `skippedFiles` with a one-sentence reason (for example: the client wrapper's calls carry no address of their own; it only defines a socket connection; the matched line is a comment). A file you leave out of both is reported as silently skipped. Skip a whole file only when none of its call lines is a site: its call lines are then counted as skipped with the file, not one by one.
 
 ## Check before you finish
 
@@ -96,15 +107,17 @@ After writing `output`, run the `check` command exactly as given. It prints `che
 - `evidence-mismatch` — the evidence quote is not on its line: copy it again or correct the line.
 - `outside-area`, `outside-root` — the end is not in your files: remove it.
 
+Its header also gives `call-lines=C unaccounted=U`, followed by one `unaccounted <file>:<line> <pattern>: <text>` line for each call line with no end, no evidence line and no `skippedLines` entry. Open each one: write the end that is there, or skip it with its reason. The check passes only when nothing is rejected and nothing is unaccounted.
+
 It also prints a `notice` line for an accepted `external` end whose system the script cannot identify from what you wrote. A notice does not fail the check:
 
 - `transport-name` — the name is a library or protocol and there is no host: the merge will count the end as address-unresolved. Cite the line that holds the host (the transport's `host` option, the base URL, the configuration value) or the service (the vendor SDK's import), or leave it as it is.
 - `host-not-quoted` — no cited line holds the `host`: cite the line that does, or remove the host.
 
-Never drop a word from an address, never change a path to something the code does not say, and never cite a line you did not read, to make the check pass. Run the check again after fixing; after three runs, stop and leave what is still rejected: the merge reports it.
+Never drop a word from an address, never change a path to something the code does not say, never cite a line you did not read, and never skip a call line you did not read, to make the check pass. Run the check again after fixing; after three runs, stop and leave what is still rejected: the merge reports it.
 
 Rules:
 
-- Write every model-owned field (`reason`, `note`, the reasons in `skippedFiles` and `unresolved`) in English. Paths, quotes and addresses stay exactly as in the code.
+- Write every model-owned field (`reason`, `note`, the reasons in `skippedFiles`, `skippedLines` and `unresolved`) in English. Paths, quotes and addresses stay exactly as in the code.
 - Write only `output`. Do not edit any other file, and never copy, read or reuse another area's output or an earlier run's output: the script rejects an output without this run's token.
 - Do not stop early because the area is large. When you are unsure whether a site is a relation, record it with `low` confidence and say why; the script and the report make the doubt visible.
