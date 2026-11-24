@@ -116,7 +116,11 @@ describe('merge-relations end to end', () => {
       caller: { linked: 4, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 2, 'quote-failed': 7 },
       receiver: { linked: 4, 'receiver-only': 3, 'address-unresolved': 0, 'quote-failed': 0 },
     });
-    expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true });
+    expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true, callLines: 14, callLinesInBuckets: 14 });
+    // Call lines: every one has a bucket; the planted quote-mismatch is the only end on admin.js:2, and the skipped widget is file-skipped.
+    expect(coverage.callLines.buckets).toEqual({ ended: 12, evidence: 0, 'ends-rejected': 1, 'declared-skip': 0, 'file-skipped': 1, unaccounted: 0, 'area-missing': 0 });
+    expect(coverage.callLines.rows.find((r) => r.file === 'web/src/admin.js')).toMatchObject({ line: 2, status: 'ends-rejected' });
+    expect(result.stdout).toMatch(/^call lines total=14 ended=12 evidence=0 ends-rejected=1 declared-skip=0 file-skipped=1 unaccounted=0 area-missing=0$/m);
     expect(coverage.outOfScope).toEqual({ 'shared-database': 1, 'auth-trust': 1 });
     expect(graph.status).toBe('complete');
     expect(graph.factDigest).toBe('facts-1');
@@ -159,7 +163,7 @@ describe('merge-relations end to end', () => {
     expect(coverage.measurements.http).toMatchObject({ ends: 17, quoteFailed: 7, escalation: { candidate: true, reasons: ['quote-failure'] } });
     expect(coverage.escalationCandidates).toEqual([{ kind: 'http', reasons: ['quote-failure'] }]);
     expect(coverage.measurements.message.agreement.status).toBe('no-previous-run');
-    expect(result.stdout).toMatch(/^conservation ok ends=23 duplicates=1$/m);
+    expect(result.stdout).toMatch(/^conservation ok ends=23 duplicates=1 call-lines=14$/m);
   });
 
   it('compares a second run on the same input with the first', () => {

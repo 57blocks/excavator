@@ -1,7 +1,10 @@
 /**
  * Call lines: the lines of a candidate file where a call or a registration is
- * written, listed by fixed shapes (relations-signals.mjs scanSource) and given
- * to the analyzer in full.
+ * written, listed by fixed shapes (relations-signals.mjs scanSource). The
+ * analyzer accounts for each one (an end, an evidence line, or a skip with a
+ * reason) and an output that leaves some out is caught by the self-check and
+ * counted by the merge, so a run that writes only the calls it found with a
+ * one-line search cannot pass silently.
  *
  * The fixture is a large API file whose calls take four shapes: a path
  * argument on the call's line, a path argument on the next line, a method with
@@ -10,9 +13,11 @@
  * query parameter read).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { scanSource } from '../../skills/excavator-relations/relations-signals.mjs';
+import { CALL_LINE_BUCKETS, accountCallLines } from '../../skills/excavator-relations/merge-relations.mjs';
 import { MAX_HITS_PER_FILE } from '../../skills/excavator-relations/split-relation-areas.mjs';
 import { makeProject, removeProject, run } from './fixture.mjs';
 
@@ -66,6 +71,17 @@ const FILES = {
   [API_FILE]: big.text,
 };
 
+const httpCall = (call, extra = {}) => ({
+  kind: 'http', address: { method: call.method, path: call.path }, receiver: null,
+  caller: { file: API_FILE, line: call.line, quote: call.quote, ...extra },
+});
+/** An end whose path is read on the call's lines: the next line, the url key or the base constant. */
+const endOf = (call) => {
+  if (call.shape === 'one-line') return httpCall(call);
+  return httpCall(call, { evidence: [{ file: API_FILE, line: 2, quote: "const base = '/api/v2';" }] });
+};
+const oneLine = big.calls.filter((c) => c.shape === 'one-line');
+const others = big.calls.filter((c) => c.shape !== 'one-line');
 
 describe('scanSource call lines', () => {
   it('lists every call of the large file at the line it starts, and none of the look-alikes', () => {
@@ -100,11 +116,25 @@ describe('scanSource call lines', () => {
   });
 });
 
-describe('call lines through the split', () => {
+describe('call lines through split, self-check and merge', () => {
   let root;
   let manifest;
   let area;
   const areasDir = () => join(root, '.excavator', 'intermediate', 'relations-areas');
+  const write = (output) => writeFileSync(area.outputFile, JSON.stringify({ areaRun: { areaId: area.areaId, token: manifest.token }, ...output }));
+  const check = () => {
+    const context = JSON.parse(readFileSync(area.contextFile, 'utf-8'));
+    const result = spawnSync('/bin/sh', ['-c', context.check], { encoding: 'utf-8' });
+    return { status: result.status, lines: result.stdout.trim().split('\n') };
+  };
+  const merge = () => {
+    const result = run('merge-relations.mjs', [root]);
+    return {
+      ...result,
+      graph: JSON.parse(readFileSync(join(root, '.excavator', 'relations-graph.json'), 'utf-8')),
+      coverage: JSON.parse(readFileSync(join(root, '.excavator', 'reports', 'relations-coverage.json'), 'utf-8')),
+    };
+  };
 
   beforeEach(() => {
     root = makeProject(FILES);
@@ -125,5 +155,84 @@ describe('call lines through the split', () => {
     expect(file.hits.every((h) => !['path-call', 'url-config-call'].includes(h.signal))).toBe(true);
     const candidate = manifest.candidates.find((c) => c.file === API_FILE);
     expect(candidate.callLines.map(([line, to]) => [line, to])).toEqual(big.calls.map((c) => [c.line, c.to]));
+  });
+
+  it('catches an output that writes only the one-line calls: the self-check lists each omitted call and fails', () => {
+    write({ relations: oneLine.map(endOf), skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }] });
+    const { status, lines } = check();
+    expect(status).toBe(1);
+    expect(lines[0]).toBe(`check ${area.areaId}: ends=${oneLine.length} accepted=${oneLine.length} rejected=0 call-lines=${CALLS} unaccounted=${others.length}`);
+    expect(lines.slice(1).map((l) => l.split(' ').slice(0, 2).join(' '))).toEqual(others.map((c) => `unaccounted ${API_FILE}:${c.line}`));
+  });
+
+  it('counts the omitted calls in the merge, lists them, and keeps the count conserved', () => {
+    write({ relations: oneLine.map(endOf), skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }] });
+    const { status, stdout, graph, coverage } = merge();
+    expect(status).toBe(0);
+    expect(stdout).toMatch(new RegExp(`^call lines total=${CALLS} ended=${oneLine.length} evidence=0 ends-rejected=0 declared-skip=0 file-skipped=0 unaccounted=${others.length} area-missing=0$`, 'm'));
+    expect(stdout).toContain(`unaccounted ${API_FILE}:${others[0].line} path-call`);
+    expect(stdout).toMatch(/^unaccounted \.\.\. \d+ more in the coverage report$/m);
+    expect(stdout).toMatch(new RegExp(`^conservation ok ends=${oneLine.length} duplicates=0 call-lines=${CALLS}$`, 'm'));
+    expect(graph.callLines.unaccounted.map((r) => r.line)).toEqual(others.map((c) => c.line));
+    expect(coverage.callLines.rows).toHaveLength(CALLS);
+    expect(coverage.conservation).toMatchObject({ ok: true, callLines: CALLS, callLinesInBuckets: CALLS });
+    // The call lines are never relations: only the ends the analyzer wrote are.
+    expect(graph.relations).toHaveLength(oneLine.length);
+  });
+
+  it('accepts every call as an end, a skip with a reason, or an end at the path line, and then passes', () => {
+    const [skipped, ...rest] = others;
+    const atPathLine = rest.find((c) => c.shape === 'next-line');
+    const ends = [...oneLine, ...rest.filter((c) => c !== atPathLine)].map(endOf);
+    // An end cited where the path argument is, one line below the call, is on the call line.
+    ends.push(httpCall({ ...atPathLine, line: atPathLine.line + 1, quote: `\`\${base}/reports/` }, { evidence: [{ file: API_FILE, line: atPathLine.line, quote: 'return apiClient.post(' }] }));
+    write({
+      relations: ends,
+      skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }],
+      skippedLines: [{ file: API_FILE, line: skipped.line, reason: 'a test stub left in the module, never called' }],
+    });
+    expect(check()).toEqual({ status: 0, lines: [`check ${area.areaId}: ends=${CALLS - 1} accepted=${CALLS - 1} rejected=0 call-lines=${CALLS} unaccounted=0`] });
+    const { stdout, coverage } = merge();
+    expect(stdout).toMatch(new RegExp(`^call lines total=${CALLS} ended=${CALLS - 1} evidence=0 ends-rejected=0 declared-skip=1 file-skipped=0 unaccounted=0 area-missing=0$`, 'm'));
+    expect(coverage.callLines.rows.find((r) => r.line === skipped.line)).toMatchObject({ status: 'declared-skip', reason: 'a test stub left in the module, never called' });
+  });
+
+  it('counts the call lines of a skipped file and of a missing area apart from the unaccounted ones', () => {
+    write({ relations: [], skippedFiles: [{ file: API_FILE, reason: 'generated client, not used' }, { file: 'web/src/http.ts', reason: 'only creates the client' }] });
+    expect(merge().stdout).toMatch(new RegExp(`^call lines total=${CALLS} .* file-skipped=${CALLS} unaccounted=0 area-missing=0$`, 'm'));
+    rmSync(area.outputFile);
+    const missing = run('merge-relations.mjs', [root]);
+    expect(missing.status).toBe(3);
+    expect(missing.stdout).toMatch(new RegExp(`^call lines total=${CALLS} .* unaccounted=0 area-missing=${CALLS}$`, 'm'));
+  });
+});
+
+describe('accountCallLines', () => {
+  const calls = [{ file: 'a.ts', line: 10, to: 12, signal: 'path-call' }, { file: 'a.ts', line: 20, to: 20, signal: 'path-call' }];
+
+  it('takes any line from where the call starts to where its match ends, and no other', () => {
+    expect(accountCallLines({ callLines: calls, ended: new Map([['a.ts', [12, 21]]]) }).rows.map((r) => r.status)).toEqual(['ended', 'unaccounted']);
+    expect(accountCallLines({ callLines: calls, ended: new Map([['a.ts', [9, 13, 19]]]) }).rows.map((r) => r.status)).toEqual(['unaccounted', 'unaccounted']);
+    expect(accountCallLines({ callLines: calls, ended: new Map([['b.ts', [10, 20]]]) }).buckets.unaccounted).toBe(2);
+  });
+
+  it('gives each call line exactly one bucket, in a fixed order, and conserves the count', () => {
+    const all = new Map([['a.ts', [10, 20]]]);
+    const skip = new Map([['a.ts', [{ line: 10, reason: 'r' }, { line: 20, reason: 'r' }]]]);
+    const cases = [
+      [{ missingFiles: new Set(['a.ts']), ended: all }, 'area-missing'],
+      [{ ended: all, evidence: all, rejected: all }, 'ended'],
+      [{ evidence: all, rejected: all, skippedLines: skip }, 'evidence'],
+      [{ rejected: all, skippedLines: skip }, 'ends-rejected'],
+      [{ skippedLines: skip, skippedFiles: new Set(['a.ts']) }, 'declared-skip'],
+      [{ skippedFiles: new Set(['a.ts']) }, 'file-skipped'],
+      [{}, 'unaccounted'],
+    ];
+    for (const [given, bucket] of cases) {
+      const result = accountCallLines({ callLines: calls, ...given });
+      expect(result.rows.map((r) => r.status)).toEqual([bucket, bucket]);
+      expect(result).toMatchObject({ total: 2, ok: true });
+      expect(Object.keys(result.buckets)).toEqual([...CALL_LINE_BUCKETS]);
+    }
   });
 });
