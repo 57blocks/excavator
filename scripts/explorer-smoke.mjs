@@ -192,7 +192,8 @@ export function fixtureData() {
     residualAssumptions: ['A document may describe a function the code names differently.'],
   };
   const docMapChecks = { checks: [{ unit: 1, file: 'src/main.js', line: 4, verdict: 'does', reason: 'It calls the helper once.' }] };
-  // The relations product: two units, a linked HTTP call, a call to an external system, a caller and a receiver alone.
+  // The relations product: two units, a linked HTTP call, a call to an external system, a caller and a receiver alone,
+  // and a linked call whose caller's node the knowledge graph does not have (drawn on no graph, counted).
   const relSite = (unit, file, line, quote, nodeId = null, evidence = []) => ({ unit, family: 'js', file, line, quote, nodeId, nodeIdBy: nodeId === null ? 'none' : 'line', evidence });
   const relations = {
     format: 'excavator-relations/1',
@@ -206,15 +207,18 @@ export function fixtureData() {
         caller: relSite('unit:web', 'src/main.js', 4, 'return helper(1);', 'function:src/main.js:main', [{ file: 'src/main.js', line: 1, quote: 'import { helper } from "./util.js";' }]),
         receiver: { ...relSite('unit:api', 'src/util.js', 1, 'export function helper(n) {', 'function:src/util.js:helper'), addressKey: 'GET /helper' } },
       { id: 'rel:2', kind: 'external', bucket: 'linked', area: 'area-002', reason: 'Sends the mail', confidence: 'high', address: { name: 'mail' }, addressKey: 'external:mail',
-        caller: relSite('unit:api', 'src/util.js', 2, 'return n + 1;'), receiver: { external: 'external:mail' } },
+        caller: relSite('unit:api', 'src/util.js', 2, 'return n + 1;', 'function:src/util.js:helper'), receiver: { external: 'external:mail' } },
       { id: 'rel:3', kind: 'http', bucket: 'caller-only', area: 'area-001', reason: 'Posts a refund', confidence: 'medium', address: { method: 'POST', path: '/refund' }, addressKey: 'POST /refund',
         caller: relSite('unit:web', 'src/gone.js', 3, 'post("/refund")'), receiver: null },
       { id: 'rel:4', kind: 'http', bucket: 'receiver-only', area: 'area-002', reason: 'Health check', confidence: 'high', address: { method: 'GET', path: '/health' }, addressKey: 'GET /health',
-        caller: null, receiver: { ...relSite('unit:api', 'src/util.js', 1, 'export function helper(n) {'), addressKey: 'GET /health' } },
+        caller: null, receiver: { ...relSite('unit:api', 'src/util.js', 1, 'export function helper(n) {', 'function:src/util.js:helper'), addressKey: 'GET /health' } },
       { id: 'rel:5', kind: 'http', bucket: 'quote-failed', area: 'area-002', reason: 'Lists the jobs', confidence: 'low', role: 'receiver', address: null,
         rejection: { reason: 'quote-mismatch', detail: 'not within 3 lines' }, receiver: { file: 'src/util.js', line: 2, quote: 'listJobs()' } },
+      { id: 'rel:6', kind: 'http', bucket: 'linked', area: 'area-001', reason: 'Asks for the helper again', confidence: 'high', address: { method: 'GET', path: '/helper' }, addressKey: 'GET /helper',
+        caller: relSite('unit:web', 'src/main.js', 3, 'export function main() {', 'function:src/main.js:gone'),
+        receiver: { ...relSite('unit:api', 'src/util.js', 1, 'export function helper(n) {', 'function:src/util.js:helper'), addressKey: 'GET /helper' } },
     ],
-    buckets: { caller: { linked: 2, 'caller-only': 1 }, receiver: { linked: 1, 'receiver-only': 1, 'quote-failed': 1 } },
+    buckets: { caller: { linked: 3, 'caller-only': 1 }, receiver: { linked: 2, 'receiver-only': 1, 'quote-failed': 1 } },
     outOfScope: {},
     measurements: {
       http: { ends: 4, quoteFailed: 1, quoteFailureRate: 0.25, verified: 3, unresolved: 0, unresolvedShare: 0, linked: 1, agreement: { status: 'no-previous-run', jaccard: null }, escalation: { candidate: true, reasons: ['quote-failure'] } },
@@ -228,7 +232,7 @@ export function fixtureData() {
     buckets: relations.buckets,
     rejections: {},
     outOfScope: {},
-    conservation: { ok: true, endsIn: 6, inBuckets: 6, duplicates: 0 },
+    conservation: { ok: true, endsIn: 8, inBuckets: 8, duplicates: 0 },
     files: { buckets: { cited: 2, 'silent-zero': 1 }, configFiles: 0, configCited: 0, split: {}, rows: [{ file: 'src/main.js', unit: 'unit:web', status: 'cited' }, { file: 'src/util.js', unit: 'unit:api', status: 'cited' }, { file: 'src/gone.js', unit: 'unit:web', status: 'silent-zero' }] },
     units: [{ id: 'unit:web', candidateFiles: 2 }, { id: 'unit:api', candidateFiles: 1 }],
     anchors: {},
@@ -295,6 +299,13 @@ export function withoutNode(data, id) {
   };
 }
 
+/** The fixture with one relation's receiving end recorded at another node: helper's node panel loses an entry. */
+export function withMovedRelationEnd(data) {
+  const product = data['relations-graph.json'];
+  const moved = (r) => (r.id === 'rel:4' ? { ...r, receiver: { ...r.receiver, nodeId: 'function:src/main.js:main' } } : r);
+  return { ...data, 'relations-graph.json': { ...product, relations: product.relations.map(moved) } };
+}
+
 /** The fixture with its products not run or unreadable: no product file, and a state each. */
 export function withUnavailableProducts(data) {
   const rest = { ...data };
@@ -350,6 +361,7 @@ export function assemble(template, data, fault = null) {
   else if (fault === 'node-missing') payload = withoutNode(data, 'function:src/util.js:leaf');
   else if (fault === 'no-sources') payload = { ...data, sources: undefined };
   else if (fault === 'no-domain') payload = { ...data, 'domain-graph.json': undefined };
+  else if (fault === 'relations-end-moved') payload = withMovedRelationEnd(data);
   else if (fault === 'relations-row-missing') payload = { ...data, 'relations-graph.json': { ...data['relations-graph.json'], relations: data['relations-graph.json'].relations.slice(1) } };
 
   // The pages that have the data must really be cut: a smoke over single-part files would not run the part reader's joins.
@@ -457,7 +469,11 @@ const PROBE = `(async () => {
     out.leafRemoved = leafText.includes('The summary was removed: the source contradicts it.') && /Contradicted/.test(leafText);
     out.helperVerified = /Verified/.test(await panel('function:src/util.js:helper'));
     const utilText = await panel('file:src/util.js');
-    out.evidence = (utilText.match(/src[/](main|util)[.]js:[0-9]+/g) || []).sort();
+    // The connections' evidence, without the sites of the Communication section (the graph-relations probe checks those).
+    const communication = document.querySelector('[data-excavator-communication]')?.innerText ?? '';
+    const sites = (text) => (text.match(/src[/](main|util)[.]js:[0-9]+/g) || []);
+    const less = sites(communication);
+    out.evidence = sites(utilText).filter((site) => { const i = less.indexOf(site); if (i < 0) return true; less.splice(i, 1); return false; }).sort();
     // util.js is the source of the mentions edge: its label is the locale's forward one.
     out.mentions = /(^|[\\n])mentions([\\n]|$)/.test(utilText);
     // Product views (explorer-products): with util.js selected, Unused covers the graph area, leaves the graph mounted and is a column no wider than 1100px.
@@ -761,6 +777,89 @@ const PROBE_RELATIONS = `(async () => {
   return out;
 })()`;
 
+/**
+ * The relations product on the structural graph and in the node panel: the overview's edges, stand-ins and counts, the
+ * Off toggle, a layer with a node selected, the node's Communication entries and what each opens. The same steps run on
+ * the page whose products were not run, where nothing is drawn and the control says why.
+ */
+const PROBE_GRAPH_RELATIONS = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let broken = false;
+  const until = async (test, tries = 40) => { for (let i = 0; i < (broken ? 1 : tries); i++) { if (test()) return true; await sleep(50); } broken = true; return false; };
+  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  const cards = () => [...document.querySelectorAll('.react-flow__node')];
+  const card = (id) => document.querySelector('.react-flow__node[data-id="' + id + '"]');
+  const edges = () => [...document.querySelectorAll('.react-flow__edge')].map((e) => e.getAttribute('data-id')).filter((id) => id && id.startsWith('relation|')).sort();
+  const labels = () => [...document.querySelectorAll('.react-flow__edge')].filter((e) => (e.getAttribute('data-id') || '').startsWith('relation|')).map((e) => e.getAttribute('data-id') + '=' + (e.querySelector('.react-flow__edge-textwrapper, text')?.textContent ?? '')).sort();
+  const standIns = () => [...document.querySelectorAll('[data-excavator-relation-node]')].map((n) => n.getAttribute('data-excavator-relation-node')).sort();
+  const status = () => document.querySelector('[data-excavator-relations-status]')?.textContent ?? null;
+  const panel = () => document.querySelector('[data-excavator-relations-panel]')?.getAttribute('data-excavator-relations-panel') ?? null;
+  const mode = (m) => document.querySelector('[data-excavator-relations-mode="' + m + '"]');
+  const section = () => document.querySelector('[data-excavator-communication]');
+  const entry = (key) => document.querySelector('[data-excavator-communication-entry="' + key + '"]');
+  const started = Date.now();
+  const out = {};
+  await until(() => cards().length > 0);
+  const structural = document.querySelector('header button[title="Structural"]');
+  if (structural && !/bg-accent[/]20/.test(structural.className)) press(structural);
+  await until(() => card('layer:lib') && panel() !== null && panel() !== 'loading');
+  await sleep(300);
+  out.overview = { panel: panel(), edges: edges(), labels: labels(), standIns: standIns(), status: status(), kinds: [...document.querySelectorAll('[data-excavator-relations-kind]')].map((k) => k.getAttribute('data-excavator-relations-kind')), disabled: Boolean(mode('off')?.disabled) };
+  if (!mode('off')?.disabled) {
+    press(mode('off'));
+    await sleep(250);
+    out.off = { edges: edges(), standIns: standIns(), status: status() };
+    press(mode('selected'));
+    await sleep(250);
+  }
+  // Into the Library layer, its folder box opened, then util.js selected (the Overview persona draws files, not functions).
+  card('layer:lib')?.click();
+  await until(() => document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
+  press(document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
+  await until(() => card('file:src/util.js'));
+  await sleep(300);
+  out.layerNone = { edges: edges(), status: status() };
+  press(card('file:src/util.js')?.firstElementChild);
+  await sleep(500);
+  out.layer = { edges: edges(), labels: labels(), standIns: standIns(), status: status() };
+  const s = section();
+  out.panel = s === null ? null : {
+    node: s.getAttribute('data-excavator-communication'),
+    heading: s.querySelector('h3')?.textContent ?? null,
+    entries: [...s.querySelectorAll('[data-excavator-communication-entry]')].map((e) => {
+      const other = e.querySelector('[data-excavator-communication-other]');
+      return [e.getAttribute('data-excavator-communication-entry'), e.querySelector('[data-excavator-communication-bucket]')?.getAttribute('data-excavator-communication-bucket'), other === null ? '-' : other.getAttribute('data-excavator-communication-other') || 'not-in-graph'].join(' ');
+    }),
+    text: s.innerText,
+  };
+  if (s !== null) {
+    // This end's site opens the file at its line.
+    press(entry('rel:1:receiver')?.querySelector('[data-excavator-site="src/util.js:1"] button'));
+    await until(() => document.querySelector('[data-excavator-line-marked]'), 20);
+    out.marked = [...document.querySelectorAll('[data-excavator-line-marked]')].map((e) => e.innerText).join('|');
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await sleep(250);
+    // The entry opens its relation in the Relations view's site table.
+    press(entry('rel:6:receiver')?.querySelector('[data-excavator-communication-open]'));
+    await until(() => document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="sites"][aria-pressed="true"]') && document.querySelector('aside [data-excavator-row-detail]'), 30);
+    out.opened = {
+      tab: document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="sites"]')?.getAttribute('aria-pressed') ?? null,
+      row: document.querySelector('[data-excavator-table="sites"] tr[aria-selected="true"], [data-excavator-table="sites"] tr[data-selected="true"]')?.getAttribute('data-excavator-row') ?? null,
+      detail: document.querySelector('aside [data-excavator-row-detail]')?.innerText ?? null,
+    };
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await until(() => !document.querySelector('[data-excavator-product-view]'), 20);
+    await sleep(200);
+    // The other end's node button moves to that node, in its layer.
+    press(entry('rel:1:receiver')?.querySelector('[data-excavator-communication-other] button'));
+    await until(() => section()?.getAttribute('data-excavator-communication') === 'file:src/main.js', 30);
+    await sleep(200);
+    out.moved = { node: section()?.getAttribute('data-excavator-communication') ?? null, entries: [...document.querySelectorAll('[data-excavator-communication-entry]')].map((e) => e.getAttribute('data-excavator-communication-entry')), edges: edges() };
+  }
+  out.elapsedMs = Date.now() - started;
+  return out;
+})()`;
+
 function runChrome(html, { screenshot = null, width = 1440, height = 900, probe = PROBE } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'explorer-smoke-'));
   try {
@@ -925,6 +1024,52 @@ export function judgeRelations(result) {
   ];
 }
 
+/**
+ * The relations product on the graph against the unchanged fixture. rel:1 (main calls helper over http) and rel:2
+ * (helper calls the mail system) are drawable; rel:6 is linked but its caller's node is not in the graph; rel:3, rel:4
+ * and rel:5 are not linked. helper, in util.js, is the caller or receiving end of rel:1, rel:2, rel:4 and rel:6; the
+ * layer view of the Overview persona draws files, so util.js holds them.
+ */
+export function judgeGraphRelations(result) {
+  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
+  const [network, consoleCheck] = judge({ ...result, evalResult: null });
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const counts = '1 linked with an end not in the graph · 3 not linked';
+  const utilEdges = ['relation|external|file:src/util.js|relations:external:mail', 'relation|http|relations:layer:layer:app|file:src/util.js'];
+  return [
+    network,
+    consoleCheck,
+    verdict('graph relations', [
+      ['the overview draws one edge per layer pair and kind, labelled by kind', same(probe.overview?.labels, ['relation|external|layer:lib|relations:external:mail=external', 'relation|http|layer:app|layer:lib=http'])],
+      ['the external system is one node; the legend lists the kinds drawn', same(probe.overview?.standIns, ['relations:external:mail']) && same(probe.overview?.kinds, ['external', 'http'])],
+      ['the control says Selected node and counts what is drawn and what is not', probe.overview?.panel === 'selected' && probe.overview?.status === `2 drawn · ${counts}`],
+      ['Off draws no relation edge and no stand-in', same(probe.off?.edges, []) && same(probe.off?.standIns, []) && probe.off?.status === `None drawn · ${counts}`],
+      ['a layer draws nothing until a node is selected', same(probe.layerNone?.edges, []) && probe.layerNone?.status === `Select a node to draw its relations · ${counts}`],
+      ['the selected node draws its relations, the other layer as one node', same(probe.layer?.edges, utilEdges) && same(probe.layer?.standIns, ['relations:external:mail', 'relations:layer:layer:app']) && probe.layer?.status === `2 drawn · ${counts}`],
+      ['the node panel lists every relation of the node with its bucket and other end', probe.panel?.node === 'file:src/util.js' && probe.panel?.heading === 'Communication (4)' && same(probe.panel?.entries, [
+        'rel:2:caller linked -', 'rel:1:receiver linked function:src/main.js:main', 'rel:6:receiver linked not-in-graph', 'rel:4:receiver receiver-only -',
+      ])],
+      ['an entry names the address, the external system, the other end and the missing end', has(probe.panel?.text, 'GET /helper') && has(probe.panel?.text, 'mail') && has(probe.panel?.text, 'node not in the graph') && has(probe.panel?.text, 'src/main.js:3') && has(probe.panel?.text, 'No caller site') && has(probe.panel?.text, 'in helper')],
+      ['this end opens its code at its line', has(probe.marked, 'export function helper(n) {')],
+      ['an entry opens its relation in the Relations view', probe.opened?.tab === 'true' && has(probe.opened?.detail, 'Asks for the helper again')],
+      ['the other end moves the graph to its node and lists its relations', probe.moved?.node === 'file:src/main.js' && same(probe.moved?.entries, ['rel:1:caller']) && same(probe.moved?.edges, ['relation|http|file:src/main.js|relations:layer:layer:lib'])],
+      ['the probe ends in time', typeof probe.elapsedMs === 'number' && probe.elapsedMs < 12000],
+    ]),
+  ];
+}
+
+/** The page whose relations product was not run: no relation edge, no Communication section, and the control says why. */
+export function judgeGraphRelationsUnavailable(result) {
+  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
+  return [
+    verdict('graph relations unavailable', [
+      ['nothing is drawn and the toggle is off', probe.overview?.panel === 'unavailable' && probe.overview?.disabled === true && probe.overview?.edges?.length === 0 && probe.overview?.standIns?.length === 0],
+      ['the control says the product was not run and why', has(probe.overview?.status, 'Not drawn: the relations product is not run.') && has(probe.overview?.status, 'relations-graph.json was not found')],
+      ['a selected node has no Communication section and no relation edge', probe.panel === null && probe.layer?.edges?.length === 0],
+    ]),
+  ];
+}
+
 /** The assertions for the page whose products were not run or are unreadable: each view says its state and shows no data. */
 export function judgeStates(result) {
   const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { views: {} };
@@ -993,6 +1138,8 @@ function main(argv) {
   const clean = runChrome(assemble(template, data), { screenshot: shot });
   let ok = report('clean', judge(clean));
   ok = report('relations', judgeRelations(runChrome(assemble(template, data), { probe: PROBE_RELATIONS }))) && ok;
+  ok = report('graph-relations', judgeGraphRelations(runChrome(assemble(template, data), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
+  ok = report('graph-relations-not-run', judgeGraphRelationsUnavailable(runChrome(assemble(template, withUnavailableProducts(data)), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
   ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data))))) && ok;
   ok = report('unavailable-products', judgeStates(runChrome(assemble(template, withUnavailableProducts(data)), { probe: PROBE_STATES }))) && ok;
   for (const width of [768, 375]) {
@@ -1017,6 +1164,19 @@ function main(argv) {
       const target = judgeRelations(runChrome(assemble(template, data, 'relations-row-missing'), { probe: PROBE_RELATIONS })).find((check) => check.name === 'relations view');
       process.stdout.write(`${target.ok ? 'FAIL' : 'ok  '} planted relations-row-missing: relations view is ${target.ok ? 'green (not caught)' : 'red'} (${target.detail.slice(0, 120)})\n`);
       ok = ok && !target.ok;
+    }
+    // The graph's relations: a relation left out removes its edge, an end recorded at another node removes a panel
+    // entry, and the not-run assertions are red on the page whose product is included.
+    {
+      const graphRed = (fault) => !judgeGraphRelations(runChrome(assemble(template, data, fault), { probe: PROBE_GRAPH_RELATIONS })).find((check) => check.name === 'graph relations').ok;
+      for (const fault of ['relations-row-missing', 'relations-end-moved']) {
+        const seen = graphRed(fault);
+        process.stdout.write(`${seen ? 'ok  ' : 'FAIL'} planted ${fault}: graph relations is ${seen ? 'red' : 'green (not caught)'}\n`);
+        ok = ok && seen;
+      }
+      const included = judgeGraphRelationsUnavailable(runChrome(assemble(template, data), { probe: PROBE_GRAPH_RELATIONS }))[0];
+      process.stdout.write(`${included.ok ? 'FAIL' : 'ok  '} the not-run assertions on the included page are ${included.ok ? 'green (not caught)' : 'red'}\n`);
+      ok = ok && !included.ok;
     }
     for (const { fault, red } of planted) {
       const checks = judge(runChrome(assemble(template, data, fault)));
