@@ -85,6 +85,17 @@ describe('external ids', () => {
     for (const name of ['http.Get', 'axios.get', 'requests.post', 'nodemailer.createTransport']) {
       expect(ext({ name }), name).toMatchObject({ ok: false, transport: true });
     }
+    // A two-letter method on a client is a call, not a country domain.
+    for (const name of ['s.client.Do', 'h.httpClient.Do', 'client.do']) {
+      expect(ext({ name }), name).toMatchObject({ ok: false, transport: true });
+    }
+    expect(ext({ name: 'svc.Do' }).keyBy).toBe('name');
+    // A domain whose first label is a protocol word is still a domain.
+    expect(id({ name: 'api.openai.com' })).toBe(id({ name: 'openai' }));
+    expect(id({ name: 'smtp.gmail.com' })).toBe('external:google');
+    expect(id({ name: 'oauth2.googleapis.com' })).toBe('external:google');
+    expect(ext({ name: 'mail.vendor.com' })).toMatchObject({ key: 'external:vendor', keyBy: 'host' });
+    expect(id({ name: 'api.vendor.io' })).toBe(id({ name: 'vendor', host: 'api.vendor.io' }));
     expect(id({ name: 'stripe.charges' })).toBe('external:stripe');
     expect(ext({ name: 'vendor.io' })).toMatchObject({ key: 'external:vendor', keyBy: 'host' });
   });

@@ -162,7 +162,7 @@ export function normalizeAddress(kind, address) {
     const name = isText(address.name) ? address.name.trim().toLowerCase() : null;
     if (host === null && name === null) return { ok: false, reason: 'no name or host' };
     const words = { address: { ...(name ? { name } : {}), ...(host ? { host } : {}) }, literals: [], externalWords: [name, host].filter(Boolean) };
-    const identity = externalIdentity({ name, host: address.host });
+    const identity = externalIdentity({ name: address.name, host: address.host });
     if (!identity.ok) return { ...identity, ...words };
     return { ok: true, key: `external:${identity.id}`, keyBy: identity.by, ...words };
   }
@@ -222,7 +222,8 @@ function nameTokens(name) {
  * The id of an external system, by fixed rules: a host the address gives
  * wins (its organization label, joined to a listed service); a name shaped
  * like a domain is read as a host; otherwise the name, in compact form, is
- * looked up in the service table, then its first word. A library or protocol
+ * looked up in the service table, then its first word (every word of the
+ * receiver for a dotted call such as `s.client.Do`). A library or protocol
  * (`axios`, `nodemailer`, `ldap`) names no system: unresolved, marked
  * `transport`. Any other name is its own id, marked `by: 'name'`.
  * Returns { ok: true, id, by: host|service|name } or { ok: false, reason, transport? }.
@@ -236,18 +237,23 @@ export function externalIdentity({ name = null, host = null }) {
   if (bare !== null) return fromHost(bare);
   if (!isText(name)) return { ok: false, reason: 'no name and no usable host' };
   const lower = name.trim().toLowerCase();
-  // A dotted name is a domain only under a public top-level domain and when its
-  // first word is not a library: `http.Get` and `axios.post` are calls, not hosts.
-  const dotted = lower.split('.');
-  if (DOMAIN_SHAPE.test(lower) && isPublicTld(dotted.at(-1)) && !TRANSPORTS.has(compact(dotted[0]))) return fromHost(lower);
+  // A dotted name is a domain only under a public top-level domain written in
+  // lower case, and only when its organization label is not a library:
+  // `http.Get`, `axios.post` and `client.Do` are calls; `smtp.vendor.com` is a host.
+  const last = name.trim().split('.').at(-1);
+  if (DOMAIN_SHAPE.test(lower) && isPublicTld(last) && !TRANSPORTS.has(compact(hostLabel(lower)))) return fromHost(lower);
   const tokens = nameTokens(lower);
   const whole = compact(tokens.join(''));
   if (whole.length === 0) return { ok: false, reason: 'no name and no usable host' };
   if (SERVICE_OF.has(whole)) return { ok: true, id: SERVICE_OF.get(whole), by: 'service' };
-  if (TRANSPORTS.has(whole)) return { ok: false, transport: true, reason: `names a library or protocol (${lower}), not the system it reaches, and gives no host` };
-  const first = compact(tokens[0] ?? '');
-  if (SERVICE_OF.has(first)) return { ok: true, id: SERVICE_OF.get(first), by: 'service' };
-  if (TRANSPORTS.has(first)) return { ok: false, transport: true, reason: `names a library or protocol (${lower}), not the system it reaches, and gives no host` };
+  const transport = { ok: false, transport: true, reason: `names a library or protocol (${lower}), not the system it reaches, and gives no host` };
+  if (TRANSPORTS.has(whole)) return transport;
+  // A package name is read by its first word; a call chain (`s.client.Do`) by
+  // every word of its receiver, the method left out.
+  const words = (lower.includes('.') ? tokens.slice(0, -1) : tokens.slice(0, 1)).map(compact);
+  const service = words.find((w) => SERVICE_OF.has(w));
+  if (service !== undefined) return { ok: true, id: SERVICE_OF.get(service), by: 'service' };
+  if (words.some((w) => TRANSPORTS.has(w))) return transport;
   return { ok: true, id: whole, by: 'name' };
 }
 
