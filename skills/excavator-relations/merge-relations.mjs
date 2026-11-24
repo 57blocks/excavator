@@ -32,7 +32,10 @@
  *                        (GET excepted: the default of most clients) for http,
  *                        the method and service for rpc, every literal piece of
  *                        a message channel or realtime event, the name or host
- *                        of an external endpoint (case-insensitive). An http
+ *                        of an external endpoint (case-insensitive; the id rests
+ *                        only on a quoted word, so a host no cited line holds
+ *                        is a label and the id comes from the name,
+ *                        `hostNotQuoted`). An http
  *                        end at the line of a route entry point of the
  *                        knowledge graph with the same normalized path is
  *                        checked against the entry point instead.
@@ -57,16 +60,34 @@
  * relations-graph.json. Later kinds an analyzer noticed are counted by kind
  * (out-of-scope), never linked.
  * Candidate files: cited (an end or an evidence line of a checked end is in
- * it), declared-skip (its area listed it in skippedFiles with a reason),
+ * it), declared-skip (its area listed it in skippedFiles, or, with no end in
+ * it, some of its call lines in skippedLines, with a reason),
  * ends-rejected (an analyzer wrote ends in it and the check rejected every
  * one) or silent-zero (none of these). Units: has-candidates or no-candidates.
+ * Call lines (the lines of candidate files where a call or a registration is
+ * written, from the split's manifest): each gets one bucket (accountCallLines):
+ * ended (a checked end is on it), evidence (a checked end cites it), ends-rejected
+ * (only rejected ends are on it), declared-skip (its area listed it in
+ * skippedLines with a reason), file-skipped (its file is declared-skip),
+ * unaccounted (none of these) or area-missing (its area's output was not
+ * accepted). A call line spans the lines from where its call starts to where
+ * the match ends, so an end cited at the line of a call's path argument is on
+ * it. The count of call lines must equal the sum of their buckets and the
+ * count the split wrote into the manifest (`counts.callLines`).
  *
  * Measurements per kind: ends, quote-failed and its rate, the share of checked
  * ends that are address-unresolved, linked relations, and, when the previous
  * relations-graph.json was made from the same input digest, the Jaccard of
  * the two runs' linked keys (`kind|caller file|address key|receiver file or
- * external id`). A kind below THRESHOLDS is an escalation candidate: a sign
- * that a deterministic extractor may be needed. Nothing is built from it.
+ * external id`), with the keys the runs do not share split into one site
+ * keyed two ways and sites one run alone linked (splitUnmatched). A kind below
+ * THRESHOLDS is an escalation candidate: a sign that a deterministic extractor
+ * may be needed. Nothing is built from it.
+ *
+ * External ids (relations-address.mjs externalIdentity) are counted by what
+ * they rest on (`external keys host= service= name= transport=
+ * host-not-quoted=`), and `externals` lists every id with those bases and the
+ * names and hosts the analyzers wrote, kept as labels.
  *
  * Usage:
  *   node merge-relations.mjs <projectRoot> [--out <path>] [--coverage <path>]
@@ -76,7 +97,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { KINDS, normalizeAddress, pairCaller, parsePath, pathText } from './relations-address.mjs';
+import { KINDS, hostOf, normalizeAddress, pairCaller, parsePath, pathText } from './relations-address.mjs';
 import { compare, isObject, languageFamilyOf, readGraphFacts } from './relations-signals.mjs';
 import { UNITS_FILE } from './plan-units.mjs';
 import { AREAS_DIR, OUT_OF_SCOPE_KINDS } from './split-relation-areas.mjs';
@@ -85,7 +106,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
 const require = createRequire(resolve(pluginRoot, 'package.json'));
 
-export const GRAPH_FORMAT = 'excavator-relations/1';
+export const GRAPH_FORMAT = 'excavator-relations/2';
 export const COVERAGE_FORMAT = 'excavator-relations-coverage/1';
 export const GRAPH_FILE = 'relations-graph.json';
 export const EXIT_INCOMPLETE = 3;
@@ -93,7 +114,9 @@ export const EXIT_NOT_CONSERVED = 4;
 export const CALLER_BUCKETS = Object.freeze(['linked', 'ambiguous', 'caller-only', 'address-unresolved', 'quote-failed']);
 export const RECEIVER_BUCKETS = Object.freeze(['linked', 'receiver-only', 'address-unresolved', 'quote-failed']);
 export const FILE_BUCKETS = Object.freeze(['cited', 'declared-skip', 'ends-rejected', 'silent-zero']);
+export const CALL_LINE_BUCKETS = Object.freeze(['ended', 'evidence', 'ends-rejected', 'declared-skip', 'file-skipped', 'unaccounted', 'area-missing']);
 export const REJECTIONS = Object.freeze(['malformed', 'outside-root', 'outside-area', 'line-out-of-range', 'quote-mismatch', 'evidence-mismatch', 'address-not-quoted']);
+export const EXTERNAL_KEY_COUNTS = Object.freeze(['host', 'service', 'name', 'transport', 'hostNotQuoted']);
 export const THRESHOLDS = Object.freeze({ agreement: 0.8, minAgreementUnion: 5, quoteFailureRate: 0.1, unresolvedShare: 0.3, minEnds: 10 });
 const QUOTE_WINDOW = 3;
 export const MAX_SILENT_LINES = 30;
@@ -146,7 +169,7 @@ export function acceptOutput({ token, areaId, text }) {
   return { status: 'accepted', output };
 }
 
-/** The ends of one accepted output, in order, plus its out-of-scope notes and skipped files. */
+/** The ends of one accepted output, in order, plus its out-of-scope notes, skipped files and skipped lines. */
 export function endsOf(areaId, output) {
   const ends = [];
   const relations = Array.isArray(output.relations) ? output.relations : [];
@@ -178,7 +201,45 @@ export function endsOf(areaId, output) {
     .filter((s) => isObject(s) && typeof s.file === 'string' && typeof s.reason === 'string' && s.reason.trim())
     .map((s) => ({ file: insideRoot(s.file), reason: s.reason.trim() }))
     .filter((s) => s.file !== null);
-  return { ends, outOfScope, skipped };
+  const skippedLines = (Array.isArray(output.skippedLines) ? output.skippedLines : [])
+    .filter((s) => isObject(s) && typeof s.file === 'string' && Number.isInteger(s.line) && typeof s.reason === 'string' && s.reason.trim())
+    .map((s) => ({ file: insideRoot(s.file), line: s.line, reason: s.reason.trim() }))
+    .filter((s) => s.file !== null);
+  return { ends, outOfScope, skipped, skippedLines };
+}
+
+const addAt = (map, file, value) => {
+  if (!map.has(file)) map.set(file, []);
+  map.get(file).push(value);
+};
+
+/**
+ * Give every call line one bucket (CALL_LINE_BUCKETS, in that order of
+ * precedence). `callLines` [{ file, line, to, signal }]; `ended`, `evidence`,
+ * `rejected` map a file to the lines of checked ends, of their evidence, and of
+ * rejected ends; `skippedLines` maps a file to [{ line, reason }];
+ * `skippedFiles` and `missingFiles` are sets of files. A line is on a call line
+ * when it lies in [line, to]. Returns { total, buckets, rows, ok }.
+ */
+export function accountCallLines({ callLines, ended = new Map(), evidence = new Map(), rejected = new Map(), skippedLines = new Map(), skippedFiles = new Set(), missingFiles = new Set() }) {
+  const buckets = Object.fromEntries(CALL_LINE_BUCKETS.map((b) => [b, 0]));
+  const rows = [];
+  for (const c of callLines) {
+    const to = Number.isInteger(c.to) && c.to >= c.line ? c.to : c.line;
+    const on = (n) => Number.isInteger(n) && n >= c.line && n <= to;
+    const hit = (map) => (map.get(c.file) ?? []).some(on);
+    const skip = (skippedLines.get(c.file) ?? []).find((s) => on(s.line));
+    const status = missingFiles.has(c.file) ? 'area-missing'
+      : hit(ended) ? 'ended'
+        : hit(evidence) ? 'evidence'
+          : hit(rejected) ? 'ends-rejected'
+            : skip ? 'declared-skip'
+              : skippedFiles.has(c.file) ? 'file-skipped' : 'unaccounted';
+    buckets[status] += 1;
+    rows.push({ file: c.file, line: c.line, ...(to > c.line ? { to } : {}), signal: c.signal ?? null, status, ...(status === 'declared-skip' ? { reason: skip.reason } : {}) });
+  }
+  const total = callLines.length;
+  return { total, buckets, rows, ok: Object.values(buckets).reduce((a, b) => a + b, 0) === total };
 }
 
 function windowText(lines, line, size) {
@@ -278,8 +339,79 @@ export function checkEnd({ end, readLines, areaFiles, entryPoints = new Map() })
     }
     if (end.kind === 'external' && !(normalized.externalWords ?? []).some((w) => lower.includes(w.toLowerCase()))) missing.push(normalized.externalWords.join('|'));
     if (missing.length > 0) return reject('address-not-quoted', missing.join(', '));
+    // The id rests only on a quoted word: a host no cited line holds is a label, never the id.
+    const host = end.kind === 'external' && normalized.keyBy === 'host' ? hostOf(normalized.address.host) : null;
+    if (host !== null && !lower.includes(host)) {
+      // The name as the analyzer wrote it: its case tells a method call from a domain.
+      const byName = normalizeAddress('external', { name: end.address?.name });
+      return { ok: true, end: { ...checked, addressBy, hostNotQuoted: true }, normalized: { ...byName, address: normalized.address } };
+    }
   }
   return { ok: true, end: { ...checked, addressBy }, normalized };
+}
+
+/** Linked keys of one kind, each with its caller file, caller lines and the calls (line and quote). */
+function linkedSites(list, kind) {
+  const sites = new Map();
+  for (const r of list ?? []) {
+    if (r?.kind !== kind || r.bucket !== 'linked' || typeof r.key !== 'string') continue;
+    const site = sites.get(r.key) ?? { file: r.caller?.file ?? null, lines: [], calls: [] };
+    if (Number.isInteger(r.caller?.line)) {
+      if (!site.lines.includes(r.caller.line)) site.lines.push(r.caller.line);
+      site.calls.push({ line: r.caller.line, quote: typeof r.caller.quote === 'string' ? flat(r.caller.quote) : '' });
+    }
+    sites.set(r.key, site);
+  }
+  for (const site of sites.values()) site.lines.sort((a, b) => a - b);
+  return sites;
+}
+
+const nearLines = (a, b) => a.some((x) => b.some((y) => Math.abs(x - y) <= QUOTE_WINDOW));
+/**
+ * One call in both runs: the same line, or lines within QUOTE_WINDOW whose
+ * quotes overlap (one holds the other). Two different calls close together
+ * quote different text and stay two sites.
+ */
+const sameCall = (a, b) => a.line === b.line
+  || (Math.abs(a.line - b.line) <= QUOTE_WINDOW && a.quote.length > 0 && b.quote.length > 0 && (a.quote.includes(b.quote) || b.quote.includes(a.quote)));
+const sameSite = (a, b) => a.file === b.file && a.calls.some((x) => b.calls.some((y) => sameCall(x, y)));
+const siteView = ({ calls: _c, ...rest }) => rest;
+
+/**
+ * Split the linked keys two runs do not share. A key of one run and a key of
+ * the other with one call in common (same caller file, and the same line or
+ * near lines with overlapping quotes: sameCall) are one site keyed two ways
+ * (`keyMismatch`). Every other key was linked in
+ * one run only; it carries the buckets the other run gave ends of that kind
+ * near its lines (`absent` when there were none), so a reader can tell a site
+ * the other run never wrote from one it wrote and did not link.
+ */
+export function splitUnmatched({ kind, previous, current }) {
+  const before = linkedSites(previous, kind);
+  const now = linkedSites(current, kind);
+  const previousOnly = [...before.keys()].filter((k) => !now.has(k)).sort(compare);
+  const currentOnly = [...now.keys()].filter((k) => !before.has(k)).sort(compare);
+  const keyMismatch = [];
+  const used = new Set();
+  const paired = new Set();
+  for (const p of previousOnly) {
+    const ps = before.get(p);
+    const c = currentOnly.find((k) => !used.has(k) && sameSite(ps, now.get(k)));
+    if (c === undefined) continue;
+    used.add(c);
+    paired.add(p);
+    keyMismatch.push({ file: ps.file, previous: p, current: c, previousLines: ps.lines, currentLines: now.get(c).lines });
+  }
+  const otherBuckets = (list, site) => {
+    const found = new Set((list ?? []).filter((r) => r?.kind === kind && r.caller?.file === site.file
+      && Number.isInteger(r.caller?.line) && nearLines([r.caller.line], site.lines)).map((r) => r.bucket));
+    return found.size > 0 ? [...found].sort(compare) : ['absent'];
+  };
+  return {
+    keyMismatch,
+    previousOnly: previousOnly.filter((k) => !paired.has(k)).map((k) => ({ key: k, ...siteView(before.get(k)), current: otherBuckets(current, before.get(k)) })),
+    currentOnly: currentOnly.filter((k) => !used.has(k)).map((k) => ({ key: k, ...siteView(now.get(k)), previous: otherBuckets(previous, now.get(k)) })),
+  };
 }
 
 /**
@@ -304,17 +436,22 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     nodesByFile.get(node.filePath).push(node);
   }
 
-  const counts = { nodeIdGiven: 0, nodeIdRejected: 0, nodeIdBy: { analyzer: 0, 'derived-range': 0, 'derived-file': 0, none: 0 }, targetUnitUnknown: 0, targetUnitMissed: 0, addressByEntryPoint: 0 };
+  const counts = {
+    nodeIdGiven: 0, nodeIdRejected: 0, nodeIdBy: { analyzer: 0, 'derived-range': 0, 'derived-file': 0, none: 0 }, targetUnitUnknown: 0, targetUnitMissed: 0, addressByEntryPoint: 0,
+    externalKeys: Object.fromEntries(EXTERNAL_KEY_COUNTS.map((k) => [k, 0])),
+  };
   const rejections = Object.fromEntries(REJECTIONS.map((r) => [r, 0]));
   const outOfScope = {};
   const declared = new Map();
+  const skippedLines = new Map();
   const all = [];
   let endsIn = 0;
   for (const { areaId, output } of [...accepted].sort((a, b) => compare(a.areaId, b.areaId))) {
-    const { ends, outOfScope: oos, skipped } = endsOf(areaId, output);
+    const { ends, outOfScope: oos, skipped, skippedLines: lineSkips } = endsOf(areaId, output);
     endsIn += ends.length;
     for (const [k, n] of Object.entries(oos)) outOfScope[k] = (outOfScope[k] ?? 0) + n;
     for (const s of skipped) if ((areaFiles.get(areaId) ?? new Set()).has(s.file) && !declared.has(s.file)) declared.set(s.file, s.reason);
+    for (const s of lineSkips) if ((areaFiles.get(areaId) ?? new Set()).has(s.file)) addAt(skippedLines, s.file, { line: s.line, reason: s.reason });
     for (const end of ends) {
       const result = checkEnd({ end, readLines, areaFiles: areaFiles.get(areaId) ?? new Set(), entryPoints });
       all.push({ end, result, unit: unitOfArea.get(areaId) ?? null });
@@ -336,6 +473,11 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
       if (anchor.rejected) counts.nodeIdRejected += 1;
       counts.nodeIdBy[anchor.nodeIdBy] += 1;
       if (result.end.addressBy === 'entry-point') counts.addressByEntryPoint += 1;
+      if (end.kind === 'external') {
+        if (result.end.hostNotQuoted) counts.externalKeys.hostNotQuoted += 1;
+        if (result.normalized.ok) counts.externalKeys[result.normalized.keyBy] += 1;
+        else if (result.normalized.transport) counts.externalKeys.transport += 1;
+      }
       item.view = {
         unit: item.unit, family: languageFamilyOf(result.end.file), file: result.end.file, line: result.end.line, quote: result.end.quote,
         nodeId: anchor.nodeId, nodeIdBy: anchor.nodeIdBy, evidence: result.end.evidence,
@@ -401,7 +543,10 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     bucketOf.set(item, paired.bucket);
     const common = { ...base(item), address: n.address, addressKey: n.key, ...(target ? { targetUnit: target } : {}), ...(missed ? { targetUnitMissed: true } : {}) };
     if (paired.bucket === 'linked' && item.end.kind === 'external') {
-      relations.push({ ...common, bucket: 'linked', key: `external|${item.view.file}|${n.key}|${n.key}`, caller: item.view, receiver: { external: n.key } });
+      relations.push({
+        ...common, keyBy: n.keyBy, ...(item.result.end.hostNotQuoted ? { hostNotQuoted: true } : {}),
+        bucket: 'linked', key: `external|${item.view.file}|${n.key}|${n.key}`, caller: item.view, receiver: { external: n.key },
+      });
     } else if (paired.bucket === 'linked') {
       for (const r of paired.receivers) {
         linkedReceivers.add(r.item);
@@ -455,14 +600,46 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     cited.add(item.view.file);
     for (const e of item.view.evidence) cited.add(e.file);
   }
+  // Call lines: every one accounted for by an end, an evidence line or a skip, or counted.
+  const endedAt = new Map();
+  const evidenceAt = new Map();
+  const rejectedAt = new Map();
+  for (const item of kept) {
+    if (item.view) {
+      addAt(endedAt, item.view.file, item.view.line);
+      for (const e of item.view.evidence) addAt(evidenceAt, e.file, e.line);
+    } else if (isObject(item.end.raw)) {
+      const file = insideRoot(item.end.raw.file);
+      if (file !== null) addAt(rejectedAt, file, item.end.raw.line);
+    }
+  }
+  const acceptedAreas = new Set(accepted.map((a) => a.areaId));
+  const missingFiles = new Set((manifest.areas ?? []).filter((a) => !acceptedAreas.has(a.areaId)).flatMap((a) => a.files ?? []));
+  const callLines = accountCallLines({
+    callLines: (manifest.candidates ?? []).flatMap((c) => (Array.isArray(c.callLines) ? c.callLines : []).map(([line, to, signal]) => ({ file: c.file, line, to, signal }))),
+    ended: endedAt, evidence: evidenceAt, rejected: rejectedAt, skippedLines, skippedFiles: new Set(declared.keys()), missingFiles,
+  });
+  conservation.callLines = callLines.total;
+  conservation.callLinesInBuckets = Object.values(callLines.buckets).reduce((a, b) => a + b, 0);
+  // The split counted the call lines it wrote into the manifest; the merge must read as many. A missing count fails too.
+  const expected = manifest.counts?.callLines;
+  conservation.callLinesExpected = Number.isInteger(expected) ? expected : 'missing';
+  conservation.ok = conservation.ok && callLines.ok && expected === callLines.total;
+
+  // A file with no end, whose analyzer skipped some of its call lines one by one, was read and declared, not silent.
+  const lineSkipOf = new Map();
+  for (const r of callLines.rows) if (r.status === 'declared-skip' && !lineSkipOf.has(r.file)) lineSkipOf.set(r.file, r);
   const fileRows = [];
   const fileBuckets = Object.fromEntries(FILE_BUCKETS.map((b) => [b, 0]));
   for (const candidate of manifest.candidates ?? []) {
+    const lineSkip = lineSkipOf.get(candidate.file);
     const status = cited.has(candidate.file) ? 'cited'
       : declared.has(candidate.file) ? 'declared-skip'
-        : rejectedIn.has(candidate.file) ? 'ends-rejected' : 'silent-zero';
+        : rejectedIn.has(candidate.file) ? 'ends-rejected'
+          : lineSkip ? 'declared-skip' : 'silent-zero';
     fileBuckets[status] += 1;
-    fileRows.push({ file: candidate.file, unit: candidate.unit, status, ...(status === 'declared-skip' ? { reason: declared.get(candidate.file) } : {}) });
+    const reason = declared.get(candidate.file) ?? (lineSkip ? `call lines skipped: ${lineSkip.reason}` : null);
+    fileRows.push({ file: candidate.file, unit: candidate.unit, status, ...(status === 'declared-skip' ? { reason } : {}) });
   }
   const unitRows = units.map((u) => {
     const n = (manifest.candidates ?? []).filter((c) => c.unit === u.id).length;
@@ -499,9 +676,11 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
       const b = now.get(kind) ?? new Set();
       const intersection = [...a].filter((k) => b.has(k)).length;
       const union = new Set([...a, ...b]).size;
+      const unmatched = splitUnmatched({ kind, previous: previous.relations, current: relations });
       agreement = {
         status: union >= THRESHOLDS.minAgreementUnion ? 'measured' : 'insufficient',
         jaccard: union > 0 ? ratio(intersection, union) : null, previous: a.size, current: b.size, intersection, union,
+        keyMismatch: unmatched.keyMismatch.length, previousOnly: unmatched.previousOnly.length, currentOnly: unmatched.currentOnly.length, unmatched,
       };
     }
     const quoteFailureRate = ratio(failed, ends);
@@ -516,8 +695,23 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     };
   }
 
+  // External systems: the id, what it rests on, and the analyzers' words as labels.
+  const externalRows = new Map();
+  for (const r of relations) {
+    if (r.kind !== 'external' || r.bucket !== 'linked') continue;
+    const row = externalRows.get(r.receiver.external) ?? { id: r.receiver.external, keyBy: new Set(), names: new Set(), hosts: new Set(), callers: 0 };
+    row.keyBy.add(r.keyBy);
+    if (r.address.name) row.names.add(r.address.name);
+    if (r.address.host) row.hosts.add(r.address.host);
+    row.callers += 1;
+    externalRows.set(row.id, row);
+  }
+  const sorted = (set) => [...set].sort(compare);
+  const externals = [...externalRows.values()].sort((a, b) => compare(a.id, b.id))
+    .map((row) => ({ id: row.id, keyBy: sorted(row.keyBy), names: sorted(row.names), hosts: sorted(row.hosts), callers: row.callers }));
+
   return {
-    relations, buckets, conservation, outOfScope, rejections, counts, measurements,
+    relations, buckets, conservation, outOfScope, rejections, counts, measurements, externals, callLines,
     files: { buckets: fileBuckets, rows: fileRows, configFiles: (manifest.configFiles ?? []).length, configCited },
     units: unitRows,
   };
@@ -563,18 +757,28 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
   lines.push(`units has-candidates=${u.filter((x) => x.status === 'has-candidates').length} no-candidates=${u.filter((x) => x.status === 'no-candidates').length}`);
   const n = merged.counts;
   lines.push(`target units unknown=${n.targetUnitUnknown} missed=${n.targetUnitMissed}`);
+  const x = n.externalKeys;
+  const named = merged.externals.filter((e) => e.keyBy.includes('name')).map((e) => e.id.replace(/^external:/, ''));
+  lines.push(`external keys host=${x.host} service=${x.service} name=${x.name}${named.length ? ` (${named.join(', ')})` : ''} transport=${x.transport} host-not-quoted=${x.hostNotQuoted}`);
   lines.push(`node ids given=${n.nodeIdGiven} rejected=${n.nodeIdRejected} analyzer=${n.nodeIdBy.analyzer} derived-range=${n.nodeIdBy['derived-range']} derived-file=${n.nodeIdBy['derived-file']} none=${n.nodeIdBy.none}`);
   for (const [kind, m] of Object.entries(merged.measurements)) {
     const ag = m.agreement.status === 'measured' || m.agreement.status === 'insufficient'
-      ? `agreement=${m.agreement.jaccard ?? 'n/a'} (${m.agreement.intersection}/${m.agreement.union}${m.agreement.status === 'insufficient' ? ', insufficient' : ''})`
+      ? `agreement=${m.agreement.jaccard ?? 'n/a'} (${m.agreement.intersection}/${m.agreement.union}${m.agreement.status === 'insufficient' ? ', insufficient' : ''}; key-mismatch=${m.agreement.keyMismatch} previous-only=${m.agreement.previousOnly} current-only=${m.agreement.currentOnly})`
       : `agreement=${m.agreement.status}`;
     lines.push(`kind ${kind} ends=${m.ends} linked=${m.linked} quote-failure=${m.quoteFailureRate ?? 'n/a'} unresolved=${m.unresolvedShare ?? 'n/a'} ${ag}${m.escalation.candidate ? ` escalation=${m.escalation.reasons.join('+')}` : ''}`);
   }
+  const cl = merged.callLines;
+  lines.push(`call lines total=${cl.total} ${CALL_LINE_BUCKETS.map((b) => `${b}=${cl.buckets[b]}`).join(' ')}`);
   const silent = merged.files.rows.filter((x) => x.status === 'silent-zero');
   for (const row of silent.slice(0, MAX_SILENT_LINES)) lines.push(`silent-zero ${row.file} unit=${row.unit}`);
   if (silent.length > MAX_SILENT_LINES) lines.push(`silent-zero ... ${silent.length - MAX_SILENT_LINES} more in the coverage report`);
+  const unaccounted = cl.rows.filter((x) => x.status === 'unaccounted');
+  for (const row of unaccounted.slice(0, MAX_SILENT_LINES)) lines.push(`unaccounted ${row.file}:${row.line} ${row.signal ?? '-'}`);
+  if (unaccounted.length > MAX_SILENT_LINES) lines.push(`unaccounted ... ${unaccounted.length - MAX_SILENT_LINES} more in the coverage report`);
   const cons = merged.conservation;
-  lines.push(cons.ok ? `conservation ok ends=${cons.endsIn} duplicates=${cons.duplicates}` : `conservation FAILED ends=${cons.endsIn} in-buckets=${cons.inBuckets} duplicates=${cons.duplicates}`);
+  lines.push(cons.ok
+    ? `conservation ok ends=${cons.endsIn} duplicates=${cons.duplicates} call-lines=${cons.callLines}`
+    : `conservation FAILED ends=${cons.endsIn} in-buckets=${cons.inBuckets} duplicates=${cons.duplicates} call-lines=${cons.callLines} call-lines-in-buckets=${cons.callLinesInBuckets} call-lines-expected=${cons.callLinesExpected}`);
   if (graphPath) lines.push(`relations graph: ${graphPath}`);
   lines.push(`coverage report: ${coveragePath}`);
   return lines;
@@ -636,9 +840,10 @@ export async function runMerge({
     unitsDigest: manifest.unitsDigest,
     status,
     units: unitsFile.units.map(({ id, name, root: r, kind, evidence }) => ({ id, name, root: r, kind, evidence })),
-    externals: [...new Set(merged.relations.filter((r) => r.receiver?.external).map((r) => r.receiver.external))].sort(compare).map((id) => ({ id })),
+    externals: merged.externals,
     relations: merged.relations,
     buckets: merged.buckets,
+    callLines: { total: merged.callLines.total, buckets: merged.callLines.buckets, unaccounted: merged.callLines.rows.filter((r) => r.status === 'unaccounted') },
     outOfScope: merged.outOfScope,
     measurements: merged.measurements,
   };
@@ -654,6 +859,7 @@ export async function runMerge({
     outOfScope: merged.outOfScope,
     conservation: merged.conservation,
     files: { buckets: merged.files.buckets, configFiles: merged.files.configFiles, configCited: merged.files.configCited, split: manifest.counts, rows: merged.files.rows },
+    callLines: merged.callLines,
     units: merged.units,
     anchors: merged.counts,
     measurements: merged.measurements,
@@ -667,7 +873,7 @@ export async function runMerge({
   stdout(`${reportLines({ areaResults, merged, coveragePath, graphPath: merged.conservation.ok ? graphPath : null }).join('\n')}\n`);
 
   if (!merged.conservation.ok) {
-    stderr('merge-relations: ends were lost or added between the analyzers and the buckets; relations-graph.json not written\n');
+    stderr('merge-relations: ends or call lines were lost or added between the analyzers and the buckets; relations-graph.json not written\n');
     return { exitCode: EXIT_NOT_CONSERVED };
   }
   if (status !== 'complete') {
@@ -717,4 +923,4 @@ if (isCliEntry()) {
   }
 }
 
-export default { acceptOutput, endsOf, checkEnd, anchorNode, mergeRelations, reportLines, runMerge, insideRoot };
+export default { acceptOutput, endsOf, checkEnd, anchorNode, accountCallLines, mergeRelations, splitUnmatched, reportLines, runMerge, insideRoot };

@@ -24,58 +24,147 @@
  *   external   an SDK of an external system (SaaS API, mail, storage).
  * A missing row means a file that never reaches an analyzer; that loss is not
  * visible in the coverage report and is estimated by the acceptance checks.
+ *
+ * Call lines. A row with `callLine: true` matches the line where a call or a
+ * registration is written (a request with a path argument, a route, a
+ * subscription, an emitted event), not an import or a type. Those lines of a
+ * candidate file are its call lines: the analyzer accounts for each one (an
+ * end, an evidence line, or a skip with a reason) and the merge counts every
+ * one it did not. They are a floor the analyzer cannot drop below, not the
+ * relations: a call line may be no relation, and a relation may be on a line
+ * no row matches. A row with `multiline: true` is matched over the whole
+ * file, so a call whose argument starts on the next line, or whose method
+ * has nested type arguments, is still one call line, at the line where the
+ * call starts; its `to` is the line where the match ends. A call line on a
+ * line that is a comment is not one.
  */
 
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-export const SIGNALS_VERSION = 2;
+export const SIGNALS_VERSION = 3;
 
 const lib = (names) => names.map((n) => n.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('|');
 /** An import, require or Go/Java/Python import of one of the named modules (prefix match). */
 const importOf = (names) => `(?:from\\s+|require\\(\\s*|import\\s+|import\\s*\\(\\s*)['"\`](?:${lib(names)})(?:['"\`/])`;
 
+/** Type arguments of a call, nested up to three deep and spanning lines: `post<A<B<C>>>(`. */
+const TYPE_ARGS = '(?:<(?:[^<>()]|<(?:[^<>()]|<[^<>()]*>)*>){0,400}>)?';
+/** The opening of a string literal: a quote, optionally after a string prefix (`f"`, `$"`, `@"`). */
+const STRING_OPEN = '(?:[fFrRbBuU$@]{1,2})?[\'"`]';
+/** The start of a literal that names a path: `/`, `${`, `{`, `$name` or a URL scheme. */
+const PATH_START = '(?:/|\\$\\{|\\{|\\$[A-Za-z_]|https?:)';
+
 export const SIGNALS = Object.freeze([
   // Outbound HTTP clients.
   { id: 'js-http-client', family: 'client', pattern: importOf(['axios', 'ky', 'got', 'node-fetch', 'superagent', 'undici', 'ofetch', 'cross-fetch', 'isomorphic-fetch', 'request', 'needle', 'redaxios', 'wretch']) },
   { id: 'angular-http-client', family: 'client', pattern: '@angular/common/http' },
-  { id: 'fetch-call', family: 'client', pattern: '(?:^|[^\\w.])fetch\\s*\\(' },
-  { id: 'nuxt-fetch', family: 'client', pattern: '\\$fetch\\s*\\(|useFetch\\s*\\(' },
-  { id: 'go-http-client', family: 'client', pattern: 'http\\.(?:Get|Post|PostForm|Head|NewRequest|NewRequestWithContext)\\s*\\(|&http\\.Client\\b|http\\.DefaultClient|go-resty/resty' },
+  { id: 'fetch-call', family: 'client', callLine: true, pattern: '(?:^|[^\\w.])fetch\\s*\\(' },
+  { id: 'nuxt-fetch', family: 'client', callLine: true, pattern: '\\$fetch\\s*\\(|useFetch\\s*\\(' },
+  { id: 'go-http-call', family: 'client', callLine: true, pattern: 'http\\.(?:Get|Post|PostForm|Head|NewRequest|NewRequestWithContext)\\s*\\(' },
+  { id: 'go-http-client', family: 'client', pattern: '&http\\.Client\\b|http\\.DefaultClient|go-resty/resty' },
   { id: 'jvm-http-client', family: 'client', pattern: '\\b(?:RestTemplate|WebClient|RestClient|OkHttpClient|HttpClient\\.newHttpClient|CloseableHttpClient|Retrofit)\\b|@FeignClient|@HttpExchange' },
   { id: 'python-http-client', family: 'client', pattern: '^\\s*(?:import|from)\\s+(?:requests|httpx|aiohttp|urllib3)\\b' },
   { id: 'dotnet-http-client', family: 'client', pattern: '\\bHttpClient\\s*\\(|IHttpClientFactory|RestSharp' },
   { id: 'openapi-client', family: 'client', pattern: 'openapi-fetch|@hey-api/|orval|openapi-typescript-codegen|ts-rest|@trpc/client' },
   // Route and handler registration.
-  { id: 'js-route', family: 'server', pattern: '\\b(?:app|router|server|route|routes|api|fastify)\\.(?:get|post|put|patch|delete|all|head|options|route)\\s*\\(' },
-  { id: 'go-route', family: 'server', pattern: '\\.(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Any|Handle|HandleFunc|Group)\\s*\\(\\s*"' },
-  { id: 'go-net-http-route', family: 'server', pattern: 'http\\.(?:HandleFunc|Handle)\\s*\\(' },
-  { id: 'jvm-route', family: 'server', pattern: '@(?:Get|Post|Put|Patch|Delete|Request)Mapping\\b|@(?:Rest)?Controller\\b|@Path\\s*\\(|@(?:GET|POST|PUT|DELETE|PATCH)\\b' },
-  { id: 'nest-route', family: 'server', pattern: '@(?:Get|Post|Put|Patch|Delete|All|Head|Options)\\s*\\(|@Controller\\s*\\(' },
-  { id: 'python-route', family: 'server', pattern: '@(?:app|router|bp|blueprint|api)\\.(?:get|post|put|patch|delete|route|websocket)\\s*\\(|\\bpath\\s*\\(\\s*r?[\'"]' },
-  { id: 'dotnet-route', family: 'server', pattern: '\\[(?:Http(?:Get|Post|Put|Patch|Delete)|Route)\\b|\\.Map(?:Get|Post|Put|Patch|Delete)\\s*\\(' },
+  { id: 'js-route', family: 'server', callLine: true, pattern: '\\b(?:app|router|server|route|routes|api|fastify)\\.(?:get|post|put|patch|delete|all|head|options|route)\\s*\\(' },
+  // An upper-case HTTP verb method is a router's. `Any` and `Group` need a path that starts with `/` or is empty
+  // (a group's root), since an ORM `.Group("col")` and a logger `.Any("key", v)` share the names; a mux pattern
+  // may lead with a method (`"GET /x"`), and a router's `Handle` may take the method first (`Handle("GET", "/x", h)`).
+  { id: 'go-route', family: 'server', callLine: true, pattern: '\\.(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\s*\\(\\s*"|\\.(?:Any|Group)\\s*\\(\\s*"(?:/|")|\\.(?:Handle|HandleFunc)\\s*\\(\\s*"(?:(?:[A-Z]+\\s+)?/|[A-Z]+"\\s*,)' },
+  { id: 'go-net-http-route', family: 'server', callLine: true, pattern: 'http\\.(?:HandleFunc|Handle)\\s*\\(' },
+  { id: 'jvm-route', family: 'server', callLine: true, pattern: '@(?:Get|Post|Put|Patch|Delete|Request)Mapping\\b|@Path\\s*\\(|@(?:GET|POST|PUT|DELETE|PATCH)\\b' },
+  { id: 'jvm-controller', family: 'server', pattern: '@(?:Rest)?Controller\\b' },
+  { id: 'nest-route', family: 'server', callLine: true, pattern: '@(?:Get|Post|Put|Patch|Delete|All|Head|Options)\\s*\\(' },
+  { id: 'nest-controller', family: 'server', pattern: '@Controller\\s*\\(' },
+  { id: 'python-route', family: 'server', callLine: true, pattern: '@(?:app|router|bp|blueprint|api)\\.(?:get|post|put|patch|delete|route|websocket)\\s*\\(|\\bpath\\s*\\(\\s*r?[\'"]' },
+  { id: 'dotnet-route', family: 'server', callLine: true, pattern: '\\[(?:Http(?:Get|Post|Put|Patch|Delete)|Route)\\b|\\.Map(?:Get|Post|Put|Patch|Delete)\\s*\\(' },
   // A call with a path argument, whatever the receiver: catches wrapped clients.
-  { id: 'path-call', family: 'call', pattern: '\\.(?:get|post|put|patch|delete|head|options|request)\\s*(?:<[^>()]*>)?\\s*\\(\\s*[\'"`](?:/|\\$\\{)' },
+  // The argument may start on a later line and the method may take type arguments.
+  { id: 'path-call', family: 'call', callLine: true, multiline: true, flags: 'i', pattern: `\\.(?:get|post|put|patch|delete|head|options|request)\\s*${TYPE_ARGS}\\s*\\(\\s*${STRING_OPEN}${PATH_START}` },
+  // A call whose first argument is an object with a `url` key: `request({ url, method })`, `ajax({ ... url: ... })`.
+  { id: 'url-config-call', family: 'call', callLine: true, multiline: true, pattern: `[\\w$]\\s*${TYPE_ARGS}\\s*\\(\\s*\\{[^(){}]{0,200}?\\burl\\s*:` },
   // RPC.
   { id: 'grpc', family: 'rpc', pattern: 'google\\.golang\\.org/grpc|@grpc/grpc-js|grpc-web|io\\.grpc|\\bgrpc\\.(?:Dial|NewClient|NewServer)\\b|@GrpcMethod|@GrpcService|ClientGrpc|import\\s+grpc\\b' },
   { id: 'thrift', family: 'rpc', pattern: 'apache/thrift|org\\.apache\\.thrift|\\bthrift\\b' },
   { id: 'trpc', family: 'rpc', pattern: '@trpc/server|initTRPC' },
   // Async messaging.
   { id: 'message-library', family: 'message', pattern: importOf(['amqplib', 'amqp-connection-manager', 'kafkajs', 'node-rdkafka', 'bull', 'bullmq', 'bee-queue', 'nats', 'mqtt', 'ioredis', 'redis', '@aws-sdk/client-sqs', '@aws-sdk/client-sns', '@google-cloud/pubsub', '@azure/service-bus', '@nestjs/microservices', '@nestjs/bull', '@nestjs/bullmq', 'github.com/segmentio/kafka-go', 'github.com/Shopify/sarama', 'github.com/IBM/sarama', 'github.com/rabbitmq/amqp091-go', 'github.com/streadway/amqp', 'github.com/nats-io', 'github.com/redis/go-redis', 'github.com/go-redis/redis', 'pika', 'kafka', 'celery']) },
-  { id: 'message-annotation', family: 'message', pattern: '@(?:KafkaListener|RabbitListener|JmsListener|SqsListener|StreamListener|EventPattern|MessagePattern|Processor|Process|OnEvent)\\b|\\b(?:KafkaTemplate|RabbitTemplate|JmsTemplate|AmqpTemplate|ApplicationEventPublisher)\\b' },
-  { id: 'redis-pubsub', family: 'message', pattern: '\\.(?:publish|subscribe|psubscribe)\\s*\\(\\s*[\'"`]' },
+  { id: 'message-annotation', family: 'message', callLine: true, pattern: '@(?:KafkaListener|RabbitListener|JmsListener|SqsListener|StreamListener|EventPattern|MessagePattern|Processor|Process|OnEvent)\\b' },
+  { id: 'message-template', family: 'message', pattern: '\\b(?:KafkaTemplate|RabbitTemplate|JmsTemplate|AmqpTemplate|ApplicationEventPublisher)\\b' },
+  { id: 'redis-pubsub', family: 'message', callLine: true, pattern: '\\.(?:publish|subscribe|psubscribe)\\s*\\(\\s*[\'"`]' },
   // Real-time events.
   { id: 'realtime-library', family: 'realtime', pattern: importOf(['socket.io', 'socket.io-client', 'ws', 'sockjs-client', '@stomp/stompjs', 'stompjs', '@microsoft/signalr', '@nestjs/websockets', 'github.com/gorilla/websocket', 'nhooyr.io/websocket', 'github.com/googollee/go-socket.io', 'pusher', 'pusher-js', 'ably', 'centrifuge']) },
-  { id: 'socket-event-call', family: 'call', pattern: '(?:\\bio|\\bsocket[A-Za-z]*|\\bnsp|\\bnamespace|\\.get\\(\\s*[\'"]io[\'"]\\s*\\))(?:\\.(?:to|in|of|broadcast)\\b(?:\\([^)]*\\))?)*\\.(?:emit|on|once)\\s*\\(\\s*[\'"`]' },
-  { id: 'realtime-api', family: 'realtime', pattern: 'new\\s+WebSocket\\s*\\(|new\\s+EventSource\\s*\\(|@WebSocketGateway|@SubscribeMessage|@MessageMapping|SimpMessagingTemplate|SseEmitter|@ServerEndpoint' },
+  { id: 'socket-event-call', family: 'call', callLine: true, pattern: '(?:\\bio|\\bsocket[A-Za-z]*|\\bnsp|\\bnamespace|\\.get\\(\\s*[\'"]io[\'"]\\s*\\))(?:\\.(?:to|in|of|broadcast)\\b(?:\\([^)]*\\))?)*\\.(?:emit|on|once)\\s*\\(\\s*[\'"`]' },
+  { id: 'realtime-handler', family: 'realtime', callLine: true, pattern: '@SubscribeMessage\\b|@MessageMapping\\b' },
+  { id: 'realtime-api', family: 'realtime', pattern: 'new\\s+WebSocket\\s*\\(|new\\s+EventSource\\s*\\(|@WebSocketGateway|SimpMessagingTemplate|SseEmitter|@ServerEndpoint' },
   // External systems.
   { id: 'external-sdk', family: 'external', pattern: importOf(['@slack/', 'jira-client', 'jira.js', 'stripe', '@sendgrid/', 'nodemailer', 'mailgun', 'mailgun.js', 'twilio', '@aws-sdk/client-s3', '@aws-sdk/client-ses', 'aws-sdk', '@google-cloud/storage', 'firebase-admin', 'googleapis', '@octokit/', 'openai', '@anthropic-ai/', 'minio', '@azure/storage-blob', 'github.com/slack-go/slack', 'github.com/andygrunwald/go-jira', 'github.com/aws/aws-sdk-go', 'github.com/stripe/stripe-go', 'net/smtp', 'gopkg.in/gomail', 'github.com/sendgrid', 'boto3', 'smtplib']) },
   { id: 'external-annotation', family: 'external', pattern: '\\bJavaMailSender\\b|\\bAmazonS3\\b|\\bS3Client\\b|\\bSmtpClient\\b' },
-].map((row) => ({ ...row, regex: new RegExp(row.pattern) })));
+].map((row) => ({
+  ...row,
+  callLine: row.callLine === true,
+  multiline: row.multiline === true,
+  regex: new RegExp(row.pattern, row.flags ?? ''),
+  ...(row.multiline ? { globalRegex: new RegExp(row.pattern, `g${row.flags ?? ''}`) } : {}),
+})));
 
 /** Families whose files are client definitions: files importing them are candidates too. */
 export const CLIENT_FAMILIES = Object.freeze(new Set(['client', 'message', 'realtime', 'rpc', 'external']));
+
+const MAX_HIT_TEXT = 200;
+/** A line that is only a comment: `//`, `/*`, a `*` continuation, or `#` followed by a space. */
+const COMMENT_LINE = /^\s*(?:\/\/|\/\*|\*(?:\s|\/|$)|#(?:\s|$))/;
+
+/**
+ * The signal hits and call lines of one file's lines. A one-line row is
+ * matched on each line; a multiline row over the whole text, each match
+ * placed at the line where it starts. Returns
+ * { hits: [{ line, to, signal, family, callLine, text }] in line order,
+ *   callLines: [{ line, to, signal, text }] one per line, first matching row }.
+ */
+export function scanSource(lines) {
+  const hits = [];
+  const clip = (i) => (lines[i - 1] ?? '').trim().slice(0, MAX_HIT_TEXT);
+  lines.forEach((text, i) => {
+    for (const signal of SIGNALS) {
+      if (!signal.multiline && signal.regex.test(text)) hits.push({ line: i + 1, to: i + 1, signal: signal.id, family: signal.family, callLine: signal.callLine, text: clip(i + 1) });
+    }
+  });
+  if (SIGNALS.some((s) => s.multiline)) {
+    const starts = [0];
+    const text = lines.join('\n');
+    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
+    const lineAt = (offset) => {
+      let lo = 0;
+      let hi = starts.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (starts[mid] <= offset) lo = mid; else hi = mid - 1;
+      }
+      return lo + 1;
+    };
+    for (const signal of SIGNALS) {
+      if (!signal.multiline) continue;
+      for (const m of text.matchAll(signal.globalRegex)) {
+        const line = lineAt(m.index);
+        hits.push({ line, to: lineAt(m.index + Math.max(0, m[0].length - 1)), signal: signal.id, family: signal.family, callLine: signal.callLine, text: clip(line) });
+      }
+    }
+  }
+  const order = new Map(SIGNALS.map((s, i) => [s.id, i]));
+  hits.sort((a, b) => a.line - b.line || order.get(a.signal) - order.get(b.signal));
+  const byLine = new Map();
+  for (const hit of hits) {
+    if (!hit.callLine || COMMENT_LINE.test(lines[hit.line - 1] ?? '')) continue;
+    const seen = byLine.get(hit.line);
+    if (seen) seen.to = Math.max(seen.to, hit.to);
+    else byLine.set(hit.line, { line: hit.line, to: hit.to, signal: hit.signal, text: hit.text });
+  }
+  return { hits, callLines: [...byLine.values()] };
+}
 
 export const SOURCE_EXTENSIONS = Object.freeze(new Set([
   '.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.vue', '.svelte', '.go', '.java', '.kt', '.kts', '.scala',
@@ -218,4 +307,4 @@ export function httpEntryPointsByFile(facts) {
   return byFile;
 }
 
-export default { SIGNALS, SIGNALS_VERSION, walkProject, readSourceLines, readGraphFacts, isTestFile, isConfigFile, isAddressLine };
+export default { SIGNALS, SIGNALS_VERSION, scanSource, walkProject, readSourceLines, readGraphFacts, isTestFile, isConfigFile, isAddressLine };

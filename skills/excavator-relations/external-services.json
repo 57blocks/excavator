@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "basis": "The id of an external system is derived by fixed rules, never taken from the analyzer's free-form name. A host the code shows wins: under a public top-level domain (any two-letter country domain or one listed here) its organization label (the label before the public suffix) names the provider; under any other top-level domain (cluster, service-discovery or private names) the whole host is the id. Without a host, the name is looked up here. Names are compared in compact form: lower case, letters and digits only.",
+  "services": {
+    "aws": ["aws", "amazon", "amazonaws", "awssdk", "s3", "ses", "sesv2", "sqs", "sns", "dynamodb", "multers3"],
+    "google": ["google", "googleapis", "googlecloud", "gcloud", "gcp", "firebase", "firebaseio", "firebaseadmin", "fcm", "gmail"],
+    "microsoft": ["microsoft", "azure", "windows", "microsoftonline", "msgraph", "office365", "outlook", "sharepoint"],
+    "atlassian": ["atlassian", "jira", "jiraclient", "confluence", "bitbucket", "trello"],
+    "openai": ["openai"],
+    "anthropic": ["anthropic"],
+    "slack": ["slack", "slackapi"],
+    "github": ["github", "githubusercontent", "octokit"],
+    "gitlab": ["gitlab"],
+    "stripe": ["stripe"],
+    "paypal": ["paypal"],
+    "twilio": ["twilio"],
+    "sendgrid": ["sendgrid"],
+    "mailgun": ["mailgun"],
+    "mailchimp": ["mailchimp", "mandrill"],
+    "postmark": ["postmark", "postmarkapp"],
+    "sentry": ["sentry"],
+    "datadog": ["datadog", "datadoghq"],
+    "algolia": ["algolia", "algolianet"],
+    "auth0": ["auth0"],
+    "okta": ["okta"],
+    "cloudinary": ["cloudinary"],
+    "mapbox": ["mapbox"],
+    "pusher": ["pusher"],
+    "intercom": ["intercom", "intercomio"],
+    "zendesk": ["zendesk"],
+    "hubspot": ["hubspot", "hubapi"],
+    "salesforce": ["salesforce", "force"],
+    "shopify": ["shopify", "myshopify"],
+    "dropbox": ["dropbox", "dropboxapi"],
+    "zoom": ["zoom"],
+    "docusign": ["docusign"],
+    "telegram": ["telegram"],
+    "discord": ["discord", "discordapp"],
+    "facebook": ["facebook"],
+    "wechat": ["wechat", "weixin"],
+    "aliyun": ["aliyun", "aliyuncs", "alibabacloud"],
+    "tencent": ["tencent", "tencentcloud", "tencentcloudapi", "qcloud", "myqcloud"],
+    "cloudflare": ["cloudflare"]
+  },
+  "transports": [
+    "axios", "fetch", "nodefetch", "crossfetch", "isomorphicfetch", "got", "superagent", "request", "requestpromise", "needle", "undici", "ky",
+    "http", "https", "nethttp", "httpclient", "resty", "gorequest", "okhttp", "retrofit", "resttemplate", "webclient", "feign", "openfeign",
+    "requests", "httpx", "urllib", "urllib3", "aiohttp", "guzzle", "faraday", "httparty", "restsharp", "curl", "libcurl", "xmlhttprequest", "xhr", "ajax", "jquery",
+    "nodemailer", "smtp", "smtplib", "mail", "email", "mailer", "javamail", "gomail", "sendmail", "imap", "pop3",
+    "multer", "formidable", "busboy", "ldap", "ldapjs", "ldap3", "goldap", "ftp", "sftp", "ssh",
+    "ws", "websocket", "grpc", "soap", "rest", "api", "client", "sdk", "webhook", "oauth", "oauth2"
+  ],
+  "affixes": {
+    "prefixes": ["go", "node"],
+    "suffixes": ["go", "sdk", "js", "node", "client", "api", "python", "java"]
+  },
+  "publicTopLevelDomains": ["com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "app", "dev", "cloud", "tech", "online", "site", "xyz"],
+  "secondLevelLabels": ["com", "net", "org", "gov", "edu", "co", "ac", "or", "ne", "go", "mil", "gob", "nic", "ltd", "plc", "sch", "gen", "info", "biz", "nom"],
+  "hostingDomains": [
+    "herokuapp.com", "vercel.app", "netlify.app", "github.io", "gitlab.io", "pages.dev", "workers.dev", "web.app", "firebaseapp.com",
+    "appspot.com", "cloudfront.net", "azurewebsites.net", "azureedge.net", "onrender.com", "fly.dev", "ngrok.io", "ngrok-free.app"
+  ]
+}

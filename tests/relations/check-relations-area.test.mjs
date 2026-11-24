@@ -30,10 +30,16 @@ function check(unit) {
   return { status: result.status, lines: result.stdout.trim().split('\n') };
 }
 
-function write(unit, relations, token = manifest.token) {
+function write(unit, relations, token = manifest.token, rest = {}) {
   const a = area(unit);
-  writeFileSync(a.outputFile, JSON.stringify({ areaRun: { areaId: a.areaId, token }, relations }));
+  writeFileSync(a.outputFile, JSON.stringify({ areaRun: { areaId: a.areaId, token }, relations, ...rest }));
 }
+
+/** The rest of the web area accounted for: its other call lines skipped with a reason. */
+const webSkips = {
+  skippedFiles: [{ file: 'web/src/live.js', reason: 'read in another test' }, { file: 'web/src/admin.js', reason: 'read in another test' }],
+  skippedLines: [6, 9, 12].map((line) => ({ file: 'web/src/users.js', line, reason: 'read in another test' })),
+};
 
 const usersCall = (quote, evidence) => ({
   kind: 'http', address: { method: 'GET', path: '/api/users/${id}' }, receiver: null,
@@ -50,8 +56,8 @@ describe('check-relations-area', () => {
   });
 
   it('passes an output the merge would accept and exits 0', () => {
-    write('unit:web', [usersCall('return api.get(`/api/users/${id}`);')]);
-    expect(check('unit:web')).toEqual({ status: 0, lines: [`check ${area('unit:web').areaId}: ends=1 accepted=1 rejected=0`] });
+    write('unit:web', [usersCall('return api.get(`/api/users/${id}`);')], manifest.token, webSkips);
+    expect(check('unit:web')).toEqual({ status: 0, lines: [`check ${area('unit:web').areaId}: ends=1 accepted=1 rejected=0 call-lines=6 unaccounted=0`] });
   });
 
   it('lists each end the merge would reject, with its reason, and exits 1', () => {
@@ -61,10 +67,10 @@ describe('check-relations-area', () => {
       { kind: 'http', address: { method: 'GET', path: '/api/v2/users/${id}' }, receiver: null, caller: { file: 'web/src/users.js', line: 3, quote: 'return api.get' } },
       usersCall('return api.delete(everything)'),
       { kind: 'http', address: { method: 'POST', path: '/api/orders' }, receiver: null, caller: { file: 'server/app.js', line: 6, quote: "app.post('/api/orders'" } },
-    ]);
+    ], manifest.token, webSkips);
     const { status, lines } = check('unit:web');
     expect(status).toBe(1);
-    expect(lines[0]).toBe(`check ${area('unit:web').areaId}: ends=4 accepted=1 rejected=3`);
+    expect(lines[0]).toBe(`check ${area('unit:web').areaId}: ends=4 accepted=1 rejected=3 call-lines=6 unaccounted=0`);
     expect(lines.slice(1)).toEqual([
       'rejected relations[1].caller web/src/users.js:3 address-not-quoted: v2',
       'rejected relations[2].caller web/src/users.js:3 quote-mismatch: web/src/users.js:3',
@@ -74,10 +80,28 @@ describe('check-relations-area', () => {
 
   it('passes once the address names only words of the cited lines', () => {
     const call = { kind: 'http', address: { method: 'GET', path: '/api/ping' }, receiver: null, caller: { file: 'web/src/users.js', line: 9, quote: "return api.get('/api/ping');" } };
-    write('unit:web', [{ ...call, address: { method: 'GET', path: '/base/api/ping' } }]);
+    const skips = { ...webSkips, skippedLines: [3, 6, 12].map((line) => ({ file: 'web/src/users.js', line, reason: 'read in another test' })) };
+    write('unit:web', [{ ...call, address: { method: 'GET', path: '/base/api/ping' } }], manifest.token, skips);
     expect(check('unit:web').lines[1]).toBe('rejected relations[0].caller web/src/users.js:9 address-not-quoted: base');
-    write('unit:web', [call]);
+    write('unit:web', [call], manifest.token, skips);
     expect(check('unit:web').status).toBe(0);
+  });
+
+  it('notes an external end the merge cannot key on what was written, without failing the check', () => {
+    const mail = (address, quote, evidence) => ({ kind: 'external', address, receiver: null, caller: { file: 'server/app.js', line: 9, quote, ...(evidence ? { evidence } : {}) } });
+    write('unit:server', [
+      mail({ name: 'nodemailer' }, "mailer.sendMail({ to: 'a@b.c' });", [{ file: 'server/app.js', line: 3, quote: "require('nodemailer')" }]),
+      mail({ name: 'mailer', host: 'smtp.vendor.example' }, 'mailer.sendMail('),
+    ], manifest.token, { skippedFiles: ['server/app.js', 'server/public/widget.js'].map((file) => ({ file, reason: 'its other sites are read in another test' })) });
+    const { status, lines } = check('unit:server');
+    expect(status).toBe(0);
+    const id = area('unit:server').areaId;
+    expect(lines).toEqual([
+      `check ${id}: ends=2 accepted=2 rejected=0 notices=3 call-lines=7 unaccounted=0`,
+      'notice relations[0].caller server/app.js:9 transport-name: names a library or protocol (nodemailer), not the system it reaches, and gives no host',
+      'notice relations[1].caller server/app.js:9 host-not-quoted: no cited line holds smtp.vendor.example',
+      'notice relations[1].caller server/app.js:9 transport-name: names a library or protocol (mailer), not the system it reaches, and gives no host',
+    ]);
   });
 
   it('exits 2 for a missing output or another run\'s token', () => {
