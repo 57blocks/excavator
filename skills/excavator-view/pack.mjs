@@ -105,6 +105,7 @@ function resultProduct(entry) {
   if (entry.revision) row.revision = entry.revision;
   if (entry.revisionNote) row.note = entry.revisionNote;
   if (entry.counts) row.counts = entry.counts;
+  if (entry.coverage) row.coverage = entry.coverage;
   return row;
 }
 

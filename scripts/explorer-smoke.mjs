@@ -192,6 +192,49 @@ export function fixtureData() {
     residualAssumptions: ['A document may describe a function the code names differently.'],
   };
   const docMapChecks = { checks: [{ unit: 1, file: 'src/main.js', line: 4, verdict: 'does', reason: 'It calls the helper once.' }] };
+  // The relations product: two units, a linked HTTP call, a call to an external system, a caller and a receiver alone.
+  const relSite = (unit, file, line, quote, nodeId = null, evidence = []) => ({ unit, family: 'js', file, line, quote, nodeId, nodeIdBy: nodeId === null ? 'none' : 'line', evidence });
+  const relations = {
+    format: 'excavator-relations/1',
+    sourceRevision: revision,
+    factDigest: null,
+    status: 'complete',
+    units: [{ id: 'unit:web', name: 'Web', root: 'src', kind: 'runtime', evidence: [] }, { id: 'unit:api', name: 'Api', root: 'src', kind: 'runtime', evidence: [] }],
+    externals: [{ id: 'external:mail' }],
+    relations: [
+      { id: 'rel:1', kind: 'http', bucket: 'linked', area: 'area-001', reason: 'Asks for the helper', confidence: 'high', address: { method: 'GET', path: '/helper' }, addressKey: 'GET /helper',
+        caller: relSite('unit:web', 'src/main.js', 4, 'return helper(1);', 'function:src/main.js:main', [{ file: 'src/main.js', line: 1, quote: 'import { helper } from "./util.js";' }]),
+        receiver: { ...relSite('unit:api', 'src/util.js', 1, 'export function helper(n) {', 'function:src/util.js:helper'), addressKey: 'GET /helper' } },
+      { id: 'rel:2', kind: 'external', bucket: 'linked', area: 'area-002', reason: 'Sends the mail', confidence: 'high', address: { name: 'mail' }, addressKey: 'external:mail',
+        caller: relSite('unit:api', 'src/util.js', 2, 'return n + 1;'), receiver: { external: 'external:mail' } },
+      { id: 'rel:3', kind: 'http', bucket: 'caller-only', area: 'area-001', reason: 'Posts a refund', confidence: 'medium', address: { method: 'POST', path: '/refund' }, addressKey: 'POST /refund',
+        caller: relSite('unit:web', 'src/gone.js', 3, 'post("/refund")'), receiver: null },
+      { id: 'rel:4', kind: 'http', bucket: 'receiver-only', area: 'area-002', reason: 'Health check', confidence: 'high', address: { method: 'GET', path: '/health' }, addressKey: 'GET /health',
+        caller: null, receiver: { ...relSite('unit:api', 'src/util.js', 1, 'export function helper(n) {'), addressKey: 'GET /health' } },
+      { id: 'rel:5', kind: 'http', bucket: 'quote-failed', area: 'area-002', reason: 'Lists the jobs', confidence: 'low', role: 'receiver', address: null,
+        rejection: { reason: 'quote-mismatch', detail: 'not within 3 lines' }, receiver: { file: 'src/util.js', line: 2, quote: 'listJobs()' } },
+    ],
+    buckets: { caller: { linked: 2, 'caller-only': 1 }, receiver: { linked: 1, 'receiver-only': 1, 'quote-failed': 1 } },
+    outOfScope: {},
+    measurements: {
+      http: { ends: 4, quoteFailed: 1, quoteFailureRate: 0.25, verified: 3, unresolved: 0, unresolvedShare: 0, linked: 1, agreement: { status: 'no-previous-run', jaccard: null }, escalation: { candidate: true, reasons: ['quote-failure'] } },
+      external: { ends: 1, quoteFailed: 0, quoteFailureRate: 0, verified: 1, unresolved: 0, unresolvedShare: 0, linked: 1, agreement: { status: 'no-previous-run', jaccard: null }, escalation: { candidate: false, reasons: [] } },
+    },
+  };
+  const relationsCoverage = {
+    status: 'complete',
+    thresholds: { quoteFailureRate: 0.2, unresolvedShare: 0.5, agreement: 0.8 },
+    areas: [{ areaId: 'area-001', status: 'accepted' }, { areaId: 'area-002', status: 'accepted' }],
+    buckets: relations.buckets,
+    rejections: {},
+    outOfScope: {},
+    conservation: { ok: true, endsIn: 6, inBuckets: 6, duplicates: 0 },
+    files: { buckets: { cited: 2, 'silent-zero': 1 }, configFiles: 0, configCited: 0, split: {}, rows: [{ file: 'src/main.js', unit: 'unit:web', status: 'cited' }, { file: 'src/util.js', unit: 'unit:api', status: 'cited' }, { file: 'src/gone.js', unit: 'unit:web', status: 'silent-zero' }] },
+    units: [{ id: 'unit:web', candidateFiles: 2 }, { id: 'unit:api', candidateFiles: 1 }],
+    anchors: {},
+    measurements: relations.measurements,
+    escalationCandidates: [{ kind: 'http', reasons: ['quote-failure'] }],
+  };
   const domain = {
     version: '1.0.0',
     project: graph.project,
@@ -213,12 +256,15 @@ export function fixtureData() {
     'hotspots.json': hotspots,
     'doc-map.json': docMap,
     'doc-map-checks.json': docMapChecks,
+    'relations-graph.json': relations,
+    'relations-coverage.json': relationsCoverage,
     'products.json': {
       snapshotRevision: revision,
       products: [
         productEntry('unused-code', 'included', { revision }),
         productEntry('hotspots', 'different-revision', { revision: otherRevision }),
         productEntry('doc-map', 'included', { revision }),
+        productEntry('relations', 'included', { revision, coverage: { state: 'included', reason: null } }),
       ],
     },
     sources: Object.fromEntries(Object.keys(SOURCES).map((path) => [path, sourceFile(path)])),
@@ -252,7 +298,7 @@ export function withoutNode(data, id) {
 /** The fixture with its products not run or unreadable: no product file, and a state each. */
 export function withUnavailableProducts(data) {
   const rest = { ...data };
-  for (const key of ['unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json']) delete rest[key];
+  for (const key of ['unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'relations-graph.json', 'relations-coverage.json']) delete rest[key];
   return {
     ...rest,
     'products.json': {
@@ -261,6 +307,7 @@ export function withUnavailableProducts(data) {
         productEntry('unused-code', 'unreadable', { reason: 'unused-code.json is not valid JSON' }),
         productEntry('hotspots', 'not-run', { reason: 'hotspots.json was not found' }),
         productEntry('doc-map', 'not-run', { reason: 'doc-map.json was not found' }),
+        productEntry('relations', 'not-run', { reason: 'relations-graph.json was not found' }),
       ],
     },
   };
@@ -303,6 +350,7 @@ export function assemble(template, data, fault = null) {
   else if (fault === 'node-missing') payload = withoutNode(data, 'function:src/util.js:leaf');
   else if (fault === 'no-sources') payload = { ...data, sources: undefined };
   else if (fault === 'no-domain') payload = { ...data, 'domain-graph.json': undefined };
+  else if (fault === 'relations-row-missing') payload = { ...data, 'relations-graph.json': { ...data['relations-graph.json'], relations: data['relations-graph.json'].relations.slice(1) } };
 
   // The pages that have the data must really be cut: a smoke over single-part files would not run the part reader's joins.
   if (fault === null) {
@@ -359,7 +407,7 @@ const PROBE = `(async () => {
     await sleep(300);
   }
   out.cards = cards().length;
-  // No onboarding overlay and no Files / Classes or type-chip buttons in the header; the three product buttons stand there.
+  // No onboarding overlay and no Files / Classes or type-chip buttons in the header; the four product buttons stand there.
   out.onboardingShown = /GET STARTED|Welcome to the knowledge graph/.test(document.body.innerText);
   const headerButtons = [...document.querySelectorAll('header button')];
   out.headerFilesClasses = headerButtons.some((b) => /^(files|classes)$/i.test(b.textContent.trim()));
@@ -583,7 +631,7 @@ const PROBE_STATES = `(async () => {
   const out = { views: {} };
   await until(() => document.querySelector('.react-flow__node'));
   await sleep(500);
-  for (const name of ['unused', 'hotspots', 'doc-map']) {
+  for (const name of ['unused', 'hotspots', 'doc-map', 'relations']) {
     const button = document.querySelector('header [data-excavator-product-button="' + name + '"]');
     press(button);
     await until(() => document.querySelector('[data-excavator-product-view="' + name + '"]'));
@@ -617,9 +665,12 @@ const PROBE_NARROW = `(async () => {
     press(buttonFor(name));
     await sleep(300);
   };
-  const MAIN_TABLE = { unused: 'unused', hotspots: 'files', 'doc-map': 'units' };
-  for (const name of ['unused', 'hotspots', 'doc-map']) {
+  const MAIN_TABLE = { unused: 'unused', hotspots: 'files', 'doc-map': 'units', relations: 'sites' };
+  // The Relations view opens on its unit list; its site table is one tab away.
+  const TAB = { relations: 'sites' };
+  for (const name of ['unused', 'hotspots', 'doc-map', 'relations']) {
     await toggle(name);
+    if (TAB[name]) { await until(() => document.querySelector('[data-excavator-product-view="' + name + '"] [data-excavator-tab="' + TAB[name] + '"]')); press(document.querySelector('[data-excavator-product-view] [data-excavator-tab="' + TAB[name] + '"]')); await sleep(200); }
     await until(() => document.querySelector('[data-excavator-product-view="' + name + '"] [data-excavator-table="' + MAIN_TABLE[name] + '"]'));
     const view = document.querySelector('[data-excavator-product-view]');
     const rec = { sideways: sideways(), overlaySideways: view.scrollWidth > view.clientWidth + 1, tables: [...view.querySelectorAll('[data-excavator-table]')].length, tablesScrollInside: [...view.querySelectorAll('[data-excavator-table] > div')].filter((d) => d.scrollWidth > d.clientWidth + 1).length };
@@ -638,6 +689,75 @@ const PROBE_NARROW = `(async () => {
     await toggle(name);
     out.views[name] = rec;
   }
+  return out;
+})()`;
+
+/**
+ * Runs in the clean page, apart from PROBE so each has its own time: the Relations view's counts, its unit list, its
+ * links and external systems, every site with its bucket, a site that opens its file at its line, a site whose
+ * source is not in the page, the bucket filter and the measurements.
+ */
+const PROBE_RELATIONS = `(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let broken = false;
+  const until = async (test, tries = 60) => { for (let i = 0; i < (broken ? 1 : tries); i++) { if (test()) return true; await sleep(50); } broken = true; return false; };
+  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  const view = () => document.querySelector('[data-excavator-product-view="relations"]');
+  const stat = (label) => view()?.querySelector('[data-excavator-stat="' + label + '"] [data-excavator-stat-value]')?.getAttribute('data-excavator-stat-value') ?? null;
+  const rows = (name) => [...document.querySelectorAll('[data-excavator-table="' + name + '"] tbody tr')];
+  const row = (name, key) => document.querySelector('[data-excavator-table="' + name + '"] tr[data-excavator-row="' + key + '"]');
+  const detail = () => document.querySelector('aside [data-excavator-row-detail]');
+  const action = (name) => document.querySelector('aside [data-excavator-row-actions] [data-excavator-action="' + name + '"]');
+  const tab = async (name) => { press(view()?.querySelector('[data-excavator-tab="' + name + '"]')); await sleep(200); };
+  const pick = async (table, key) => { press(row(table, key)); await until(() => detail(), 20); await sleep(80); };
+  const ADVICE = /safe to delete|should (be )?(removed|deleted)|can be (removed|deleted)|recommend|consider|you (may|might) want/i;
+  const started = Date.now();
+  const out = {};
+  await until(() => document.querySelector('.react-flow__node'));
+  await sleep(400);
+  press(document.querySelector('header [data-excavator-product-button="relations"]'));
+  out.opened = await until(() => view() && view().querySelector('[data-excavator-stat]'));
+  out.state = view()?.querySelector('[data-excavator-view-header]')?.innerText ?? null;
+  out.stats = { units: stat('Units'), links: stat('Links between units'), externals: stat('External systems'), relations: stat('Relations') };
+  out.buckets = view()?.querySelector('[data-excavator-section="Ends by bucket"]')?.innerText ?? null;
+  out.units = [...(view()?.querySelectorAll('[data-excavator-unit]') ?? [])].map((u) => u.getAttribute('data-excavator-unit'));
+  out.unitsText = view()?.querySelector('[data-excavator-units]')?.innerText ?? null;
+  out.unitless = view()?.querySelector('[data-excavator-unitless]')?.getAttribute('data-excavator-unitless') ?? null;
+  out.advice = ADVICE.test(view()?.innerText ?? '');
+  await tab('links');
+  out.links = rows('links').length;
+  press(rows('links')[0]);
+  await until(() => detail(), 20);
+  out.linkDetail = detail()?.innerText ?? null;
+  await tab('externals');
+  out.linkCleared = detail() === null;
+  out.externals = rows('externals').length;
+  await pick('externals', 'external:mail');
+  out.externalDetail = detail()?.innerText ?? null;
+  await tab('sites');
+  out.sites = rows('sites').length;
+  out.siteBuckets = rows('sites').map((r) => r.getAttribute('data-excavator-row') + '=' + r.firstElementChild?.innerText.trim()).sort();
+  out.goneNotLinked = Boolean(row('sites', 'rel:3')?.querySelector('[title="The source of this file is not in this page."]')) && !row('sites', 'rel:3')?.querySelector('[data-excavator-site] button');
+  press(view()?.querySelector('[data-excavator-tab="caller-only"]'));
+  await sleep(150);
+  out.callerOnly = rows('sites').map((r) => r.getAttribute('data-excavator-row'));
+  press(view()?.querySelector('[data-excavator-tab="all"]'));
+  await sleep(150);
+  await pick('sites', 'rel:5');
+  out.unpairedDetail = detail()?.innerText ?? null;
+  await pick('sites', 'rel:1');
+  out.siteDetail = { text: detail()?.innerText ?? null, show: Boolean(action('show-in-graph')), code: Boolean(action('open-code')) };
+  // A site in the table opens its file at its line.
+  press(row('sites', 'rel:1')?.querySelector('[data-excavator-site="src/main.js:4"] button'));
+  out.siteOpensCode = await until(() => /return helper[(]1[)]/.test(document.body.innerText) && document.querySelector('[data-excavator-line-marked]'));
+  out.markedLine = [...document.querySelectorAll('[data-excavator-line-marked]')].map((e) => e.innerText).join('|');
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  await sleep(250);
+  await tab('measurements');
+  out.escalation = view()?.querySelector('[data-excavator-section="Escalation candidates"]')?.innerText ?? null;
+  out.candidateFiles = view()?.querySelector('[data-excavator-uncited]')?.innerText ?? null;
+  out.measurementsAdvice = ADVICE.test(view()?.innerText ?? '');
+  out.elapsedMs = Date.now() - started;
   return out;
 })()`;
 
@@ -686,7 +806,7 @@ export function judge(result) {
     {
       name: 'products',
       ok: probe.onboardingShown === false && probe.headerFilesClasses === false && probe.headerTypeChips === false
-        && JSON.stringify(probe.productButtons) === JSON.stringify(['Unused', 'Hotspots', 'Doc map'])
+        && JSON.stringify(probe.productButtons) === JSON.stringify(['Unused', 'Hotspots', 'Doc map', 'Relations'])
         && probe.unusedView === true && probe.unusedStatus === true && probe.graphMounted === true && probe.overlayArea === true && probe.columnCentred === true
         && probe.onlyUnusedLit === true && probe.viewKeptOpen === true && probe.selectionKept === true && probe.structuralKept === true && probe.backOnGraph === true && probe.testOnlyInert === true,
       detail: `onboarding=${probe.onboardingShown} Files/Classes=${probe.headerFilesClasses} type chips=${probe.headerTypeChips} buttons=${(probe.productButtons ?? []).join('|')} unused view=${probe.unusedView} state and revision=${probe.unusedStatus} graph mounted=${probe.graphMounted} covers graph area only=${probe.overlayArea} centred column<=1100=${probe.columnCentred} only its button lit=${probe.onlyUnusedLit} kept open by a second click=${probe.viewKeptOpen} selection kept=${probe.selectionKept} graph back on Structural=${probe.structuralKept} mode lit again=${probe.backOnGraph} test-only rows inert=${probe.testOnlyInert}`,
@@ -770,6 +890,41 @@ function judgeViews(probe) {
   ];
 }
 
+/** The Relations view against the unchanged fixture: its numbers are counted from the fixture's own lists. */
+export function judgeRelations(result) {
+  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
+  const [network, consoleCheck] = judge({ ...result, evalResult: null });
+  const product = fixtureData()['relations-graph.json'];
+  const string = (n) => String(n);
+  return [
+    network,
+    consoleCheck,
+    verdict('relations view', [
+      ['the view opens and says included at the packed revision', probe.opened === true && /included/i.test(probe.state ?? '') && has(probe.state, 'git:aaaaaaaa')],
+      ['stat Units equals the units', probe.stats?.units === string(product.units.length)],
+      ['stat Relations equals the relations', probe.stats?.relations === string(product.relations.length)],
+      ['stat External systems equals the externals', probe.stats?.externals === string(product.externals.length)],
+      ['stat Links between units counts the one unit pair', probe.stats?.links === '1'],
+      ['the bucket table shows every bucket', ['linked', 'caller-only', 'receiver-only'].every((b) => has(probe.buckets, b))],
+      ['the unit list says how many ends name no unit', probe.unitless === '1'],
+      ['an unpaired receiving end says it was not paired, not that no caller reaches it', has(probe.unpairedDetail, 'this receiving site is quote-failed') && !has(probe.unpairedDetail, 'no caller on another unit reaches')],
+      ['the unit list has each unit with what it reaches', JSON.stringify(probe.units) === JSON.stringify(['unit:web', 'unit:api']) && has(probe.unitsText, 'Reaches:') && has(probe.unitsText, 'mail')],
+      ['the links table lists the unit link and the external link', probe.links === 2 && has(probe.linkDetail, 'Relations')],
+      ['changing the table clears the row', probe.linkCleared === true],
+      ['the external system lists its caller', probe.externals === 1 && has(probe.externalDetail, 'Api') && has(probe.externalDetail, 'external:mail')],
+      ['the site table lists every relation with its bucket', probe.sites === product.relations.length && JSON.stringify(probe.siteBuckets) === JSON.stringify(product.relations.map((r) => `${r.id}=${r.bucket}`).sort())],
+      ['the bucket filter keeps that bucket only', JSON.stringify(probe.callerOnly) === JSON.stringify(['rel:3'])],
+      ['a site whose source is not in the page says so and opens nothing', probe.goneNotLinked === true],
+      ['a site row shows both quotes, the evidence and Show in graph and Open code', has(probe.siteDetail?.text, 'return helper(1);') && has(probe.siteDetail?.text, 'export function helper(n) {') && has(probe.siteDetail?.text, 'src/main.js:1') && probe.siteDetail?.show === true && probe.siteDetail?.code === true],
+      ['a site opens its file with its line marked', probe.siteOpensCode === true && has(probe.markedLine, 'return helper(1);')],
+      ['the escalation candidates are listed as the coverage report states them', has(probe.escalation, 'http: quote failure rate 0.25, above the threshold 0.2')],
+      ['candidate files that are not cited are listed', has(probe.candidateFiles, 'src/gone.js') && has(probe.candidateFiles, 'silent-zero')],
+      ['no advisory wording', probe.advice === false && probe.measurementsAdvice === false],
+      ['the probe ends in time', typeof probe.elapsedMs === 'number' && probe.elapsedMs < 12000],
+    ]),
+  ];
+}
+
 /** The assertions for the page whose products were not run or are unreadable: each view says its state and shows no data. */
 export function judgeStates(result) {
   const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { views: {} };
@@ -783,7 +938,8 @@ export function judgeStates(result) {
       ['unreadable unused-code says so with the reason', has(view('unused').state, 'Status: unreadable') && has(view('unused').state, 'unused-code.json is not valid JSON')],
       ['not-run hotspots gives its command', has(view('hotspots').state, 'Status: not run') && has(view('hotspots').state, 'Command: /excavator-hotspots')],
       ['not-run doc-map gives its command', has(view('doc-map').state, 'Status: not run') && has(view('doc-map').state, 'Command: /excavator-doc-map')],
-      ['no view shows a table, a number or any other card', none(view('unused')) && none(view('hotspots')) && none(view('doc-map'))],
+      ['not-run relations gives its command', has(view('relations').state, 'Status: not run') && has(view('relations').state, 'Command: /excavator-relations')],
+      ['no view shows a table, a number or any other card', none(view('unused')) && none(view('hotspots')) && none(view('doc-map')) && none(view('relations'))],
     ]),
   ];
 }
@@ -792,7 +948,7 @@ export function judgeStates(result) {
 export function judgeLayout(result, width) {
   const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { views: {}, mobile: null };
   const [network, consoleCheck] = judge({ ...result, evalResult: null });
-  const names = ['unused', 'hotspots', 'doc-map'];
+  const names = ['unused', 'hotspots', 'doc-map', 'relations'];
   const views = probe.views ?? {};
   const conditions = [[`the page is ${width} wide`, probe.width === width]];
   for (const name of names) {
@@ -836,6 +992,7 @@ function main(argv) {
 
   const clean = runChrome(assemble(template, data), { screenshot: shot });
   let ok = report('clean', judge(clean));
+  ok = report('relations', judgeRelations(runChrome(assemble(template, data), { probe: PROBE_RELATIONS }))) && ok;
   ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data))))) && ok;
   ok = report('unavailable-products', judgeStates(runChrome(assemble(template, withUnavailableProducts(data)), { probe: PROBE_STATES }))) && ok;
   for (const width of [768, 375]) {
@@ -855,6 +1012,12 @@ function main(argv) {
       { fault: 'node-missing', red: ['unused view'] },
       { fault: 'no-sources', red: ['unused view'] },
     ];
+    // A relation left out of the product must turn the relations view red.
+    {
+      const target = judgeRelations(runChrome(assemble(template, data, 'relations-row-missing'), { probe: PROBE_RELATIONS })).find((check) => check.name === 'relations view');
+      process.stdout.write(`${target.ok ? 'FAIL' : 'ok  '} planted relations-row-missing: relations view is ${target.ok ? 'green (not caught)' : 'red'} (${target.detail.slice(0, 120)})\n`);
+      ok = ok && !target.ok;
+    }
     for (const { fault, red } of planted) {
       const checks = judge(runChrome(assemble(template, data, fault)));
       for (const name of red) {

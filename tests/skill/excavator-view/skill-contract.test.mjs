@@ -57,7 +57,7 @@ describe('SKILL.md', () => {
       'Explorer: <absolute path>',
       'Size: <size in MB, one decimal> MB',
       'Issues: <N | not counted; knowledge graph <state>>',
-      'Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>',
+      'Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; relations <state>',
       'Source: <embedded (N files) | not embedded>',
     ]) {
       expect(skill).toContain(line);
@@ -75,7 +75,7 @@ describe('SKILL.md', () => {
   it('starts no server, runs no analysis and edits no other product', () => {
     expect(skill).not.toMatch(/createServer|\.listen\(|http\.server|python3? -m http|npx serve/);
     expect(skill).toMatch(/Do not start an HTTP server/);
-    expect(skill).toMatch(/do not run `\/excavator`, `\/excavator-unused-code`, `\/excavator-doc-map`, `\/excavator-hotspots` or `\/excavator-tour`/);
+    expect(skill).toMatch(/do not run `\/excavator`, `\/excavator-unused-code`, `\/excavator-doc-map`, `\/excavator-hotspots`, `\/excavator-tour` or `\/excavator-relations`/);
     expect(skill).toMatch(/do not create, change or delete any other file under `\.excavator\/`/);
   });
 
@@ -126,14 +126,14 @@ describe('the reply lines', () => {
     rmSync(templateDir, { recursive: true, force: true });
   });
 
-  it('print the path, the size, the issue count, the seven states and the source line', () => {
+  it('print the path, the size, the issue count, the eight states and the source line', () => {
     const run = spawnSync(process.execPath, [replyScript, result.out], { encoding: 'utf-8' });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout.trimEnd().split('\n')).toEqual([
       `Explorer: ${result.out}`,
       `Size: ${(result.bytes / 1048576).toFixed(1)} MB`,
       `Issues: ${result.issues.total}`,
-      'Products: knowledge graph included; semantics not run; domain graph not run; unused code unreadable; doc map not run; hotspots different revision; tour different revision',
+      'Products: knowledge graph included; semantics not run; domain graph not run; unused code unreadable; doc map not run; hotspots different revision; tour different revision; relations not run',
       'Source: embedded (1 files)',
     ]);
   });
@@ -149,6 +149,7 @@ describe('the reply lines', () => {
       { name: 'doc-map', status: 'not-run' },
       { name: 'hotspots', status: 'different-revision' },
       { name: 'tour', status: 'different-revision' },
+      { name: 'relations', status: 'not-run' },
     ]);
     expect(manifest.source).toEqual({ embedded: true, counts: result.source.counts });
   });
@@ -159,7 +160,7 @@ describe('the reply lines', () => {
       'Explorer: /x/explorer.html',
       'Size: 3.0 MB',
       'Issues: 4',
-      'Products: knowledge graph not run; semantics not run; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not run',
+      'Products: knowledge graph not run; semantics not run; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not run; relations not run',
       'Source: embedded (12 files)',
     ]);
   });
@@ -172,7 +173,7 @@ describe('the reply lines', () => {
 
   it('say not shown for semantics and a tour the page has no graph to hold', () => {
     const manifest = { issues: null, products: [{ name: 'knowledge-graph', status: 'unreadable' }, { name: 'semantics', status: 'not-shown' }, { name: 'tour', status: 'not-shown' }] };
-    expect(replyLines('/x/p.html', 1, manifest)[3]).toBe('Products: knowledge graph unreadable; semantics not shown; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not shown');
+    expect(replyLines('/x/p.html', 1, manifest)[3]).toBe('Products: knowledge graph unreadable; semantics not shown; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not shown; relations not run');
   });
 
   it('say not embedded when the source was not asked for', () => {

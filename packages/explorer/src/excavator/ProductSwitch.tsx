@@ -2,7 +2,7 @@ import { useDashboardStore } from "../store";
 import { PRODUCT_VIEWS } from "./productViews";
 
 /**
- * The Unused | Hotspots | Doc map buttons (openspec: changes/explorer-products,
+ * The Unused | Hotspots | Doc map | Relations buttons (openspec: changes/explorer-products,
  * design D2). Same segmented style as the Domain | Structural switch; the open
  * view is highlighted and a second click on it keeps it open (changes/explorer-view-defaults,
  * design D2). Plain English text, not in the locale tables.

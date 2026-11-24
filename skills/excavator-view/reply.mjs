@@ -9,7 +9,7 @@
  *   Explorer: <absolute path>
  *   Size: <size in MB, one decimal> MB
  *   Issues: <N>
- *   Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>
+ *   Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; relations <state>
  *   Source: <embedded (N files) | not embedded>
  *   Translation: <language> <translated>/<names> names (<english> in English)     only when the page holds a name table
  *
@@ -39,6 +39,7 @@ const PRODUCT_WORDS = [
   ['doc-map', 'doc map'],
   ['hotspots', 'hotspots'],
   ['tour', 'tour'],
+  ['relations', 'relations'],
 ];
 
 /** The manifest of a packed page (its data block comes first and is large; the manifest is the last block). */

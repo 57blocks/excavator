@@ -57,10 +57,10 @@ describe('tour product', () => {
     expect(payloadIds(packed)).toEqual(['knowledge-graph']);
   });
 
-  it('is the last of the seven products, after hotspots', () => {
+  it('comes after hotspots, before relations', () => {
     writeGraph();
     const packed = pack();
-    const names = ['knowledge-graph', 'semantics', 'domain-graph', 'unused-code', 'doc-map', 'hotspots', 'tour'];
+    const names = ['knowledge-graph', 'semantics', 'domain-graph', 'unused-code', 'doc-map', 'hotspots', 'tour', 'relations'];
     expect(packed.manifest.products.map((p) => p.name)).toEqual(names);
     expect(packed.result.products.map((p) => p.name)).toEqual(names);
   });

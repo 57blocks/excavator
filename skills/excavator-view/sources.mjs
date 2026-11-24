@@ -58,7 +58,9 @@ function graphFilePaths(payloads) {
 /**
  * The paths the included products name: the graph's file nodes; unused-code `unused[].file` and `testOnly[].file`; doc-map
  * `units[].code.evidence[].file`, `coverage.files[].path` and `coverage.outside[].file`; domain-graph step `filePath`
- * and `evidence[].file`; hotspots `files[].path` and `pairs[].a` / `.b`. Sorted, each once.
+ * and `evidence[].file`; hotspots `files[].path` and `pairs[].a` / `.b`; relations `relations[].caller.file`,
+ * `.receiver.file`, their `evidence[].file` and `candidates[].file`, and the coverage report's `files.rows[].file`.
+ * Sorted, each once.
  */
 export function referencedPaths(payloads) {
   const paths = new Set();
@@ -90,6 +92,20 @@ export function referencedPaths(payloads) {
       addPath(paths, row?.a);
       addPath(paths, row?.b);
     }
+  }
+  const relations = parsePayload(payloads, 'relations');
+  if (relations) {
+    for (const relation of relations.relations ?? []) {
+      for (const site of [relation?.caller, relation?.receiver]) {
+        addPath(paths, site?.file);
+        for (const item of Array.isArray(site?.evidence) ? site.evidence : []) addPath(paths, item?.file);
+      }
+      for (const item of Array.isArray(relation?.candidates) ? relation.candidates : []) addPath(paths, item?.file);
+    }
+  }
+  const coverage = parsePayload(payloads, 'relations-coverage');
+  if (coverage) {
+    for (const row of Array.isArray(coverage.files?.rows) ? coverage.files.rows : []) addPath(paths, row?.file);
   }
   return [...paths].sort();
 }

@@ -13,6 +13,15 @@ const entry = (name: string, over: Record<string, unknown> = {}) => ({
 });
 
 describe("reading products.json into a status", () => {
+  it("reads the relations product with its coverage report's own state, and none when products.json gives none", () => {
+    const states = readProductStates({
+      products: [entry("relations", { coverage: { state: "other-run", reason: "written by another run" } })],
+    });
+    expect(states.relations).toMatchObject({ status: "included", command: "/excavator-relations", coverage: { state: "other-run", reason: "written by another run" } });
+    expect(readProductStates({ products: [entry("relations")] }).relations.coverage).toBeNull();
+    expect(readProductStates({ products: [] }).relations).toMatchObject({ status: "unreadable", reason: "products.json has no entry for relations" });
+  });
+
   it("reads each of the four states for the three products", () => {
     const states = readProductStates({
       products: [
@@ -85,15 +94,15 @@ describe("describing a product's state", () => {
 
 describe("the notice for a product made from another revision", () => {
   it("names both revisions", () => {
-    const text = revisionNotice({ status: "different-revision", reason: null, revision: "git:bbb", revisionNote: null, command: null }, "git:aaa");
+    const text = revisionNotice({ status: "different-revision", reason: null, revision: "git:bbb", revisionNote: null, command: null, coverage: null }, "git:aaa");
     expect(text).toContain("git:bbb");
     expect(text).toContain("git:aaa");
   });
 
   it("says when a revision is not recorded and has no notice for other states", () => {
-    const text = revisionNotice({ status: "different-revision", reason: null, revision: null, revisionNote: null, command: null }, null);
+    const text = revisionNotice({ status: "different-revision", reason: null, revision: null, revisionNote: null, command: null, coverage: null }, null);
     expect(text).toContain("not recorded");
-    expect(revisionNotice({ status: "included", reason: null, revision: "git:aaa", revisionNote: null, command: null }, "git:aaa")).toBeNull();
+    expect(revisionNotice({ status: "included", reason: null, revision: "git:aaa", revisionNote: null, command: null, coverage: null }, "git:aaa")).toBeNull();
   });
 });
 
@@ -123,7 +132,7 @@ describe("loading products.json from the page", () => {
     pageWith(Buffer.from("not gzip", "utf-8").toString("base64"));
     const { states, snapshotRevision } = await loadProductStates();
     expect(snapshotRevision).toBeNull();
-    for (const view of ["unused", "hotspots", "doc-map"] as const) {
+    for (const view of ["unused", "hotspots", "doc-map", "relations"] as const) {
       expect(states[view].status).toBe("unreadable");
       expect(states[view].reason).toMatch(/^products\.json could not be read: /);
       expect(states[view].reason).not.toMatch(/not in the expected shape/);

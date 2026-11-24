@@ -44,6 +44,7 @@ export function makePluginRoot(template) {
   cpSync(join(repoRoot, 'skills/excavator-view'), join(root, 'skills/excavator-view'), { recursive: true });
   symlinkSync(join(repoRoot, 'skills/excavator'), join(root, 'skills/excavator'));
   symlinkSync(join(repoRoot, 'skills/excavator-domain'), join(root, 'skills/excavator-domain'));
+  symlinkSync(join(repoRoot, 'skills/excavator-relations'), join(root, 'skills/excavator-relations'));
   if (template !== null) {
     mkdirSync(join(root, 'packages/explorer/dist'), { recursive: true });
     writeFileSync(join(root, 'packages/explorer/dist/explorer.html'), template);

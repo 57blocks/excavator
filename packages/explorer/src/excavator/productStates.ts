@@ -10,6 +10,12 @@ import { PRODUCT_VIEWS, type ProductView } from "./productViews";
 
 export type ProductStatus = "included" | "not-run" | "unreadable" | "different-revision";
 
+/** The relations graph's coverage report: whether the page holds it, and why not (relations.mjs of the packer). */
+export interface CoverageState {
+  state: string;
+  reason: string | null;
+}
+
 export interface ProductState {
   status: ProductStatus;
   reason: string | null;
@@ -17,6 +23,8 @@ export interface ProductState {
   revision: string | null;
   revisionNote: string | null;
   command: string | null;
+  /** Only the relations product has one; null for the others and when products.json gives none. */
+  coverage: CoverageState | null;
 }
 
 export type ProductStates = Record<ProductView, ProductState>;
@@ -25,7 +33,12 @@ const STATUSES: ReadonlySet<string> = new Set<ProductStatus>(["included", "not-r
 
 const text = (value: unknown): string | null => (typeof value === "string" && value !== "" ? value : null);
 
-const unreadable = (reason: string): ProductState => ({ status: "unreadable", reason, revision: null, revisionNote: null, command: null });
+const unreadable = (reason: string): ProductState => ({ status: "unreadable", reason, revision: null, revisionNote: null, command: null, coverage: null });
+
+function coverageOf(value: unknown): CoverageState | null {
+  if (!isTable(value) || typeof value.state !== "string") return null;
+  return { state: value.state, reason: text(value.reason) };
+}
 
 function isTable(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -43,6 +56,7 @@ function stateOf(name: string, item: unknown): ProductState {
     revision: text(item.revision),
     revisionNote: text(item.revisionNote),
     command: text(item.command),
+    coverage: coverageOf(item.coverage),
   };
 }
 

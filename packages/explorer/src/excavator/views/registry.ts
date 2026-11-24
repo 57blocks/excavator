@@ -1,6 +1,7 @@
 import type { ProductView } from "../productViews";
 import { docMapView } from "./docmap/DocMapView";
 import { hotspotsView } from "./hotspots/HotspotsView";
+import { relationsView } from "./relations/RelationsView";
 import type { ViewModule } from "./types";
 import { unusedView } from "./unused/UnusedView";
 
@@ -12,4 +13,5 @@ export const VIEW_MODULES: Record<ProductView, ViewModule> = {
   unused: unusedView,
   hotspots: hotspotsView,
   "doc-map": docMapView,
+  relations: relationsView,
 };
