@@ -240,3 +240,104 @@ export function tourProduct({ sourceRevision, factDigest, extra = {} } = {}) {
     ...extra,
   };
 }
+
+/**
+ * A relations graph as `/excavator-relations` saves it, with the format the merge writes: three units (a browser app,
+ * an API server, a worker), one linked HTTP pair, one call to an external system, one caller with no receiver, one
+ * receiver no caller reaches, one address that stayed unresolved and one end the check rejected.
+ */
+export function relationsGraph({ format, sourceRevision, factDigest, inputDigest = 'i'.repeat(64), extra = {} } = {}) {
+  const site = (unit, file, line, quote, more = {}) => ({ unit, family: 'js', file, line, quote, nodeId: null, nodeIdBy: 'none', evidence: [], ...more });
+  return {
+    format,
+    contentLanguage: 'en',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    sourceRevision,
+    factDigest,
+    inputDigest,
+    unitsDigest: 'u'.repeat(64),
+    status: 'complete',
+    units: [
+      { id: 'unit:web', name: 'web', root: 'web', kind: 'runtime', evidence: [] },
+      { id: 'unit:api', name: 'api', root: 'api', kind: 'runtime', evidence: [] },
+      { id: 'unit:worker', name: 'worker', root: 'worker', kind: 'runtime', evidence: [] },
+    ],
+    externals: [{ id: 'external:mail' }],
+    relations: [
+      {
+        kind: 'http', area: 'area-001', reason: 'Loads the order list', confidence: 'high', bucket: 'linked',
+        address: { method: 'GET', path: '/orders' }, addressKey: 'GET /orders', key: 'http|web/src/orders.js|GET /orders|api/src/routes.js',
+        caller: site('unit:web', 'web/src/orders.js', 3, "fetch('/orders')", { evidence: [{ file: 'web/src/config.js', line: 1, quote: 'const base = "/"' }] }),
+        receiver: { ...site('unit:api', 'api/src/routes.js', 7, "app.get('/orders', list)"), addressKey: 'GET /orders' }, id: 'rel:1',
+      },
+      {
+        kind: 'external', area: 'area-002', reason: 'Sends the receipt mail', confidence: 'high', bucket: 'linked',
+        address: { name: 'mail' }, addressKey: 'external:mail', key: 'external|worker/src/mail.js|external:mail|external:mail',
+        caller: site('unit:worker', 'worker/src/mail.js', 2, 'mailer.send(receipt)'), receiver: { external: 'external:mail' }, id: 'rel:2',
+      },
+      {
+        kind: 'http', area: 'area-001', reason: 'Posts a refund request to an endpoint no unit receives', confidence: 'medium', bucket: 'caller-only',
+        address: { method: 'POST', path: '/refunds' }, addressKey: 'POST /refunds',
+        caller: site('unit:web', 'web/src/refund.js', 4, "post('/refunds', body)"), receiver: null, id: 'rel:3',
+      },
+      {
+        kind: 'http', area: 'area-003', reason: 'Health check', confidence: 'high', bucket: 'receiver-only',
+        address: { method: 'GET', path: '/health' }, addressKey: 'GET /health',
+        caller: null, receiver: site('unit:api', 'api/src/health.js', 1, "app.get('/health', ok)"), id: 'rel:4',
+      },
+      {
+        kind: 'external', area: 'area-002', reason: 'Generic helper posting to a URL its callers pass', confidence: 'low', bucket: 'address-unresolved', role: 'caller',
+        unresolved: 'The URL is a parameter', address: { unresolved: 'The URL is a parameter' },
+        caller: site('unit:worker', 'worker/src/http.js', 5, 'request(url, body)'), id: 'rel:5',
+      },
+      {
+        kind: 'http', area: 'area-003', reason: 'Quote not on its line', confidence: 'low', bucket: 'quote-failed', role: 'caller',
+        rejection: { reason: 'quote-mismatch', detail: 'not within 3 lines' }, address: null,
+        caller: { file: 'api/src/gone.js', line: 9, quote: 'call()' }, id: 'rel:6',
+      },
+    ],
+    buckets: {
+      caller: { linked: 2, ambiguous: 0, 'caller-only': 1, 'address-unresolved': 1, 'quote-failed': 1 },
+      receiver: { linked: 1, 'receiver-only': 1, 'address-unresolved': 0, 'quote-failed': 0 },
+    },
+    outOfScope: {},
+    measurements: {
+      http: { ends: 4, quoteFailed: 1, quoteFailureRate: 0.25, verified: 3, unresolved: 0, unresolvedShare: 0, linked: 1, agreement: { status: 'no-previous-run', jaccard: null }, escalation: { candidate: false, reasons: [] } },
+      external: { ends: 2, quoteFailed: 0, quoteFailureRate: 0, verified: 2, unresolved: 1, unresolvedShare: 0.5, linked: 1, agreement: { status: 'no-previous-run', jaccard: null }, escalation: { candidate: false, reasons: [] } },
+    },
+    ...extra,
+  };
+}
+
+/** The coverage report the same merge writes beside the relations graph. */
+export function relationsCoverage({ format = 'excavator-relations-coverage/1', inputDigest = 'i'.repeat(64), extra = {} } = {}) {
+  return {
+    format,
+    token: 't'.repeat(16),
+    inputDigest,
+    status: 'complete',
+    thresholds: { agreement: 0.8, minAgreementUnion: 5, quoteFailureRate: 0.1, unresolvedShare: 0.3, minEnds: 10 },
+    areas: [{ areaId: 'area-001', status: 'accepted' }, { areaId: 'area-002', status: 'accepted' }, { areaId: 'area-003', status: 'accepted' }],
+    buckets: relationsGraph().buckets,
+    rejections: { malformed: 0, 'outside-root': 0, 'outside-area': 0, 'line-out-of-range': 0, 'quote-mismatch': 1, 'evidence-mismatch': 0, 'address-not-quoted': 0 },
+    outOfScope: {},
+    conservation: { endsIn: 7, inBuckets: 7, duplicates: 0, ok: true },
+    files: {
+      buckets: { cited: 5, 'declared-skip': 1, 'ends-rejected': 1, 'silent-zero': 1 },
+      configFiles: 1,
+      configCited: 1,
+      split: { candidates: 8 },
+      rows: [
+        { file: 'web/src/orders.js', unit: 'unit:web', status: 'cited' },
+        { file: 'web/src/vendor.js', unit: 'unit:web', status: 'declared-skip', reason: 'Third-party bundle' },
+        { file: 'api/src/gone.js', unit: 'unit:api', status: 'ends-rejected' },
+        { file: 'api/src/jobs.js', unit: 'unit:api', status: 'silent-zero' },
+      ],
+    },
+    units: [{ id: 'unit:web', name: 'web', kind: 'runtime', candidateFiles: 3, status: 'has-candidates' }],
+    anchors: { nodeIdGiven: 0 },
+    measurements: relationsGraph().measurements,
+    escalationCandidates: [{ kind: 'http', reasons: ['quote-failure'] }],
+    ...extra,
+  };
+}
