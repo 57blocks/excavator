@@ -6,7 +6,8 @@
  * judged here and never on the page:
  *   - `format` must be the one the merge writes (`GRAPH_FORMAT` of merge-relations.mjs), and `units`, `externals`,
  *     `relations`, `buckets`, `measurements`, `sourceRevision` and `factDigest` must be there, with every unit
- *     carrying a string id and name, every external a string id, and every relation a string id, kind and bucket;
+ *     carrying a string id and name, every external a string id, and every relation a string id and bucket (not a
+ *     kind: the merge keeps a malformed analyzer relation, whose kind may be missing or not a string, as quote-failed);
  *     otherwise the file is unreadable and nothing of it is shown;
  *   - the graph is a different revision when its `sourceRevision` is not the snapshot's (or it records none), or its
  *     `factDigest` is not the knowledge graph's `factsDigest` (its node ids are ids into that fact graph). A graph made
@@ -101,7 +102,7 @@ export function readRelations(dataDir, graph, snapshotRevision) {
   if (missing.length > 0) return unreadable(`${RELATIONS_FILE} is missing the top-level key(s): ${missing.join(', ')}`);
   const bad = badRecord(relations.units, 'units', ['id', 'name'])
     ?? badRecord(relations.externals, 'externals', ['id'])
-    ?? badRecord(relations.relations, 'relations', ['id', 'kind', 'bucket']);
+    ?? badRecord(relations.relations, 'relations', ['id', 'bucket']);
   if (bad) return unreadable(bad);
 
   const notes = [];

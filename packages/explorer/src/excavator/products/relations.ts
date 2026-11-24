@@ -53,7 +53,8 @@ export interface Candidate {
 
 export interface RelationRow {
   id: string;
-  kind: string;
+  /** The kind; null for a malformed analyzer relation the merge kept as quote-failed without a string kind. */
+  kind: string | null;
   bucket: string;
   /** The address in words: the normalized key, or why there is none. */
   address: string | null;
@@ -94,17 +95,17 @@ function addressOf(raw: Table): string | null {
   return null;
 }
 
-/** Every relation of the product, in the product's order; an item without an id, kind or bucket is not a relation. */
+/** Every relation of the product, in the product's order; an item without an id or a bucket is not a relation. */
 export function relationRows(product: unknown): RelationRow[] {
   if (!isTable(product)) return [];
   return listOf(product.relations)
-    .filter((raw) => text(raw.id) !== null && text(raw.kind) !== null && text(raw.bucket) !== null)
+    .filter((raw) => text(raw.id) !== null && text(raw.bucket) !== null)
     .map((raw) => {
       const receiverRaw = raw.receiver;
       const external = isTable(receiverRaw) ? text(receiverRaw.external) : null;
       return {
         id: raw.id,
-        kind: raw.kind,
+        kind: text(raw.kind),
         bucket: raw.bucket,
         address: addressOf(raw),
         reason: text(raw.reason),
@@ -168,7 +169,7 @@ export function unitSummaries(units: readonly UnitInfo[], rows: readonly Relatio
       if (row.caller?.unit === unit.id) {
         bump(calls, row.bucket);
         const target = row.external ?? row.receiver?.unit ?? null;
-        if (row.bucket === 'linked' && target !== null) {
+        if (row.bucket === 'linked' && row.kind !== null && target !== null) {
           const key = `${row.kind}|${target}`;
           const found = reach.get(key) ?? { kind: row.kind, target, external: row.external !== null, relations: 0 };
           found.relations += 1;
@@ -200,20 +201,19 @@ export function endsWithoutUnit(rows: readonly RelationRow[]): { total: number; 
 /**
  * What the details of a relation say for an end it has no site for, or null when it has one (or when the other end's
  * sentence already says it). Only a receiver-only end is one no caller reaches; an unpaired receiving end in another
- * bucket was never paired, and an end whose own site could not be read says so.
+ * bucket was never paired; a relation with neither site (one the analyzer wrote with no end, or whose only end could
+ * not be read) gets one sentence for both roles.
  */
 export function missingEndText(row: RelationRow, side: 'caller' | 'receiver'): string | null {
   const hasReceiver = row.receiver !== null || row.external !== null;
   if (side === 'caller') {
     if (row.caller !== null) return null;
+    if (!hasReceiver) return `The analyzer wrote no readable site for this relation (${row.bucket}).`;
     if (row.bucket === 'receiver-only') return 'No caller site: no caller on another unit reaches this address.';
-    if (row.role === 'receiver' && hasReceiver) return `No caller site: this receiving site is ${row.bucket}, and the merge pairs only ends that pass the quote check and resolve an address.`;
-    if (row.role === 'caller') return `The caller site the analyzer wrote could not be read (${row.bucket}).`;
+    if (row.role === 'receiver') return `No caller site: this receiving site is ${row.bucket}, and the merge pairs only ends that pass the quote check and resolve an address.`;
     return `No caller site recorded (${row.bucket}).`;
   }
-  if (hasReceiver) return null;
-  if (row.role === 'receiver') return `The receiving site the analyzer wrote could not be read (${row.bucket}).`;
-  if (row.caller === null) return null;
+  if (hasReceiver || row.caller === null) return null;
   if (row.bucket === 'ambiguous') return 'No single receiving site: several receivers match this address (ambiguous).';
   return `No receiving site (${row.bucket}).`;
 }
@@ -236,7 +236,7 @@ export function unitLinks(rows: readonly RelationRow[]): LinkRow[] {
   for (const row of rows) {
     const from = row.caller?.unit ?? null;
     const to = row.external ?? row.receiver?.unit ?? null;
-    if (row.bucket !== 'linked' || from === null || to === null) continue;
+    if (row.bucket !== 'linked' || row.kind === null || from === null || to === null) continue;
     const key = `${row.kind}|${from}|${to}`;
     const link = links.get(key) ?? { key, kind: row.kind, from, to, external: row.external !== null, relations: [], callerSites: 0, receiverSites: 0 };
     link.relations.push(row);

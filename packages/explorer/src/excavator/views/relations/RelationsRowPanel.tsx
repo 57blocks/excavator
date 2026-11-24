@@ -54,10 +54,10 @@ function RelationPanel({ row, onClose }: { row: RelationRow; onClose: () => void
   const units = useUnits();
   const translate = useTranslate();
   return (
-    <RowDetail kind="Relation" title={row.address ?? `${row.kind} ${row.bucket}`} onClose={onClose}>
+    <RowDetail kind="Relation" title={row.address ?? `${row.kind ?? "no kind"} ${row.bucket}`} onClose={onClose}>
       <RowFields
         fields={[
-          { label: "Kind", value: row.kind },
+          { label: "Kind", value: row.kind ?? "none recorded as a string" },
           { label: "Bucket", value: `${row.bucket}: ${BUCKET_WORDS[row.bucket] ?? "a bucket this page does not describe"}` },
           { label: "Address", value: row.address },
           { label: "Reason", value: row.reason === null ? null : <Translated english={row.reason} translate={translate} /> },
@@ -111,7 +111,7 @@ function RelationList({ rows, units, translate }: { rows: readonly RelationRow[]
             onClick={() => setProductRow({ table: "sites", row } satisfies RelationsRowRef)}
             className="cursor-pointer border-0 bg-transparent p-0 text-left font-mono text-[11px] text-text-muted hover:text-accent"
           >
-            {row.address ?? row.kind}
+            {row.address ?? row.kind ?? row.bucket}
           </button>
         </li>
       ))}
