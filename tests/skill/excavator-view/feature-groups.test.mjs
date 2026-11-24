@@ -9,6 +9,7 @@ import {
   addressKey,
   entryRoutes,
   featureGroups,
+  groupTitle,
   featureSegments,
   shownNames,
   splitWords,
@@ -160,7 +161,7 @@ describe('featureGroups', () => {
 
   it('keeps a flow with no route, no entry type and no module visible in its own group', () => {
     const lone = featureGroups({ nodes: [domain('d'), { id: 'flow:x', type: 'flow' }], edges: contains('d', 'flow:x') });
-    expect(lone.domains.d).toEqual([{ id: 'none', kind: 'none', label: NO_ROUTE_LABEL, file: null, flows: [{ id: 'flow:x', rule: 'none', scope: null, origin: null }] }]);
+    expect(lone.domains.d).toEqual([{ id: 'none', kind: 'none', label: NO_ROUTE_LABEL, qualifier: null, file: null, flows: [{ id: 'flow:x', rule: 'none', scope: null, origin: null }] }]);
   });
 
   it(`folds single-flow groups into "${OTHER_LABEL}", last, when a domain would show more than ${MAX_GROUPS} groups`, () => {
@@ -170,6 +171,69 @@ describe('featureGroups', () => {
     expect(groups.map((g) => g.label)).toEqual(['big', OTHER_LABEL]);
     expect(groups[1].flows).toHaveLength(MAX_GROUPS + 1);
     expect(groups[1].flows[0]).toEqual({ id: 'flow:f0', rule: 'route', scope: null, origin: 'featurea' });
+  });
+
+  const titles = (groups) => groups.map(groupTitle);
+  const unique = (list_) => new Set(list_.map((t) => t.toLowerCase())).size === list_.length;
+  const clientDomain = (files, extraRoutes = []) => {
+    // One backend flow pair per caller file, all on the same route word; `extraRoutes` are flows with no caller.
+    const flowsOf = files.flatMap((file, i) => [0, 1].map((k) => backend(`flow:c${i}${k}`, `GET /resource-pool/f${i}${k}`)));
+    const extra = extraRoutes.map((route, i) => backend(`flow:e${i}`, route));
+    const rels = files.flatMap((file, i) => [0, 1].map((k) => call(file, 'GET', `/resource-pool/f${i}${k}`, `function:none:${i}${k}`)));
+    const all = [...flowsOf, ...extra];
+    return featureGroups(
+      { nodes: [domain('d'), ...all], edges: contains('d', ...all.map((f) => f.id)) },
+      { relations: { units: [{ id: 'unit:web', name: 'web', root: 'web' }, { id: 'unit:api', name: 'api', root: 'api' }], relations: rels } },
+    ).domains.d;
+  };
+
+  it('keeps the bare label on a route word group and qualifies client groups that share it with their file names', () => {
+    const groups = clientDomain(['web/a/pool-client.ts', 'web/b/other-client.ts'], ['GET /resource-pool/solo']);
+    expect(groups.map((g) => [g.kind, g.label, g.qualifier, g.file])).toEqual(expect.arrayContaining([
+      ['feature', 'resource pool', null, null],
+      ['feature', 'resource pool', 'pool-client', 'web/a/pool-client.ts'],
+      ['feature', 'resource pool', 'other-client', 'web/b/other-client.ts'],
+    ]));
+    expect(titles(groups).sort()).toEqual(['resource pool', 'resource pool \u00b7 other-client', 'resource pool \u00b7 pool-client']);
+    expect(unique(titles(groups))).toBe(true);
+  });
+
+  it('adds parent directories to a qualifier until it is unique, and keeps the extension for files that differ only by it', () => {
+    const dirs = clientDomain(['web/hr/service.ts', 'web/finance/service.ts']);
+    expect(dirs.map((g) => g.qualifier).sort()).toEqual(['finance/service', 'hr/service']);
+    const ext = clientDomain(['web/hr/service.ts', 'web/hr/service.js']);
+    expect(ext.map((g) => g.qualifier).sort()).toEqual(['service.js', 'service.ts']);
+    expect(unique(titles(dirs)) && unique(titles(ext))).toBe(true);
+  });
+
+  it('gives a qualifier to a lone client group that shares its label with a word group, and none otherwise', () => {
+    const groups = clientDomain(['web/a/pool-client.ts'], ['GET /resource-pool/solo']);
+    expect(groups.map((g) => g.qualifier).sort()).toEqual([null, 'pool-client']);
+    expect(clientDomain(['web/a/pool-client.ts']).map((g) => g.qualifier)).toEqual([null]);
+  });
+
+  it('names a folded flow by its group\'s displayed name, and lists only the label part in shownNames', () => {
+    const files = Array.from({ length: MAX_GROUPS + 1 }, (_, i) => `web/d${i}/same-name.ts`);
+    const flowsOf = files.map((file, i) => backend(`flow:s${i}`, `GET /resource-pool/s${i}`));
+    const solo = [backend('flow:w1', 'GET /resource-pool/w1'), backend('flow:w2', 'GET /resource-pool/w2')];
+    const all = [...flowsOf, ...solo];
+    const rels = files.map((file, i) => call(file, 'GET', `/resource-pool/s${i}`, `function:none:${i}`));
+    const groups = featureGroups(
+      { nodes: [domain('d'), ...all], edges: contains('d', ...all.map((f) => f.id)) },
+      { relations: { units: [{ id: 'unit:web', name: 'web', root: 'web' }, { id: 'unit:api', name: 'api', root: 'api' }], relations: rels } },
+    ).domains.d;
+    const folded = groups.find((g) => g.kind === 'other');
+    expect(folded.flows.map((f) => f.origin)).toContain('resource pool \u00b7 d0/same-name');
+    expect(unique(titles(groups))).toBe(true);
+    expect(shownNames({ domains: { d: groups } }).some((n) => n.includes('\u00b7'))).toBe(false);
+    expect(shownNames({ domains: { d: groups } })).toContain('resource pool');
+  });
+
+  it('shows unique displayed names in every domain of the fixture, with a null qualifier by default', () => {
+    for (const groups of Object.values(result.domains)) {
+      expect(unique(titles(groups))).toBe(true);
+      expect(groups.every((g) => g.qualifier === null)).toBe(true);
+    }
   });
 
   it('tolerates a graph that is not one', () => {

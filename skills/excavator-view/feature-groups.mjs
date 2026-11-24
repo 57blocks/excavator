@@ -164,12 +164,46 @@ function displayOf(spellings) {
   return ranked.length > 0 ? ranked[0][0] : null;
 }
 
-const compareGroups = (a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || compareText(a.label, b.label) || compareText(a.id, b.id);
+export const QUALIFIER_SEPARATOR = ' \u00b7 ';
+
+/** The name a group is shown by: its label, then the qualifier of a client group whose label another group of the domain shares. */
+export const groupTitle = (group) => (group.qualifier == null ? group.label : `${group.label}${QUALIFIER_SEPARATOR}${group.qualifier}`);
+
+const compareGroups = (a, b) =>
+  KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || compareText(a.label, b.label) || compareText(groupTitle(a), groupTitle(b)) || compareText(a.id, b.id);
+
+const stripExtension = (path) => path.replace(/\.[^./]+$/, '');
+
+/**
+ * Sets `qualifier` on the client groups of a domain whose label another group shares (compared case-insensitively):
+ * the shortest suffix of the caller file path, without its extension, that no other client group of the set has.
+ * Files that differ only by extension keep it. Word groups keep the bare label; entry, none and other groups have
+ * fixed distinct labels. Returns new group objects.
+ */
+function qualifyGroups(groups) {
+  const byLabel = new Map();
+  for (const group of groups) byLabel.set(group.label.toLowerCase(), [...(byLabel.get(group.label.toLowerCase()) ?? []), group]);
+  const qualifiers = new Map();
+  for (const set of byLabel.values()) {
+    if (set.length < 2) continue;
+    const clients = set.filter((group) => group.file !== null);
+    const stripped = clients.map((group) => stripExtension(group.file));
+    const segments = clients.map((group, index) => (stripped.filter((other) => other === stripped[index]).length > 1 ? group.file : stripped[index]).split('/'));
+    clients.forEach((group, index) => {
+      const mine = segments[index];
+      let k = 1;
+      while (k < mine.length && segments.some((other, i) => i !== index && other.length >= k && other.slice(-k).join('/') === mine.slice(-k).join('/'))) k += 1;
+      qualifiers.set(group.id, mine.slice(-k).join('/'));
+    });
+  }
+  return groups.map((group) => ({ ...group, qualifier: qualifiers.get(group.id) ?? null }));
+}
 
 /**
  * The groups of every domain:
  * { format, domains: { <domain id>: [{ id, kind, label, file, flows: [{ id, rule, scope, origin }] }] } }.
- * `kind` is feature | entry | none | other; `file` is the caller file of a client group, else null.
+ * `kind` is feature | entry | none | other; `file` is the caller file of a client group, else null; `qualifier` is
+ * set on a client group whose label another group of the domain shares (the displayed name is `groupTitle`).
  */
 export function featureGroups(domainGraph, { relations = null, knowledgeGraph = null } = {}) {
   const nodes = list(domainGraph?.nodes);
@@ -315,11 +349,12 @@ export function featureGroups(domainGraph, { relations = null, knowledgeGraph = 
       const base = group.file.split('/').pop().replace(/\.[^.]+$/, '');
       return { ...group, label: splitWords(base).join(' ') || base };
     });
+    groups = qualifyGroups(groups);
     if (groups.length > MAX_GROUPS) {
       const single = groups.filter((group) => group.flows.length === 1);
       if (single.length > 1) {
-        const moved = single.sort(compareGroups).map((group) => ({ ...group.flows[0], origin: group.label }));
-        groups = [...groups.filter((group) => group.flows.length !== 1), { id: 'other', kind: 'other', label: OTHER_LABEL, file: null, flows: moved }];
+        const moved = single.sort(compareGroups).map((group) => ({ ...group.flows[0], origin: groupTitle(group) }));
+        groups = [...groups.filter((group) => group.flows.length !== 1), { id: 'other', kind: 'other', label: OTHER_LABEL, qualifier: null, file: null, flows: moved }];
       }
     }
     domains[domainId] = groups.sort(compareGroups);
@@ -327,14 +362,18 @@ export function featureGroups(domainGraph, { relations = null, knowledgeGraph = 
   return { format: FEATURE_GROUPS_FORMAT, domains };
 }
 
-/** Every name the page shows for the groups, once each: group labels, scope tags and the former labels of moved flows. */
+/** Every name the page shows for the groups, once each: group labels, scope tags and the former labels of moved flows (label part only). */
 export function shownNames(result) {
   const names = new Set();
   for (const groups of Object.values(isObject(result?.domains) ? result.domains : {})) {
     for (const group of list(groups)) {
       const label = text(group?.label);
       if (label !== null) names.add(label);
-      for (const flow of list(group?.flows)) for (const name of [text(flow?.scope), text(flow?.origin)]) if (name !== null) names.add(name);
+      for (const flow of list(group?.flows)) {
+        // A former label with a qualifier carries a file path, which is not translated: only its label part is a name.
+        const origin = text(flow?.origin);
+        for (const name of [text(flow?.scope), origin === null ? null : origin.split(QUALIFIER_SEPARATOR)[0]]) if (name !== null && name !== '') names.add(name);
+      }
     }
   }
   return [...names];
