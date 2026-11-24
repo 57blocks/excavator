@@ -32,7 +32,10 @@
  *                        (GET excepted: the default of most clients) for http,
  *                        the method and service for rpc, every literal piece of
  *                        a message channel or realtime event, the name or host
- *                        of an external endpoint (case-insensitive). An http
+ *                        of an external endpoint (case-insensitive; the id rests
+ *                        only on a quoted word, so a host no cited line holds
+ *                        is a label and the id comes from the name,
+ *                        `hostNotQuoted`). An http
  *                        end at the line of a route entry point of the
  *                        knowledge graph with the same normalized path is
  *                        checked against the entry point instead.
@@ -70,6 +73,11 @@
  * THRESHOLDS is an escalation candidate: a sign that a deterministic extractor
  * may be needed. Nothing is built from it.
  *
+ * External ids (relations-address.mjs externalIdentity) are counted by what
+ * they rest on (`external keys host= service= name= transport=
+ * host-not-quoted=`), and `externals` lists every id with those bases and the
+ * names and hosts the analyzers wrote, kept as labels.
+ *
  * Usage:
  *   node merge-relations.mjs <projectRoot> [--out <path>] [--coverage <path>]
  */
@@ -78,7 +86,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, posix, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { KINDS, normalizeAddress, pairCaller, parsePath, pathText } from './relations-address.mjs';
+import { KINDS, hostOf, normalizeAddress, pairCaller, parsePath, pathText } from './relations-address.mjs';
 import { compare, isObject, languageFamilyOf, readGraphFacts } from './relations-signals.mjs';
 import { UNITS_FILE } from './plan-units.mjs';
 import { AREAS_DIR, OUT_OF_SCOPE_KINDS } from './split-relation-areas.mjs';
@@ -87,7 +95,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
 const require = createRequire(resolve(pluginRoot, 'package.json'));
 
-export const GRAPH_FORMAT = 'excavator-relations/1';
+export const GRAPH_FORMAT = 'excavator-relations/2';
 export const COVERAGE_FORMAT = 'excavator-relations-coverage/1';
 export const GRAPH_FILE = 'relations-graph.json';
 export const EXIT_INCOMPLETE = 3;
@@ -96,6 +104,7 @@ export const CALLER_BUCKETS = Object.freeze(['linked', 'ambiguous', 'caller-only
 export const RECEIVER_BUCKETS = Object.freeze(['linked', 'receiver-only', 'address-unresolved', 'quote-failed']);
 export const FILE_BUCKETS = Object.freeze(['cited', 'declared-skip', 'ends-rejected', 'silent-zero']);
 export const REJECTIONS = Object.freeze(['malformed', 'outside-root', 'outside-area', 'line-out-of-range', 'quote-mismatch', 'evidence-mismatch', 'address-not-quoted']);
+export const EXTERNAL_KEY_COUNTS = Object.freeze(['host', 'service', 'name', 'transport', 'hostNotQuoted']);
 export const THRESHOLDS = Object.freeze({ agreement: 0.8, minAgreementUnion: 5, quoteFailureRate: 0.1, unresolvedShare: 0.3, minEnds: 10 });
 const QUOTE_WINDOW = 3;
 export const MAX_SILENT_LINES = 30;
@@ -280,6 +289,12 @@ export function checkEnd({ end, readLines, areaFiles, entryPoints = new Map() })
     }
     if (end.kind === 'external' && !(normalized.externalWords ?? []).some((w) => lower.includes(w.toLowerCase()))) missing.push(normalized.externalWords.join('|'));
     if (missing.length > 0) return reject('address-not-quoted', missing.join(', '));
+    // The id rests only on a quoted word: a host no cited line holds is a label, never the id.
+    const host = end.kind === 'external' && normalized.keyBy === 'host' ? hostOf(normalized.address.host) : null;
+    if (host !== null && !lower.includes(host)) {
+      const byName = normalizeAddress('external', { name: normalized.address.name });
+      return { ok: true, end: { ...checked, addressBy, hostNotQuoted: true }, normalized: { ...byName, address: normalized.address } };
+    }
   }
   return { ok: true, end: { ...checked, addressBy }, normalized };
 }
@@ -357,7 +372,10 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     nodesByFile.get(node.filePath).push(node);
   }
 
-  const counts = { nodeIdGiven: 0, nodeIdRejected: 0, nodeIdBy: { analyzer: 0, 'derived-range': 0, 'derived-file': 0, none: 0 }, targetUnitUnknown: 0, targetUnitMissed: 0, addressByEntryPoint: 0 };
+  const counts = {
+    nodeIdGiven: 0, nodeIdRejected: 0, nodeIdBy: { analyzer: 0, 'derived-range': 0, 'derived-file': 0, none: 0 }, targetUnitUnknown: 0, targetUnitMissed: 0, addressByEntryPoint: 0,
+    externalKeys: Object.fromEntries(EXTERNAL_KEY_COUNTS.map((k) => [k, 0])),
+  };
   const rejections = Object.fromEntries(REJECTIONS.map((r) => [r, 0]));
   const outOfScope = {};
   const declared = new Map();
@@ -389,6 +407,11 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
       if (anchor.rejected) counts.nodeIdRejected += 1;
       counts.nodeIdBy[anchor.nodeIdBy] += 1;
       if (result.end.addressBy === 'entry-point') counts.addressByEntryPoint += 1;
+      if (end.kind === 'external') {
+        if (result.end.hostNotQuoted) counts.externalKeys.hostNotQuoted += 1;
+        if (result.normalized.ok) counts.externalKeys[result.normalized.keyBy] += 1;
+        else if (result.normalized.transport) counts.externalKeys.transport += 1;
+      }
       item.view = {
         unit: item.unit, family: languageFamilyOf(result.end.file), file: result.end.file, line: result.end.line, quote: result.end.quote,
         nodeId: anchor.nodeId, nodeIdBy: anchor.nodeIdBy, evidence: result.end.evidence,
@@ -454,7 +477,10 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     bucketOf.set(item, paired.bucket);
     const common = { ...base(item), address: n.address, addressKey: n.key, ...(target ? { targetUnit: target } : {}), ...(missed ? { targetUnitMissed: true } : {}) };
     if (paired.bucket === 'linked' && item.end.kind === 'external') {
-      relations.push({ ...common, bucket: 'linked', key: `external|${item.view.file}|${n.key}|${n.key}`, caller: item.view, receiver: { external: n.key } });
+      relations.push({
+        ...common, keyBy: n.keyBy, ...(item.result.end.hostNotQuoted ? { hostNotQuoted: true } : {}),
+        bucket: 'linked', key: `external|${item.view.file}|${n.key}|${n.key}`, caller: item.view, receiver: { external: n.key },
+      });
     } else if (paired.bucket === 'linked') {
       for (const r of paired.receivers) {
         linkedReceivers.add(r.item);
@@ -571,8 +597,23 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     };
   }
 
+  // External systems: the id, what it rests on, and the analyzers' words as labels.
+  const externalRows = new Map();
+  for (const r of relations) {
+    if (r.kind !== 'external' || r.bucket !== 'linked') continue;
+    const row = externalRows.get(r.receiver.external) ?? { id: r.receiver.external, keyBy: new Set(), names: new Set(), hosts: new Set(), callers: 0 };
+    row.keyBy.add(r.keyBy);
+    if (r.address.name) row.names.add(r.address.name);
+    if (r.address.host) row.hosts.add(r.address.host);
+    row.callers += 1;
+    externalRows.set(row.id, row);
+  }
+  const sorted = (set) => [...set].sort(compare);
+  const externals = [...externalRows.values()].sort((a, b) => compare(a.id, b.id))
+    .map((row) => ({ id: row.id, keyBy: sorted(row.keyBy), names: sorted(row.names), hosts: sorted(row.hosts), callers: row.callers }));
+
   return {
-    relations, buckets, conservation, outOfScope, rejections, counts, measurements,
+    relations, buckets, conservation, outOfScope, rejections, counts, measurements, externals,
     files: { buckets: fileBuckets, rows: fileRows, configFiles: (manifest.configFiles ?? []).length, configCited },
     units: unitRows,
   };
@@ -618,6 +659,9 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
   lines.push(`units has-candidates=${u.filter((x) => x.status === 'has-candidates').length} no-candidates=${u.filter((x) => x.status === 'no-candidates').length}`);
   const n = merged.counts;
   lines.push(`target units unknown=${n.targetUnitUnknown} missed=${n.targetUnitMissed}`);
+  const x = n.externalKeys;
+  const named = merged.externals.filter((e) => e.keyBy.includes('name')).map((e) => e.id.replace(/^external:/, ''));
+  lines.push(`external keys host=${x.host} service=${x.service} name=${x.name}${named.length ? ` (${named.join(', ')})` : ''} transport=${x.transport} host-not-quoted=${x.hostNotQuoted}`);
   lines.push(`node ids given=${n.nodeIdGiven} rejected=${n.nodeIdRejected} analyzer=${n.nodeIdBy.analyzer} derived-range=${n.nodeIdBy['derived-range']} derived-file=${n.nodeIdBy['derived-file']} none=${n.nodeIdBy.none}`);
   for (const [kind, m] of Object.entries(merged.measurements)) {
     const ag = m.agreement.status === 'measured' || m.agreement.status === 'insufficient'
@@ -691,7 +735,7 @@ export async function runMerge({
     unitsDigest: manifest.unitsDigest,
     status,
     units: unitsFile.units.map(({ id, name, root: r, kind, evidence }) => ({ id, name, root: r, kind, evidence })),
-    externals: [...new Set(merged.relations.filter((r) => r.receiver?.external).map((r) => r.receiver.external))].sort(compare).map((id) => ({ id })),
+    externals: merged.externals,
     relations: merged.relations,
     buckets: merged.buckets,
     outOfScope: merged.outOfScope,

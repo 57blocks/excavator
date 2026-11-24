@@ -133,6 +133,8 @@ describe('merge-relations end to end', () => {
     const mail = graph.relations.find((r) => r.kind === 'external');
     expect(mail).toMatchObject({ bucket: 'address-unresolved', address: { name: 'nodemailer' } });
     expect(mail.unresolved).toMatch(/library or protocol \(nodemailer\)/);
+    expect(coverage.anchors.externalKeys).toEqual({ host: 0, service: 0, name: 0, transport: 1, hostNotQuoted: 0 });
+    expect(result.stdout).toMatch(/^external keys host=0 service=0 name=0 transport=1 host-not-quoted=0$/m);
     const ambiguous = graph.relations.find((r) => r.bucket === 'ambiguous');
     expect(ambiguous.candidates.map((c) => c.file).sort()).toEqual(['server/app.js', 'worker/main.go']);
 
@@ -292,6 +294,69 @@ describe('agreement and escalation', () => {
   });
 });
 
+describe('external ids across runs', () => {
+  // One project, two runs whose analyzers name the same external sites differently.
+  const files = {
+    'svc/ai.go': 'resp, err := client.CreateChatCompletion(ctx, req) // openai',
+    'svc/ai_client.go': 'const baseURL = "https://api.openai.com/v1"',
+    'svc/maps.go': 'url := "https://maps.googleapis.com/maps/api/place/textsearch/json?query=" + q',
+    'svc/upload.js': "const upload = multer({ storage: multerS3({ s3: s3, bucket: 'files' }) });",
+    'svc/storage.js': "const s3 = new AWS.S3();\nawait s3.upload(params).promise();",
+    'svc/mail.js': "const nodemailer = require('nodemailer');\nconst t = nodemailer.createTransport({ host: 'email-smtp.us-east-1.amazonaws.com' });\nawait t.sendMail(message);",
+    'svc/crm.js': "await acmeCrm.contacts.create(contact);",
+  };
+  const readLines = (f) => (files[f] === undefined ? null : files[f].split('\n'));
+  const at = (file, line, quote, evidence) => ({ file, line, quote, ...(evidence ? { evidence } : {}) });
+  const ai = at('svc/ai.go', 1, 'client.CreateChatCompletion(ctx, req)');
+  const aiHost = [at('svc/ai_client.go', 1, 'const baseURL = "https://api.openai.com/v1"')];
+  const ext = (address, caller) => ({ kind: 'external', address, caller, receiver: null });
+  const runA = [
+    ext({ name: 'openai' }, ai),
+    ext({ name: 'google', host: 'maps.googleapis.com' }, at('svc/maps.go', 1, 'url := "https://maps.googleapis.com/maps/api/place')),
+    ext({ name: 'multerS3' }, at('svc/upload.js', 1, 'multerS3({ s3: s3')),
+    ext({ name: 's3' }, at('svc/storage.js', 2, 'await s3.upload(params)')),
+    ext({ name: 'nodemailer', host: 'email-smtp.us-east-1.amazonaws.com' }, at('svc/mail.js', 3, 'await t.sendMail(message);', [at('svc/mail.js', 2, "host: 'email-smtp.us-east-1.amazonaws.com'")])),
+    ext({ name: 'acmeCrm' }, at('svc/crm.js', 1, 'acmeCrm.contacts.create(contact)')),
+  ];
+  const runB = [
+    ext({ name: 'openai', host: 'api.openai.com' }, { ...ai, evidence: aiHost }),
+    ext({ name: 'googleapis', host: 'maps.googleapis.com' }, at('svc/maps.go', 1, 'maps.googleapis.com/maps/api/place/textsearch')),
+    ext({ name: 's3' }, at('svc/upload.js', 1, 'storage: multerS3({ s3: s3')),
+    ext({ name: 'S3' }, at('svc/storage.js', 2, 's3.upload(params).promise()', [at('svc/storage.js', 1, 'new AWS.S3()')])),
+    ext({ name: 'smtp', host: 'email-smtp.us-east-1.amazonaws.com' }, at('svc/mail.js', 3, 't.sendMail(message)', [at('svc/mail.js', 2, "host: 'email-smtp.us-east-1.amazonaws.com'")])),
+    ext({ name: 'AcmeCrm' }, at('svc/crm.js', 1, 'await acmeCrm.contacts.create')),
+  ];
+  const manifest = { areas: [{ areaId: 'area-001', unit: 'unit:svc', files: Object.keys(files) }], candidates: [], inputDigest: 'd' };
+  const merge = (relations, previous = null) => mergeRelations({
+    accepted: [{ areaId: 'area-001', output: { relations } }], manifest, units: [{ id: 'unit:svc' }], readLines, previous,
+  });
+
+  it('links the same sites to the same ids in both runs', () => {
+    const a = merge(runA);
+    expect(a.relations.filter((r) => r.bucket !== 'linked')).toEqual([]);
+    expect(a.relations.every((r) => r.bucket === 'linked')).toBe(true);
+    const b = merge(runB, { inputDigest: 'd', relations: a.relations });
+    expect(b.relations.filter((r) => r.bucket !== 'linked')).toEqual([]);
+    expect(b.relations.every((r) => r.bucket === 'linked')).toBe(true);
+    expect(b.measurements.external.agreement).toMatchObject({ status: 'measured', jaccard: 1, keyMismatch: 0, previousOnly: 0, currentOnly: 0 });
+    expect(b.externals.map((e) => e.id)).toEqual(['external:acmecrm', 'external:aws', 'external:google', 'external:openai']);
+    expect(b.externals.find((e) => e.id === 'external:aws')).toMatchObject({ keyBy: ['host', 'service'], names: ['s3', 'smtp'], hosts: ['email-smtp.us-east-1.amazonaws.com'], callers: 3 });
+    // A name no table lists is its own id and is counted, never merged into another.
+    expect(b.counts.externalKeys).toEqual({ host: 3, service: 2, name: 1, transport: 0, hostNotQuoted: 0 });
+    expect(b.externals.find((e) => e.id === 'external:acmecrm').keyBy).toEqual(['name']);
+  });
+
+  it('keys on a host only when a cited line holds it', () => {
+    const merged = merge([ext({ name: 'openai', host: 'api.openai.com' }, ai)]);
+    expect(merged.relations[0]).toMatchObject({ bucket: 'linked', keyBy: 'service', hostNotQuoted: true, receiver: { external: 'external:openai' }, address: { host: 'api.openai.com' } });
+    expect(merged.counts.externalKeys).toMatchObject({ service: 1, host: 0, hostNotQuoted: 1 });
+    // An unquoted host over a library name leaves the site unresolved, not keyed by the host.
+    const lib = merge([ext({ name: 'nodemailer', host: 'mail.vendor.example' }, at('svc/mail.js', 3, 'await t.sendMail(message);', [at('svc/mail.js', 1, "require('nodemailer')")]))]);
+    expect(lib.relations[0]).toMatchObject({ bucket: 'address-unresolved' });
+    expect(lib.counts.externalKeys).toMatchObject({ transport: 1, hostNotQuoted: 1 });
+  });
+});
+
 describe('splitUnmatched', () => {
   const linked = (kind, file, line, key) => ({ kind, bucket: 'linked', key, caller: { file, line } });
   it('tells a site keyed two ways from a site one run alone linked, and says what the other run had there', () => {
@@ -351,7 +416,7 @@ describe('containsToken', () => {
 });
 
 describe('relations freshness', () => {
-  const graph = { format: 'excavator-relations/1', sourceRevision: 'r1', factDigest: 'f1' };
+  const graph = { format: 'excavator-relations/2', sourceRevision: 'r1', factDigest: 'f1' };
   it('is fresh only when the source revision and the fact digest match', () => {
     expect(isRelationsGraphUsable({ graph, currentSourceRevision: 'r1', currentFactDigest: 'f1' }).status).toBe('fresh');
     expect(isRelationsGraphUsable({ graph, currentSourceRevision: 'r2', currentFactDigest: 'f1' }).status).toBe('stale');
@@ -359,5 +424,7 @@ describe('relations freshness', () => {
     expect(isRelationsGraphUsable({ graph: { ...graph, factDigest: null }, currentSourceRevision: 'r1', currentFactDigest: null }).usable).toBe(true);
     expect(isRelationsGraphUsable({ graph: null }).status).toBe('missing');
     expect(isRelationsGraphUsable({ graph: { ...graph, format: 'x' } }).status).toBe('unknown-format');
+    // A graph keyed by the earlier external rules is not used.
+    expect(isRelationsGraphUsable({ graph: { ...graph, format: 'excavator-relations/1' } }).status).toBe('unknown-format');
   });
 });
