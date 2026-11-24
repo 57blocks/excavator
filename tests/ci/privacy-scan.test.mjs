@@ -137,9 +137,8 @@ describe('privacy-scan', () => {
     expectNoListedText(result);
   });
 
-  it('does not count a corpus name in openspec/, docs/ or root Markdown', () => {
+  it('does not count a corpus name in docs/ or root Markdown', () => {
     commit('docs: record', {
-      'openspec/a.md': `verified on ${CORPUS}\n`,
       'docs/a.md': `${CORPUS}\n`,
       'README.md': `${CORPUS}\n`,
     });
@@ -148,14 +147,15 @@ describe('privacy-scan', () => {
     expect(nonzero(result)).toEqual({});
   });
 
-  it('counts a corpus name in code and in Markdown below the root', () => {
+  it('counts a corpus name in code, under openspec/ and in Markdown below the root', () => {
     commit('feat: y', {
       'src/a.js': `// ${CORPUS.toUpperCase()}\n`,
+      'openspec/a.md': `verified on ${CORPUS}\n`,
       'skills/s/SKILL.md': `${CORPUS}\n`,
     });
     const result = scan();
     expect(result.status).toBe(1);
-    expect(nonzero(result)).toEqual({ 'corpus added lines': 2 });
+    expect(nonzero(result)).toEqual({ 'corpus added lines': 3 });
     expectNoListedText(result);
   });
 
