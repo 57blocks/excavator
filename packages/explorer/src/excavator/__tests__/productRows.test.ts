@@ -51,13 +51,6 @@ describe("a node chosen from outside the view closes the view", () => {
     expect(useDashboardStore.getState().revealNodeId).toBeNull();
   });
 
-  it("ends a reveal when the persona changes", () => {
-    useDashboardStore.getState().setGraph(graph());
-    useDashboardStore.getState().navigateToNodeInLayer("a1");
-    useDashboardStore.getState().setPersona("non-technical");
-    expect(useDashboardStore.getState().revealNodeId).toBeNull();
-  });
-
   it("closes it also for a node that no layer holds", () => {
     useDashboardStore.getState().setGraph(graph());
     useDashboardStore.getState().openProductView("hotspots");

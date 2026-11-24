@@ -65,7 +65,6 @@ export function unavailableOf(loaded: Loaded): { word: string; lines: string[] }
 export function useGraphRelations(): GraphRelationsData {
   const graph = useDashboardStore((s) => s.graph);
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
-  const persona = useDashboardStore((s) => s.persona);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
 
   useEffect(() => {
@@ -84,8 +83,8 @@ export function useGraphRelations(): GraphRelationsData {
   const parentOf = useMemo(() => containersOf(graph?.edges ?? []), [graph]);
   const index = useMemo(() => relationIndex(rows, new Set((graph?.nodes ?? []).map((n) => n.id)), parentOf), [rows, graph, parentOf]);
   const drawn = useMemo(
-    () => new Set((graph?.nodes ?? []).filter((n) => nodeIdToLayerId.has(n.id) && drawnInLayer(n.type, persona, STRUCTURAL_VISIBLE_TYPES)).map((n) => n.id)),
-    [graph, nodeIdToLayerId, persona],
+    () => new Set((graph?.nodes ?? []).filter((n) => nodeIdToLayerId.has(n.id) && drawnInLayer(n.type, STRUCTURAL_VISIBLE_TYPES)).map((n) => n.id)),
+    [graph, nodeIdToLayerId],
   );
 
   // One object per input, so the graph's memos (and its setNodes effect) do not run on every render.

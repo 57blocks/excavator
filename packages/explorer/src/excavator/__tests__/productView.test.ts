@@ -6,12 +6,10 @@ beforeEach(() => {
 });
 
 describe("the product views in the store", () => {
-  it("starts with no product view, no row, the file level and every node type shown", () => {
+  it("starts with no product view and no row", () => {
     const s = useDashboardStore.getState();
     expect(s.productView).toBeNull();
     expect(s.productRow).toBeNull();
-    expect(s.detailLevel).toBe("file");
-    expect(Object.values(s.nodeTypeFilters).every((on) => on !== false)).toBe(true);
   });
 
   it("opens a view, switches to another, and keeps the open one open on a second click", () => {

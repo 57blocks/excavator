@@ -17,12 +17,11 @@ export function RowActions({ target, path, range }: { target: GraphTarget | null
   const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
   const openCodeViewerAt = useDashboardStore((s) => s.openCodeViewerAt);
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
-  const persona = useDashboardStore((s) => s.persona);
   const index = useMemo(() => {
     const nodes = graph?.nodes ?? [];
-    const drawn = new Set(nodes.filter((n) => nodeIdToLayerId.has(n.id) && drawnInLayer(n.type, persona, STRUCTURAL_VISIBLE_TYPES)).map((n) => n.id));
+    const drawn = new Set(nodes.filter((n) => nodeIdToLayerId.has(n.id) && drawnInLayer(n.type, STRUCTURAL_VISIBLE_TYPES)).map((n) => n.id));
     return { nodeIds: new Set(nodes.map((n) => n.id)), drawn, parentOf: containersOf(graph?.edges ?? []) };
-  }, [graph, nodeIdToLayerId, persona]);
+  }, [graph, nodeIdToLayerId]);
   const located = target === null ? null : locate(target, index);
   const code = codeAction(path, range, (p) => hasInlineSource(p));
 

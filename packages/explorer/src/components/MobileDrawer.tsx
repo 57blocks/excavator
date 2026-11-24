@@ -1,19 +1,12 @@
 import { useEffect } from "react";
-import { shownViewMode, useDashboardStore } from "../store";
+import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
-import PersonaSelector from "./PersonaSelector";
-import DiffToggle from "./DiffToggle";
-import LayerLegend from "./LayerLegend";
-import FilterPanel from "./FilterPanel";
-import ExportMenu from "./ExportMenu";
-import { ThemePicker } from "./ThemePicker";
-import ProductSwitch from "../excavator/ProductSwitch";
+import { ViewSwitch } from "../excavator/header/ViewSwitch";
+import { LanguageSwitch } from "../excavator/header/LanguageSwitch";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onTogglePathFinder: () => void;
-  onShowKeyboardHelp: () => void;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -24,18 +17,23 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The language switch with its label; nothing when the page has no name table. */
+function LanguageSection() {
+  const hasTable = useDashboardStore((s) => s.nameTranslations !== null);
+  if (!hasTable) return null;
+  return (
+    <section>
+      <SectionLabel>Language</SectionLabel>
+      <LanguageSwitch />
+    </section>
+  );
+}
+
 export default function MobileDrawer({
   open,
   onClose,
-  onTogglePathFinder,
-  onShowKeyboardHelp,
 }: Props) {
   const graph = useDashboardStore((s) => s.graph);
-  const isKnowledgeGraph = useDashboardStore((s) => s.isKnowledgeGraph);
-  const domainGraph = useDashboardStore((s) => s.domainGraph);
-  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown.
-  const shownMode = useDashboardStore(shownViewMode);
-  const setViewMode = useDashboardStore((s) => s.setViewMode);
   const { t } = useI18n();
 
   useEffect(() => {
@@ -56,8 +54,6 @@ export default function MobileDrawer({
       document.body.style.overflow = original;
     };
   }, [open]);
-
-  const showViewToggle = Boolean(graph && !isKnowledgeGraph && domainGraph);
 
   return (
     <div
@@ -113,107 +109,10 @@ export default function MobileDrawer({
         {/* Body */}
         <div className="flex-1 overflow-auto px-5 py-5 space-y-7">
           <section>
-            <SectionLabel>{t.drawer.role}</SectionLabel>
-            <PersonaSelector />
+            <SectionLabel>{t.drawer.view}</SectionLabel>
+            <ViewSwitch />
           </section>
-
-          {showViewToggle && (
-            <section>
-              <SectionLabel>{t.drawer.view}</SectionLabel>
-              <div className="inline-flex items-center bg-elevated rounded-lg p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("domain")}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    shownMode === "domain"
-                      ? "bg-accent/20 text-accent"
-                      : "text-text-muted hover:text-text-secondary"
-                  }`}
-                >
-                  {t.drawer.domain}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("structural")}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    shownMode === "structural"
-                      ? "bg-accent/20 text-accent"
-                      : "text-text-muted hover:text-text-secondary"
-                  }`}
-                >
-                  {t.drawer.structural}
-                </button>
-              </div>
-            </section>
-          )}
-
-          <section>
-            <SectionLabel>{t.drawer.diffOverlay}</SectionLabel>
-            <DiffToggle />
-          </section>
-
-          {/* Excavator: the product views, where the node-type filters were (openspec: changes/explorer-products, design D2). */}
-          {graph && (
-            <section>
-              <SectionLabel>Products</SectionLabel>
-              <ProductSwitch onPick={onClose} />
-            </section>
-          )}
-
-          {graph && (graph.layers?.length ?? 0) > 0 && (
-            <section>
-              <SectionLabel>{t.drawer.layers}</SectionLabel>
-              <div className="-mx-1">
-                <LayerLegend />
-              </div>
-            </section>
-          )}
-
-          <section>
-            <SectionLabel>{t.drawer.tools}</SectionLabel>
-            <div className="flex flex-wrap items-center gap-2">
-              <FilterPanel />
-              <ExportMenu />
-              <button
-                type="button"
-                onClick={() => {
-                  onTogglePathFinder();
-                  onClose();
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-elevated text-text-secondary hover:text-text-primary transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                  />
-                </svg>
-                {t.drawer.path}
-              </button>
-              <ThemePicker />
-              <button
-                type="button"
-                onClick={() => {
-                  onShowKeyboardHelp();
-                  onClose();
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-elevated text-text-secondary hover:text-text-primary transition-colors"
-                aria-label={t.drawer.help}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                {t.drawer.help}
-              </button>
-            </div>
-          </section>
+          <LanguageSection />
         </div>
       </aside>
     </div>

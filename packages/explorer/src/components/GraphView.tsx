@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
-  useNodes,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -22,8 +21,6 @@ import PortalNode from "./PortalNode";
 import type { PortalFlowNode } from "./PortalNode";
 import ContainerNode from "./ContainerNode";
 import type { ContainerFlowNode, ContainerNodeData } from "./ContainerNode";
-import { computeDiffLayerCounts } from "../utils/diffLayerCounts";
-import { diffContainerIds } from "../utils/diffContainers";
 import Breadcrumb from "./Breadcrumb";
 import { useDashboardStore } from "../store";
 import { drawnInLayer } from "../excavator/views/graphTarget";
@@ -67,25 +64,6 @@ const nodeTypes = {
   ...relationNodeTypes,
 };
 
-import type { NodeCategory } from "../store";
-
-/**
- * Maps each NodeType to a filter category. Must be kept in sync with core NodeType.
- * Unknown types default to "code" with a development warning.
- */
-const NODE_TYPE_TO_CATEGORY: Record<NodeType, NodeCategory> = {
-  file: "code", function: "code", class: "code", module: "code", concept: "code",
-  config: "config",
-  document: "docs",
-  service: "infra", resource: "infra", pipeline: "infra",
-  table: "data", endpoint: "data", schema: "data",
-  domain: "domain", flow: "domain", step: "domain",
-  article: "knowledge", entity: "knowledge", topic: "knowledge", claim: "knowledge", source: "knowledge",
-  // Design node types (Figma graphs). No dedicated filter category in v1, so they
-  // group under "code" — matching the runtime fallback below — to stay visible by default.
-  page: "code", screen: "code", component: "code", componentSet: "code", instance: "code", token: "code",
-} as const;
-
 /**
  * Node types rendered in the structural drill-in (layer-detail) canvas.
  *
@@ -112,105 +90,6 @@ export const STRUCTURAL_VISIBLE_TYPES = new Set<string>([
 ]);
 
 // ── Helper components that must live inside <ReactFlow> ────────────────
-
-/**
- * Pans/zooms to tour-highlighted nodes. Highlighted nodes are usually
- * children of collapsed containers — auto-expand fires synchronously on
- * the same `tourHighlightedNodeIds` change, but their child entries don't
- * appear in React Flow's node list until Stage 2 layout writes the
- * `containerLayoutCache` (async ELK call, hundreds of ms on big layers).
- *
- * We subscribe to React Flow's reactive node list via `useNodes()` so the
- * effect re-runs every time the node set actually changes (Stage 1, Stage
- * 2, expand/collapse). When every highlighted id is present we fit; until
- * then we wait. A 2s fallback timer covers the case where a highlighted
- * id is filtered out and never materialises.
- */
-function TourFitView() {
-  const tourHighlightedNodeIds = useDashboardStore((s) => s.tourHighlightedNodeIds);
-  const setTourFitPending = useDashboardStore((s) => s.setTourFitPending);
-  const { fitView, getInternalNode } = useReactFlow();
-  // Subscribe to React Flow's user-node array so this effect re-fires when
-  // the node set changes (e.g. Stage 2 finally lands the highlighted ids
-  // after the per-step RAF window already gave up). The RAF poll inside
-  // covers the common fast path; the `nodes` dep covers slow Stage 2.
-  const nodes = useNodes();
-  const fittedKeyRef = useRef<string>("");
-  const fallbackKeyRef = useRef<string>("");
-
-  useEffect(() => {
-    const targetKey = tourHighlightedNodeIds.join("\n");
-    if (targetKey === "") {
-      fittedKeyRef.current = "";
-      fallbackKeyRef.current = "";
-      setTourFitPending(false);
-      return;
-    }
-    if (targetKey === fittedKeyRef.current) return;
-
-    // Poll React Flow's internal lookup directly — `useNodes()` reflects
-    // user-supplied nodes and may not fire on measure completion. Once
-    // every highlighted id has measured dimensions, `fitView({ nodes })`
-    // handles the child→absolute coordinate transform itself, which is
-    // more reliable than recomputing bbox manually.
-    const MAX_FRAMES = 240; // ~4s at 60fps
-    let frame = 0;
-    let cancelled = false;
-    let rafId = 0;
-    // After we've already shown the fallback for this step, suppress the
-    // "Locating tour highlight…" overlay on subsequent re-fires (each
-    // `nodes` change re-enters the effect, but the user has already given
-    // up waiting). The retry still runs silently in case Stage 2 lands.
-    if (fallbackKeyRef.current !== targetKey) setTourFitPending(true);
-
-    const tick = () => {
-      if (cancelled) return;
-      let ready = true;
-      for (const id of tourHighlightedNodeIds) {
-        const internal = getInternalNode(id);
-        if (!internal || !internal.measured?.width || !internal.measured?.height) {
-          ready = false;
-          break;
-        }
-      }
-      if (ready) {
-        fitView({
-          nodes: tourHighlightedNodeIds.map((id) => ({ id })),
-          duration: 500,
-          padding: 0.3,
-          maxZoom: 1.2,
-          minZoom: 0.4,
-        });
-        fittedKeyRef.current = targetKey;
-        fallbackKeyRef.current = "";
-        setTourFitPending(false);
-        return;
-      }
-      if (++frame < MAX_FRAMES) {
-        rafId = requestAnimationFrame(tick);
-        return;
-      }
-      // Highlights still not ready after the poll window. Pan into the
-      // layer so the user isn't stranded, but DON'T set fittedKeyRef —
-      // if Stage 2 lands later, a `nodes` change will re-fire this effect
-      // and we'll get another shot at the proper highlight fit.
-      // `fallbackKeyRef` prevents the fallback fitView from re-firing on
-      // every subsequent nodes update for the same step.
-      if (fallbackKeyRef.current !== targetKey) {
-        fitView({ duration: 500, padding: 0.3 });
-        fallbackKeyRef.current = targetKey;
-      }
-      setTourFitPending(false);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-    };
-  }, [tourHighlightedNodeIds, nodes, fitView, getInternalNode, setTourFitPending]);
-
-  return null;
-}
 
 /** Centers the graph on the selected node (e.g. from search). */
 function SelectedNodeFitView() {
@@ -248,9 +127,6 @@ function useOverviewGraph() {
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
   const searchResults = useDashboardStore((s) => s.searchResults);
   const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
-  const diffMode = useDashboardStore((s) => s.diffMode);
-  const changedNodeIds = useDashboardStore((s) => s.changedNodeIds);
-  const affectedNodeIds = useDashboardStore((s) => s.affectedNodeIds);
 
   // Build cluster nodes / flow edges / dims synchronously; only the layout
   // call itself is async, so we memo the structural pieces and run ELK in an
@@ -292,7 +168,6 @@ function useOverviewGraph() {
           layerId: layer.id,
           layerName: layer.name,
           layerDescription: layer.description,
-          fileCount: layer.nodeIds.length,
           aggregateComplexity,
           layerColorIndex: i,
           searchMatchCount: searchMatchByLayer.get(layer.id),
@@ -307,12 +182,10 @@ function useOverviewGraph() {
       id: `le-${i}`,
       source: agg.sourceLayerId,
       target: agg.targetLayerId,
-      label: `${agg.count}`,
       style: {
         stroke: "color-mix(in srgb, var(--color-accent) 40%, transparent)",
         strokeWidth: Math.min(1 + Math.log2(agg.count + 1), 5),
       },
-      labelStyle: { fill: "var(--color-text-secondary)", fontSize: 11, fontWeight: 600 },
     }));
 
     const dims = new Map<string, { width: number; height: number }>();
@@ -344,7 +217,7 @@ function useOverviewGraph() {
       .then(({ positioned, issues }) => {
         if (cancelled) return;
         if (issues.length > 0) {
-          // Funnel into store so WarningBanner surfaces them. getState()
+          // Funnel into store so the status line shows them. getState()
           // avoids re-creating the closure on every layoutIssues change.
           useDashboardStore.getState().appendLayoutIssues(issues);
         }
@@ -362,23 +235,7 @@ function useOverviewGraph() {
     };
   }, [built]);
 
-  // Diff counts only change badge text and opacity, never geometry, so they
-  // are applied to the already laid-out nodes instead of feeding the layout.
-  const diffNodes = useMemo(() => {
-    const layers = graph?.layers;
-    if (!diffMode || !layers || overview.nodes.length === 0) return overview.nodes;
-    const counts = computeDiffLayerCounts(layers, nodesById, changedNodeIds, affectedNodeIds);
-    return overview.nodes.map((n) => {
-      const c = counts.get(n.id);
-      if (!c) return n;
-      return {
-        ...n,
-        data: { ...n.data, diffChangedCount: c.changed, diffAffectedCount: c.affected },
-      };
-    });
-  }, [overview.nodes, graph, nodesById, diffMode, changedNodeIds, affectedNodeIds]);
-
-  return { nodes: diffNodes, edges: overview.edges, layoutStatus };
+  return { nodes: overview.nodes, edges: overview.edges, layoutStatus };
 }
 
 // ── Layer detail level: topology (ELK Stage 1) + visual overlay ─────────
@@ -411,8 +268,8 @@ const EMPTY_TOPOLOGY: LayerDetailTopology = {
  * Topology hook: derives containers, aggregates inter-container edges, then
  * runs Stage 1 ELK on container atoms (no children rendered yet — Task 12
  * lazy-expands them). Only recomputes when the graph structure, active
- * layer, persona, diff state, focus, or filters change. Does NOT depend on
- * selectedNodeId, searchResults, tourHighlightedNodeIds, or
+ * layer, focus, or the graph changes. Does NOT depend on
+ * selectedNodeId, searchResults, or
  * expandedContainers (Stage 2 concern).
  */
 function useLayerDetailTopology(): LayerDetailTopology & {
@@ -422,15 +279,8 @@ function useLayerDetailTopology(): LayerDetailTopology & {
   const nodesById = useDashboardStore((s) => s.nodesById);
   const activeLayerId = useDashboardStore((s) => s.activeLayerId);
   const selectNode = useDashboardStore((s) => s.selectNode);
-  const persona = useDashboardStore((s) => s.persona);
-  const diffMode = useDashboardStore((s) => s.diffMode);
-  const changedNodeIds = useDashboardStore((s) => s.changedNodeIds);
-  const affectedNodeIds = useDashboardStore((s) => s.affectedNodeIds);
   const focusNodeId = useDashboardStore((s) => s.focusNodeId);
-  const nodeTypeFilters = useDashboardStore((s) => s.nodeTypeFilters);
   const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
-  const detailLevel = useDashboardStore((s) => s.detailLevel);
-  const showFunctionsInClassView = useDashboardStore((s) => s.showFunctionsInClassView);
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
@@ -458,43 +308,13 @@ function useLayerDetailTopology(): LayerDetailTopology & {
 
     const layerNodeIds = new Set(activeLayer.nodeIds);
 
-    // Expand layer membership to include sub-file nodes (function/class)
-    // whose parent file is in this layer. Joined via "contains" edges.
-    // File view: file nodes only (architecture-level dependencies).
-    // Class view: file nodes + class nodes, functions only when toggle is on.
-    const expandedLayerNodeIds = new Set(layerNodeIds);
-    if (detailLevel !== "file") {
-      for (const edge of graph.edges) {
-        if (edge.type === "contains" && layerNodeIds.has(edge.source)) {
-          const child = nodesById.get(edge.target);
-          if (!child) continue;
-          if (child.type === "class") {
-            expandedLayerNodeIds.add(edge.target);
-          } else if (child.type === "function" && showFunctionsInClassView) {
-            expandedLayerNodeIds.add(edge.target);
-          }
-        }
-      }
-    }
-
     const allVisibleTypes = STRUCTURAL_VISIBLE_TYPES;
 
-    let filteredGraphNodes = graph.nodes.filter((n) => {
-      if (!expandedLayerNodeIds.has(n.id)) return false;
-      // Excavator: the rule is shared with the product rows' Show in graph (excavator/views/graphTarget.ts).
-      return drawnInLayer(n.type, persona, allVisibleTypes);
-    });
-
-    filteredGraphNodes = filteredGraphNodes.filter((n) => {
-      const category = NODE_TYPE_TO_CATEGORY[n.type as NodeType];
-      if (!category) {
-        if (import.meta.env.DEV) {
-          console.warn(`[GraphView] Unknown node type "${n.type}" — defaulting to "code" category`);
-        }
-      }
-      const effectiveCategory = category ?? "code";
-      return nodeTypeFilters[effectiveCategory] !== false;
-    });
+    // Excavator: the rule is shared with the product rows' Show in graph (excavator/views/graphTarget.ts):
+    // files and the other visible types of the layer, never functions or classes.
+    let filteredGraphNodes = graph.nodes.filter(
+      (n) => layerNodeIds.has(n.id) && drawnInLayer(n.type, allVisibleTypes),
+    );
 
     let filteredNodeIds = new Set(filteredGraphNodes.map((n) => n.id));
 
@@ -568,12 +388,10 @@ function useLayerDetailTopology(): LayerDetailTopology & {
       data: {
         containerId: c.id,
         name: c.name,
-        childCount: c.nodeIds.length,
         strategy: c.strategy,
         colorIndex: idx % 12,
         isExpanded: false,
         hasSearchHits: false,
-        isDiffAffected: false, // overlaid per render from diffContainers
         isFocusedViaChild: false,
         onToggle: handleContainerToggle,
       },
@@ -596,39 +414,22 @@ function useLayerDetailTopology(): LayerDetailTopology & {
           isHighlighted: false,
           searchScore: undefined,
           isSelected: false,
-          isTourHighlighted: false,
-          isDiffChanged: diffMode && changedNodeIds.has(node.id),
-          isDiffAffected: diffMode && affectedNodeIds.has(node.id),
-          isDiffFaded: diffMode && !changedNodeIds.has(node.id) && !affectedNodeIds.has(node.id),
           isNeighbor: false,
           isSelectionFaded: false,
           onNodeClick: handleNodeSelect,
         },
       }));
 
-    // Aggregated cross-atom edges (count label, log-scaled stroke).
-    // diffMode dims unaffected aggregated edges (no per-edge diff data — we
-    // can't tell which underlying edges are impacted without expanding a
-    // container, so just fade everything in diff mode at this stage).
-    const aggEdges: Edge[] = interContainerAggregated.map((agg, i) => {
-      const baseStyle = diffMode
-        ? { stroke: "color-mix(in srgb, var(--color-accent) 8%, transparent)", strokeWidth: 1 }
-        : {
-            stroke: "color-mix(in srgb, var(--color-accent) 40%, transparent)",
-            strokeWidth: Math.min(1 + Math.log2(agg.count + 1), 5),
-          };
-      return {
-        id: `agg-${i}`,
-        source: agg.sourceContainerId,
-        target: agg.targetContainerId,
-        label: String(agg.count),
-        style: baseStyle,
-        labelStyle: {
-          fill: diffMode ? "rgba(163,151,135,0.3)" : "#a39787",
-          fontSize: 11,
-        },
-      };
-    });
+    // Aggregated cross-atom edges (log-scaled stroke, no count shown).
+    const aggEdges: Edge[] = interContainerAggregated.map((agg, i) => ({
+      id: `agg-${i}`,
+      source: agg.sourceContainerId,
+      target: agg.targetContainerId,
+      style: {
+        stroke: "color-mix(in srgb, var(--color-accent) 40%, transparent)",
+        strokeWidth: Math.min(1 + Math.log2(agg.count + 1), 5),
+      },
+    }));
 
     // Portal nodes for connected external layers (unchanged)
     const portals = computePortals(graph, activeLayerId);
@@ -641,7 +442,6 @@ function useLayerDetailTopology(): LayerDetailTopology & {
       data: {
         targetLayerId: portal.layerId,
         targetLayerName: portal.layerName,
-        connectionCount: portal.connectionCount,
         layerColorIndex: layerIndexMap.get(portal.layerId) ?? 0,
         onNavigate: drillIntoLayer,
       },
@@ -687,15 +487,8 @@ function useLayerDetailTopology(): LayerDetailTopology & {
     graph,
     nodesById,
     activeLayerId,
-    persona,
-    diffMode,
-    changedNodeIds,
-    affectedNodeIds,
     focusNodeId,
-    nodeTypeFilters,
     drillIntoLayer,
-    detailLevel,
-    showFunctionsInClassView,
     handleNodeSelect,
     handleContainerToggle,
   ]);
@@ -785,7 +578,7 @@ function useLayerDetailTopology(): LayerDetailTopology & {
       .then(({ positioned, issues }) => {
         if (cancelled) return;
         if (issues.length > 0) {
-          // Funnel into store so WarningBanner surfaces them.
+          // Funnel into store so the status line shows them.
           useDashboardStore.getState().appendLayoutIssues(issues);
         }
         const allBaseNodes: Node[] = [
@@ -873,7 +666,7 @@ function useLayerDetailTopology(): LayerDetailTopology & {
             strict: import.meta.env.DEV,
           });
           if (issues.length > 0) {
-            // Funnel into store so WarningBanner surfaces them.
+            // Funnel into store so the status line shows them.
             useDashboardStore.getState().appendLayoutIssues(issues);
           }
           const childPositions = new Map<string, { x: number; y: number }>();
@@ -956,9 +749,6 @@ function useLayerDetailTopology(): LayerDetailTopology & {
 function buildCustomFlowNode(
   node: GraphNode,
   opts: {
-    diffMode: boolean;
-    changedNodeIds: Set<string>;
-    affectedNodeIds: Set<string>;
     onNodeClick: (nodeId: string) => void;
   },
 ): CustomFlowNode {
@@ -976,13 +766,6 @@ function buildCustomFlowNode(
       isHighlighted: false,
       searchScore: undefined,
       isSelected: false,
-      isTourHighlighted: false,
-      isDiffChanged: opts.diffMode && opts.changedNodeIds.has(node.id),
-      isDiffAffected: opts.diffMode && opts.affectedNodeIds.has(node.id),
-      isDiffFaded:
-        opts.diffMode &&
-        !opts.changedNodeIds.has(node.id) &&
-        !opts.affectedNodeIds.has(node.id),
       isNeighbor: false,
       isSelectionFaded: false,
       onNodeClick: opts.onNodeClick,
@@ -991,7 +774,7 @@ function buildCustomFlowNode(
 }
 
 /**
- * Visual overlay: cheap O(n) pass that applies selection, search, and tour
+ * Visual overlay: cheap O(n) pass that applies selection and search
  * state onto already-positioned nodes. Avoids triggering ELK relayout.
  *
  * Container atoms whose children are focused or selected light up via
@@ -1007,12 +790,8 @@ function buildCustomFlowNode(
 function useLayerDetailGraph() {
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
   const searchResults = useDashboardStore((s) => s.searchResults);
-  const tourHighlightedNodeIds = useDashboardStore((s) => s.tourHighlightedNodeIds);
   const expandedContainers = useDashboardStore((s) => s.expandedContainers);
   const containerLayoutCache = useDashboardStore((s) => s.containerLayoutCache);
-  const diffMode = useDashboardStore((s) => s.diffMode);
-  const changedNodeIds = useDashboardStore((s) => s.changedNodeIds);
-  const affectedNodeIds = useDashboardStore((s) => s.affectedNodeIds);
   const focusNodeId = useDashboardStore((s) => s.focusNodeId);
   const selectNode = useDashboardStore((s) => s.selectNode);
 
@@ -1039,9 +818,6 @@ function useLayerDetailGraph() {
         const pos = cache.childPositions.get(childId);
         if (!node || !pos) continue;
         const base = buildCustomFlowNode(node, {
-          diffMode,
-          changedNodeIds,
-          affectedNodeIds,
           onNodeClick: handleNodeSelect,
         });
         out.push({
@@ -1058,9 +834,6 @@ function useLayerDetailGraph() {
     containerLayoutCache,
     topo.containers,
     topo.filteredNodes,
-    diffMode,
-    changedNodeIds,
-    affectedNodeIds,
     handleNodeSelect,
   ]);
 
@@ -1077,19 +850,6 @@ function useLayerDetailGraph() {
     }
     return m;
   }, [searchResults, topo.nodeToContainer]);
-
-  // Container atoms touched by the diff. A diff node that is not itself drawn
-  // (function/class nodes at file detail level, or nodes outside the layer's
-  // visible set) resolves through the file node that shares its filePath.
-  const diffContainers = useMemo(() => {
-    if (!diffMode) return new Set<string>();
-    return diffContainerIds(
-      changedNodeIds,
-      affectedNodeIds,
-      topo.nodeToContainer,
-      useDashboardStore.getState().nodesById,
-    );
-  }, [diffMode, changedNodeIds, affectedNodeIds, topo.nodeToContainer]);
 
   // O(filteredEdges) — focus node's container + 1-hop neighbor containers.
   const focusContainerIds = useMemo(() => {
@@ -1132,13 +892,12 @@ function useLayerDetailGraph() {
   }, [selectedNodeId, topo.filteredEdges, topo.nodeToContainer]);
 
   // Combine Stage 1 nodes with Stage 2 expanded children, then apply the
-  // visual overlay (selection, search, tour) to every CustomFlowNode in
+  // visual overlay (selection, search) to every CustomFlowNode in
   // the combined set. Container nodes get their own overlay branch.
   const nodes = useMemo(() => {
     const combined: Node[] = [...topo.nodes, ...expandedChildNodes];
 
     const searchMap = new Map(searchResults.map((r) => [r.nodeId, r.score]));
-    const tourSet = new Set(tourHighlightedNodeIds);
 
     // Build neighbor set for selection highlighting
     const neighborNodeIds = new Set<string>();
@@ -1161,8 +920,6 @@ function useLayerDetailGraph() {
         const isExpanded = expandedContainers.has(cid);
         const rawHits = searchHitsByContainer.get(cid) ?? 0;
         const hasSearchHits = rawHits > 0;
-        const searchHitCount = hasSearchHits ? rawHits : undefined;
-        const isDiffAffected = diffContainers.has(cid);
         const isFocusedViaChild =
           focusContainerIds.has(cid) || selectionContainerIds.has(cid);
 
@@ -1170,8 +927,6 @@ function useLayerDetailGraph() {
         if (
           data.isExpanded === isExpanded &&
           data.hasSearchHits === hasSearchHits &&
-          data.searchHitCount === searchHitCount &&
-          data.isDiffAffected === isDiffAffected &&
           data.isFocusedViaChild === isFocusedViaChild
         ) {
           return node;
@@ -1183,8 +938,6 @@ function useLayerDetailGraph() {
             ...data,
             isExpanded,
             hasSearchHits,
-            searchHitCount,
-            isDiffAffected,
             isFocusedViaChild,
           },
         };
@@ -1193,7 +946,6 @@ function useLayerDetailGraph() {
       const searchScore = searchMap.get(node.id);
       const isHighlighted = searchScore !== undefined;
       const isSelected = selectedNodeId === node.id;
-      const isTourHighlighted = tourSet.has(node.id);
       const hasSelection = !!selectedNodeId;
       const isNeighbor = hasSelection && neighborNodeIds.has(node.id) && !isSelected;
       const isSelectionFaded = hasSelection && !neighborNodeIds.has(node.id);
@@ -1205,14 +957,13 @@ function useLayerDetailGraph() {
         data.isHighlighted === isHighlighted &&
         data.searchScore === searchScore &&
         data.isSelected === isSelected &&
-        data.isTourHighlighted === isTourHighlighted &&
         data.isNeighbor === isNeighbor &&
         data.isSelectionFaded === isSelectionFaded
       ) {
         return node;
       }
 
-      return { ...node, data: { ...data, isHighlighted, searchScore, isSelected, isTourHighlighted, isNeighbor, isSelectionFaded } };
+      return { ...node, data: { ...data, isHighlighted, searchScore, isSelected, isNeighbor, isSelectionFaded } };
     });
   }, [
     topo.nodes,
@@ -1220,10 +971,8 @@ function useLayerDetailGraph() {
     topo.filteredEdges,
     selectedNodeId,
     searchResults,
-    tourHighlightedNodeIds,
     expandedContainers,
     searchHitsByContainer,
-    diffContainers,
     focusContainerIds,
     selectionContainerIds,
   ]);
@@ -1312,7 +1061,7 @@ function useLayerDetailGraph() {
     // Apply selection-based edge styling on top of topology edges
     return base.map((edge) => {
       const isSelectedEdge = edge.source === selectedNodeId || edge.target === selectedNodeId;
-      // Don't restyle diff-impacted or portal edges
+      // Do not restyle portal edges
       if ((edge.style as Record<string, unknown>)?.strokeDasharray) return edge;
 
       if (isSelectedEdge) {
@@ -1349,13 +1098,10 @@ function GraphViewInner() {
   const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
   const focusNodeId = useDashboardStore((s) => s.focusNodeId);
   const setFocusNode = useDashboardStore((s) => s.setFocusNode);
-  const setReactFlowInstance = useDashboardStore((s) => s.setReactFlowInstance);
-  const tourHighlightedNodeIds = useDashboardStore((s) => s.tourHighlightedNodeIds);
   const expandContainer = useDashboardStore((s) => s.expandContainer);
   const collapseContainer = useDashboardStore((s) => s.collapseContainer);
   const pendingFocusContainer = useDashboardStore((s) => s.pendingFocusContainer);
   const setPendingFocusContainer = useDashboardStore((s) => s.setPendingFocusContainer);
-  const tourFitPending = useDashboardStore((s) => s.tourFitPending);
   const { preset } = useTheme();
 
   const overviewGraph = useOverviewGraph();
@@ -1483,41 +1229,6 @@ function GraphViewInner() {
     if (cid && cid !== focusNodeId) expandContainer(cid);
   }, [focusNodeId, nodeToContainer, expandContainer]);
 
-  // Tour: expand containers needed for the current step, and release any
-  // containers we expanded for the previous step that aren't needed now.
-  // Containers the user expanded manually aren't tracked here, so they're
-  // never auto-collapsed. stopTour resets tourHighlightedNodeIds to [],
-  // which falls through to the "release all" branch.
-  const tourBorrowedContainersRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!nodeToContainer) return;
-
-    const needed = new Set<string>();
-    for (const nid of tourHighlightedNodeIds) {
-      const cid = nodeToContainer.get(nid);
-      if (cid && cid !== nid) needed.add(cid);
-    }
-
-    const stillBorrowed = new Set<string>();
-    for (const cid of tourBorrowedContainersRef.current) {
-      if (needed.has(cid)) {
-        stillBorrowed.add(cid);
-      } else {
-        collapseContainer(cid);
-      }
-    }
-
-    const expandedNow = useDashboardStore.getState().expandedContainers;
-    for (const cid of needed) {
-      if (!expandedNow.has(cid)) {
-        expandContainer(cid);
-        stillBorrowed.add(cid);
-      }
-    }
-
-    tourBorrowedContainersRef.current = stillBorrowed;
-  }, [tourHighlightedNodeIds, nodeToContainer, expandContainer, collapseContainer]);
-
   // Zoom: debounced auto-expand when the user has zoomed in past 1.0.
   // Hysteresis: zoom < 0.6 = no auto-expand AND no auto-collapse (v1, the
   // user collapses manually). The handler reads expandedContainers via
@@ -1611,7 +1322,6 @@ function GraphViewInner() {
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         onMove={navigationLevel === "layer-detail" ? onMove : undefined}
-        onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
         nodesDraggable={false}
         nodesConnectable={false}
@@ -1631,11 +1341,10 @@ function GraphViewInner() {
           maskColor="var(--glass-bg)"
           className="!bg-surface !border !border-border-subtle"
         />
-        <TourFitView />
         <SelectedNodeFitView />
         <RelationsPanel overlay={relations} level={navigationLevel} />
       </ReactFlow>
-      {(layoutStatus === "computing" || tourFitPending) && (
+      {layoutStatus === "computing" && (
         <div
           style={{
             position: "absolute",
@@ -1649,7 +1358,7 @@ function GraphViewInner() {
           }}
         >
           <span style={{ color: "var(--color-accent)", fontSize: 14 }}>
-            {tourFitPending ? "Locating tour highlight…" : "Computing layout…"}
+            Computing layout…
           </span>
         </div>
       )}

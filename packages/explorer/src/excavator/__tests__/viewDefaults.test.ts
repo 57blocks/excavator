@@ -12,10 +12,6 @@ beforeEach(() => {
 });
 
 describe("what the page opens on", () => {
-  it("opens on the Overview persona", () => {
-    expect(useDashboardStore.getState().persona).toBe("non-technical");
-  });
-
   it("opens the Domain mode when the first domain graph arrives", () => {
     expect(useDashboardStore.getState().viewMode).toBe("structural");
     useDashboardStore.getState().setDomainGraph(domainGraph);
@@ -55,16 +51,6 @@ describe("the highlighted mode", () => {
     expect(shownViewMode(useDashboardStore.getState())).toBeNull();
     useDashboardStore.getState().setViewMode("domain");
     expect(shownViewMode(useDashboardStore.getState())).toBe("domain");
-  });
-});
-
-describe("the diff overlay", () => {
-  it("loads switched off and switches on from the toggle", () => {
-    useDashboardStore.getState().setDiffOverlay(["file:a.ts"], ["file:b.ts"], "last 30 days");
-    expect(useDashboardStore.getState().diffMode).toBe(false);
-    expect(useDashboardStore.getState().changedNodeIds.size).toBe(1);
-    useDashboardStore.getState().toggleDiffMode();
-    expect(useDashboardStore.getState().diffMode).toBe(true);
   });
 });
 

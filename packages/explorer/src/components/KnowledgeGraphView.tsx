@@ -120,10 +120,6 @@ function KnowledgeGraphViewInner() {
   const focusNodeId = useDashboardStore((s) => s.focusNodeId);
   const selectNode = useDashboardStore((s) => s.selectNode);
   const searchResultsRaw = useDashboardStore((s) => s.searchResults);
-  const tourHighlightedNodeIds = useDashboardStore((s) => s.tourHighlightedNodeIds);
-  const knowledgeNodesVisible = useDashboardStore(
-    (s) => s.nodeTypeFilters.knowledge !== false,
-  );
   const { t } = useI18n();
   const nextLayoutRequestId = useRef(0);
   const [layoutState, setLayoutState] = useState<LayoutState>({
@@ -143,29 +139,8 @@ function KnowledgeGraphViewInner() {
     [searchResultsRaw],
   );
 
-  const tourSet = useMemo(
-    () => new Set(tourHighlightedNodeIds),
-    [tourHighlightedNodeIds],
-  );
-
-  // Filter graph — only recompute when graph data or filters change
-  const filteredGraph = useMemo((): KnowledgeGraph | null => {
-    if (!graph) return null;
-
-    const filteredNodes = graph.nodes.filter((n) => {
-      if (["article", "entity", "topic", "claim", "source"].includes(n.type)) {
-        return knowledgeNodesVisible;
-      }
-      return true;
-    });
-
-    const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
-    const filteredEdges = graph.edges.filter(
-      (e) => filteredNodeIds.has(e.source) && filteredNodeIds.has(e.target),
-    );
-
-    return { ...graph, nodes: filteredNodes, edges: filteredEdges };
-  }, [graph, knowledgeNodesVisible]);
+  // Every node of a knowledge graph is drawn.
+  const filteredGraph = graph;
 
   const preparedLayout = useMemo(() => {
     if (!filteredGraph) return null;
@@ -246,9 +221,8 @@ function KnowledgeGraphViewInner() {
   const positionMap = layoutIsReady
     ? layoutState.positionMap
     : EMPTY_POSITION_MAP;
-  const edgeCounts = layoutIsReady ? layoutState.edgeCounts : EMPTY_EDGE_COUNTS;
 
-  // Build visual nodes/edges — recomputes on selection/search/tour WITHOUT re-layout
+  // Build visual nodes/edges — recomputes on selection/search WITHOUT re-layout
   const { nodes, edges } = useMemo(() => {
     if (!filteredGraph || !layoutIsReady) return { nodes: [], edges: [] };
 
@@ -272,7 +246,6 @@ function KnowledgeGraphViewInner() {
         !isNeighbor;
       const searchScore = searchResults.get(node.id);
       const isHighlighted = searchScore !== undefined;
-      const isTourHighlighted = tourSet.has(node.id);
 
       const data: CustomNodeData = {
         label: node.name,
@@ -282,14 +255,9 @@ function KnowledgeGraphViewInner() {
         isHighlighted,
         searchScore,
         isSelected,
-        isTourHighlighted,
-        isDiffChanged: false,
-        isDiffAffected: false,
-        isDiffFaded: false,
         isNeighbor,
         isSelectionFaded: !!isSelectionFaded,
         onNodeClick,
-        incomingCount: edgeCounts.get(node.id) ?? 0,
         tags: node.tags,
       };
 
@@ -339,7 +307,7 @@ function KnowledgeGraphViewInner() {
     });
 
     return { nodes: rfNodes, edges: rfEdges };
-  }, [filteredGraph, layoutIsReady, selectedNodeId, focusNodeId, searchResults, tourSet, onNodeClick, positionMap, edgeCounts]);
+  }, [filteredGraph, layoutIsReady, selectedNodeId, focusNodeId, searchResults, onNodeClick, positionMap]);
 
   if (!graph) {
     return (

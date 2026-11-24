@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useDashboardStore } from "../store";
+import { useDashboardStore, activeTranslations } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
 import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
@@ -172,7 +172,7 @@ function NameWithOriginal({ name, translate }: { name: string; translate?: Trans
 function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeGraph }) {
   const navigateToDomain = useDashboardStore((s) => s.navigateToDomain);
   const selectNode = useDashboardStore((s) => s.selectNode);
-  const table = useDashboardStore((s) => s.nameTranslations);
+  const table = useDashboardStore(activeTranslations);
   const translate = translatorOf(table);
   const { t } = useI18n();
   const meta = node.domainMeta;
@@ -289,7 +289,7 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
   const focusNodeId = useDashboardStore((s) => s.focusNodeId);
   const viewMode = useDashboardStore((s) => s.viewMode);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
-  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const nameTranslations = useDashboardStore(activeTranslations);
 
   const activeGraph = viewMode === "domain" && domainGraph ? domainGraph : graph;
   const node = activeGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;

@@ -2,60 +2,15 @@ import { create } from "zustand";
 import { SearchEngine } from "@understand-anything/core/search";
 import type { SearchResult } from "@understand-anything/core/search";
 import type { GraphIssue } from "@understand-anything/core/schema";
-import type {
-  GraphNode,
-  KnowledgeGraph,
-  TourStep,
-} from "@understand-anything/core/types";
-import type { ReactFlowInstance } from "@xyflow/react";
+import type { GraphNode, KnowledgeGraph } from "@understand-anything/core/types";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
 import { parseNameTranslations, translatorOf, type NameTranslations } from "./excavator/nameTranslations";
 import type { ProductView } from "./excavator/productViews";
 import type { RelationsMode } from "./excavator/graphRelations";
 import { sourceNodeId, type SourceTarget } from "./excavator/views/sourceNode";
 
-export type Persona = "non-technical" | "junior" | "experienced";
 export type NavigationLevel = "overview" | "layer-detail";
-export type NodeType = "file" | "function" | "class" | "module" | "concept" | "config" | "document" | "service" | "table" | "endpoint" | "pipeline" | "schema" | "resource" | "domain" | "flow" | "step" | "article" | "entity" | "topic" | "claim" | "source" | "page" | "screen" | "component" | "componentSet" | "instance" | "token";
-export type Complexity = "simple" | "moderate" | "complex";
-export type EdgeCategory = "structural" | "behavioral" | "data-flow" | "dependencies" | "semantic" | "infrastructure" | "domain" | "knowledge" | "design";
 export type ViewMode = "structural" | "domain" | "knowledge";
-export type DetailLevel = "file" | "class";
-
-export interface FilterState {
-  nodeTypes: Set<NodeType>;
-  complexities: Set<Complexity>;
-  layerIds: Set<string>;
-  edgeCategories: Set<EdgeCategory>;
-}
-
-export const ALL_NODE_TYPES: NodeType[] = ["file", "function", "class", "module", "concept", "config", "document", "service", "table", "endpoint", "pipeline", "schema", "resource", "domain", "flow", "step", "article", "entity", "topic", "claim", "source", "page", "screen", "component", "componentSet", "instance", "token"];
-export const ALL_COMPLEXITIES: Complexity[] = ["simple", "moderate", "complex"];
-export const ALL_EDGE_CATEGORIES: EdgeCategory[] = ["structural", "behavioral", "data-flow", "dependencies", "semantic", "infrastructure", "domain", "knowledge", "design"];
-
-export const EDGE_CATEGORY_MAP: Record<EdgeCategory, string[]> = {
-  structural: ["imports", "exports", "contains", "inherits", "implements"],
-  behavioral: ["calls", "subscribes", "publishes", "middleware"],
-  "data-flow": ["reads_from", "writes_to", "transforms", "validates"],
-  dependencies: ["depends_on", "tested_by", "configures", "mentions"],
-  semantic: ["related", "similar_to"],
-  infrastructure: ["deploys", "serves", "provisions", "triggers", "migrates", "documents", "routes", "defines_schema"],
-  domain: ["contains_flow", "flow_step", "cross_domain"],
-  knowledge: ["cites", "contradicts", "builds_on", "exemplifies", "categorized_under", "authored_by"],
-  design: ["instance_of", "variant_of", "uses_token"],
-};
-
-export const DOMAIN_EDGE_TYPES = EDGE_CATEGORY_MAP.domain;
-
-const DEFAULT_FILTERS: FilterState = {
-  nodeTypes: new Set<NodeType>(ALL_NODE_TYPES),
-  complexities: new Set<Complexity>(ALL_COMPLEXITIES),
-  layerIds: new Set<string>(),
-  edgeCategories: new Set<EdgeCategory>(ALL_EDGE_CATEGORIES),
-};
-
-/** Categories used for node type filter toggles. Single source of truth for NodeCategory. */
-export type NodeCategory = "code" | "config" | "docs" | "infra" | "data" | "domain" | "knowledge";
 
 /**
  * Build the (id → node) and (id → layerId) lookup maps that the rest of
@@ -67,8 +22,8 @@ export type NodeCategory = "code" | "config" | "docs" | "infra" | "data" | "doma
  * - `nodeIdToLayerId` preserves the prior `findNodeLayer` "first matching
  *   layer wins" semantics — if a node id appears in multiple layers
  *   (rare but legal in the schema), the first occurrence in `graph.layers`
- *   order is the one we map to. Drives navigation (drillIntoLayer, tour
- *   step → layer, sidebar history) where a single canonical layer is the
+ *   order is the one we map to. Drives navigation (drillIntoLayer,
+ *   sidebar history) where a single canonical layer is the
  *   right answer.
  *
  * - `nodeIdToLayerIds` records *every* layer a node belongs to. Drives
@@ -121,8 +76,9 @@ interface DashboardStore {
   nameTranslations: NameTranslations | null;
   /** Reads the page's `name-translations.json` data; data that is not that shape leaves the English names. */
   setNameTranslations: (raw: unknown) => void;
-  searchMode: "fuzzy" | "semantic";
-  setSearchMode: (mode: "fuzzy" | "semantic") => void;
+  /** Whether the page shows the translated names (the language switch); the English names show when false. */
+  showTranslations: boolean;
+  setShowTranslations: (show: boolean) => void;
 
   // Lens navigation
   navigationLevel: NavigationLevel;
@@ -134,41 +90,11 @@ interface DashboardStore {
   codeViewerSource: SourceTarget | null;
   codeViewerExpanded: boolean;
 
-  tourActive: boolean;
-  currentTourStep: number;
-  tourHighlightedNodeIds: string[];
-
-  persona: Persona;
-
-  diffMode: boolean;
-  changedNodeIds: Set<string>;
-  affectedNodeIds: Set<string>;
-  diffLabel: string | null;
-  diffDescription: string | null;
-
   // Focus mode: isolate a node's 1-hop neighborhood
   focusNodeId: string | null;
 
   // Sidebar navigation history (stack of visited node IDs)
   nodeHistory: string[];
-
-  // Filter & Export features
-  filters: FilterState;
-  filterPanelOpen: boolean;
-  exportMenuOpen: boolean;
-  pathFinderOpen: boolean;
-  reactFlowInstance: ReactFlowInstance | null;
-
-  // Node type category filters
-  nodeTypeFilters: Record<NodeCategory, boolean>;
-  toggleNodeTypeFilter: (category: NodeCategory) => void;
-
-  // Detail level: "file" shows only file nodes (architecture view),
-  // "class" shows files + class nodes (code structure view) with optional function expansion.
-  detailLevel: DetailLevel;
-  setDetailLevel: (level: DetailLevel) => void;
-  showFunctionsInClassView: boolean;
-  toggleShowFunctionsInClassView: () => void;
 
   setGraph: (graph: KnowledgeGraph) => void;
   selectNode: (nodeId: string | null) => void;
@@ -180,36 +106,12 @@ interface DashboardStore {
   navigateToOverview: () => void;
   setFocusNode: (nodeId: string | null) => void;
   setSearchQuery: (query: string) => void;
-  setPersona: (persona: Persona) => void;
   openCodeViewer: (nodeId: string) => void;
   /** Excavator: opens the code viewer on a file by path, for a product row whose file has no graph node. */
   openCodeViewerAt: (path: string, range: [number, number] | null) => void;
   closeCodeViewer: () => void;
   expandCodeViewer: () => void;
   collapseCodeViewer: () => void;
-
-  setDiffOverlay: (
-    changed: string[],
-    affected: string[],
-    label?: string,
-    description?: string,
-  ) => void;
-  toggleDiffMode: () => void;
-  clearDiffOverlay: () => void;
-
-  toggleFilterPanel: () => void;
-  toggleExportMenu: () => void;
-  togglePathFinder: () => void;
-  setReactFlowInstance: (instance: ReactFlowInstance | null) => void;
-  setFilters: (filters: Partial<FilterState>) => void;
-  resetFilters: () => void;
-  hasActiveFilters: () => boolean;
-
-  startTour: () => void;
-  stopTour: () => void;
-  setTourStep: (step: number) => void;
-  nextTourStep: () => void;
-  prevTourStep: () => void;
 
   // View mode
   viewMode: ViewMode;
@@ -248,9 +150,6 @@ interface DashboardStore {
   /** Container the user just manually expanded; viewport should lock onto it. Cleared by GraphView once the lock is applied. */
   pendingFocusContainer: string | null;
   setPendingFocusContainer: (containerId: string | null) => void;
-  /** True while TourFitView is waiting for highlighted nodes to materialise (Stage 2 layout in progress). Drives the "Computing layout…" overlay. */
-  tourFitPending: boolean;
-  setTourFitPending: (pending: boolean) => void;
 
   containerLayoutCache: Map<
     string,
@@ -272,38 +171,17 @@ interface DashboardStore {
   bumpStage1Tick: () => void;
 
   // Layout-time issues (e.g. ELK input repair). Funneled into the
-  // WarningBanner alongside graph-validation issues.
+  // status line alongside graph-validation issues.
   layoutIssues: GraphIssue[];
   appendLayoutIssues: (issues: GraphIssue[]) => void;
   clearLayoutIssues: () => void;
-}
-
-function getSortedTour(graph: KnowledgeGraph): TourStep[] {
-  const tour = graph.tour ?? [];
-  return [...tour].sort((a, b) => a.order - b.order);
-}
-
-/** Navigate tour step to the correct layer for the first highlighted node. */
-function navigateTourToLayer(
-  nodeIdToLayerId: Map<string, string>,
-  nodeIds: string[],
-): Partial<DashboardStore> {
-  if (nodeIds.length === 0) return {};
-  const layerId = nodeIdToLayerId.get(nodeIds[0]);
-  if (layerId) {
-    return {
-      navigationLevel: "layer-detail" as const,
-      activeLayerId: layerId,
-    };
-  }
-  return {};
 }
 
 /**
  * Container ids derive from per-layer state — folder names in folder-strategy
  * layers, community indices (`container:cluster-N`) in community-strategy
  * layers — and collide across layers (e.g. API Contracts and Load Testing
- * both produce `container:cluster-0`). When a tour step crosses layers we
+ * both produce `container:cluster-0`). When navigation crosses layers we
  * must drop the previous layer's container caches so Stage 2 actually re-
  * runs for the new layer's children. Mirrors the reset block in
  * `drillIntoLayer`.
@@ -333,6 +211,10 @@ function layerResetIfChanged(
 export const shownViewMode = (s: Pick<DashboardStore, "productView" | "viewMode">): ViewMode | null =>
   s.productView === null ? s.viewMode : null;
 
+/** The name table the page shows names through: null (English) while the language switch is on English. */
+export const activeTranslations = (s: Pick<DashboardStore, "showTranslations" | "nameTranslations">): NameTranslations | null =>
+  s.showTranslations ? s.nameTranslations : null;
+
 export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   graph: null,
   layerSource: "graph",
@@ -344,7 +226,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   searchResults: [],
   searchEngine: null,
   nameTranslations: null,
-  searchMode: "fuzzy",
+  showTranslations: true,
+  setShowTranslations: (show) => set({ showTranslations: show }),
 
   navigationLevel: "overview",
   activeLayerId: null,
@@ -353,67 +236,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   codeViewerSource: null,
   codeViewerExpanded: false,
 
-  tourActive: false,
-  currentTourStep: 0,
-  tourHighlightedNodeIds: [],
-
-  // Excavator: the page opens on Overview (openspec: changes/explorer-view-defaults, design D3).
-  persona: "non-technical",
-
-  diffMode: false,
-  changedNodeIds: new Set<string>(),
-  affectedNodeIds: new Set<string>(),
-  diffLabel: null,
-  diffDescription: null,
-
   focusNodeId: null,
   nodeHistory: [],
-
-  filters: { ...DEFAULT_FILTERS, nodeTypes: new Set(DEFAULT_FILTERS.nodeTypes), complexities: new Set(DEFAULT_FILTERS.complexities), layerIds: new Set(DEFAULT_FILTERS.layerIds), edgeCategories: new Set(DEFAULT_FILTERS.edgeCategories) },
-  filterPanelOpen: false,
-  exportMenuOpen: false,
-  pathFinderOpen: false,
-  reactFlowInstance: null,
-
-  nodeTypeFilters: { code: true, config: true, docs: true, infra: true, data: true, domain: true, knowledge: true },
-
-  toggleNodeTypeFilter: (category) =>
-    set((state) => ({
-      nodeTypeFilters: {
-        ...state.nodeTypeFilters,
-        [category]: !state.nodeTypeFilters[category],
-      },
-      // Filter changes shift container.nodeIds; cached child positions
-      // may reference filtered-out children. Drop the cache so Stage 2
-      // recomputes against the current set.
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-    })),
-
-  detailLevel: "file",
-  setDetailLevel: (level) =>
-    set({
-      detailLevel: level,
-      // Detail level changes which nodes are visible; cached positions stale.
-      // Reset fn toggle so it doesn't resurrect when re-entering class view.
-      showFunctionsInClassView: false,
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-    }),
-
-  showFunctionsInClassView: false,
-  toggleShowFunctionsInClassView: () =>
-    set((state) => ({
-      showFunctionsInClassView: !state.showFunctionsInClassView,
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-    })),
 
   setGraph: (loaded) => {
     const { graph, layerSource } = withDerivedGroups(loaded);
@@ -603,32 +427,15 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       expandedContainers: new Set(),
       pendingFocusContainer: null,
     }),
-  setSearchMode: (mode) => set({ searchMode: mode }),
   setSearchQuery: (query) => {
     const engine = get().searchEngine;
-    const mode = get().searchMode;
     if (!engine || !query.trim()) {
       set({ searchQuery: query, searchResults: [] });
       return;
     }
-    // Currently both modes use the same fuzzy engine
-    // When embeddings are available, "semantic" mode will use SemanticSearchEngine
-    void mode;
     const searchResults = engine.search(query);
     set({ searchQuery: query, searchResults });
   },
-
-  setPersona: (persona) =>
-    set({
-      persona,
-      // Persona changes filter node types, which shifts container.nodeIds.
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-      // Excavator: a node revealed under the old persona is not moved to under the new one.
-      revealNodeId: null,
-    }),
 
   openCodeViewer: (nodeId) =>
     set({ codeViewerOpen: true, codeViewerNodeId: nodeId, codeViewerExpanded: false }),
@@ -643,132 +450,6 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     set({ codeViewerOpen: false, codeViewerNodeId: null, codeViewerSource: null, codeViewerExpanded: false }),
   expandCodeViewer: () => set({ codeViewerExpanded: true }),
   collapseCodeViewer: () => set({ codeViewerExpanded: false }),
-
-  setDiffOverlay: (changed, affected, label, description) =>
-    set({
-      // Excavator: the overlay loads switched off (openspec: changes/explorer-view-defaults, design D5).
-      diffMode: false,
-      changedNodeIds: new Set(changed),
-      affectedNodeIds: new Set(affected),
-      diffLabel: label ?? null,
-      diffDescription: description ?? null,
-    }),
-
-  toggleDiffMode: () => set((state) => ({ diffMode: !state.diffMode })),
-
-  clearDiffOverlay: () =>
-    set({
-      diffMode: false,
-      changedNodeIds: new Set<string>(),
-      affectedNodeIds: new Set<string>(),
-      diffLabel: null,
-      diffDescription: null,
-    }),
-
-  toggleFilterPanel: () => set((state) => ({
-    filterPanelOpen: !state.filterPanelOpen,
-    exportMenuOpen: false,
-  })),
-
-  toggleExportMenu: () => set((state) => ({
-    exportMenuOpen: !state.exportMenuOpen,
-    filterPanelOpen: false,
-  })),
-
-  togglePathFinder: () => set((state) => ({
-    pathFinderOpen: !state.pathFinderOpen,
-  })),
-
-  setReactFlowInstance: (instance) => set({ reactFlowInstance: instance }),
-
-  setFilters: (newFilters) => set((state) => ({
-    filters: { ...state.filters, ...newFilters },
-  })),
-
-  resetFilters: () => set({
-    filters: {
-      nodeTypes: new Set<NodeType>(ALL_NODE_TYPES),
-      complexities: new Set<Complexity>(ALL_COMPLEXITIES),
-      layerIds: new Set<string>(),
-      edgeCategories: new Set<EdgeCategory>(ALL_EDGE_CATEGORIES),
-    },
-  }),
-
-  hasActiveFilters: () => {
-    const { filters } = get();
-    return filters.nodeTypes.size !== ALL_NODE_TYPES.length
-      || filters.complexities.size !== ALL_COMPLEXITIES.length
-      || filters.layerIds.size > 0
-      || filters.edgeCategories.size !== ALL_EDGE_CATEGORIES.length;
-  },
-
-  startTour: () => {
-    const { graph, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    const sorted = getSortedTour(graph);
-    const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[0].nodeIds);
-    set({
-      tourActive: true,
-      currentTourStep: 0,
-      tourHighlightedNodeIds: sorted[0].nodeIds,
-      selectedNodeId: null,
-      ...layerNav,
-      ...layerResetIfChanged(layerNav, activeLayerId),
-    });
-  },
-
-  stopTour: () =>
-    set({
-      tourActive: false,
-      currentTourStep: 0,
-      tourHighlightedNodeIds: [],
-    }),
-
-  setTourStep: (step) => {
-    const { graph, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    const sorted = getSortedTour(graph);
-    if (step < 0 || step >= sorted.length) return;
-    const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[step].nodeIds);
-    set({
-      currentTourStep: step,
-      tourHighlightedNodeIds: sorted[step].nodeIds,
-      ...layerNav,
-      ...layerResetIfChanged(layerNav, activeLayerId),
-    });
-  },
-
-  nextTourStep: () => {
-    const { graph, currentTourStep, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    const sorted = getSortedTour(graph);
-    if (currentTourStep < sorted.length - 1) {
-      const next = currentTourStep + 1;
-      const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[next].nodeIds);
-      set({
-        currentTourStep: next,
-        tourHighlightedNodeIds: sorted[next].nodeIds,
-        ...layerNav,
-        ...layerResetIfChanged(layerNav, activeLayerId),
-      });
-    }
-  },
-
-  prevTourStep: () => {
-    const { graph, currentTourStep, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    if (currentTourStep > 0) {
-      const sorted = getSortedTour(graph);
-      const prev = currentTourStep - 1;
-      const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[prev].nodeIds);
-      set({
-        currentTourStep: prev,
-        tourHighlightedNodeIds: sorted[prev].nodeIds,
-        ...layerNav,
-        ...layerResetIfChanged(layerNav, activeLayerId),
-      });
-    }
-  },
 
   viewMode: "structural",
   isKnowledgeGraph: false,
@@ -842,8 +523,6 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   pendingFocusContainer: null,
   setPendingFocusContainer: (containerId) =>
     set({ pendingFocusContainer: containerId }),
-  tourFitPending: false,
-  setTourFitPending: (pending) => set({ tourFitPending: pending }),
   toggleContainer: (containerId) =>
     set((state) => {
       const next = new Set(state.expandedContainers);

@@ -68,18 +68,14 @@ describe("locate: a node the structural view does not draw", () => {
 describe("drawnInLayer: the rule the layer view draws a listed node by", () => {
   const visible = new Set(["file", "function", "class", "config"]);
 
-  it("draws functions and classes for the technical personas", () => {
-    expect(drawnInLayer("function", "junior", visible)).toBe(true);
-    expect(drawnInLayer("class", "experienced", visible)).toBe(true);
-  });
-
-  it("draws no function or class in Overview, but still files", () => {
-    expect(drawnInLayer("function", "non-technical", visible)).toBe(false);
-    expect(drawnInLayer("class", "non-technical", visible)).toBe(false);
-    expect(drawnInLayer("file", "non-technical", visible)).toBe(true);
+  it("draws no function or class, but still files and other visible types", () => {
+    expect(drawnInLayer("function", visible)).toBe(false);
+    expect(drawnInLayer("class", visible)).toBe(false);
+    expect(drawnInLayer("file", visible)).toBe(true);
+    expect(drawnInLayer("config", visible)).toBe(true);
   });
 
   it("draws no type outside the visible ones", () => {
-    expect(drawnInLayer("table", "junior", visible)).toBe(false);
+    expect(drawnInLayer("table", visible)).toBe(false);
   });
 });

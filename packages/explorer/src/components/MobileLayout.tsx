@@ -14,27 +14,19 @@ import MobileDrawer from "./MobileDrawer";
 import ProductViewOverlay from "../excavator/ProductViewOverlay";
 
 const CodeViewer = lazy(() => import("./CodeViewer"));
-const PathFinderModal = lazy(() => import("./PathFinderModal"));
-const KeyboardShortcutsHelp = lazy(() => import("./KeyboardShortcutsHelp"));
 
 interface Props {
   accessToken: string;
-  showKeyboardHelp: boolean;
-  setShowKeyboardHelp: (value: boolean) => void;
   loadError: string | null;
   allIssues: GraphIssue[];
   graphFreshness: DashboardFreshnessReport | null;
-  shortcuts: import("../hooks/useKeyboardShortcuts").KeyboardShortcut[];
 }
 
 export default function MobileLayout({
   accessToken,
-  showKeyboardHelp,
-  setShowKeyboardHelp,
   loadError,
   allIssues,
   graphFreshness,
-  shortcuts,
 }: Props) {
   const graph = useDashboardStore((s) => s.graph);
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
@@ -43,8 +35,6 @@ export default function MobileLayout({
   const productView = useDashboardStore((s) => s.productView);
   const codeViewerOpen = useDashboardStore((s) => s.codeViewerOpen);
   const closeCodeViewer = useDashboardStore((s) => s.closeCodeViewer);
-  const pathFinderOpen = useDashboardStore((s) => s.pathFinderOpen);
-  const togglePathFinder = useDashboardStore((s) => s.togglePathFinder);
   const { t } = useI18n();
 
   const [activeTab, setActiveTab] = useState<MobileTab>("graph");
@@ -120,7 +110,11 @@ export default function MobileLayout({
       </header>
 
       {/* Search (collapsible) */}
-      {searchOpen && <SearchBar />}
+      {searchOpen && (
+        <div className="flex px-3 py-2 bg-surface border-b border-border-subtle">
+          <SearchBar />
+        </div>
+      )}
 
       {/* Load error */}
       {loadError && (
@@ -167,8 +161,6 @@ export default function MobileLayout({
       <MobileDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        onTogglePathFinder={togglePathFinder}
-        onShowKeyboardHelp={() => setShowKeyboardHelp(true)}
       />
 
       {/* Code viewer — always fullscreen on mobile */}
@@ -190,23 +182,6 @@ export default function MobileLayout({
             </Suspense>
           </div>
         </div>
-      )}
-
-      {/* Keyboard help (mobile reads it as a quick reference too) */}
-      {showKeyboardHelp && (
-        <Suspense fallback={null}>
-          <KeyboardShortcutsHelp
-            shortcuts={shortcuts}
-            onClose={() => setShowKeyboardHelp(false)}
-          />
-        </Suspense>
-      )}
-
-      {/* Path finder */}
-      {pathFinderOpen && (
-        <Suspense fallback={null}>
-          <PathFinderModal isOpen={pathFinderOpen} onClose={togglePathFinder} />
-        </Suspense>
       )}
     </div>
   );

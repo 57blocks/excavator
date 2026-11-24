@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import { Handle, Panel, Position } from "@xyflow/react";
 import type { Edge, Node, NodeProps } from "@xyflow/react";
-import { useDashboardStore } from "../store";
+import { useDashboardStore, activeTranslations } from "../store";
 import {
   drawnHome, isStandInId, kindStyle, layerPlacer, overviewPlacer, projectRelations, relationsOfNode, STAND_IN_PREFIX, unplacedRelations,
   type Projection, type RelationsMode, type StandIn,
@@ -89,7 +89,7 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
   const nodeIdToLayerIds = useDashboardStore((s) => s.nodeIdToLayerIds);
   const graph = useDashboardStore((s) => s.graph);
-  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const nameTranslations = useDashboardStore(activeTranslations);
 
   // Counted whatever the mode and view: the overview's placer gives null for an end that no layer holds.
   const inNoLayer = useMemo(() => {

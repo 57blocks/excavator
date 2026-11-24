@@ -10,7 +10,6 @@ export interface FlowNodeData extends Record<string, unknown> {
   summary: string;
   entryPoint?: string;
   entryType?: string;
-  stepCount: number;
   flowId: string;
 }
 
@@ -46,9 +45,6 @@ function FlowNode({ data }: NodeProps<FlowFlowNode>) {
       </div>
       <div className="text-[10px] text-text-secondary line-clamp-2">
         {data.summary}
-      </div>
-      <div className="text-[9px] text-text-muted mt-1">
-        {data.stepCount} step{data.stepCount !== 1 ? "s" : ""}
       </div>
     </div>
   );

@@ -32,12 +32,12 @@ const SUB_FILE_TYPES = new Set(["function", "class"]);
 
 /**
  * Whether the layer view draws a node of this type that its layer lists: one of
- * `visibleTypes`, and no function or class for the non-technical persona
- * (Overview). GraphView filters a layer's nodes by this rule, so a row's node is
- * judged drawn exactly when the graph draws it.
+ * `visibleTypes`, and never a function or class (the graph draws files). GraphView
+ * filters a layer's nodes by this rule, so a node is judged drawn exactly when the
+ * graph draws it.
  */
-export function drawnInLayer(type: string, persona: string, visibleTypes: ReadonlySet<string>): boolean {
-  return visibleTypes.has(type) && !(persona === "non-technical" && SUB_FILE_TYPES.has(type));
+export function drawnInLayer(type: string, visibleTypes: ReadonlySet<string>): boolean {
+  return visibleTypes.has(type) && !SUB_FILE_TYPES.has(type);
 }
 
 /** The nodes of the graph as the structural view draws them. */

@@ -9,7 +9,6 @@ export interface DomainClusterData extends Record<string, unknown> {
   original?: string | null;
   summary: string;
   entities?: string[];
-  flowCount: number;
   businessRules?: string[];
   domainId: string;
 }
@@ -60,10 +59,6 @@ function DomainClusterNode({ data }: NodeProps<DomainClusterFlowNode>) {
           </div>
         </div>
       )}
-
-      <div className="text-[10px] text-text-muted">
-        {data.flowCount} flow{data.flowCount !== 1 ? "s" : ""}
-      </div>
     </div>
   );
 }

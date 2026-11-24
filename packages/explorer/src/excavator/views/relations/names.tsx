@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { hasInlineSource } from "../../../offline/inlineData";
-import { useDashboardStore } from "../../../store";
+import { useDashboardStore, activeTranslations } from "../../../store";
 import { domainTitle, translatorOf, type Translate } from "../../nameTranslations";
 import { externalLabel, siteText, type RelationSite, type UnitInfo } from "../../products/relations";
 import { LinkButton } from "../shared/Controls";
@@ -15,7 +15,7 @@ export const ARROW = String.fromCharCode(0x2192);
 
 /** The name table's lookup, or undefined when the page holds none. */
 export function useTranslate(): Translate | undefined {
-  const table = useDashboardStore((s) => s.nameTranslations);
+  const table = useDashboardStore(activeTranslations);
   return useMemo(() => translatorOf(table), [table]);
 }
 

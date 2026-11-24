@@ -1,26 +1,20 @@
 import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import { validateGraph } from "@understand-anything/core/schema";
 import type { GraphIssue } from "@understand-anything/core/schema";
-import { shownViewMode, useDashboardStore } from "./store";
+import { useDashboardStore } from "./store";
 import GraphView from "./components/GraphView";
 import DomainGraphView from "./components/DomainGraphView";
 import KnowledgeGraphView from "./components/KnowledgeGraphView";
 import SearchBar from "./components/SearchBar";
 import { SidePanel } from "./excavator/panel/SidePanel";
-import LayerLegend from "./components/LayerLegend";
-import DiffToggle from "./components/DiffToggle";
-import FilterPanel from "./components/FilterPanel";
-import ExportMenu from "./components/ExportMenu";
-import PersonaSelector from "./components/PersonaSelector";
 import MobileLayout from "./components/MobileLayout";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import type { KeyboardShortcut } from "./hooks/useKeyboardShortcuts";
 import { ThemeProvider } from "./themes/index.ts";
-import { ThemePicker } from "./components/ThemePicker.tsx";
-import ProductSwitch from "./excavator/ProductSwitch";
+import { ViewSwitch } from "./excavator/header/ViewSwitch";
+import { LanguageSwitch } from "./excavator/header/LanguageSwitch";
 import ProductViewOverlay from "./excavator/ProductViewOverlay";
-import { escapeProductView } from "./excavator/escape";
 import type { ThemeConfig } from "./themes/index.ts";
 import { I18nProvider, useI18n } from "./contexts/I18nContext.tsx";
 import {
@@ -38,10 +32,6 @@ import {
 
 // Lazy-load heavy / optional components so they ship in separate chunks.
 const CodeViewer = lazy(() => import("./components/CodeViewer"));
-const PathFinderModal = lazy(() => import("./components/PathFinderModal"));
-const KeyboardShortcutsHelp = lazy(
-  () => import("./components/KeyboardShortcutsHelp"),
-);
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
@@ -53,7 +43,6 @@ function App() {
 function Dashboard({ accessToken }: { accessToken: string }) {
   const setGraph = useDashboardStore((s) => s.setGraph);
   const setDomainGraph = useDashboardStore((s) => s.setDomainGraph);
-  const setDiffOverlay = useDashboardStore((s) => s.setDiffOverlay);
   const setNameTranslations = useDashboardStore((s) => s.setNameTranslations);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [graphIssues, setGraphIssues] = useState<GraphIssue[]>([]);
@@ -81,7 +70,7 @@ function Dashboard({ accessToken }: { accessToken: string }) {
     readInlineFile("knowledge-graph.json")
       .then(async (res) => {
         // Guard res.ok before parsing (matching the meta.json/config.json/
-        // diff-overlay.json/domain-graph.json fetches in this file). Without
+        // domain-graph.json fetches in this file). Without
         // this, a serving/config failure returns a 404 JSON error body that
         // gets parsed and handed to validateGraph, which fails project-metadata
         // validation and surfaces the misleading "Invalid knowledge graph:
@@ -149,40 +138,6 @@ function Dashboard({ accessToken }: { accessToken: string }) {
     });
   }, [accessToken]);
 
-  useEffect(() => {
-    readInlineFile("diff-overlay.json")
-      .then((res) => {
-        if (!res.ok) return null;
-        return res.json();
-      })
-      .then((data: unknown) => {
-        if (
-          data &&
-          typeof data === "object" &&
-          "changedNodeIds" in data &&
-          "affectedNodeIds" in data &&
-          Array.isArray((data as Record<string, unknown>).changedNodeIds) &&
-          Array.isArray((data as Record<string, unknown>).affectedNodeIds)
-        ) {
-          const d = data as {
-            changedNodeIds: string[];
-            affectedNodeIds: string[];
-            label?: unknown;
-            description?: unknown;
-          };
-          if (d.changedNodeIds.length > 0) {
-            setDiffOverlay(
-              d.changedNodeIds,
-              d.affectedNodeIds,
-              typeof d.label === "string" && d.label ? d.label : undefined,
-              typeof d.description === "string" && d.description ? d.description : undefined,
-            );
-          }
-        }
-      })
-      .catch(() => {});
-  }, [setDiffOverlay]);
-
   // Excavator: the name table, present only when the page was packed with `--language`.
   useEffect(() => {
     readInlineFile("name-translations.json")
@@ -241,17 +196,7 @@ function DashboardContent({
   const codeViewerExpanded = useDashboardStore((s) => s.codeViewerExpanded);
   const expandCodeViewer = useDashboardStore((s) => s.expandCodeViewer);
   const collapseCodeViewer = useDashboardStore((s) => s.collapseCodeViewer);
-  const pathFinderOpen = useDashboardStore((s) => s.pathFinderOpen);
-  const togglePathFinder = useDashboardStore((s) => s.togglePathFinder);
-  // Excavator: no Files | Classes switch and no node-type chips (openspec: changes/explorer-products,
-  // design D2): detailLevel stays "file" and every type filter stays on; the store keeps the state.
-  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
-  // Excavator: no first-visit onboarding overlay (openspec: changes/explorer-products, design D5).
   const viewMode = useDashboardStore((s) => s.viewMode);
-  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown.
-  const shownMode = useDashboardStore(shownViewMode);
-  const setViewMode = useDashboardStore((s) => s.setViewMode);
-  const isKnowledgeGraph = useDashboardStore((s) => s.isKnowledgeGraph);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const layoutIssues = useDashboardStore((s) => s.layoutIssues);
   const isMobile = useIsMobile();
@@ -261,121 +206,40 @@ function DashboardContent({
     [graphIssues, layoutIssues],
   );
 
-  // Define keyboard shortcuts
+  // Keyboard: Escape steps back one level, "/" focuses the search box.
   const shortcuts = useMemo<KeyboardShortcut[]>(
     () => [
-      // Help
-      {
-        key: "?",
-        shiftKey: true,
-        description: t.keyboardShortcuts.showHelp,
-        action: () => setShowKeyboardHelp((prev) => !prev),
-        category: "General",
-      },
-      // Navigation
       {
         key: "Escape",
-        description: t.keyboardShortcuts.escapeDesc,
+        description: "Close the code viewer, clear the selection, leave the layer or domain",
         action: () => {
           // Read from store at invocation time to avoid stale closures
           const state = useDashboardStore.getState();
-          if (state.pathFinderOpen) {
-            state.togglePathFinder();
-          } else if (state.filterPanelOpen) {
-            state.toggleFilterPanel();
-          } else if (state.exportMenuOpen) {
-            state.toggleExportMenu();
-          } else if (state.codeViewerExpanded) {
+          if (state.codeViewerExpanded) {
             state.collapseCodeViewer();
           } else if (state.codeViewerOpen) {
             state.closeCodeViewer();
-          } else if (escapeProductView(state)) {
-            // Excavator: the product view's chosen row is cleared first, then the view closes.
           } else if (state.selectedNodeId) {
             state.selectNode(null);
+          } else if (state.viewMode === "domain" && state.activeDomainId !== null) {
+            state.clearActiveDomain();
           } else if (state.navigationLevel === "layer-detail") {
             state.navigateToOverview();
-          } else if (state.tourActive) {
-            state.stopTour();
-          } else {
-            setShowKeyboardHelp(false);
           }
         },
         category: "Navigation",
       },
       {
         key: "/",
-        description: t.keyboardShortcuts.focusSearch,
+        description: "Focus the search box",
         action: () => {
-          const searchInput = document.querySelector<HTMLInputElement>(
-            '[data-testid="search-input"]'
-          );
+          const searchInput = document.querySelector<HTMLInputElement>('[data-testid="search-input"]');
           searchInput?.focus();
         },
         category: "Navigation",
       },
-      // Tour controls
-      {
-        key: "ArrowRight",
-        description: t.keyboardShortcuts.nextStep,
-        action: () => {
-          const state = useDashboardStore.getState();
-          if (state.tourActive) {
-            state.nextTourStep();
-          }
-        },
-        category: "Tour",
-      },
-      {
-        key: "ArrowLeft",
-        description: t.keyboardShortcuts.prevStep,
-        action: () => {
-          const state = useDashboardStore.getState();
-          if (state.tourActive) {
-            state.prevTourStep();
-          }
-        },
-        category: "Tour",
-      },
-      // View toggles
-      {
-        key: "d",
-        description: t.keyboardShortcuts.toggleDiff,
-        action: () => {
-          const state = useDashboardStore.getState();
-          state.toggleDiffMode();
-        },
-        category: "View",
-      },
-      {
-        key: "f",
-        description: t.keyboardShortcuts.toggleFilter,
-        action: () => {
-          const state = useDashboardStore.getState();
-          state.toggleFilterPanel();
-        },
-        category: "View",
-      },
-      {
-        key: "e",
-        description: t.keyboardShortcuts.toggleExport,
-        action: () => {
-          const state = useDashboardStore.getState();
-          state.toggleExportMenu();
-        },
-        category: "View",
-      },
-      {
-        key: "p",
-        description: t.keyboardShortcuts.openPathFinder,
-        action: () => {
-          const state = useDashboardStore.getState();
-          state.togglePathFinder();
-        },
-        category: "View",
-      },
     ],
-    [t]
+    [],
   );
 
   // Register keyboard shortcuts
@@ -385,125 +249,24 @@ function DashboardContent({
     return (
       <MobileLayout
         accessToken={accessToken}
-        showKeyboardHelp={showKeyboardHelp}
-        setShowKeyboardHelp={setShowKeyboardHelp}
         loadError={loadError}
         allIssues={allIssues}
         graphFreshness={graphFreshness}
-        shortcuts={shortcuts}
       />
     );
   }
 
   return (
     <div className="h-screen w-screen flex flex-col bg-root text-text-primary noise-overlay">
-      {/* Header */}
-      {/* Excavator: below lg the header wraps (the middle cluster, with the product buttons, takes its own row) so it never scrolls the page sideways. */}
-      <header className="flex flex-wrap lg:flex-nowrap items-center px-3 sm:px-5 py-3 bg-surface border-b border-border-subtle shrink-0 gap-x-2 gap-y-2 sm:gap-x-4">
-        {/* Left — fixed */}
-        <div className="flex items-center gap-3 sm:gap-5 shrink-0 min-w-0">
-          <h1 className="font-heading text-base sm:text-lg text-text-primary tracking-wide truncate max-w-[160px] sm:max-w-[220px] lg:max-w-none">
-            {graph?.project.name ?? t.common.appName}
-          </h1>
-          <div className="w-px h-5 bg-border-subtle hidden sm:block" />
-          <PersonaSelector />
-          {graph && !isKnowledgeGraph && domainGraph && (
-            <>
-              <div className="w-px h-5 bg-border-subtle" />
-              <div className="flex items-center bg-elevated rounded-lg p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("domain")}
-                  title={t.drawer.domain}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    shownMode === "domain"
-                      ? "bg-accent/20 text-accent"
-                      : "text-text-muted hover:text-text-secondary"
-                  }`}
-                >
-                  {t.drawer.domain}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("structural")}
-                  title={t.drawer.structural}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    shownMode === "structural"
-                      ? "bg-accent/20 text-accent"
-                      : "text-text-muted hover:text-text-secondary"
-                  }`}
-                >
-                  {t.drawer.structural}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Middle — scrollable legends */}
-        <div className="order-last w-full min-w-0 overflow-x-auto scrollbar-hide lg:order-none lg:w-auto lg:flex-1">
-          <div className="flex items-center gap-4 w-max">
-            <DiffToggle />
-            {/* Excavator: the three product views, where the Files | Classes switch and the type chips were. */}
-            {graph && (
-              <>
-                <div className="w-px h-5 bg-border-subtle" />
-                <ProductSwitch />
-              </>
-            )}
-            <LayerLegend />
-          </div>
-        </div>
-
-        {/* Right — fixed actions */}
-        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-          <FilterPanel />
-          <ExportMenu />
-          <button
-            onClick={togglePathFinder}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg text-sm bg-elevated text-text-secondary hover:text-text-primary transition-colors"
-            title={t.pathFinder.title}
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-              />
-            </svg>
-            <span className="hidden md:inline">{t.common.path}</span>
-          </button>
-          <ThemePicker />
-          <button
-            onClick={() => setShowKeyboardHelp(true)}
-            className="text-text-muted hover:text-accent transition-colors"
-            title={t.keyboardShortcuts.showHelp}
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-          </button>
-        </div>
+      {/* Header: the project name, the view switch, the search box and the language switch. */}
+      <header className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 sm:px-5 py-3 bg-surface border-b border-border-subtle shrink-0">
+        <h1 className="font-heading text-base sm:text-lg text-text-primary tracking-wide truncate max-w-[160px] sm:max-w-[220px] lg:max-w-none shrink-0">
+          {graph?.project.name ?? t.common.appName}
+        </h1>
+        <ViewSwitch />
+        <SearchBar />
+        <LanguageSwitch />
       </header>
-
-      {/* Search */}
-      <SearchBar />
 
       {/* Error banner */}
       {loadError && (
@@ -523,9 +286,6 @@ function DashboardContent({
           ) : (
             <GraphView />
           )}
-          <div className="absolute top-3 right-3 text-sm text-text-muted/60 pointer-events-none select-none">
-            {t.common.pressKeyboard}
-          </div>
           {/* Excavator: the product view covers the graph area only; the graph above stays mounted. */}
           <ProductViewOverlay />
         </div>
@@ -564,23 +324,6 @@ function DashboardContent({
             </Suspense>
           </div>
         </div>
-      )}
-
-      {/* Keyboard shortcuts help modal */}
-      {showKeyboardHelp && (
-        <Suspense fallback={null}>
-          <KeyboardShortcutsHelp
-            shortcuts={shortcuts}
-            onClose={() => setShowKeyboardHelp(false)}
-          />
-        </Suspense>
-      )}
-
-      {/* Path Finder Modal — only mounted when open so its chunk is lazy-loaded on demand. */}
-      {pathFinderOpen && (
-        <Suspense fallback={null}>
-          <PathFinderModal isOpen={pathFinderOpen} onClose={togglePathFinder} />
-        </Suspense>
       )}
     </div>
   );

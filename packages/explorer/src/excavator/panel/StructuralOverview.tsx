@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useDashboardStore } from "../../store";
+import { useDashboardStore, activeTranslations } from "../../store";
 import { domainTitle, translatorOf } from "../nameTranslations";
 import { externalSystemList, runtimeUnits, techStack, topHotspotFiles, unusedCandidates } from "../overview";
 import { useProductFile, type ProductFileName } from "../views/productFiles";
@@ -22,7 +22,7 @@ function useProductValue(product: string, file: ProductFileName): { line: string
 /** The overview of the structural view: runtime units, tech stack, layers, external systems, most changed files, unused code. */
 export function StructuralOverview() {
   const graph = useDashboardStore((s) => s.graph);
-  const table = useDashboardStore((s) => s.nameTranslations);
+  const table = useDashboardStore(activeTranslations);
   const nodesById = useDashboardStore((s) => s.nodesById);
   const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
   const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);

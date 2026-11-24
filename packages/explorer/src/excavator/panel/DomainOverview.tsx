@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useDashboardStore } from "../../store";
+import { useDashboardStore, activeTranslations } from "../../store";
 import NodeInfo from "../../components/NodeInfo";
 import { translatorOf } from "../nameTranslations";
 import { domainList, projectIntroduction } from "../overview";
@@ -9,7 +9,7 @@ import { LIST_CLASS, MutedLine, ROW_BUTTON_CLASS, Section } from "./Section";
 export function DomainOverview() {
   const graph = useDashboardStore((s) => s.graph);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
-  const table = useDashboardStore((s) => s.nameTranslations);
+  const table = useDashboardStore(activeTranslations);
   const activeDomainId = useDashboardStore((s) => s.activeDomainId);
   const navigateToDomain = useDashboardStore((s) => s.navigateToDomain);
   const clearActiveDomain = useDashboardStore((s) => s.clearActiveDomain);

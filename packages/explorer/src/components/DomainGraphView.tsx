@@ -16,7 +16,7 @@ import FlowNode from "./FlowNode";
 import type { FlowFlowNode } from "./FlowNode";
 import StepNode from "./StepNode";
 import type { StepFlowNode } from "./StepNode";
-import { useDashboardStore } from "../store";
+import { useDashboardStore, activeTranslations } from "../store";
 import { domainTitle, translatorOf, type Translate } from "../excavator/nameTranslations";
 import { useI18n } from "../contexts/I18nContext";
 import { mergeElkPositions, nodesToElkInput } from "../utils/layout";
@@ -176,7 +176,7 @@ function DomainGraphViewInner() {
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const activeDomainId = useDashboardStore((s) => s.activeDomainId);
   const clearActiveDomain = useDashboardStore((s) => s.clearActiveDomain);
-  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const nameTranslations = useDashboardStore(activeTranslations);
   const { t } = useI18n();
 
   // Build structural nodes/edges/dims synchronously; only the layout call
@@ -211,7 +211,7 @@ function DomainGraphViewInner() {
       .then(({ positioned, issues }) => {
         if (cancelled) return;
         if (issues.length > 0) {
-          // Funnel into store so WarningBanner surfaces them.
+          // Funnel into store so the status line shows them.
           useDashboardStore.getState().appendLayoutIssues(issues);
         }
         setLayout({
