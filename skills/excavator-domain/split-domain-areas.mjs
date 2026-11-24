@@ -141,10 +141,17 @@ export function planAreas({
   }
   counts.sourceFiles = fileMaterial.size;
 
+  // Script entry points no module holds reach no analyzer; their ids are kept
+  // so the merge can put each in the outside-areas bucket.
+  const outsideModules = [];
   for (const entry of context?.entryPoints ?? []) {
     const file = relativeInsideRoot(entry?.file);
     const material = file === null ? undefined : fileMaterial.get(file);
-    if (!material) { counts.entryPointsOutsideModules += 1; continue; }
+    if (!material) {
+      counts.entryPointsOutsideModules += 1;
+      if (entry?.source === 'script' && typeof entry.id === 'string') outsideModules.push(entry.id);
+      continue;
+    }
     material.entryPoints.push({ ...entry, file });
     counts.entryPoints += 1;
   }
@@ -274,7 +281,7 @@ export function planAreas({
     };
   });
 
-  return { modules, areas: finished, counts };
+  return { modules, areas: finished, counts, entryPointsOutsideModules: outsideModules.sort(compare) };
 }
 
 function parseArgs(argv) {
@@ -391,6 +398,7 @@ async function main() {
     contextPath,
     areas,
     modules: plan.modules,
+    entryPointsOutsideModules: plan.entryPointsOutsideModules,
     counts: plan.counts,
     truncated: context?.truncated ?? null,
   });

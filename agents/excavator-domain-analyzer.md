@@ -24,7 +24,7 @@ The dispatching skill gives you the path of the file, not its content. Read all 
 - `output` — the only path you write;
 - `check` — the shell command that checks your output the way the merge will accept it (see Writing Results);
 - `modules` — the modules (directories) of your area, each with its files; a module with a `part` is split across areas and you have only the files listed;
-- `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet and a `source` (`script`: read from the facts; `pattern`: found by a pattern);
+- `entryPoints` — the routes, commands, handlers and jobs found in your files, each with a snippet and a `source` (`script`: read from the facts; `pattern`: found by a pattern). Each `script` entry point also has an `id` (for example `ep:http.post-orders`) and a `group`: entry points with the same `group` run the same handler;
 - `unrecognisedFiles` — files of your area where code looks like a route or handler registration that the scripts did not recognise: `[{file, lines, matches}]`;
 - `fileSignatures` — exports, imports and a preview of each of your files;
 - `graphNodes` — present only when a knowledge graph exists: the graph nodes of your files, with their real ids;
@@ -38,6 +38,14 @@ Other analyzers own the rest of the project. You may read the source of your are
 - order each flow's steps from its entry point, so the first step with a `filePath` is in that module.
 
 **Unrecognised files (Option C).** For each file in `unrecognisedFiles`, read it and find the entry points it registers or handles. Write each one to the output's top-level `entryPoints: [{file, line, method, path, quote}]`: `file` is the unrecognised file, `line` is the line of the registration, and `quote` is a verbatim piece of that source line (at most 200 characters). Write no entry point for any other file, and none you cannot quote from its line. A script checks every entry against the file; an entry whose file is not in `unrecognisedFiles`, whose line is outside the file or whose quote is not on that line is rejected and counted. These entries are not part of the domain graph; they are counted in the coverage report.
+
+**Citing fact entry points (Option C).** Every entry point with `source: "script"` is a route the facts resolved. Account for each one:
+- A flow that starts at such an entry point lists it in `domainMeta.entryPointIds`, copying the `id` exactly. Write **one flow per `group`**: cite the ids of one group only (all of the group's entry points that the flow handles, at least one), and never cite the same group from two flows. Entry points of different groups run different handlers, so they are different flows, even for the same resource (`GET /orders` and `POST /orders` with two handlers are two flows).
+- An entry point that starts no business flow (a health check, metrics, static files, a debug or test route, a redirect) goes in the output's top-level `skippedEntryPoints: [{id, reason}]` with one English sentence; listing its module in `skippedModules` also covers it.
+- The script names every flow that cites entry points from its group (`flow:http.post-orders`), whatever id you give it, and writes its `entryPoint` and `entryType` from the facts; still give the flow a kebab-case id and a name and summary of your own.
+- Flows with no `script` entry point — scheduled jobs, CLI commands, event handlers, pattern entry points, entry points you found in unrecognised files — write no `entryPointIds` and keep the id you give them.
+
+A citation that is not a list of ids, names an id not in your context, cites two groups, or cites a group another flow of yours already cites is rejected (`rejected-entry-point`) and the area is analyzed again.
 
 **Choosing a domain (Option C).** A module whose `domainPlan.modules` entry has `"choose": true` holds flows of several business areas (a legacy routes or services directory, a directory of scheduled jobs) or sits in a support domain, so its own domain cannot tell where its flows belong. For every flow that starts in such a module:
 - set `domainMeta.domain` to the id of the domain whose business the flow carries out, using only ids listed in `domainPlan.domains`. Read the flow's code and the domains' summaries: a route, service or scheduled job that creates, changes or checks records of a business area (orders, invoices, stock, customers, reminders, expiry, reconciliation) belongs to that business domain, even when it runs on a timer or lives in a shared directory;
@@ -101,6 +109,7 @@ Produce a JSON object with this exact structure:
       "domainMeta": {
         "entryPoint": "<trigger, e.g. POST /api/orders>",
         "entryType": "http|cli|event|cron|manual",
+        "entryPointIds": ["<Option C, flows starting at script entry points only: their ids, one group>"],
         "module": "<Option C only: the module path where the flow starts>",
         "domain": "<Option C, module with choose true only: a domain id from domainPlan.domains>",
         "domainReason": "<Option C, with domain only: one sentence on why>"
@@ -139,7 +148,8 @@ Produce a JSON object with this exact structure:
 6. **Be specific, not generic** — use the actual business terminology from the code
 7. **Don't invent flows that aren't in the code** — only document what exists
 8. **Scale to the code, not to a target count**: there is no upper bound on domains or flows. Typically 3-8 steps per flow.
-9. **Account for every module (Option C)**: each module of your area that has entry points or unrecognised files either has at least one flow with a step whose `filePath` is one of that module's files, or is listed in `skippedModules` with a one-sentence reason (for example, a router with no business logic). A module also counts when it has files in `unrecognisedFiles`. A script counts modules with neither as `silent-zero` gaps of your area.
+9. **Account for every module (Option C)**: each module of your area that has entry points or unrecognised files either has at least one flow with a step whose `filePath` is one of that module's files, or is listed in `skippedModules` with a one-sentence reason (for example, a router with no business logic). A module whose only candidates are script entry points also counts when each of them is in `skippedEntryPoints` with a reason (rule 10). A module also counts when it has files in `unrecognisedFiles`. A script counts modules with neither as `silent-zero` gaps of your area. List only modules that have entry points or unrecognised files in `skippedModules`; a module with neither needs no entry.
+10. **Account for every script entry point (Option C)**: each one is cited by a flow (itself or another entry point of its `group`) or skipped (in `skippedEntryPoints` with a reason, or through its module in `skippedModules`). A script counts the rest as `silent` entry points of your area.
 
 ## Critical Constraints
 
@@ -153,18 +163,19 @@ Produce a JSON object with this exact structure:
 
 ## Writing Results
 
-1. Write the JSON to the exact output path given in your prompt. Under Option C that is the context's `output`; its `nodes` hold only `flow` and `step` nodes, its `edges` only `flow_step` edges, and the JSON carries three more top-level fields:
+1. Write the JSON to the exact output path given in your prompt. Under Option C that is the context's `output`; its `nodes` hold only `flow` and `step` nodes, its `edges` only `flow_step` edges, and the JSON carries four more top-level fields:
    ```json
    "areaRun": { "areaId": "<copied from the context>", "token": "<copied from the context>" },
    "skippedModules": [ { "module": "<module path>", "reason": "<why it has no flow>" } ],
+   "skippedEntryPoints": [ { "id": "<a script entry point id>", "reason": "<why it starts no business flow>" } ],
    "entryPoints": [ { "file": "<an unrecognised file>", "line": 12, "method": "GET", "path": "/orders", "quote": "<verbatim piece of that line>" } ]
    ```
    `entryPoints` is `[]` when the context has no `unrecognisedFiles` or you found none.
    Without the current `areaRun` the output is rejected.
-   Then run the context's `check` command exactly as written. It prints `<areaId> accepted` and exits 0, or prints the reason and exits 3. For each `rejected-choice <areaId> <flow> module=<module> problem=<missing|invalid|no-reason> allowed=<ids>` line, read that flow's code again, set its `domainMeta.domain` to one of the `allowed` ids and its `domainMeta.domainReason` to one sentence, rewrite the output and run `check` again. Change nothing else for these lines. Stop after three runs of `check` and say in your summary which lines remain.
+   Then run the context's `check` command exactly as written. It prints `<areaId> accepted` and exits 0, or prints the reason and exits 3. For each `rejected-choice <areaId> <flow> module=<module> problem=<missing|invalid|no-reason> allowed=<ids>` line, read that flow's code again, set its `domainMeta.domain` to one of the `allowed` ids and its `domainMeta.domainReason` to one sentence, rewrite the output and run `check` again. Change nothing else for these lines. For each `rejected-entry-point <areaId> <flow> problem=<malformed|unknown|mixed-groups|shared-group> ids=<ids>` line, fix that flow's `domainMeta.entryPointIds`: copy ids from your context's `entryPoints`, keep one group per flow, and merge two flows of one group into one. `check` also prints one `uncovered-entry-point <areaId> <id> <method path>` line per script entry point you neither cited nor skipped; these do not reject the output, but cite each one from a flow or skip it with a reason, then run `check` again. Stop after three runs of `check` and say in your summary which lines remain.
 2. Never copy, rename or reuse an existing file as your output, even if it looks like a finished analysis: not `.excavator/domain-graph.json`, not any other file under `.excavator/intermediate/`, and not another area's output. Do not read them. Every output is written from this analysis.
 3. The project root will be provided in your prompt. Every `filePath` is relative to it.
-4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, how many flows got a `domainMeta.domain`, the last line `check` printed (Option C), plus key domain or flow names.
+4. Respond with ONLY a brief text summary: number of domains (none under Option C), flows, and steps created, the modules listed in `skippedModules`, how many flows got a `domainMeta.domain`, how many flows cite entry points and how many entry points you skipped (Option C), the lines `check` printed last (Option C), plus key domain or flow names.
 
 Do NOT include the full JSON in your text response.
 

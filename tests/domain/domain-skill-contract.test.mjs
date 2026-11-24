@@ -161,7 +161,7 @@ describe('/excavator-domain choice check', () => {
   });
 
   it('re-dispatches a rejected-choice area once before accepting it with --accept-unchosen', () => {
-    const redispatch = skill.indexOf("adding that area's `rejected-choice` lines to its prompt");
+    const redispatch = skill.indexOf("adding that area's `rejected-choice` lines and `rejected-entry-point` lines to its prompt");
     const override = skill.indexOf('run the merge once more with `--accept-unchosen`');
     expect(redispatch).toBeGreaterThan(-1);
     expect(override).toBeGreaterThan(redispatch);
@@ -204,5 +204,30 @@ describe('/excavator-domain entry points from the facts', () => {
     expect(agent).toContain('"entryPoints": [ { "file"');
     expect(agent).toMatch(/`quote` is a verbatim piece of that source line/);
     expect(agent).toMatch(/has entry points or unrecognised files either/);
+  });
+});
+
+// Flows that start at fact entry points cite them by id; the merge names
+// those flows from the cited handler group and buckets every entry point.
+describe('/excavator-domain flows anchored to fact entry points', () => {
+  it('has the analyzer cite script entry points by id, one group per flow, or skip them with a reason', () => {
+    expect(agent).toContain('`domainMeta.entryPointIds`');
+    expect(agent).toMatch(/Write \*\*one flow per `group`\*\*/);
+    expect(agent).toContain('"skippedEntryPoints": [ { "id"');
+    expect(agent).toMatch(/whatever id you give it/);
+    expect(agent).toMatch(/Account for every script entry point \(Option C\)/);
+  });
+
+  it('has the analyzer fix rejected-entry-point lines and account for uncovered-entry-point lines', () => {
+    expect(agent).toContain('rejected-entry-point <areaId> <flow> problem=<malformed|unknown|mixed-groups|shared-group> ids=<ids>');
+    expect(agent).toContain('uncovered-entry-point <areaId> <id> <method path>');
+    expect(agent).toMatch(/these do not reject the output/);
+  });
+
+  it('retries rejected-entry-point areas like rejected-choice ones and reports the entry-point buckets', () => {
+    expect(skill).toMatch(/some areas are still `rejected-choice` or `rejected-entry-point`, run the merge once more with `--accept-unchosen`/);
+    expect(skill).toContain('`entry-point coverage total=… in-flow=… declared-skip=… silent=… area-not-accepted=… outside-areas=…`');
+    expect(skill).toContain('every `silent-entry-point`');
+    expect(skill).toContain('`flows anchored=… unanchored=… citations-dropped=…`');
   });
 });

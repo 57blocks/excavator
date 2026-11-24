@@ -753,7 +753,7 @@ describe('multi-module fixture end to end', () => {
     expect(coverage.conservation).toMatchObject({ ok: true, missing: [], extra: [] });
     expect(coverage.modules.find((m) => m.path === HANDLER_MODULES[0]).domain).toBe('domain:commerce');
     expect(stdout).toContain('plan status=reused business=1 support=1');
-    expect(stdout).toContain(`flows homed step=${coverage.totals.flows} declared=0 unplaced=0`);
+    expect(stdout).toContain(`flows homed entry-point=0 step=${coverage.totals.flows} declared=0 unplaced=0`);
     expect(stdout).toContain('conservation ok');
     expect(coverage.totals.domains).toBe(2);
   });

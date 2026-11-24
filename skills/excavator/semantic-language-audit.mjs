@@ -20,6 +20,8 @@ const DOMAIN_META_NON_PROSE_FIELDS = new Set([
   'nodeIds', 'source', 'target', 'direction', 'provenance',
   // Module paths a domain plan records (source-owned, not model prose).
   'module', 'modules',
+  // Fact entry-point ids a flow cites (script-owned identifiers).
+  'entryPointIds',
 ]);
 
 function compareStrings(a, b) {
