@@ -797,6 +797,13 @@ const PROBE_GRAPH_RELATIONS = `(async () => {
   const mode = (m) => document.querySelector('[data-excavator-relations-mode="' + m + '"]');
   const section = () => document.querySelector('[data-excavator-communication]');
   const entry = (key) => document.querySelector('[data-excavator-communication-entry="' + key + '"]');
+  // Escape first clears a chosen row, then closes the view: press it until the view is gone.
+  const closeView = async () => {
+    for (let i = 0; i < 4 && document.querySelector('[data-excavator-product-view]'); i++) {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await sleep(200);
+    }
+  };
   const started = Date.now();
   const out = {};
   await until(() => cards().length > 0);
@@ -811,6 +818,14 @@ const PROBE_GRAPH_RELATIONS = `(async () => {
     out.off = { edges: edges(), standIns: standIns(), status: status() };
     press(mode('selected'));
     await sleep(250);
+    // The external system's node opens it in the Relations view.
+    press(card('relations:external:mail')?.firstElementChild);
+    await until(() => document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="externals"][aria-pressed="true"]') && document.querySelector('aside [data-excavator-row-detail]'), 30);
+    out.external = {
+      tab: document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="externals"]')?.getAttribute('aria-pressed') ?? null,
+      detail: document.querySelector('aside [data-excavator-row-detail]')?.innerText ?? null,
+    };
+    await closeView();
   }
   // Into the Library layer, its folder box opened, then util.js selected (the Overview persona draws files, not functions).
   card('layer:lib')?.click();
@@ -839,7 +854,11 @@ const PROBE_GRAPH_RELATIONS = `(async () => {
     out.marked = [...document.querySelectorAll('[data-excavator-line-marked]')].map((e) => e.innerText).join('|');
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await sleep(250);
-    // The entry opens its relation in the Relations view's site table.
+    // The entry opens its relation in the Relations view's site table, also when the view is open on another table.
+    press(document.querySelector('header [data-excavator-product-button="relations"]'));
+    await until(() => document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab][aria-pressed="true"]'), 30);
+    await sleep(150);
+    out.openBefore = { tabs: [...document.querySelectorAll('[data-excavator-product-view="relations"] [data-excavator-tab][aria-pressed="true"]')].map((t) => t.getAttribute('data-excavator-tab')), entry: Boolean(entry('rel:6:receiver')) };
     press(entry('rel:6:receiver')?.querySelector('[data-excavator-communication-open]'));
     await until(() => document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="sites"][aria-pressed="true"]') && document.querySelector('aside [data-excavator-row-detail]'), 30);
     out.opened = {
@@ -847,14 +866,17 @@ const PROBE_GRAPH_RELATIONS = `(async () => {
       row: document.querySelector('[data-excavator-table="sites"] tr[aria-selected="true"], [data-excavator-table="sites"] tr[data-selected="true"]')?.getAttribute('data-excavator-row') ?? null,
       detail: document.querySelector('aside [data-excavator-row-detail]')?.innerText ?? null,
     };
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await until(() => !document.querySelector('[data-excavator-product-view]'), 20);
-    await sleep(200);
+    await closeView();
     // The other end's node button moves to that node, in its layer.
     press(entry('rel:1:receiver')?.querySelector('[data-excavator-communication-other] button'));
     await until(() => section()?.getAttribute('data-excavator-communication') === 'file:src/main.js', 30);
     await sleep(200);
     out.moved = { node: section()?.getAttribute('data-excavator-communication') ?? null, entries: [...document.querySelectorAll('[data-excavator-communication-entry]')].map((e) => e.getAttribute('data-excavator-communication-entry')), edges: edges() };
+    // The other layer's node opens that layer.
+    press(card('relations:layer:layer:lib')?.firstElementChild);
+    // The breadcrumb names the layer; its folder box is closed again, so util.js itself is not a card.
+    const crumb = () => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Project')?.parentElement?.innerText ?? '';
+    out.drilled = await until(() => /library/i.test(crumb()) && !card('file:src/main.js'), 30);
   }
   out.elapsedMs = Date.now() - started;
   return out;
@@ -1043,6 +1065,7 @@ export function judgeGraphRelations(result) {
       ['the overview draws one edge per layer pair and kind, labelled by kind', same(probe.overview?.labels, ['relation|external|layer:lib|relations:external:mail=external', 'relation|http|layer:app|layer:lib=http'])],
       ['the external system is one node; the legend lists the kinds drawn', same(probe.overview?.standIns, ['relations:external:mail']) && same(probe.overview?.kinds, ['external', 'http'])],
       ['the control says Selected node and counts what is drawn and what is not', probe.overview?.panel === 'selected' && probe.overview?.status === `2 drawn · ${counts}`],
+      ['the external system\'s node opens it in the Relations view', probe.external?.tab === 'true' && has(probe.external?.detail, 'external:mail')],
       ['Off draws no relation edge and no stand-in', same(probe.off?.edges, []) && same(probe.off?.standIns, []) && probe.off?.status === `None drawn · ${counts}`],
       ['a layer draws nothing until a node is selected', same(probe.layerNone?.edges, []) && probe.layerNone?.status === `Select a node to draw its relations · ${counts}`],
       ['the selected node draws its relations, the other layer as one node', same(probe.layer?.edges, utilEdges) && same(probe.layer?.standIns, ['relations:external:mail', 'relations:layer:layer:app']) && probe.layer?.status === `2 drawn · ${counts}`],
@@ -1051,8 +1074,9 @@ export function judgeGraphRelations(result) {
       ])],
       ['an entry names the address, the external system, the other end and the missing end', has(probe.panel?.text, 'GET /helper') && has(probe.panel?.text, 'mail') && has(probe.panel?.text, 'node not in the graph') && has(probe.panel?.text, 'src/main.js:3') && has(probe.panel?.text, 'No caller site') && has(probe.panel?.text, 'in helper')],
       ['this end opens its code at its line', has(probe.marked, 'export function helper(n) {')],
-      ['an entry opens its relation in the Relations view', probe.opened?.tab === 'true' && has(probe.opened?.detail, 'Asks for the helper again')],
+      ['an entry opens its relation in the Relations view, also when it is open on another table', probe.openBefore?.entry === true && (probe.openBefore?.tabs ?? ['sites']).length > 0 && !(probe.openBefore?.tabs ?? ['sites']).includes('sites') && probe.opened?.tab === 'true' && has(probe.opened?.detail, 'Asks for the helper again')],
       ['the other end moves the graph to its node and lists its relations', probe.moved?.node === 'file:src/main.js' && same(probe.moved?.entries, ['rel:1:caller']) && same(probe.moved?.edges, ['relation|http|file:src/main.js|relations:layer:layer:lib'])],
+      ['the other layer\'s node opens that layer', probe.drilled === true],
       ['the probe ends in time', typeof probe.elapsedMs === 'number' && probe.elapsedMs < 12000],
     ]),
   ];
