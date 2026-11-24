@@ -148,6 +148,7 @@ export default function RelationsRowPanel({ row, onClose }: { row: RelationsRowR
           { label: "Called by", value: system.units.length === 0 ? null : <span>{system.units.map((u, i) => <span key={u}>{i > 0 ? ", " : ""}<Target id={u} units={units} translate={translate} /></span>)}</span> },
           ...(system.names === null ? [] : [{ label: "Names written", value: system.names.join(", ") }]),
           ...(system.hosts === null ? [] : [{ label: "Hosts written", value: system.hosts.join(", ") }]),
+          ...(system.keyBy === null ? [] : [{ label: "Keyed by", value: system.keyBy.join(", ") }]),
         ]}
       />
       <RowSection title="Relations">

@@ -218,6 +218,8 @@ export interface ExternalRow {
   /** The names and hosts the analyzers wrote for it, when the product lists them. */
   names: string[] | null;
   hosts: string[] | null;
+  /** How the merge keyed it (`name`, `host`), when the product records it. */
+  keyBy: string[] | null;
 }
 
 /** Every external system: the product's list first, in its order, then any a relation names that the list lacks. */
@@ -230,7 +232,7 @@ export function externalSystems(product: unknown, rows: readonly RelationRow[]):
     const relations = rows.filter((r) => r.external === id);
     const units = [...new Set(relations.map((r) => r.caller?.unit).filter((u): u is string => typeof u === 'string'))].sort(byText);
     const entry = info.get(id);
-    return { id, units, relations, names: strings(entry?.names), hosts: strings(entry?.hosts) };
+    return { id, units, relations, names: strings(entry?.names), hosts: strings(entry?.hosts), keyBy: strings(entry?.keyBy) };
   });
 }
 

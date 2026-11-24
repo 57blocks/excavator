@@ -13,7 +13,7 @@ const PRODUCT = {
     { id: 'unit:api', name: 'api', root: 'api', kind: 'runtime' },
     { id: 'unit:lib', name: 'lib', root: 'lib', kind: 'library' },
   ],
-  externals: [{ id: 'external:mail', names: ['Mailer'], hosts: [] }, { id: 'external:maps' }],
+  externals: [{ id: 'external:mail', keyBy: ['name'], names: ['Mailer'], hosts: [] }, { id: 'external:maps' }],
   relations: [
     { id: 'rel:1', kind: 'http', bucket: 'linked', addressKey: 'GET /orders', reason: 'Loads orders', caller: site('unit:web', 'web/a.js', 3), receiver: { ...site('unit:api', 'api/r.js', 7), addressKey: 'GET /orders' } },
     { id: 'rel:2', kind: 'http', bucket: 'linked', addressKey: 'GET /orders', caller: site('unit:web', 'web/b.js', 9), receiver: { ...site('unit:api', 'api/r.js', 7), addressKey: 'GET /orders' } },
@@ -99,9 +99,9 @@ describe('links', () => {
 describe('external systems', () => {
   it('lists every external system of the product and those only relations name, with the units that call it', () => {
     const systems = externalSystems(PRODUCT, relationRows(PRODUCT));
-    expect(systems.map((s) => [s.id, s.units, s.relations.map((r) => r.id), s.names])).toEqual([
-      ['external:mail', ['unit:api'], ['rel:3'], ['Mailer']],
-      ['external:maps', [], [], null],
+    expect(systems.map((s) => [s.id, s.units, s.relations.map((r) => r.id), s.names, s.keyBy])).toEqual([
+      ['external:mail', ['unit:api'], ['rel:3'], ['Mailer'], ['name']],
+      ['external:maps', [], [], null, null],
     ]);
   });
 });
