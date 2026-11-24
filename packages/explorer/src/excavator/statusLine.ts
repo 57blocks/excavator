@@ -13,8 +13,8 @@ import { describeProductState, productStateOf, snapshotRevisionOf, type ProductS
 /** A named hole of the knowledge graph (`graph.gaps`). */
 export interface Gap {
   kind: string;
-  scope: string;
-  reason: string;
+  scope?: string;
+  reason?: string;
   count?: number;
 }
 
@@ -106,19 +106,60 @@ function gapLine(gap: Gap): string {
   return line;
 }
 
+interface ResolvedEntry {
+  name: string;
+  label: string;
+  state: ProductState;
+}
+
+/** Each manifest product with its state; `products.json` adds the reason, command and revisions of the products it describes. */
+function resolveEntries(list: readonly ManifestProduct[], products: unknown): { entries: ResolvedEntry[]; snapshotRevision: string | null } {
+  const json = isTable(products) && Array.isArray(products.products) ? products.products.filter(isTable) : [];
+  const entries = list.map((p) => {
+    const extra = json.find((item) => item.name === p.name) ?? {};
+    const state = productStateOf(p.name, { ...extra, status: p.status, reason: p.reason ?? extra.reason });
+    return { name: p.name, label: labelOf(p.name), state };
+  });
+  return { entries, snapshotRevision: snapshotRevisionOf(products) };
+}
+
+export interface ProductAvailability {
+  /** Whether the page holds the product's data to show (included, or made from a different revision). */
+  usable: boolean;
+  /** The muted line that says the product's state; null for an included product. */
+  line: string | null;
+}
+
+/** What a panel section says about the product it reads: nothing when included, its state when not. */
+export function productAvailability(manifest: PageManifest, products: unknown, name: string): ProductAvailability {
+  const label = labelOf(name);
+  if ("reason" in manifest) return { usable: false, line: `${label}: product states unreadable (${manifest.reason})` };
+  const { entries, snapshotRevision } = resolveEntries(manifest.products, products);
+  const entry = entries.find((e) => e.name === name);
+  if (!entry) return { usable: false, line: `${label}: not listed in the page manifest` };
+  const { state } = entry;
+  switch (state.status) {
+    case "included":
+      return { usable: true, line: null };
+    case "different-revision":
+      return {
+        usable: true,
+        line: `${label}: made from revision ${state.revision ?? "not recorded"}, the page holds ${snapshotRevision ?? "no recorded revision"}`,
+      };
+    case "not-run":
+      return { usable: false, line: `${label}: not run${state.command ? ` (${state.command})` : ""}` };
+    case "unreadable":
+      return { usable: false, line: `${label}: unreadable (${state.reason ?? "no reason given"})` };
+  }
+}
+
 export function buildStatusLine(input: StatusLineInput): StatusLine {
   const { manifest } = input;
   if ("reason" in manifest || manifest.products.length === 0) {
     const reason = "reason" in manifest ? manifest.reason : "the page manifest lists no products";
     return { summary: `Product states unreadable: ${reason}`, details: [], attention: true };
   }
-  const json = isTable(input.products) && Array.isArray(input.products.products) ? input.products.products.filter(isTable) : [];
-  const snapshotRevision = snapshotRevisionOf(input.products);
-  const entries = manifest.products.map((p) => {
-    const extra = json.find((item) => item.name === p.name) ?? {};
-    const state = productStateOf(p.name, { ...extra, status: p.status, reason: p.reason ?? extra.reason });
-    return { name: p.name, label: labelOf(p.name), state };
-  });
+  const { entries, snapshotRevision } = resolveEntries(manifest.products, input.products);
 
   const groups: string[] = [];
   for (const [status, word] of GROUPS) {

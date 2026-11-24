@@ -6,16 +6,12 @@ import GraphView from "./components/GraphView";
 import DomainGraphView from "./components/DomainGraphView";
 import KnowledgeGraphView from "./components/KnowledgeGraphView";
 import SearchBar from "./components/SearchBar";
-import NodeInfo from "./components/NodeInfo";
+import { SidePanel } from "./excavator/panel/SidePanel";
 import LayerLegend from "./components/LayerLegend";
 import DiffToggle from "./components/DiffToggle";
 import FilterPanel from "./components/FilterPanel";
 import ExportMenu from "./components/ExportMenu";
 import PersonaSelector from "./components/PersonaSelector";
-import ProjectOverview from "./components/ProjectOverview";
-import FileExplorer from "./components/FileExplorer";
-import WarningBanner from "./components/WarningBanner";
-import StalenessBanner from "./components/StalenessBanner";
 import MobileLayout from "./components/MobileLayout";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -24,7 +20,6 @@ import { ThemeProvider } from "./themes/index.ts";
 import { ThemePicker } from "./components/ThemePicker.tsx";
 import ProductSwitch from "./excavator/ProductSwitch";
 import ProductViewOverlay from "./excavator/ProductViewOverlay";
-import ProductRowSidebar from "./excavator/views/ProductRowSidebar";
 import { escapeProductView } from "./excavator/escape";
 import type { ThemeConfig } from "./themes/index.ts";
 import { I18nProvider, useI18n } from "./contexts/I18nContext.tsx";
@@ -43,14 +38,12 @@ import {
 
 // Lazy-load heavy / optional components so they ship in separate chunks.
 const CodeViewer = lazy(() => import("./components/CodeViewer"));
-const LearnPanel = lazy(() => import("./components/LearnPanel"));
 const PathFinderModal = lazy(() => import("./components/PathFinderModal"));
 const KeyboardShortcutsHelp = lazy(
   () => import("./components/KeyboardShortcutsHelp"),
 );
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
-type SidebarTab = "info" | "files";
 
 function App() {
   // The offline page has no token gate: the token is always accepted.
@@ -244,10 +237,6 @@ function DashboardContent({
   graphFreshness: DashboardFreshnessReport | null;
 }) {
   const graph = useDashboardStore((s) => s.graph);
-  const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
-  const tourActive = useDashboardStore((s) => s.tourActive);
-  const persona = useDashboardStore((s) => s.persona);
-  const productRowOpen = useDashboardStore((s) => s.productView !== null && s.productRow !== null);
   const codeViewerOpen = useDashboardStore((s) => s.codeViewerOpen);
   const codeViewerExpanded = useDashboardStore((s) => s.codeViewerExpanded);
   const expandCodeViewer = useDashboardStore((s) => s.expandCodeViewer);
@@ -257,7 +246,6 @@ function DashboardContent({
   // Excavator: no Files | Classes switch and no node-type chips (openspec: changes/explorer-products,
   // design D2): detailLevel stays "file" and every type filter stays on; the store keeps the state.
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("info");
   // Excavator: no first-visit onboarding overlay (openspec: changes/explorer-products, design D5).
   const viewMode = useDashboardStore((s) => s.viewMode);
   // Excavator: a mode button is highlighted only while the graph, not a product view, is shown.
@@ -272,15 +260,6 @@ function DashboardContent({
     () => [...graphIssues, ...layoutIssues],
     [graphIssues, layoutIssues],
   );
-
-  useEffect(() => {
-    if (selectedNodeId) setSidebarTab("info");
-  }, [selectedNodeId]);
-
-  // Excavator: a chosen product row shows its details on the Info tab.
-  useEffect(() => {
-    if (productRowOpen) setSidebarTab("info");
-  }, [productRowOpen]);
 
   // Define keyboard shortcuts
   const shortcuts = useMemo<KeyboardShortcut[]>(
@@ -401,49 +380,6 @@ function DashboardContent({
 
   // Register keyboard shortcuts
   useKeyboardShortcuts(shortcuts);
-
-  // Determine sidebar content
-  // NodeInfo always takes priority when a node is selected.
-  // Learn mode adds LearnPanel below it; otherwise ProjectOverview shows when idle.
-  const isLearnMode = tourActive || persona === "junior";
-  const infoSidebarContent = productRowOpen ? (
-    // Excavator: while a product view has a row chosen, the sidebar shows the row's details.
-    <ProductRowSidebar />
-  ) : (
-    <>
-      {selectedNodeId && <NodeInfo />}
-      {isLearnMode && (
-        <Suspense fallback={null}>
-          <LearnPanel />
-        </Suspense>
-      )}
-      {!selectedNodeId && !isLearnMode && <ProjectOverview />}
-    </>
-  );
-
-  const sidebarContent = (
-    <div className="h-full flex flex-col min-h-0">
-      <div className="flex items-center gap-1 p-2 border-b border-border-subtle bg-surface shrink-0">
-        {(["info", "files"] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setSidebarTab(tab)}
-            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition-colors ${
-              sidebarTab === tab
-                ? "bg-accent/15 text-accent"
-                : "text-text-muted hover:text-text-primary hover:bg-elevated"
-            }`}
-          >
-            {tab === "info" ? t.sidebar.info : t.sidebar.files}
-          </button>
-        ))}
-      </div>
-      <div className="flex-1 min-h-0 overflow-auto">
-        {sidebarTab === "files" ? <FileExplorer /> : infoSidebarContent}
-      </div>
-    </div>
-  );
 
   if (isMobile) {
     return (
@@ -569,14 +505,6 @@ function DashboardContent({
       {/* Search */}
       <SearchBar />
 
-      {/* Graph freshness warning banner */}
-      {!loadError && <StalenessBanner freshness={graphFreshness} />}
-
-      {/* Validation warning banner */}
-      {allIssues.length > 0 && !loadError && (
-        <WarningBanner issues={allIssues} />
-      )}
-
       {/* Error banner */}
       {loadError && (
         <div className="px-5 py-3 bg-red-900/30 border-b border-red-700 text-red-200 text-sm">
@@ -603,8 +531,8 @@ function DashboardContent({
         </div>
 
         {/* Right sidebar — telescopes at narrower widths */}
-        <aside className="w-[260px] md:w-[300px] lg:w-[360px] shrink-0 bg-surface border-l border-border-subtle overflow-auto">
-          {sidebarContent}
+        <aside className="w-[260px] md:w-[300px] lg:w-[360px] shrink-0 bg-surface border-l border-border-subtle overflow-hidden">
+          <SidePanel freshness={graphFreshness} issues={allIssues} />
         </aside>
 
         {/* Code viewer slide-up overlay (collapsed state) */}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFreshnessBanner } from "../../components/StalenessBanner";
+import { freshnessLines } from "../freshnessLines";
 import { isDashboardFreshnessReport, type GraphFreshnessResult } from "../../freshness";
 
 // The pack's freshness report (openspec: changes/viewer-explorer, design D2): a graph from another
@@ -26,26 +26,21 @@ describe("the revision freshness result", () => {
     expect(isDashboardFreshnessReport({ graphs: { knowledge: { status: "revision", graphRevision: "", currentRevision: GIT_NOW } } })).toBe(false);
   });
 
-  it("shows no banner when both graphs are the current revision", () => {
-    expect(buildFreshnessBanner({ graphs: { knowledge: fresh(GIT_NOW), domain: fresh(GIT_NOW) } })).toBeNull();
+  it("gives no line when both graphs are the current revision", () => {
+    expect(freshnessLines({ graphs: { knowledge: fresh(GIT_NOW), domain: fresh(GIT_NOW) } })).toEqual([]);
+    expect(freshnessLines(null)).toEqual([]);
   });
 
   it("names both revisions, shortened, and says the code shown is the current source", () => {
-    const banner = buildFreshnessBanner({ graphs: { knowledge: { status: "revision", graphRevision: GIT_THEN, currentRevision: GIT_NOW } } });
-    expect(banner).toEqual({
-      title: "Knowledge graph may not match the current source",
-      summary: "The knowledge graph was made from git:bbbbbbbb; this page was packed at git:aaaaaaaa. Code shown here is the source packed with this page, so its lines may not match the graph.",
-      action: "Run /excavator to refresh it before relying on impact or onboarding answers.",
-      changedFiles: [],
-    });
+    expect(freshnessLines({ graphs: { knowledge: { status: "revision", graphRevision: GIT_THEN, currentRevision: GIT_NOW } } })).toEqual([
+      "Knowledge graph: The knowledge graph was made from git:bbbbbbbb; this page was packed at git:aaaaaaaa.",
+    ]);
   });
 
   it("says when a graph records no revision, and names only the graphs that differ", () => {
-    const banner = buildFreshnessBanner({
+    const lines = freshnessLines({
       graphs: { knowledge: fresh(GIT_NOW), domain: { status: "revision", graphRevision: null, currentRevision: GIT_NOW } },
     });
-    expect(banner?.title).toBe("Domain graph may not match the current source");
-    expect(banner?.summary.startsWith("The domain graph records no source revision; this page was packed at git:aaaaaaaa.")).toBe(true);
-    expect(banner?.action).toBe("Run /excavator-domain to refresh it before relying on impact or onboarding answers.");
+    expect(lines).toEqual(["Domain graph: The domain graph records no source revision; this page was packed at git:aaaaaaaa."]);
   });
 });

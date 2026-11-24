@@ -6,19 +6,14 @@ import GraphView from "./GraphView";
 import DomainGraphView from "./DomainGraphView";
 import KnowledgeGraphView from "./KnowledgeGraphView";
 import SearchBar from "./SearchBar";
-import NodeInfo from "./NodeInfo";
-import ProjectOverview from "./ProjectOverview";
-import FileExplorer from "./FileExplorer";
-import WarningBanner from "./WarningBanner";
-import StalenessBanner from "./StalenessBanner";
 import type { DashboardFreshnessReport } from "../freshness";
+import { SidePanel } from "../excavator/panel/SidePanel";
 import MobileBottomNav from "./MobileBottomNav";
 import type { MobileTab } from "./MobileBottomNav";
 import MobileDrawer from "./MobileDrawer";
 import ProductViewOverlay from "../excavator/ProductViewOverlay";
 
 const CodeViewer = lazy(() => import("./CodeViewer"));
-const LearnPanel = lazy(() => import("./LearnPanel"));
 const PathFinderModal = lazy(() => import("./PathFinderModal"));
 const KeyboardShortcutsHelp = lazy(() => import("./KeyboardShortcutsHelp"));
 
@@ -43,8 +38,6 @@ export default function MobileLayout({
 }: Props) {
   const graph = useDashboardStore((s) => s.graph);
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
-  const tourActive = useDashboardStore((s) => s.tourActive);
-  const persona = useDashboardStore((s) => s.persona);
   const viewMode = useDashboardStore((s) => s.viewMode);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const productView = useDashboardStore((s) => s.productView);
@@ -69,23 +62,10 @@ export default function MobileLayout({
     if (productView) setActiveTab("graph");
   }, [productView]);
 
-  // When a code viewer opens (e.g. from the Files tab) keep focus there
+  // When a code viewer opens keep focus there
   useEffect(() => {
     if (codeViewerOpen) setSearchOpen(false);
   }, [codeViewerOpen]);
-
-  const isLearnMode = tourActive || persona === "junior";
-  const infoContent = (
-    <>
-      {selectedNodeId && <NodeInfo />}
-      {isLearnMode && (
-        <Suspense fallback={null}>
-          <LearnPanel />
-        </Suspense>
-      )}
-      {!selectedNodeId && !isLearnMode && <ProjectOverview />}
-    </>
-  );
 
   return (
     <div className="h-screen w-screen flex flex-col bg-root text-text-primary noise-overlay">
@@ -142,12 +122,6 @@ export default function MobileLayout({
       {/* Search (collapsible) */}
       {searchOpen && <SearchBar />}
 
-      {/* Graph freshness warning */}
-      {!loadError && <StalenessBanner freshness={graphFreshness} />}
-
-      {/* Validation warnings */}
-      {allIssues.length > 0 && !loadError && <WarningBanner issues={allIssues} />}
-
       {/* Load error */}
       {loadError && (
         <div className="px-4 py-3 bg-red-900/30 border-b border-red-700 text-red-200 text-sm">
@@ -177,21 +151,12 @@ export default function MobileLayout({
         </div>
 
         <div
-          className={`absolute inset-0 overflow-auto bg-surface ${
+          className={`absolute inset-0 overflow-hidden bg-surface ${
             activeTab === "info" ? "" : "invisible pointer-events-none"
           }`}
           aria-hidden={activeTab !== "info"}
         >
-          {infoContent}
-        </div>
-
-        <div
-          className={`absolute inset-0 overflow-auto bg-surface ${
-            activeTab === "files" ? "" : "invisible pointer-events-none"
-          }`}
-          aria-hidden={activeTab !== "files"}
-        >
-          <FileExplorer />
+          <SidePanel freshness={graphFreshness} issues={allIssues} />
         </div>
       </div>
 

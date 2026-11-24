@@ -122,7 +122,7 @@ export interface LoadedProductStates {
 }
 
 /** The file's content, or the reason the page gives for not having it (a part that cannot be decoded says so, as it does for the product views). */
-async function readJson(name: "products.json"): Promise<{ value?: unknown; failure?: string }> {
+export async function readJson(name: "products.json"): Promise<{ value?: unknown; failure?: string }> {
   try {
     const response = await readInlineFile(name);
     if (response.ok) return { value: await response.json() };

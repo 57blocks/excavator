@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardFreshnessReport } from "../../freshness";
 import type { NameTranslations } from "../nameTranslations";
-import { buildStatusLine, readPageManifest, type ManifestProduct, type PageManifest, type StatusLineInput } from "../statusLine";
+import { buildStatusLine, productAvailability, readPageManifest, type ManifestProduct, type PageManifest, type StatusLineInput } from "../statusLine";
 
 const mp = (name: string, status = "included", reason: string | null = null): ManifestProduct => ({ name, status, reason });
 const manifestOf = (...products: ManifestProduct[]): PageManifest => ({ products });
@@ -93,5 +93,30 @@ describe("buildStatusLine details", () => {
     expect(line.attention).toBe(false);
     expect(line.details).toEqual(["Tour: included, not shown on this page"]);
     expect(line.summary).toBe("Knowledge graph, Semantics, Domain graph, Unused code, Doc map, Hotspots, Tour, Relations included");
+  });
+});
+
+describe("productAvailability", () => {
+  const manifest = manifestOf(mp("relations"), mp("doc-map", "not-run"), mp("hotspots", "different-revision"), mp("unused-code", "unreadable", "unused-code.json is not valid JSON"));
+  const products = { snapshotRevision: "git:bbb", products: [jsonEntry("doc-map", { status: "not-run" }), jsonEntry("hotspots", { status: "different-revision", revision: "git:aaa" })] };
+
+  it("is usable with no line for an included product", () => {
+    expect(productAvailability(manifest, products, "relations")).toEqual({ usable: true, line: null });
+  });
+
+  it("says why a product that was not run or cannot be read is not shown, and that nothing is usable", () => {
+    expect(productAvailability(manifest, products, "doc-map")).toEqual({ usable: false, line: "Doc map: not run (/excavator-doc-map)" });
+    expect(productAvailability(manifest, products, "unused-code")).toEqual({ usable: false, line: "Unused code: unreadable (unused-code.json is not valid JSON)" });
+  });
+
+  it("keeps a product from a different revision usable and names both revisions", () => {
+    const result = productAvailability(manifest, products, "hotspots");
+    expect(result.usable).toBe(true);
+    expect(result.line).toBe("Hotspots: made from revision git:aaa, the page holds git:bbb");
+  });
+
+  it("says so when the manifest does not list the product or cannot be read", () => {
+    expect(productAvailability(manifest, products, "tour")).toEqual({ usable: false, line: "Tour: not listed in the page manifest" });
+    expect(productAvailability({ reason: "the page has no manifest" }, undefined, "relations")).toEqual({ usable: false, line: "Relations: product states unreadable (the page has no manifest)" });
   });
 });
