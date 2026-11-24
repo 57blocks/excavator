@@ -315,8 +315,10 @@ structural edge, `coverage`, or `gaps` in `knowledge-graph.jsonl`:
 - node-local `summary`/`tags` for an EXISTING fact node, into
   `$DATA_DIR/semantic-cache.json` (Phase F2);
 - architecture `layers` and cross-node `relations`, into the new
-  `$DATA_DIR/semantic-graph.json` (Phase F3), gated by `factDigest` so an
-  unchanged fact graph does not pay for Architecture again.
+  `$DATA_DIR/semantic-graph.json` (Phase F3), gated by `structureDigest` (the
+  knowledge graph header's digest over nodes and edges only, so a new record stream
+  such as entry points does not force Architecture) so an unchanged set of nodes
+  and edges does not pay for Architecture again.
 
 An id the model writes that is not a real fact node id is dropped and
 recorded as a semantic gap — never a fact anchor, never silently kept. See
@@ -513,7 +515,7 @@ Concatenate every `semantic-patch-report-<i>.json`'s `gaps` array into
 `semantic-graph.json`'s own `gaps`, so a patch-time gap is not lost even when
 Architecture itself is reused unchanged.
 
-### Phase F3 — ARCHITECTURE (factDigest-gated; layers/relations -> `semantic-graph.json`)
+### Phase F3 — ARCHITECTURE (structureDigest-gated; layers/relations -> `semantic-graph.json`)
 
 Report: `[Phase F3] Checking whether architecture needs to rerun...`
 
@@ -536,9 +538,9 @@ node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" merge-gaps \
   --extra-gaps "$DATA_DIR/intermediate/semantic-gaps.json"
 ```
 to refresh ONLY `semantic-graph.json`'s `gaps` with Phase F2's patch-time
-gaps (its `layers`/`relations`/`factDigest`/`contentLanguage` are left exactly as they were —
+gaps (its `layers`/`relations`/`structureDigest`/`contentLanguage` are left exactly as they were —
 a reused Architecture must not silently swallow a gap this run actually
-found). Report `Architecture unchanged (factDigest match) — reusing existing
+found). Report `Architecture unchanged (structureDigest match) — reusing existing
 semantic-graph.json.` and continue to Phase F4 without dispatching anything.
 
 **If `rebuild`:** first build the analyzer's input.
@@ -644,7 +646,7 @@ This drops any `nodeIds`/relation-endpoint that is not a real fact node id,
 recording each as a semantic gap (never a dangling reference, never a fact
 anchor), audits every model-owned name/description into an accepted or
 rejected terminal bucket, stamps `contentLanguage: "en"` plus the CURRENT
-`factsDigest` as `factDigest`, and writes `$DATA_DIR/semantic-graph.json`.
+`structureDigest` (the header's digest over nodes and edges), and writes `$DATA_DIR/semantic-graph.json`.
 If the command exits 2 with `status=noncanonical-language`, report the
 rejected field paths and **STOP** without overwriting the current semantic
 graph; regenerate those fields in English first. Otherwise report the

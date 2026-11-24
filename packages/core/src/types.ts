@@ -220,6 +220,8 @@ export interface ProjectMeta {
   sourceDigest?: string;
   /** sha256 over the canonical deterministic facts graph. */
   factsDigest?: string;
+  /** sha256 over the canonical fact nodes and edges only; the semantic layer binds to it. */
+  structureDigest?: string;
   /** Version of the deterministic pipeline that produced the facts. */
   pipelineVersion?: string;
   /** Host-reported model name for the prose half, or `unknown`. */

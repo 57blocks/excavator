@@ -134,6 +134,7 @@ import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 
 import { buildFactGraph } from './build-fact-graph.mjs';
+import { rebindSemanticGraph } from './semantic-graph.mjs';
 import { collectMentionSites } from './mention-sites.mjs';
 import { loadNameBindingCatalog } from './name-binding-catalog.mjs';
 import { loadRouteCatalog } from './route-catalog.mjs';
@@ -305,8 +306,13 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  and `factsDigest` covers the stream, so every digest changes. Structure rows
  *  of files a rule matches gain `routes`; the import map's `resolvedSources`
  *  gains TS/JS `require()` and `import()` literals (an `import()` adds no edge)
- *  and a new `resolvedPackages` maps a Go import path to its directory. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/17';
+ *  and a new `resolvedPackages` maps a Go import path to its directory.
+ *  `lazy-fact-graph/18` (openspec: changes/semantic-structure-digest): the
+ *  header `project` gains `structureDigest`, a digest over nodes and edges
+ *  only that the semantic layer binds to; facts, nodes, edges and
+ *  `factsDigest` are unchanged. The bump makes `sync-fact-graph` re-project a
+ *  /17 manifest so its header gains the field. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/18';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result
@@ -924,6 +930,7 @@ export async function runLazyAnalysis({
         // documented meaning for `sourceDigest`.
         sourceDigest: scan.contentDigest,
         factsDigest: projection.factsDigest,
+        structureDigest: projection.structureDigest,
         pipelineVersion: PIPELINE_VERSION,
       },
       nodes: merged.nodes,
@@ -1141,6 +1148,18 @@ export async function runLazyAnalysis({
   }
 
   const product = guardResult.ok ? guardResult.product : lastProduct;
+
+  // Re-bind a semantic graph written before it bound structureDigest, but only
+  // once the graph on disk is the projection in memory (design D4). A failure
+  // here is reported, never fatal.
+  let semanticGraph = { status: 'not-checked', reason: 'the knowledge graph was not published' };
+  if (saveState.metaAdvanced && product?.projection) {
+    try {
+      semanticGraph = rebindSemanticGraph({ dataDir, projection: product.projection });
+    } catch (err) {
+      semanticGraph = { status: 'unbound', reason: `re-bind check failed: ${err?.message ?? String(err)}` };
+    }
+  }
   const timings = product?.timings ?? {};
   Object.assign(timings, preProduceTimings); // snapshotResolve — measured before produce() ever existed.
   // Wall-clock total (design D7): the WHOLE runLazyAnalysis call, not a sum
@@ -1159,6 +1178,8 @@ export async function runLazyAnalysis({
     coverage: product?.projection?.coverage ?? {},
     gaps: product?.projection?.gaps ?? [],
     factsDigest: product?.projection?.factsDigest ?? '',
+    structureDigest: product?.projection?.structureDigest ?? '',
+    semanticGraph,
     nodeCount: product?.knowledgeGraph?.nodes?.length ?? 0,
     edgeCount: product?.knowledgeGraph?.edges?.length ?? 0,
     timings,
@@ -1190,6 +1211,7 @@ async function main() {
     `gaps=${result.gaps.length} factsDigest=${result.factsDigest.slice(0, 12)}… ` +
     `metaAdvanced=${result.metaAdvanced} totalMs=${result.timings.total}\n`,
   );
+  process.stderr.write(`lazy-analyze: semantic-graph=${result.semanticGraph.status} (${result.semanticGraph.reason})\n`);
   const stageLine = Object.entries(result.timings)
     .filter(([stage]) => stage !== 'total')
     .map(([stage, ms]) => `${stage}=${ms}ms`)

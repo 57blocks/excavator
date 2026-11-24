@@ -54,8 +54,8 @@ describe('the detected frameworks in the graph header (task 4.1)', () => {
   });
 
   it('stamps the product with the new pipeline version', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/17');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/17');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/18');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/18');
   });
 
   it('replaces a framework name an older graph carried with the detected ids, and changes no fact', async () => {
