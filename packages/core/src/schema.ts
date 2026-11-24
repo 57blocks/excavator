@@ -555,6 +555,7 @@ export const ProjectMetaSchema = z.object({
   gitCommitHash: z.string().nullable(),
   sourceDigest: z.string().optional(),
   factsDigest: z.string().optional(),
+  structureDigest: z.string().optional(),
   pipelineVersion: z.string().optional(),
   model: z.string().optional(),
 }).passthrough();

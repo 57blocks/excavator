@@ -11,13 +11,16 @@
  * of REAL fact-graph node ids, resolved via the shared node-identity
  * authority) and cross-node semantic `relations` (each carrying
  * `provenance`/`evidence` back to source), keyed by the current schema,
- * `contentLanguage: "en"`, and a `factDigest` freshness field.
+ * `contentLanguage: "en"`, and a `structureDigest` freshness field.
  *
- * Naming note: `factDigest` here is the SAME value build-fact-graph.mjs
- * computes and knowledge-graph.jsonl publishes as `project.factsDigest` — this
- * module names the field `factDigest` (singular "fact") to match the openspec
- * spec/design text for THIS artifact; it is not a second, independently
- * computed digest.
+ * Naming note: `structureDigest` is the value build-fact-graph.mjs computes
+ * over the fact nodes and edges ONLY and knowledge-graph.jsonl publishes as
+ * `project.structureDigest` (openspec: changes/semantic-structure-digest).
+ * The semantic layer is made from nodes, edges and the semantic cache, so it
+ * does not bind to `factsDigest`, which also covers record streams, coverage
+ * and gaps. A file written before this binding carries `factDigest` instead;
+ * `rebindSemanticGraph` re-binds it when its nodes and edges are proven
+ * unchanged.
  *
  * MUST NOT call any model. MUST NOT copy or rewrite fact nodes/edges — the
  * only fact-graph data this module reads is the SET of valid node ids, used
@@ -36,7 +39,7 @@
  *     [--generated-at <iso>]
  *   node semantic-graph.mjs <projectRoot> merge-gaps --extra-gaps <path>
  *     (refreshes ONLY `gaps` on an existing semantic-graph.json — used on the
- *     `reuse` branch of the factDigest gate, so a fresh patch-time gap is
+ *     `reuse` branch of the structureDigest gate, so a fresh patch-time gap is
  *     never lost just because Architecture itself was skippable)
  *
  * Programmatic:
@@ -54,6 +57,8 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createGapCollector, compareStrings } from './fact-graph-resolve.mjs';
 import { compareGaps } from './coverage-ledger.mjs';
+import { computeFactsDigest, coverageForDigest } from './build-fact-graph.mjs';
+import { ENTRY_POINT_GAP_REASONS } from './entry-point-resolution.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import {
   auditSemanticGraphFields,
@@ -177,7 +182,7 @@ function sanitizeRelations(relations, factNodeIds, gapCollector) {
  * extracted from it.
  *
  * @param {{
- *   factDigest: string,
+ *   structureDigest: string,
  *   factNodeIds: Set<string>|string[],
  *   factGraph?: object, sourceSnapshot?: object,
  *   layers?: object[], relations?: object[],
@@ -187,7 +192,7 @@ function sanitizeRelations(relations, factNodeIds, gapCollector) {
  * @returns {{ semanticGraph: object|null, gaps: object[], languageAudit: object }}
  */
 export function buildSemanticGraph({
-  factDigest,
+  structureDigest,
   factNodeIds,
   factGraph = null,
   sourceSnapshot = null,
@@ -198,8 +203,8 @@ export function buildSemanticGraph({
   sampleLimit = 5,
   extraGaps = [],
 }) {
-  if (typeof factDigest !== 'string' || factDigest.length === 0) {
-    throw new Error('buildSemanticGraph: factDigest is required');
+  if (typeof structureDigest !== 'string' || structureDigest.length === 0) {
+    throw new Error('buildSemanticGraph: structureDigest is required');
   }
   const idSet = factNodeIds instanceof Set ? factNodeIds : new Set(factNodeIds ?? []);
 
@@ -247,7 +252,7 @@ export function buildSemanticGraph({
     version: SEMANTIC_GRAPH_VERSION,
     contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
     languageAudit,
-    factDigest,
+    structureDigest,
     layers: sanitizedLayers,
     relations: sanitizedRelations,
     gaps,
@@ -259,12 +264,12 @@ export function buildSemanticGraph({
 
 /**
  * The architecture gate: reuse requires the current semantic schema,
- * `contentLanguage: "en"`, and a factDigest matching the CURRENT fact graph.
+ * `contentLanguage: "en"`, and a structureDigest matching the CURRENT fact graph.
  *
- * @param {{ currentFactDigest: string, existing: object|null }} args
+ * @param {{ currentStructureDigest: string, existing: object|null }} args
  * @returns {{ action: 'reuse'|'rebuild', status: 'fresh'|'stale'|'missing'|'noncanonical-language', reason: string }}
  */
-export function resolveArchitectureAction({ currentFactDigest, existing }) {
+export function resolveArchitectureAction({ currentStructureDigest, existing }) {
   if (!existing) {
     return { action: 'rebuild', status: 'missing', reason: 'no existing semantic-graph.json' };
   }
@@ -282,20 +287,24 @@ export function resolveArchitectureAction({ currentFactDigest, existing }) {
       reason: 'noncanonical-language: semantic-graph.json lacks the current schema, contentLanguage=en, or an accepted field audit',
     };
   }
-  if (typeof existing.factDigest !== 'string' || existing.factDigest.length === 0) {
-    return { action: 'rebuild', status: 'missing', reason: 'semantic-graph.json carries no factDigest' };
+  if (typeof existing.structureDigest !== 'string' || existing.structureDigest.length === 0) {
+    return {
+      action: 'rebuild',
+      status: 'missing',
+      reason: 'semantic-graph.json records no structureDigest (a file written before the semantic graph was bound to nodes and edges carries only factDigest; a Lazy run re-binds it when its nodes and edges are proven unchanged)',
+    };
   }
-  if (existing.factDigest === currentFactDigest) {
+  if (existing.structureDigest === currentStructureDigest) {
     return {
       action: 'reuse',
       status: 'fresh',
-      reason: 'factDigest unchanged since the existing semantic-graph.json was written',
+      reason: 'structureDigest unchanged since the existing semantic-graph.json was written',
     };
   }
   return {
     action: 'rebuild',
     status: 'stale',
-    reason: `factDigest changed (${existing.factDigest.slice(0, 12)}… -> ${String(currentFactDigest).slice(0, 12)}…)`,
+    reason: `structureDigest changed (${existing.structureDigest.slice(0, 12)}… -> ${String(currentStructureDigest).slice(0, 12)}…)`,
   };
 }
 
@@ -310,8 +319,8 @@ const OWN_STRUCTURAL_GAP_PREFIXES = Object.freeze(['layer-', 'relation-']);
 
 /**
  * Refresh ONLY the `gaps` field of an already-written semantic-graph.json —
- * used on the `reuse` branch of the factDigest gate (design D3): Architecture
- * did not rerun, so `layers`/`relations`/`factDigest` stay exactly as they
+ * used on the `reuse` branch of the structureDigest gate (design D3): Architecture
+ * did not rerun, so `layers`/`relations`/`structureDigest` stay exactly as they
  * were, but a semantic-generation-time gap discovered THIS run (e.g. an
  * unmappable node-local patch from Phase F2) must still surface somewhere —
  * silently dropping it because Architecture happened to be skippable would
@@ -367,6 +376,107 @@ export function writeSemanticGraph(dataDir, semanticGraph, { fsImpl = REAL_FS } 
     throw err;
   }
   return finalPath;
+}
+
+// ---------------------------------------------------------------------------
+// One-time re-bind of semantic graphs written before they bound structureDigest
+// (openspec: changes/semantic-structure-digest, design D4).
+// ---------------------------------------------------------------------------
+
+/**
+ * Record streams added to the facts digest after semantic graphs were first
+ * written. It exists only to re-bind semantic graphs written before they
+ * bound structureDigest; new streams are never added here.
+ */
+export const ADDITIVE_FACT_STREAMS = Object.freeze([
+  Object.freeze({
+    recordStream: 'entryPoints',
+    coverageKey: 'entryPoints',
+    gapKinds: Object.freeze(Object.keys(ENTRY_POINT_GAP_REASONS)),
+  }),
+]);
+
+/**
+ * The facts digests a legacy semantic graph's `factDigest` may equal, in
+ * order: the current `factsDigest`, then the digest of the same nodes and
+ * edges without the additive streams (the algorithm before they existed).
+ * The second one costs a full serialization pass, so it is computed only when
+ * the caller asks for it.
+ *
+ * @param {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }} projection
+ * @returns {Generator<{ label: string, digest: string }>}
+ */
+export function* legacyFactDigestCandidates(projection) {
+  yield { label: 'current factsDigest', digest: projection.factsDigest };
+  const coverage = coverageForDigest(projection.coverage);
+  for (const stream of ADDITIVE_FACT_STREAMS) delete coverage[stream.coverageKey];
+  const stripped = new Set(ADDITIVE_FACT_STREAMS.flatMap((stream) => stream.gapKinds));
+  const gaps = (projection.gaps ?? []).filter((gap) => !stripped.has(gap?.kind));
+  yield {
+    label: 'digest without the additive streams',
+    digest: computeFactsDigest({ nodes: projection.nodes, edges: projection.edges, coverage, gaps }),
+  };
+}
+
+/**
+ * Check an existing semantic-graph.json against the freshly published
+ * projection and, for a file written before it bound structureDigest, re-bind
+ * it when its recorded `factDigest` proves the nodes and edges unchanged.
+ * Never throws; writes only on `rebound`.
+ *
+ * @param {{ dataDir: string, projection: object, fsImpl?: object }} args
+ * @returns {{ status: 'absent'|'bound'|'stale'|'rebound'|'unbound', reason: string }}
+ */
+export function rebindSemanticGraph({ dataDir, projection, fsImpl = REAL_FS }) {
+  try {
+    const path = join(dataDir, SEMANTIC_GRAPH_FILE);
+    if (!fsImpl.existsSync(path)) {
+      return { status: 'absent', reason: 'no semantic-graph.json' };
+    }
+    let existing;
+    try {
+      existing = JSON.parse(fsImpl.readFileSync(path, 'utf-8'));
+    } catch (err) {
+      return { status: 'unbound', reason: `${SEMANTIC_GRAPH_FILE} is not readable JSON: ${err.message}` };
+    }
+    if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+      return { status: 'unbound', reason: `${SEMANTIC_GRAPH_FILE} is not a JSON object` };
+    }
+    if (isNonEmptyString(existing.structureDigest)) {
+      return existing.structureDigest === projection.structureDigest
+        ? { status: 'bound', reason: 'structureDigest equals the published graph\'s' }
+        : {
+          status: 'stale',
+          reason: `structureDigest ${existing.structureDigest.slice(0, 12)}... differs from the graph's ${String(projection.structureDigest).slice(0, 12)}...; a Full run rebuilds it`,
+        };
+    }
+    if (!isNonEmptyString(existing.factDigest)) {
+      return { status: 'unbound', reason: `${SEMANTIC_GRAPH_FILE} records neither structureDigest nor factDigest` };
+    }
+    let matched = null;
+    for (const candidate of legacyFactDigestCandidates(projection)) {
+      if (candidate.digest === existing.factDigest) { matched = candidate; break; }
+    }
+    if (!matched) {
+      return {
+        status: 'unbound',
+        reason: 'its factDigest equals no digest of the current nodes and edges, so its nodes and edges cannot be shown to be unchanged',
+      };
+    }
+    const rebound = {};
+    for (const [key, value] of Object.entries(existing)) {
+      if (key === 'factDigest') rebound.structureDigest = projection.structureDigest;
+      else rebound[key] = value;
+    }
+    try {
+      writeSemanticGraph(dataDir, rebound, { fsImpl });
+    } catch (err) {
+      return { status: 'unbound', reason: `re-bind refused or failed: ${err.message}` };
+    }
+    return { status: 'rebound', reason: `factDigest matched the ${matched.label}; nodes and edges are unchanged` };
+  } catch (err) {
+    return { status: 'unbound', reason: `re-bind check failed: ${err?.message ?? String(err)}` };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -427,15 +537,15 @@ async function main() {
   const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
   if (!existsSync(graphPath)) throw new Error(`semantic-graph: ${KNOWLEDGE_GRAPH_FILE} not found: ${graphPath}`);
   // Only the project header is needed here; never parse the whole graph.
-  const currentFactDigest = readKnowledgeGraphHeader(graphPath).fields.project?.factsDigest;
-  if (typeof currentFactDigest !== 'string' || currentFactDigest.length === 0) {
-    throw new Error(`semantic-graph: ${KNOWLEDGE_GRAPH_FILE} has no project.factsDigest — run the fact build first`);
+  const currentStructureDigest = readKnowledgeGraphHeader(graphPath).fields.project?.structureDigest;
+  if (typeof currentStructureDigest !== 'string' || currentStructureDigest.length === 0) {
+    throw new Error('semantic-graph: knowledge-graph.jsonl has no project.structureDigest - run the fact build (/excavator) first');
   }
 
   const existing = readSemanticGraph(dataDir);
 
   if (args.action === 'check') {
-    const { action, reason } = resolveArchitectureAction({ currentFactDigest, existing });
+    const { action, reason } = resolveArchitectureAction({ currentStructureDigest, existing });
     process.stdout.write(`${action}\n`);
     process.stderr.write(`semantic-graph check: action=${action} (${reason})\n`);
     return;
@@ -478,7 +588,7 @@ async function main() {
   }
 
   const built = buildSemanticGraph({
-    factDigest: currentFactDigest,
+    structureDigest: currentStructureDigest,
     factNodeIds,
     factGraph: factGraphForLanguageAudit,
     sourceSnapshot,
@@ -501,7 +611,7 @@ async function main() {
   process.stderr.write(
     `semantic-graph write: layers=${semanticGraph.layers.length} relations=${semanticGraph.relations.length} ` +
     `gaps=${gaps.length} language-fields=${languageAudit.inspected} ` +
-    `factDigest=${currentFactDigest.slice(0, 12)}… -> ${outPath}\n`,
+    `structureDigest=${currentStructureDigest.slice(0, 12)}… -> ${outPath}\n`,
   );
 }
 
@@ -527,5 +637,6 @@ export default {
   SEMANTIC_GRAPH_VERSION, SEMANTIC_GRAPH_CONTENT_LANGUAGE, SEMANTIC_GRAPH_FILE,
   buildSemanticGraph, resolveArchitectureAction, collectFactNodeIds,
   mergeExtraGapsIntoExisting, readSemanticGraph, writeSemanticGraph,
+  ADDITIVE_FACT_STREAMS, legacyFactDigestCandidates, rebindSemanticGraph,
   auditSemanticGraphFields, isAcceptedLanguageAudit,
 };

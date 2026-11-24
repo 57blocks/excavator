@@ -29,7 +29,7 @@ export function tourGraphJsonl({ factsDigest = DIGEST, nodes, edges = [], layers
     record: 'header',
     format: GRAPH_FORMAT,
     keys: ['version', 'project', 'nodes', 'edges', 'layers'],
-    fields: { version: '1.0.0', project: { name: 'fixture', languages: ['go'], frameworks: [], ...(factsDigest === null ? {} : { factsDigest }) } },
+    fields: { version: '1.0.0', project: { name: 'fixture', languages: ['go'], frameworks: [], ...(factsDigest === null ? {} : { factsDigest, structureDigest: factsDigest }) } },
     counts: { nodes: nodes.length, edges: edges.length, layers: layers.length },
   }];
   for (const node of nodes) lines.push({ record: 'node', node });
@@ -54,7 +54,7 @@ export function writeManifest(root, hashes) {
 /** A semantic cache of `{ nodeId: { summary, semanticSourceHash, verification? } }`. */
 export function writeSemantics(root, entries, { layers, factDigest = DIGEST } = {}) {
   writeProduct(root, 'semantic-cache.json', semanticCache(Object.fromEntries(Object.entries(entries).map(([id, fields]) => [id, semanticEntry(fields)]))));
-  if (layers) writeProduct(root, 'semantic-graph.json', semanticGraph({ factDigest, layers }));
+  if (layers) writeProduct(root, 'semantic-graph.json', semanticGraph({ structureDigest: factDigest, layers }));
 }
 
 /** A domain graph of flows: `{ flowId: [[stepName, [nodeIds]], ...] }`, steps ordered by their `flow_step` weight in the order given. */

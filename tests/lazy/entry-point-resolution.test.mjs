@@ -176,8 +176,8 @@ describe('entry points join across files', () => {
   const row = (r) => `${r.method ?? '-'} ${r.path ?? `?${r.pathText}`} ${r.bucket} ${r.file}:${r.line}`;
 
   it('is the version that carries the stream', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/17');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/17');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/18');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/18');
   });
 
   it('gives Express routes their full paths through a factory and a direct export', () => {
@@ -342,7 +342,7 @@ describe('a project built before the stream existed', () => {
       expect(synced.status).toBe('ok');
       expect(synced.data.kind).toBe('synced');
       const graph = readKnowledgeGraph(graphPath);
-      expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/17');
+      expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/18');
       expect(graph.coverage.entryPoints.status).toBe('ran');
       expect(graph.entryPoints.length).toBeGreaterThan(0);
       assertEntryPointConservation(graph.coverage.entryPoints, { records: graph.entryPoints, gaps: graph.gaps });

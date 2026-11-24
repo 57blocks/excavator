@@ -1,12 +1,12 @@
 /**
  * The skills that read knowledge-graph.jsonl find the architecture layers as
  * their Reading Layers section says. The layers live in two places: a Full
- * run writes them to semantic-graph.json with the factDigest of the facts
- * they were made from, and an incremental update writes them to the graph as
+ * run writes them to semantic-graph.json with the structureDigest of the nodes
+ * and edges they were made from, and an incremental update writes them to the graph as
  * `{"record":"layer","layer":{...}}` lines and sets the header's
  * `project.layersFrom` to "incremental". The digests alone cannot tell which
  * place was written last: an incremental update keeps the previous
- * factsDigest, and Lazy carries old layer lines through a later Full run. The
+ * structureDigest, and Lazy carries old layer lines through a later Full run. The
  * only graph line with a `"layers"` key is the header, whose `counts.layers`
  * is a number, so a step that greps `"layers"` gets no layer. These tests pin
  * every graph skill to one Reading Layers section and run its commands
@@ -76,7 +76,8 @@ const sectionRules = (section) => (section.split(RULES_INTRO)[1] ?? '')
  * by the first rule that applies, so the write-order check must come before
  * the digest comparison.
  */
-const RULE_ORDER = [LAYERS_FROM, '`factDigest`', 'layer lines', NO_LAYERS];
+const RULE_ORDER = [LAYERS_FROM, '`structureDigest`', 'layer lines', NO_LAYERS];
+const LEGACY_NOTE = 'has no `structureDigest`';
 
 /** What is wrong with how a graph skill reads its layers; empty when nothing is. */
 function layerProblems(text) {
@@ -84,7 +85,7 @@ function layerProblems(text) {
   const section = readingLayers(text);
   if (section === null) problems.push('has no ## Reading Layers section');
   else {
-    for (const needed of ['semantic-graph.json', 'factDigest', LAYER_RECORD, NO_LAYERS, LAYERS_FROM, REBUILD]) {
+    for (const needed of ['semantic-graph.json', 'structureDigest', LAYER_RECORD, NO_LAYERS, LAYERS_FROM, REBUILD, LEGACY_NOTE]) {
       if (!section.includes(needed)) problems.push(`its Reading Layers section does not name ${needed}`);
     }
     const rules = sectionRules(section);
@@ -128,6 +129,7 @@ describe('graph skills read the layers as one Reading Layers section says', () =
       const swap = (rule, n) => rule.replace(/^\d+\./, `${n}.`);
       return text.replace(`${rules[0]}\n${rules[1]}`, `${swap(rules[1], 1)}\n${swap(rules[0], 2)}`);
     },
+    'drops the note on a semantic graph without structureDigest': (text) => text.replaceAll(LEGACY_NOTE, 'has no digest'),
     'suggests --mode=full again': (text) => text.replaceAll(REBUILD, '`/excavator --mode=full`'),
   };
   for (const [what, mutate] of Object.entries(mutations)) {
@@ -158,6 +160,9 @@ const pick = (runs, ...parts) => {
   expect(found, parts.join(' ')).toHaveLength(1);
   return found[0];
 };
+// The two digest commands both read `.structureDigest`; the file they read tells them apart.
+const semanticRun = (runs) => pick(runs, '.structureDigest', 'semantic-graph.json');
+const headerRun = (runs) => pick(runs, '.structureDigest', 'knowledge-graph.jsonl');
 const allLayerLines = (runs) => {
   const found = runs.filter((r) => r.command.startsWith('grep') && !r.command.includes('grep -F'));
   expect(found).toHaveLength(1);
@@ -172,8 +177,8 @@ const layerIds = (lines) => lines.map((line) => JSON.parse(line)).map((value) =>
  */
 function pickSource(runs) {
   if (pick(runs, '.layersFrom').lines[0] === 'incremental') return 'lines';
-  const semantic = pick(runs, '.factDigest');
-  const facts = pick(runs, '.factsDigest').lines[0];
+  const semantic = semanticRun(runs);
+  const facts = headerRun(runs).lines[0];
   if (semantic.status === 0 && semantic.lines[0] === facts) return 'semantic';
   if (allLayerLines(runs).lines.length > 0) return 'lines';
   return 'none';
@@ -194,22 +199,28 @@ describe('the Reading Layers commands give what the rule reads, on real products
     { id: 'layer:ui', name: 'UI', description: 'Views', nodeIds: ['file:src/a.tsx', BRACKETED] },
   ];
 
-  /** A project whose graph has `factsDigest` and `graphLayers`, and a semantic graph made from `semanticDigest` when given. */
-  function project(name, { factsDigest, graphLayers, semanticDigest }) {
+  /** A project whose graph has `structureDigest` and `graphLayers`, and a semantic graph made from `semanticDigest` when given. */
+  function project(name, { structureDigest, graphLayers, semanticDigest, legacyFactDigest }) {
     const root = join(dir, name);
     const dataDir = join(root, '.excavator');
     mkdirSync(dataDir, { recursive: true });
     writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), {
       version: '1.0.0',
-      project: { name, languages: ['typescript'], frameworks: [], description: '', analyzedAt: '', gitCommitHash: '', factsDigest },
+      project: { name, languages: ['typescript'], frameworks: [], description: '', analyzedAt: '', gitCommitHash: '', factsDigest: `facts-${structureDigest}`, structureDigest },
       nodes,
       edges: [{ source: NODE, target: 'function:src/a.ts:run', type: 'contains', direction: 'forward', weight: 1 }],
       layers: graphLayers,
       tour: [],
     });
     if (semanticDigest) {
-      const { semanticGraph } = buildSemanticGraph({ factDigest: semanticDigest, factNodeIds: nodes.map((n) => n.id), layers });
+      const { semanticGraph } = buildSemanticGraph({ structureDigest: semanticDigest, factNodeIds: nodes.map((n) => n.id), layers });
       writeSemanticGraph(dataDir, semanticGraph);
+    }
+    if (legacyFactDigest) {
+      // A semantic graph written before the layers were bound to nodes and edges: factDigest, no structureDigest.
+      const { semanticGraph } = buildSemanticGraph({ structureDigest: 'placeholder', factNodeIds: nodes.map((n) => n.id), layers });
+      const { structureDigest: _dropped, ...rest } = semanticGraph;
+      writeSemanticGraph(dataDir, { ...rest, factDigest: legacyFactDigest });
     }
     return root;
   }
@@ -219,11 +230,11 @@ describe('the Reading Layers commands give what the rule reads, on real products
   });
 
   it('with a current semantic graph: the digests match and jq lists the semantic graph\'s layers', () => {
-    const root = project('full', { factsDigest: 'digest-a', graphLayers: [], semanticDigest: 'digest-a' });
+    const root = project('full', { structureDigest: 'digest-a', graphLayers: [], semanticDigest: 'digest-a' });
     for (const [id, own] of [[NODE, 'layer:service'], [BRACKETED, 'layer:ui']]) {
       const runs = runCommands(root, id);
       expect(pick(runs, '.layersFrom').lines).toEqual([]);
-      const digests = [pick(runs, '.factDigest'), pick(runs, '.factsDigest')].map((r) => r.lines);
+      const digests = [semanticRun(runs), headerRun(runs)].map((r) => r.lines);
       expect(digests).toEqual([['digest-a'], ['digest-a']]);
       expect(layerIds(pick(runs, 'jq -c \'.layers[]\'').lines)).toEqual(['layer:service', 'layer:ui']);
       expect(layerIds(pick(runs, 'jq -c --arg id').lines)).toEqual([own]);
@@ -232,11 +243,19 @@ describe('the Reading Layers commands give what the rule reads, on real products
     }
   });
 
+  it('with a semantic graph written before the binding (factDigest only): the semantic command prints nothing and the rule does not pick it', () => {
+    const root = project('legacy', { structureDigest: 'digest-d', graphLayers: [], legacyFactDigest: 'digest-d' });
+    const runs = runCommands(root, NODE);
+    expect(semanticRun(runs).lines).toEqual([]);
+    expect(headerRun(runs).lines).toEqual(['digest-d']);
+    expect(pickSource(runs)).toBe('none');
+  });
+
   it('with a semantic graph made from other facts: the digests differ and grep lists the layer lines', () => {
-    const root = project('other-facts', { factsDigest: 'digest-b', graphLayers: layers, semanticDigest: 'digest-a' });
+    const root = project('other-facts', { structureDigest: 'digest-b', graphLayers: layers, semanticDigest: 'digest-a' });
     for (const [id, own] of [[NODE, 'layer:service'], [BRACKETED, 'layer:ui']]) {
       const runs = runCommands(root, id);
-      const digests = [pick(runs, '.factDigest'), pick(runs, '.factsDigest')].map((r) => r.lines);
+      const digests = [semanticRun(runs), headerRun(runs)].map((r) => r.lines);
       expect(digests).toEqual([['digest-a'], ['digest-b']]);
       expect(layerIds(allLayerLines(runs).lines)).toEqual(['layer:service', 'layer:ui']);
       // the quoted ID does not match file:src/a.tsx, and the brackets are not a pattern
@@ -246,10 +265,10 @@ describe('the Reading Layers commands give what the rule reads, on real products
   });
 
   it('with no layers: there is no semantic graph and grep finds no layer line', () => {
-    const root = project('lazy', { factsDigest: 'digest-c', graphLayers: [] });
+    const root = project('lazy', { structureDigest: 'digest-c', graphLayers: [] });
     const runs = runCommands(root, NODE);
-    expect(pick(runs, '.factDigest').status).not.toBe(0);
-    expect(pick(runs, '.factsDigest').lines).toEqual(['digest-c']);
+    expect(semanticRun(runs).status).not.toBe(0);
+    expect(headerRun(runs).lines).toEqual(['digest-c']);
     expect(runs.filter((r) => r.command.startsWith('grep')).flatMap((r) => r.lines)).toEqual([]);
     expect(pickSource(runs)).toBe('none');
   });
@@ -345,7 +364,7 @@ describe('the Reading Layers rule picks the layers written last, through Full, i
     const runs = after.full[OLD_FILE];
     expect(pick(runs, '.layersFrom').lines).toEqual([]);
     expect(allLayerLines(runs).lines).toEqual([]);
-    expect(pick(runs, '.factDigest').lines).toEqual(pick(runs, '.factsDigest').lines);
+    expect(semanticRun(runs).lines).toEqual(headerRun(runs).lines);
     expect(pickSource(runs)).toBe('semantic');
     expect(layerIds(pick(runs, 'jq -c --arg id').lines)).toEqual(['layer:service']);
   });
@@ -353,9 +372,9 @@ describe('the Reading Layers rule picks the layers written last, through Full, i
   it('after the incremental update: the digests still match, but layersFrom picks the layer lines that list the new file', () => {
     expect(after.plan.action).toBe('PARTIAL_UPDATE');
     const runs = after.incremental[NEW_FILE];
-    // what finalize-incremental.mjs writes: the previous factsDigest, so the digests alone pick the older semantic graph
-    expect(pick(runs, '.factDigest').lines).toEqual(pick(runs, '.factsDigest').lines);
-    expect(pick(runs, '.factsDigest').lines).toEqual(pick(after.full[OLD_FILE], '.factsDigest').lines);
+    // what finalize-incremental.mjs writes: the previous structureDigest, so the digests alone pick the older semantic graph
+    expect(semanticRun(runs).lines).toEqual(headerRun(runs).lines);
+    expect(headerRun(runs).lines).toEqual(headerRun(after.full[OLD_FILE]).lines);
     expect(pick(runs, 'jq -c --arg id').lines).toEqual([]);
     expect(pick(runs, '.layersFrom').lines).toEqual(['incremental']);
     expect(pickSource(runs)).toBe('lines');
@@ -369,8 +388,8 @@ describe('the Reading Layers rule picks the layers written last, through Full, i
     const runs = after.secondFull[NEW_FILE];
     expect(pick(runs, '.layersFrom').lines).toEqual([]);
     expect(layerIds(allLayerLines(runs).lines)).toEqual(layerIds(allLayerLines(after.incremental[NEW_FILE]).lines));
-    expect(pick(runs, '.factDigest').lines).toEqual(pick(runs, '.factsDigest').lines);
-    expect(pick(runs, '.factsDigest').lines).not.toEqual(pick(after.full[OLD_FILE], '.factsDigest').lines);
+    expect(semanticRun(runs).lines).toEqual(headerRun(runs).lines);
+    expect(headerRun(runs).lines).not.toEqual(headerRun(after.full[OLD_FILE]).lines);
     expect(pickSource(runs)).toBe('semantic');
     expect(layerIds(pick(runs, 'jq -c --arg id').lines)).toEqual(['layer:core']);
   });

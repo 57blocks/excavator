@@ -87,7 +87,7 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
     expect(semanticGraph.gaps.some((g) => g.kind === 'layer-nodeId-unmappable')).toBe(true);
     expect(semanticGraph.gaps.some((g) => g.kind === 'semantic-patch-unmappable-node')).toBe(true);
 
-    // semantic-graph: check again -> reuse (factDigest unchanged).
+    // semantic-graph: check again -> reuse (structureDigest unchanged).
     expect(run('semantic-graph.mjs', [root, 'check']).trim()).toBe('reuse');
 
     // merge-gaps refreshes gaps only, on the reuse branch.

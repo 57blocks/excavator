@@ -234,7 +234,7 @@ function ordinalGroupKey(entry) {
  *   callers (tests, the CLI) are unaffected; `serializationLimit` defaults
  *   to the runtime ceiling and `headroomRecorder`, when omitted, simply
  *   means no headroom entry is recorded for this call.
- * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], entryPoints: object[], factsDigest: string }}
+ * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], entryPoints: object[], factsDigest: string, structureDigest: string }}
  */
 export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, nameReferenceSites, nameBindingCatalog, nameReferenceMutations, routeCatalog, routeMutations, typeInjectionCatalog, typeInjectionMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
@@ -1054,6 +1054,42 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // are not source facts. Keep them visible in `coverage` while excluding
   // them from facts identity, so adding an archive or rotating an excluded
   // secret cannot invalidate an otherwise identical fact graph.
+  const digestCoverage = coverageForDigest(coverage);
+
+  // Hashed record by record (openspec: changes/knowledge-graph-line-store,
+  // design D3): the joined digest text was 66% of the runtime single-string
+  // limit on a 3M-line Java repository's fact graph. The digest VALUE is unchanged —
+  // computeFactsDigest feeds the hash exactly the bytes that
+  // `JSON.stringify(canonicalizeForDigest({...}))` would have produced.
+  const factsDigest = computeFactsDigest(
+    { nodes, edges: sortedEdges, coverage: digestCoverage, gaps, entryPoints: entryPointResolved.records },
+    { limit: serializationLimit, recorder: headroomRecorder },
+  );
+  // Nodes and edges only, with no recorder: its records are a subset of the
+  // facts digest's, whose longest record is already recorded above.
+  const structureDigest = computeStructureDigest({ nodes, edges: sortedEdges }, { limit: serializationLimit });
+
+  return {
+    nodes,
+    edges: sortedEdges,
+    coverage,
+    gaps,
+    entryPoints: entryPointResolved.records,
+    factsDigest,
+    structureDigest,
+  };
+}
+
+/**
+ * The coverage ledger as it enters the facts digest: pre-extraction
+ * exclusions (selection ledger, files filtered by defaults or ignore rules,
+ * sensitive files) are subtracted, empty languages dropped. Pure; returns a
+ * new object and never mutates `coverage`.
+ *
+ * @param {object} coverage
+ * @returns {object}
+ */
+export function coverageForDigest(coverage) {
   const digestCoverage = JSON.parse(JSON.stringify(coverage));
   delete digestCoverage.selection;
   let preExtractionFiles = 0;
@@ -1070,25 +1106,20 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   }
   digestCoverage.files -= preExtractionFiles;
   digestCoverage.ignored = Math.max(0, (digestCoverage.ignored ?? 0) - preExtractionIgnored);
+  return digestCoverage;
+}
 
-  // Hashed record by record (openspec: changes/knowledge-graph-line-store,
-  // design D3): the joined digest text was 66% of the runtime single-string
-  // limit on a 3M-line Java repository's fact graph. The digest VALUE is unchanged —
-  // computeFactsDigest feeds the hash exactly the bytes that
-  // `JSON.stringify(canonicalizeForDigest({...}))` would have produced.
-  const factsDigest = computeFactsDigest(
-    { nodes, edges: sortedEdges, coverage: digestCoverage, gaps, entryPoints: entryPointResolved.records },
-    { limit: serializationLimit, recorder: headroomRecorder },
-  );
-
-  return {
-    nodes,
-    edges: sortedEdges,
-    coverage,
-    gaps,
-    entryPoints: entryPointResolved.records,
-    factsDigest,
-  };
+/**
+ * sha256 over the canonical fact nodes and edges only. The semantic layer
+ * binds to this digest so a new record stream, coverage key or gap kind does
+ * not invalidate it.
+ *
+ * @param {{ nodes: object[], edges: object[] }} parts
+ * @param {{ limit?: number, recorder?: object|null }} [options]
+ * @returns {string}
+ */
+export function computeStructureDigest({ nodes, edges }, options = {}) {
+  return computeFactsDigest({ nodes, edges }, { ...options, recorder: null });
 }
 
 /** Product name for one record of the facts digest input, in headroom

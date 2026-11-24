@@ -408,7 +408,7 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value !== '';
 }
 
-export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel, factsDigest }) {
+export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel, structureDigest }) {
   const reasons = [];
 
   const actualHead = meta?.gitCommitHash ?? null;
@@ -426,11 +426,11 @@ export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel,
 
   // The semantic graph must be built from the facts this run just wrote: a
   // stale one from an earlier run (same model) must not pass as this run's product.
-  const semanticDigest = semanticGraph?.factDigest;
-  if (!isNonEmptyString(semanticDigest) || !isNonEmptyString(factsDigest) || semanticDigest !== factsDigest) {
+  const semanticDigest = semanticGraph?.structureDigest;
+  if (!isNonEmptyString(semanticDigest) || !isNonEmptyString(structureDigest) || semanticDigest !== structureDigest) {
     reasons.push(
-      `semantic-graph.json factDigest is ${JSON.stringify(semanticDigest ?? null)}, `
-      + `but knowledge-graph.jsonl project.factsDigest is ${JSON.stringify(factsDigest ?? null)}; they must be equal strings`,
+      `semantic-graph.json structureDigest is ${JSON.stringify(semanticDigest ?? null)}, `
+      + `but knowledge-graph.jsonl project.structureDigest is ${JSON.stringify(structureDigest ?? null)}; they must be equal strings`,
     );
   }
 
@@ -441,17 +441,20 @@ export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel,
 // Skip rule (task 2.3/2.5). Decides whether a full run is skipped, and when
 // not, whether to force a full rebuild (`--full`) or an incremental one
 // (`--mode=full`) — design D3's three-case table. A full product is a
-// semantic-graph.json with a factDigest (design D5); it is fresh when that
-// digest equals the fact graph's factsDigest and the commit is HEAD.
+// semantic-graph.json with a structureDigest, or one written before that
+// binding with a legacy factDigest (so an old product goes `--mode=full`,
+// whose F1 re-binds it and F3 reuses, rather than a forced `--full` rebuild).
+// It is fresh only when its structureDigest equals the fact graph's
+// structureDigest and the commit is HEAD.
 // ---------------------------------------------------------------------------
 
 export function planFullRun({ graph, semanticGraph, meta, headSha, model, force }) {
-  const factDigest = semanticGraph?.factDigest;
-  const hasFullProduct = isNonEmptyString(factDigest);
+  const structureDigest = semanticGraph?.structureDigest;
+  const hasFullProduct = isNonEmptyString(structureDigest) || isNonEmptyString(semanticGraph?.factDigest);
   const recordedModel = semanticGraph?.model;
   const modelMatches = recordedModel === model;
-  const fresh = hasFullProduct
-    && factDigest === graph?.project?.factsDigest
+  const fresh = isNonEmptyString(structureDigest)
+    && structureDigest === graph?.project?.structureDigest
     && modelMatches
     && meta?.gitCommitHash === headSha;
 
@@ -852,7 +855,7 @@ async function runFull(config, env) {
   const metaPath = join(dataDir, 'meta.json');
   const semanticGraphPath = join(dataDir, 'semantic-graph.json');
 
-  // planFullRun only looks at project.factsDigest: read the header line,
+  // planFullRun only looks at project.structureDigest: read the header line,
   // never the whole graph. An unreadable graph or semantic graph counts as absent.
   let existingGraph = null;
   if (existsSync(graphPath)) {
@@ -912,7 +915,7 @@ async function runFull(config, env) {
   let fabricationCheck = null;
   if (postGraph !== null) {
     productCheck = checkProduct({ semanticGraph: readJsonIfExists(semanticGraphPath), meta: postMeta, expectedHead: repoHead, expectedModel: config.model,
-      factsDigest: postGraph?.project?.factsDigest,
+      structureDigest: postGraph?.project?.structureDigest,
     });
     const { scriptFailure, validationReport, validatedGraph } = runIndependentValidation({
       pluginDir: config.pluginDir, repoRoot: config.repoRoot, graphPath, outDir: config.outDir,

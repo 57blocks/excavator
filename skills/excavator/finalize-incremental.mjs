@@ -13,7 +13,7 @@
  *
  * PARTIAL_UPDATE and ARCHITECTURE_UPDATE set `project.layersFrom` to
  * "incremental": the layer records are then the newest layers, because this
- * path never writes semantic-graph.json and keeps the previous `factsDigest`.
+ * path never writes semantic-graph.json and keeps the previous `structureDigest`.
  * lazy-analyze.mjs rebuilds `project` without the field, so a later Full run
  * drops it.
  *
@@ -91,9 +91,9 @@ function readGraph(path, fallback = null) {
 function startingLayers(previousGraph, dataDir) {
   const records = { layers: previousGraph.layers ?? [], source: 'the graph\'s layer records' };
   if (previousGraph.project?.layersFrom === LAYERS_FROM_INCREMENTAL) return records;
-  const factsDigest = previousGraph.project?.factsDigest;
+  const structureDigest = previousGraph.project?.structureDigest;
   const semanticPath = join(dataDir, SEMANTIC_GRAPH_FILE);
-  if (typeof factsDigest !== 'string' || factsDigest === '' || !existsSync(semanticPath)) return records;
+  if (typeof structureDigest !== 'string' || structureDigest === '' || !existsSync(semanticPath)) return records;
   let semantic;
   try {
     semantic = JSON.parse(readFileSync(semanticPath, 'utf-8'));
@@ -101,7 +101,7 @@ function startingLayers(previousGraph, dataDir) {
     process.stderr.write(`${SEMANTIC_GRAPH_FILE} is not readable (${error.message}); the layers start from ${records.source}\n`);
     return records;
   }
-  if (semantic?.factDigest !== factsDigest || !Array.isArray(semantic.layers)) return records;
+  if (semantic?.structureDigest !== structureDigest || typeof semantic?.structureDigest !== 'string' || !Array.isArray(semantic.layers)) return records;
   return { layers: semantic.layers, source: SEMANTIC_GRAPH_FILE };
 }
 
