@@ -211,8 +211,10 @@ export function fixtureData() {
         caller: relSite('unit:web', 'src/gone.js', 3, 'post("/refund")'), receiver: null },
       { id: 'rel:4', kind: 'http', bucket: 'receiver-only', area: 'area-002', reason: 'Health check', confidence: 'high', address: { method: 'GET', path: '/health' }, addressKey: 'GET /health',
         caller: null, receiver: { ...relSite('unit:api', 'src/util.js', 1, 'export function helper(n) {'), addressKey: 'GET /health' } },
+      { id: 'rel:5', kind: 'http', bucket: 'quote-failed', area: 'area-002', reason: 'Lists the jobs', confidence: 'low', role: 'receiver', address: null,
+        rejection: { reason: 'quote-mismatch', detail: 'not within 3 lines' }, receiver: { file: 'src/util.js', line: 2, quote: 'listJobs()' } },
     ],
-    buckets: { caller: { linked: 2, 'caller-only': 1 }, receiver: { linked: 1, 'receiver-only': 1 } },
+    buckets: { caller: { linked: 2, 'caller-only': 1 }, receiver: { linked: 1, 'receiver-only': 1, 'quote-failed': 1 } },
     outOfScope: {},
     measurements: {
       http: { ends: 4, quoteFailed: 1, quoteFailureRate: 0.25, verified: 3, unresolved: 0, unresolvedShare: 0, linked: 1, agreement: { status: 'no-previous-run', jaccard: null }, escalation: { candidate: true, reasons: ['quote-failure'] } },
@@ -720,6 +722,7 @@ const PROBE_RELATIONS = `(async () => {
   out.buckets = view()?.querySelector('[data-excavator-section="Ends by bucket"]')?.innerText ?? null;
   out.units = [...(view()?.querySelectorAll('[data-excavator-unit]') ?? [])].map((u) => u.getAttribute('data-excavator-unit'));
   out.unitsText = view()?.querySelector('[data-excavator-units]')?.innerText ?? null;
+  out.unitless = view()?.querySelector('[data-excavator-unitless]')?.getAttribute('data-excavator-unitless') ?? null;
   out.advice = ADVICE.test(view()?.innerText ?? '');
   await tab('links');
   out.links = rows('links').length;
@@ -740,6 +743,8 @@ const PROBE_RELATIONS = `(async () => {
   out.callerOnly = rows('sites').map((r) => r.getAttribute('data-excavator-row'));
   press(view()?.querySelector('[data-excavator-tab="all"]'));
   await sleep(150);
+  await pick('sites', 'rel:5');
+  out.unpairedDetail = detail()?.innerText ?? null;
   await pick('sites', 'rel:1');
   out.siteDetail = { text: detail()?.innerText ?? null, show: Boolean(action('show-in-graph')), code: Boolean(action('open-code')) };
   // A site in the table opens its file at its line.
@@ -901,6 +906,8 @@ export function judgeRelations(result) {
       ['stat External systems equals the externals', probe.stats?.externals === string(product.externals.length)],
       ['stat Links between units counts the one unit pair', probe.stats?.links === '1'],
       ['the bucket table shows every bucket', ['linked', 'caller-only', 'receiver-only'].every((b) => has(probe.buckets, b))],
+      ['the unit list says how many ends name no unit', probe.unitless === '1'],
+      ['an unpaired receiving end says it was not paired, not that no caller reaches it', has(probe.unpairedDetail, 'this receiving site is quote-failed') && !has(probe.unpairedDetail, 'no caller on another unit reaches')],
       ['the unit list has each unit with what it reaches', JSON.stringify(probe.units) === JSON.stringify(['unit:web', 'unit:api']) && has(probe.unitsText, 'Reaches:') && has(probe.unitsText, 'mail')],
       ['the links table lists the unit link and the external link', probe.links === 2 && has(probe.linkDetail, 'Relations')],
       ['changing the table clears the row', probe.linkCleared === true],
