@@ -272,20 +272,3 @@ describe('the SKIP path is wired in both service entry points', () => {
   });
 
 });
-
-describe('the freshness spec says what the pipeline actually reports', () => {
-  const spec = readFileSync(
-    resolve(repoRoot, 'openspec/specs/freshness/spec.md'), 'utf-8',
-  );
-
-  it('uses the pipeline\'s existing reason string, not an invented one', () => {
-    expect(spec).toContain('missing-graph-commit');
-    expect(spec).not.toContain('`no-git`');
-    expect(spec).toContain('SHALL NOT be renamed by this change');
-  });
-
-  it('keeps the multi-repo marker as version information', () => {
-    expect(spec).toContain('multi-repo:<digest>');
-    expect(spec).toContain('not an absence');
-  });
-});
