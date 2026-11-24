@@ -1,6 +1,8 @@
 # Excavator v2 — agent guide
 
-Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 NOTICE 里的原始仓库地址）基础上重建的 AI-first 可辩护代码调查插件。事实由确定性脚本写，散文由宿主 agent 写；每条陈述要么带证据，要么标 inferred。计划以 `openspec/changes/` 下的活跃变更为准；每个开发步是一个 OpenSpec change 加一个 PR。
+Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 NOTICE 里的原始仓库地址）基础上重建的 AI-first 可辩护代码调查插件。事实由确定性脚本写，散文由宿主 agent 写；每条陈述要么带证据，要么标 inferred。每个开发步是一个 PR：目标、不做什么、验收 oracle 在动手前写进 PR 正文的 Summary 节，设计决定也写在那里。
+
+代码注释里的 `openspec: changes/<名>` 指向已删除的旧设计记录，用 `git show 0bb6837b:openspec/changes/<名>/design.md` 查（已归档的在 `openspec/changes/archive/` 下）。
 
 ## 执行纪律
 - 无人守：判断题自己拍板并写下理由；不问用户。
@@ -20,13 +22,12 @@ Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 N
 Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest。三件套：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`。
 
 ## 验证：按改动内容选检查
-验证的是内容，不是动作。测过的内容没变就不重跑，提交、开 PR、合并、归档本身都不触发重跑；内容变了，只跑与改动相关的检查。
+验证的是内容，不是动作。测过的内容没变就不重跑，提交、开 PR、合并本身都不触发重跑；内容变了，只跑与改动相关的检查。
 
 | 改动范围 | 要跑的检查 |
 |---|---|
-| 只动 `openspec/`（提案、spec 同步、归档） | `openspec validate --all --strict`。没有测试读 `openspec/`，不跑代码测试 |
 | `docs/` 下的散文 | 不跑。例外：`docs/benchmarks/` 的 schema 被测试读取，改它跑 `pnpm test` |
-| 根目录 Markdown（`AGENTS.md`、`README.md`、`CLAUDE.md`） | `pnpm vitest run tests/refs/legacy-literals.test.mjs`（旧名字门禁扫描 `docs/`、`openspec/` 以外的所有跟踪文件） |
+| 根目录 Markdown（`AGENTS.md`、`README.md`、`CLAUDE.md`） | `pnpm vitest run tests/refs/legacy-literals.test.mjs`（旧名字门禁扫描 `docs/` 以外的所有跟踪文件） |
 | `skills/**/SKILL.md`、`agents/`、`hooks/`、插件清单 | `node scripts/check-refs.mjs` + `pnpm test`（多个测试读这些文件） |
 | `skills/**/*.mjs`、`src/`、`tests/` | 三件套 |
 | `packages/core/` | 三件套 + `pnpm --filter @excavator/core test` + `pnpm run typecheck`。根目录的 `pnpm test` 不含 core 测试 |

@@ -284,9 +284,9 @@ A Lazy run, and a freshness sync that needs rebuilding, recomputes the determini
 
 ## 🤝 Contributing
 
-Read [AGENTS.md](AGENTS.md) and [REVIEW.md](REVIEW.md) before making a change. They define the OpenSpec workflow, checks by changed content, risk tiers, and review/merge requirements.
+Read [AGENTS.md](AGENTS.md) and [REVIEW.md](REVIEW.md) before making a change. They define how a change is planned, checks by changed content, risk tiers, and review/merge requirements.
 
 1. Create a `codex/` feature branch in a checkout you can access.
-2. Record the change under `openspec/changes/` and implement it in logical commits.
+2. Write the goal, what is out of scope and the acceptance check in the PR's Summary, and implement the change in logical commits.
 3. Run the checks required by `AGENTS.md`. The core test command alone does not run the root suite; core changes additionally require core tests and typechecking.
 4. Open a PR using the repository template. Changes enter protected `main` through PRs, with `CI gate`, `Privacy scan`, and the applicable review requirements satisfied.
