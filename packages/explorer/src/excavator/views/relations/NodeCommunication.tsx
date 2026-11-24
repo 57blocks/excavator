@@ -89,7 +89,7 @@ function Entry({ entry, nodeId, units, home, translate }: { entry: Communication
           title="Open this relation in the Relations view"
           onClick={() => {
             openProductView("relations");
-            setProductRow({ table: "sites", row } satisfies RelationsRowRef);
+            setProductRow({ table: "sites", row, reveal: true } satisfies RelationsRowRef);
           }}
         >
           <span data-excavator-communication-open={row.id}>Relations view</span>

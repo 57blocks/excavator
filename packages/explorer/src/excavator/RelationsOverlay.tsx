@@ -177,7 +177,7 @@ export function useStandInClick(data: GraphRelationsData): (nodeId: string) => b
     openProductView("relations");
     if (data.status === "ready") {
       const row = externalSystems(data.product, data.rows).find((e) => e.id === rest);
-      if (row !== undefined) setProductRow({ table: "externals", row });
+      if (row !== undefined) setProductRow({ table: "externals", row, reveal: true });
     }
     return true;
   }, [data, drillIntoLayer, openProductView, setProductRow]);
