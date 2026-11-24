@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { STRUCTURAL_VISIBLE_TYPES } from "../components/GraphView";
 import { useDashboardStore } from "../store";
 import { relationIndex, type RelationIndex } from "./graphRelations";
-import { describeProductState, loadProductStates, type LoadedProductStates } from "./productStates";
+import { describeProductState, productStateFromJson, readJson, snapshotRevisionOf, type ProductState } from "./productStates";
 import { relationRows, unitsOf, type RelationRow, type UnitInfo } from "./products/relations";
 import { containersOf, drawnInLayer } from "./views/graphTarget";
 import { loadProductFile, type ProductFile } from "./views/productFiles";
@@ -29,31 +29,26 @@ export type GraphRelationsData =
       drawn: ReadonlySet<string>;
     };
 
-type Loaded = { states: LoadedProductStates; file: ProductFile | null };
+type Loaded = { state: ProductState; snapshotRevision: string | null; file: ProductFile | null };
 
 let pending: Promise<Loaded> | null = null;
 
 /** Reads `products.json` and, when the relations product is included, its file; once per page. */
 function loadOnce(): Promise<Loaded> {
-  pending ??= loadProductStates().then(async (states) => {
-    const included = states.states.relations.status === "included";
-    return { states, file: included ? await loadProductFile("relations-graph.json") : null };
+  pending ??= readJson("products.json").then(async ({ value, failure }) => {
+    const state = productStateFromJson(value, "relations", failure);
+    return { state, snapshotRevision: snapshotRevisionOf(value), file: state.status === "included" ? await loadProductFile("relations-graph.json") : null };
   });
   return pending;
-}
-
-/** Forgets what was read; for tests. */
-export function resetGraphRelationsCache(): void {
-  pending = null;
 }
 
 const WORDS: Record<string, string> = { "not-run": "not run", unreadable: "unreadable", "different-revision": "different revision" };
 
 /** What the graph says for a product it does not draw, or null when it draws it. */
 export function unavailableOf(loaded: Loaded): { word: string; lines: string[] } | null {
-  const state = loaded.states.states.relations;
+  const { state } = loaded;
   if (state.status !== "included") {
-    return { word: WORDS[state.status] ?? state.status, lines: describeProductState(state, loaded.states.snapshotRevision) };
+    return { word: WORDS[state.status] ?? state.status, lines: describeProductState(state, loaded.snapshotRevision) };
   }
   if (loaded.file === null || loaded.file.state === "missing") {
     return { word: "unreadable", lines: ["Status: unreadable", `Reason: ${loaded.file?.reason ?? "relations-graph.json is not in this page"}`] };

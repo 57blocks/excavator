@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeGraph } from "../../core/types";
-import { shownViewMode, useDashboardStore } from "../../store";
+import { useDashboardStore } from "../../store";
 import { resolveInitialTheme } from "../../themes/ThemeContext";
 
 // openspec: changes/explorer-view-defaults, design D1, D3, D4 and D5.
@@ -44,13 +44,14 @@ describe("what the page opens on", () => {
   });
 });
 
-describe("the highlighted mode", () => {
-  it("is the current mode while the graph is shown, and none while a product view is open", () => {
-    expect(shownViewMode(useDashboardStore.getState())).toBe("structural");
-    useDashboardStore.getState().openProductView("unused");
-    expect(shownViewMode(useDashboardStore.getState())).toBeNull();
+describe("the view switch", () => {
+  it("changes the mode, and clears the selection and the open code viewer", () => {
+    useDashboardStore.setState({ selectedNodeId: "file:a.ts", codeViewerOpen: true, codeViewerNodeId: "file:a.ts" });
     useDashboardStore.getState().setViewMode("domain");
-    expect(shownViewMode(useDashboardStore.getState())).toBe("domain");
+    const s = useDashboardStore.getState();
+    expect(s.viewMode).toBe("domain");
+    expect(s.selectedNodeId).toBeNull();
+    expect(s.codeViewerOpen).toBe(false);
   });
 });
 

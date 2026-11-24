@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { dateText } from "../products/hotspots";
 import { coChangedFiles, docUnitsCitingFile, hotspotOfFile, unusedOfNode } from "../nodeFacts";
 import { useProductFile, type ProductFileName } from "../views/productFiles";
 import { LIST_CLASS, Section } from "./Section";
@@ -34,7 +33,7 @@ export function NodeProductFacts({ node }: { node: { id: string; type: string; f
           <p className="m-0 pb-2 text-xs text-text-secondary" data-excavator-hotspot>
             {[
               hotspot.commits === null ? null : `Changed in ${hotspot.commits} commits${hotspot.authors === null ? "" : ` by ${hotspot.authors} authors`}`,
-              hotspot.lastChanged === null ? null : `last on ${dateText(hotspot.lastChanged) ?? hotspot.lastChanged}`,
+              hotspot.lastChanged === null ? null : `last on ${hotspot.lastChanged.slice(0, 10)}`,
             ]
               .filter((part) => part !== null)
               .join(", ")}

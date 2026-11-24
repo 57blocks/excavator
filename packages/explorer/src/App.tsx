@@ -14,7 +14,6 @@ import type { KeyboardShortcut } from "./hooks/useKeyboardShortcuts";
 import { ThemeProvider } from "./themes/index.ts";
 import { ViewSwitch } from "./excavator/header/ViewSwitch";
 import { LanguageSwitch } from "./excavator/header/LanguageSwitch";
-import ProductViewOverlay from "./excavator/ProductViewOverlay";
 import type { ThemeConfig } from "./themes/index.ts";
 import { I18nProvider, useI18n } from "./contexts/I18nContext.tsx";
 import {
@@ -286,8 +285,6 @@ function DashboardContent({
           ) : (
             <GraphView />
           )}
-          {/* Excavator: the product view covers the graph area only; the graph above stays mounted. */}
-          <ProductViewOverlay />
         </div>
 
         {/* Right sidebar — telescopes at narrower widths */}

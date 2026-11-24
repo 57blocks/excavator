@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readProductStates } from "../productStates";
+import { productStateFromJson } from "../productStates";
 import { unavailableOf } from "../useGraphRelations";
 
 const entry = (status: string, over: Record<string, unknown> = {}) => ({
@@ -12,7 +12,8 @@ const entry = (status: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 const loaded = (item: Record<string, unknown>, file: Parameters<typeof unavailableOf>[0]["file"]) => ({
-  states: { states: readProductStates({ products: [item] }), snapshotRevision: "git:bbb" },
+  state: productStateFromJson({ products: [item] }, "relations"),
+  snapshotRevision: "git:bbb",
   file,
 });
 const TABLE = { state: "ready" as const, value: { relations: [] } };

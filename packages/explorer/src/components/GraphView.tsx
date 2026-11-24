@@ -1119,7 +1119,7 @@ function GraphViewInner() {
 
   // Excavator: the relations product's edges and stand-in nodes, added to the graph above (excavator/RelationsOverlay.tsx).
   const relations = useRelationsOverlay(baseNodes, baseEdges, navigationLevel, nodeToContainer);
-  const standInClick = useStandInClick(relations.data);
+  const standInClick = useStandInClick();
   const initialNodes = relations.nodes;
   const initialEdges = relations.edges;
 

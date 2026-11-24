@@ -1,35 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { coChanged, projectYears, scoreHistogram, topFiles } from '../hotspots-charts';
-
-describe('commits per year of the project', () => {
-  it('takes the per-year counts of the project root row, in year order, and sums them to its commits', () => {
-    const product = {
-      directories: [
-        { path: 'src', commits: 13, commitsByYear: { 2025: 6, 2026: 7 } },
-        { path: '.', commits: 15, commitsByYear: { 2026: 8, 2024: 1, 2025: 6 } },
-      ],
-    };
-    const years = projectYears(product);
-    expect(years).toEqual({ state: 'provided', points: [{ label: '2024', value: 1 }, { label: '2025', value: 6 }, { label: '2026', value: 8 }], total: 15 });
-  });
-
-  it('does not add up the directories: a commit that changed two of them would count twice', () => {
-    const product = { directories: [{ path: 'a', commitsByYear: { 2025: 1 } }, { path: 'b', commitsByYear: { 2025: 1 } }, { path: '.', commitsByYear: { 2025: 1 } }] };
-    expect(projectYears(product)).toMatchObject({ total: 1 });
-  });
-
-  it('says the product does not provide them when there is no root row or the root row has no per-year field, never 0', () => {
-    expect(projectYears({ directories: [{ path: 'src', commitsByYear: { 2025: 6 } }] })).toEqual({ state: 'not-provided' });
-    expect(projectYears({ directories: [{ path: '.', commits: 4 }] })).toEqual({ state: 'not-provided' });
-    expect(projectYears({})).toEqual({ state: 'not-provided' });
-    expect(projectYears({ directories: [{ path: '.', commitsByYear: { 2025: 'x' } }] })).toEqual({ state: 'not-provided' });
-  });
-
-  it('says there is no history when the product writes null for it', () => {
-    expect(projectYears({ directories: [{ path: '.', commitsByYear: null }] })).toEqual({ state: 'no-history' });
-  });
-});
+import { coChanged, topFiles } from '../hotspots-charts';
 
 describe('the files most often changed together with a file', () => {
   const pairs = [
@@ -62,19 +33,3 @@ describe('the files with the highest scores', () => {
   });
 });
 
-describe('the distribution of file scores', () => {
-  it('bins the scores from 0 to the highest and counts the files without a score apart', () => {
-    const hist = scoreHistogram([{ score: 90 }, { score: 40 }, { score: 5 }, { score: 3 }, { score: null }, {}]);
-    expect(hist.state).toBe('bins');
-    if (hist.state !== 'bins') return;
-    expect(hist.values).toEqual([90, 40, 5, 3]);
-    expect(hist.edges[0]).toBe(0);
-    expect(hist.edges[hist.edges.length - 1]).toBe(90);
-    expect(hist.withoutScore).toBe(2);
-  });
-
-  it('has no bins when no file has a score above 0', () => {
-    expect(scoreHistogram([{ score: 0 }, { score: null }])).toEqual({ state: 'none', withoutScore: 1, scored: 1 });
-    expect(scoreHistogram([])).toEqual({ state: 'none', withoutScore: 0, scored: 0 });
-  });
-});

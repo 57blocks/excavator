@@ -8,13 +8,13 @@
  *     must be known. A relation that is not linked (caller-only, receiver-only, address-unresolved, ambiguous,
  *     quote-failed) is never drawn, so nothing reads as a pair the product did not make; the node panel and the
  *     Relations view list it with its bucket;
- *   - a linked relation with an end whose node id the knowledge graph does not have is not drawn, and is counted;
+ *   - a linked relation with an end whose node id the knowledge graph does not have is not drawn;
  *   - an end is placed at the nearest node the view draws that is the end's node or contains it (a function end at its
  *     file), then at the folder box that holds that node while the box is closed, as the copy's own edges are;
  *   - an end in another layer is placed at one stand-in node for that layer, an external system at one node per id;
  *   - a drawable relation with an end that no layer holds (no node a layer draws is the end's node or contains it) is
  *     drawn in no view, and is counted;
- *   - relations whose two ends land on the same pair of drawn nodes are one edge per kind, labelled with their count;
+ *   - relations whose two ends land on the same pair of drawn nodes are one edge per kind, labelled with the kind;
  *     two ends on the same drawn node give no edge, and neither does a relation whose two ends are both stand-ins.
  */
 
@@ -260,4 +260,38 @@ export function communicationEntries(index: RelationIndex, nodeId: string, inGra
       return { key: `${row.id}:${role}`, row, role, endNodeId, site, otherUnit: row.external ?? otherSite?.unit ?? null, other };
     })
     .sort(entryOrder);
+}
+
+/** An edge's label: the kind of the relations it holds, never how many there are. */
+export const edgeLabel = (kind: string): string => kind;
+
+/** The words under a stand-in node: what kind of node it is, never how many relations reach it. */
+export const standInNote = (kind: StandIn["kind"]): string => (kind === "external" ? "External system" : "Another layer");
+
+export interface NotDrawnInput {
+  mode: RelationsMode;
+  level: "overview" | "layer-detail";
+  hasSelection: boolean;
+  /** Relations drawn as edges in this view, and relations with an end on a node or box this view draws. */
+  drawn: number;
+  inView: number;
+  /** Drawable relations with an end no layer holds; linked relations with an end not in the graph; relations not linked. */
+  inNoLayer: number;
+  notInGraph: number;
+  notLinked: number;
+}
+
+/**
+ * The one muted sentence under the Relations control: null when every relation is drawn, else what is not drawn and
+ * why, without any number (the counts are in the relations product, not on the page).
+ */
+export function relationsNotDrawnSentence(input: NotDrawnInput): string | null {
+  if (input.mode === "off") return "No relations are drawn.";
+  if (input.level === "layer-detail" && input.mode === "selected" && !input.hasSelection) return "Select a node to draw its relations.";
+  const reasons: string[] = [];
+  if (input.inView > input.drawn) reasons.push("an end is hidden in this view");
+  if (input.inNoLayer > 0) reasons.push("an end is in no layer");
+  if (input.notInGraph > 0) reasons.push("an end is not in the graph");
+  if (input.notLinked > 0) reasons.push("some are not linked");
+  return reasons.length === 0 ? null : `Some relations are not drawn: ${reasons.join(", ")}.`;
 }

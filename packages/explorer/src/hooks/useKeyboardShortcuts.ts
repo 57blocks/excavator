@@ -48,24 +48,3 @@ export function useKeyboardShortcuts(
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [shortcuts, enabled]);
 }
-
-export function formatShortcutKey(shortcut: KeyboardShortcut): string {
-  const keys: string[] = [];
-
-  // Use userAgentData with fallback to navigator.platform
-  const isMac = (navigator as Navigator & { userAgentData?: { platform: string } }).userAgentData?.platform
-    ? (navigator as Navigator & { userAgentData: { platform: string } }).userAgentData.platform === 'macOS'
-    : navigator.platform.includes("Mac");
-
-  if (shortcut.ctrlKey || shortcut.metaKey) {
-    keys.push(isMac ? "⌘" : "Ctrl");
-  }
-  // Don't show ⇧ for keys that inherently require Shift (e.g. ?, !, @)
-  const isShiftedPunctuation = shortcut.key.length === 1 && /[^a-zA-Z0-9]/.test(shortcut.key);
-  if (shortcut.shiftKey && !isShiftedPunctuation) keys.push("⇧");
-  if (shortcut.altKey) keys.push(isMac ? "⌥" : "Alt");
-
-  keys.push(isShiftedPunctuation ? shortcut.key : shortcut.key.toUpperCase());
-
-  return keys.join(" + ");
-}

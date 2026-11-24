@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  bucketRows, endsWithoutUnit, escalationLines, missingEndText, externalLabel, externalSystems, measurementRows, relationRows, siteText, unitLinks, unitSummaries, unitsOf,
-} from '../relations';
+import { missingEndText, externalLabel, relationRows, siteText, unitsOf } from '../relations';
 
 const site = (unit: string | null, file: string, line: number, more: Record<string, unknown> = {}) => ({ unit, family: 'js', file, line, quote: `q ${file}`, nodeId: null, nodeIdBy: 'none', evidence: [], ...more });
 
@@ -77,26 +75,6 @@ describe('units', () => {
   it('lists the units as the product does', () => {
     expect(unitsOf(PRODUCT).map((u) => [u.id, u.name, u.kind])).toEqual([['unit:web', 'web', 'runtime'], ['unit:api', 'api', 'runtime'], ['unit:lib', 'lib', 'library']]);
   });
-
-  it('counts each unit\'s sites by role and bucket, and names the units and external systems it reaches by a linked relation', () => {
-    const summaries = unitSummaries(unitsOf(PRODUCT), relationRows(PRODUCT));
-    const web = summaries.find((s) => s.unit.id === 'unit:web')!;
-    expect(web.calls).toEqual({ linked: 2, 'caller-only': 1, ambiguous: 1 });
-    expect(web.receives).toEqual({});
-    expect(web.reaches).toEqual([{ kind: 'http', target: 'unit:api', external: false, relations: 2 }]);
-    const api = summaries.find((s) => s.unit.id === 'unit:api')!;
-    expect(api.calls).toEqual({ linked: 1, 'address-unresolved': 1 });
-    expect(api.receives).toEqual({ linked: 2, 'receiver-only': 1, 'address-unresolved': 1 });
-    expect(api.reaches).toEqual([{ kind: 'external', target: 'external:mail', external: true, relations: 1 }]);
-    expect(summaries.find((s) => s.unit.id === 'unit:lib')).toMatchObject({ calls: {}, receives: {}, reaches: [] });
-  });
-});
-
-describe('ends without a unit', () => {
-  it('counts by bucket the ends whose sites name no unit, as a quote-failed end keeps the site the analyzer wrote', () => {
-    expect(endsWithoutUnit(relationRows(PRODUCT))).toEqual({ total: 5, byBucket: { 'quote-failed': 5 } });
-    expect(endsWithoutUnit([])).toEqual({ total: 0, byBucket: {} });
-  });
 });
 
 describe('a missing end', () => {
@@ -124,53 +102,3 @@ describe('a missing end', () => {
   });
 });
 
-describe('links', () => {
-  it('groups the linked relations by kind, caller unit and receiver unit or external system', () => {
-    const links = unitLinks(relationRows(PRODUCT));
-    expect(links.map((l) => [l.kind, l.from, l.to, l.external, l.relations.map((r) => r.id)])).toEqual([
-      ['external', 'unit:api', 'external:mail', true, ['rel:3']],
-      ['http', 'unit:web', 'unit:api', false, ['rel:1', 'rel:2']],
-    ]);
-    expect(links[1].callerSites).toBe(2);
-    expect(links[1].receiverSites).toBe(1);
-  });
-});
-
-describe('external systems', () => {
-  it('lists every external system of the product and those only relations name, with the units that call it', () => {
-    const systems = externalSystems(PRODUCT, relationRows(PRODUCT));
-    expect(systems.map((s) => [s.id, s.units, s.relations.map((r) => r.id), s.names, s.keyBy])).toEqual([
-      ['external:mail', ['unit:api'], ['rel:3'], ['Mailer'], ['name']],
-      ['external:maps', [], [], null, null],
-    ]);
-  });
-});
-
-describe('bucketRows', () => {
-  it('gives each role\'s buckets in the merge\'s order, then any bucket the page does not know, never dropping one', () => {
-    const rows = bucketRows(PRODUCT.buckets);
-    expect(rows.caller.map((r) => [r.bucket, r.count])).toEqual([['linked', 3], ['ambiguous', 1], ['caller-only', 1], ['address-unresolved', 1], ['quote-failed', 1]]);
-    expect(rows.receiver.map((r) => [r.bucket, r.count])).toEqual([['linked', 1], ['receiver-only', 1], ['address-unresolved', 0], ['quote-failed', 0], ['a-new-bucket', 2]]);
-    expect(bucketRows(undefined)).toEqual({ caller: [], receiver: [] });
-  });
-});
-
-describe('measurements', () => {
-  it('gives one row per kind, as the product records it', () => {
-    const rows = measurementRows(PRODUCT.measurements);
-    expect(rows.map((r) => r.kind)).toEqual(['http', 'rpc']);
-    expect(rows[0]).toMatchObject({ ends: 7, quoteFailed: 1, quoteFailureRate: 0.1429, linked: 2, agreement: 'measured 0.5', escalation: ['agreement', 'quote-failure'] });
-    expect(rows[1]).toMatchObject({ quoteFailureRate: null, agreement: 'insufficient', escalation: [] });
-  });
-
-  it('says each escalation candidate as the measurement and the threshold it crossed, with no advice', () => {
-    const thresholds = { agreement: 0.8, quoteFailureRate: 0.1, unresolvedShare: 0.3 };
-    const candidates = [{ kind: 'http', reasons: ['agreement', 'quote-failure', 'something-new'] }];
-    expect(escalationLines(candidates, PRODUCT.measurements, thresholds)).toEqual([
-      'http: agreement with the previous run 0.5, below the threshold 0.8',
-      'http: quote failure rate 0.1429, above the threshold 0.1',
-      'http: something-new',
-    ]);
-    expect(escalationLines(candidates.slice(0, 1).map((c) => ({ ...c, reasons: ['unresolved'] })), { http: { unresolvedShare: 0.4 } }, null)).toEqual(['http: unresolved address share 0.4, above the threshold not recorded']);
-  });
-});

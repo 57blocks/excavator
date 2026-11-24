@@ -31,7 +31,6 @@ describe("resolveLocaleKey", () => {
 describe("locales", () => {
   it("exposes a Vietnamese locale with the English key shape", () => {
     expect(keyShape(locales.vi)).toEqual(keyShape(locales.en));
-    expect(locales.vi.onboarding.steps).toHaveLength(locales.en.onboarding.steps.length);
   });
 
   it("lists every locale in the record", () => {

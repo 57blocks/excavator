@@ -41,13 +41,6 @@ export function Target({ id, units, translate }: { id: string | null; units: Rea
   return <Translated english={targetEnglish(id, units)} translate={translate} />;
 }
 
-/** The text a search box looks in for a target: its English words and their translation. */
-export function targetWords(id: string | null, units: ReadonlyMap<string, UnitInfo>, translate?: Translate): string {
-  if (id === null) return "";
-  const english = targetEnglish(id, units);
-  return `${english} ${translate?.(english) ?? ""}`;
-}
-
 /** `file:line` of a site as a link that opens the code viewer there, or as text when the page does not hold that file's source. */
 export function SiteLink({ site }: { site: Pick<RelationSite, "file" | "line"> | null }) {
   const openCodeViewerAt = useDashboardStore((s) => s.openCodeViewerAt);

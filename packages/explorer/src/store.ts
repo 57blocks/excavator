@@ -5,7 +5,6 @@ import type { GraphIssue } from "@understand-anything/core/schema";
 import type { GraphNode, KnowledgeGraph } from "@understand-anything/core/types";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
 import { parseNameTranslations, translatorOf, type NameTranslations } from "./excavator/nameTranslations";
-import type { ProductView } from "./excavator/productViews";
 import type { RelationsMode } from "./excavator/graphRelations";
 import { sourceNodeId, type SourceTarget } from "./excavator/views/sourceNode";
 
@@ -125,21 +124,13 @@ interface DashboardStore {
   navigateToDomain: (domainId: string) => void;
   clearActiveDomain: () => void;
 
-  // Excavator (openspec: changes/explorer-products, design D2): the product view laid over the
-  // graph area, and the row of its table whose details the sidebar shows. The graph stays
-  // mounted and its selection untouched while a view is open.
-  productView: ProductView | null;
-  productRow: unknown | null;
+  // Excavator: the right panel and the graph read the page data; no product view is laid over the graph.
   /** Excavator: a node chosen from outside the graph that the structural view is to open its container for and fit. */
   revealNodeId: string | null;
   clearRevealNode: () => void;
   /** Excavator: which relations of the relations product the structural graph draws (excavator/graphRelations.ts). */
   relationsMode: RelationsMode;
   setRelationsMode: (mode: RelationsMode) => void;
-  /** Opens the view; the open one stays open, with its row (openspec: changes/explorer-view-defaults, design D2). */
-  openProductView: (view: ProductView) => void;
-  closeProductView: () => void;
-  setProductRow: (row: unknown | null) => void;
 
   // Container expand/collapse + lazy layout caches
   expandedContainers: Set<string>;
@@ -202,14 +193,6 @@ function layerResetIfChanged(
     pendingFocusContainer: null,
   };
 }
-
-/**
- * Excavator: the mode the middle of the page shows, or null while a product view
- * covers the graph; the Domain / Structural buttons highlight only this one
- * (openspec: changes/explorer-view-defaults, design D1).
- */
-export const shownViewMode = (s: Pick<DashboardStore, "productView" | "viewMode">): ViewMode | null =>
-  s.productView === null ? s.viewMode : null;
 
 /** The name table the page shows names through: null (English) while the language switch is on English. */
 export const activeTranslations = (s: Pick<DashboardStore, "showTranslations" | "nameTranslations">): NameTranslations | null =>
@@ -307,8 +290,6 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       set({
         ...layerNav,
         // Excavator: a node chosen from outside a product view (search, the file list, Show in graph) shows the graph.
-        productView: null,
-        productRow: null,
         revealNodeId: nodeId,
         selectedNodeId: nodeId,
         focusNodeId: null,
@@ -320,8 +301,6 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       });
     } else {
       set({
-        productView: null,
-        productRow: null,
         selectedNodeId: nodeId,
         nodeHistory: newHistory,
       });
@@ -467,28 +446,13 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     set({ isKnowledgeGraph: value });
   },
 
-  productView: null,
-  productRow: null,
   revealNodeId: null,
   clearRevealNode: () => set({ revealNodeId: null }),
   relationsMode: "selected",
   setRelationsMode: (mode) => set({ relationsMode: mode }),
-  openProductView: (view) => {
-    if (get().productView !== view) set({ productView: view, productRow: null });
-  },
-  closeProductView: () => set({ productView: null, productRow: null }),
-  setProductRow: (row) => set({ productRow: row }),
 
   setViewMode: (mode) => {
-    // Excavator: the mode already shown under a product view only closes the view, keeping the graph's selection.
-    if (get().productView !== null && get().viewMode === mode) {
-      set({ productView: null, productRow: null });
-      return;
-    }
     set({
-      // Excavator: the Domain / Structural switch always returns to the graph.
-      productView: null,
-      productRow: null,
       viewMode: mode,
       selectedNodeId: null,
       focusNodeId: null,

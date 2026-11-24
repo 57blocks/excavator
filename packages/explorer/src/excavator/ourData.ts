@@ -1,4 +1,4 @@
-import type { GraphCoverage, GraphEdge, GraphNode } from "../core/types";
+import type { GraphEdge, GraphNode } from "../core/types";
 
 /**
  * Readers for the fields our graph has and the copy did not show (openspec:
@@ -28,29 +28,4 @@ export function evidenceLabel(edge: GraphEdge): string | null {
   if (typeof first.line !== "number") return first.file;
   const end = typeof first.endLine === "number" && first.endLine !== first.line ? `-${first.endLine}` : "";
   return `${first.file}:${first.line}${end}`;
-}
-
-export interface CoverageRow {
-  language: string;
-  files: number;
-  parsed: number;
-  zeroSymbol: number;
-  /** Each reason a file was skipped, with its count, most first; reasons with no file are left out. */
-  skipped: [string, number][];
-}
-
-/** One row per language of the coverage record, most files first, then by name. */
-export function coverageRows(coverage: GraphCoverage | undefined): CoverageRow[] {
-  if (!coverage) return [];
-  return Object.entries(coverage.byLanguage)
-    .map(([language, row]) => ({
-      language,
-      files: row.files,
-      parsed: row.parsed,
-      zeroSymbol: row.zeroSymbol,
-      skipped: Object.entries(row.skipped)
-        .filter(([, count]) => count > 0)
-        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
-    }))
-    .sort((a, b) => b.files - a.files || a.language.localeCompare(b.language));
 }

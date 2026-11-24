@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { describeProductState, loadProductStates, readProductStates, revisionNotice, snapshotRevisionOf } from "../productStates";
+import { describeProductState, productStateFromJson, readJson, snapshotRevisionOf } from "../productStates";
 
 const entry = (name: string, over: Record<string, unknown> = {}) => ({
   name,
@@ -12,44 +12,44 @@ const entry = (name: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const stateOf = (products: unknown, name: string) => productStateFromJson(products, name);
+
 describe("reading products.json into a status", () => {
   it("reads the relations product with its coverage report's own state, and none when products.json gives none", () => {
-    const states = readProductStates({
-      products: [entry("relations", { coverage: { state: "other-run", reason: "written by another run" } })],
-    });
-    expect(states.relations).toMatchObject({ status: "included", command: "/excavator-relations", coverage: { state: "other-run", reason: "written by another run" } });
-    expect(readProductStates({ products: [entry("relations")] }).relations.coverage).toBeNull();
-    expect(readProductStates({ products: [] }).relations).toMatchObject({ status: "unreadable", reason: "products.json has no entry for relations" });
+    const state = stateOf({ products: [entry("relations", { coverage: { state: "other-run", reason: "written by another run" } })] }, "relations");
+    expect(state).toMatchObject({ status: "included", command: "/excavator-relations", coverage: { state: "other-run", reason: "written by another run" } });
+    expect(stateOf({ products: [entry("relations")] }, "relations").coverage).toBeNull();
+    expect(stateOf({ products: [] }, "relations")).toMatchObject({ status: "unreadable", reason: "products.json has no entry for relations" });
   });
 
-  it("reads each of the four states for the three products", () => {
-    const states = readProductStates({
+  it("reads each of the four states", () => {
+    const products = {
       products: [
         entry("unused-code"),
         entry("hotspots", { status: "not-run", revision: null }),
         entry("doc-map", { status: "unreadable", reason: "doc-map.json is not valid JSON", revision: null }),
+        entry("relations", { status: "different-revision", revision: "git:bbb" }),
       ],
-    });
-    expect(states.unused).toMatchObject({ status: "included", revision: "git:aaa", command: "/excavator-unused-code" });
-    expect(states.hotspots).toMatchObject({ status: "not-run", command: "/excavator-hotspots" });
-    expect(states["doc-map"]).toMatchObject({ status: "unreadable", reason: "doc-map.json is not valid JSON" });
-    const other = readProductStates({ products: [entry("unused-code", { status: "different-revision", revision: "git:bbb" })] });
-    expect(other.unused).toMatchObject({ status: "different-revision", revision: "git:bbb" });
+    };
+    expect(stateOf(products, "unused-code")).toMatchObject({ status: "included", revision: "git:aaa", command: "/excavator-unused-code" });
+    expect(stateOf(products, "hotspots")).toMatchObject({ status: "not-run", command: "/excavator-hotspots" });
+    expect(stateOf(products, "doc-map")).toMatchObject({ status: "unreadable", reason: "doc-map.json is not valid JSON" });
+    expect(stateOf(products, "relations")).toMatchObject({ status: "different-revision", revision: "git:bbb" });
   });
 
   it("says a product is unreadable, with the reason, when products.json lacks it or is not an object", () => {
-    const missing = readProductStates({ products: [entry("unused-code")] });
-    expect(missing.hotspots).toMatchObject({ status: "unreadable", reason: "products.json has no entry for hotspots" });
+    expect(stateOf({ products: [entry("unused-code")] }, "hotspots")).toMatchObject({ status: "unreadable", reason: "products.json has no entry for hotspots" });
     for (const bad of [undefined, null, 3, "x", [], { products: "no" }]) {
-      const states = readProductStates(bad);
-      expect(states.unused).toMatchObject({ status: "unreadable", reason: "products.json is not in this page or is not in the expected shape" });
-      expect(states["doc-map"].status).toBe("unreadable");
+      expect(stateOf(bad, "unused-code")).toMatchObject({ status: "unreadable", reason: "products.json is not in this page or is not in the expected shape" });
     }
+    expect(productStateFromJson(undefined, "unused-code", "products.json could not be read: bad part").reason).toBe("products.json could not be read: bad part");
   });
 
   it("never reads a status it does not know as one it does", () => {
-    const states = readProductStates({ products: [entry("unused-code", { status: "fine" })] });
-    expect(states.unused).toMatchObject({ status: "unreadable", reason: 'products.json gives unused-code the unknown status "fine"' });
+    expect(stateOf({ products: [entry("unused-code", { status: "fine" })] }, "unused-code")).toMatchObject({
+      status: "unreadable",
+      reason: 'products.json gives unused-code the unknown status "fine"',
+    });
   });
 
   it("takes the packed source revision from products.json, when it names one", () => {
@@ -61,23 +61,24 @@ describe("reading products.json into a status", () => {
 });
 
 describe("describing a product's state", () => {
-  const states = readProductStates({
+  const products = {
     products: [
       entry("unused-code"),
       entry("hotspots", { status: "not-run", revision: null }),
       entry("doc-map", { status: "different-revision", revision: "git:old" }),
     ],
-  });
+  };
+  const states = { unused: stateOf(products, "unused-code"), hotspots: stateOf(products, "hotspots"), "doc-map": stateOf(products, "doc-map") };
 
   it("gives not run its status and the command", () => {
     expect(describeProductState(states.hotspots, null)).toEqual(["Status: not run", "Command: /excavator-hotspots"]);
-    const withReason = readProductStates({ products: [entry("hotspots", { status: "not-run", reason: "hotspots.json was not produced" })] });
-    expect(describeProductState(withReason.hotspots, null)).toEqual(["Status: not run", "Reason: hotspots.json was not produced", "Command: /excavator-hotspots"]);
+    const withReason = stateOf({ products: [entry("hotspots", { status: "not-run", reason: "hotspots.json was not produced" })] }, "hotspots");
+    expect(describeProductState(withReason, null)).toEqual(["Status: not run", "Reason: hotspots.json was not produced", "Command: /excavator-hotspots"]);
   });
 
   it("gives unreadable its reason", () => {
-    const broken = readProductStates({ products: [entry("unused-code", { status: "unreadable", reason: "bad format", revision: null })] });
-    expect(describeProductState(broken.unused, null)).toEqual(["Status: unreadable", "Reason: bad format"]);
+    const broken = stateOf({ products: [entry("unused-code", { status: "unreadable", reason: "bad format", revision: null })] }, "unused-code");
+    expect(describeProductState(broken, null)).toEqual(["Status: unreadable", "Reason: bad format"]);
   });
 
   it("gives a different revision both revisions, and says when the packed one is not known", () => {
@@ -87,22 +88,8 @@ describe("describing a product's state", () => {
 
   it("gives an included product its revision or the note that it records none", () => {
     expect(describeProductState(states.unused, null)).toEqual(["Status: included", "Revision: git:aaa"]);
-    const none = readProductStates({ products: [entry("unused-code", { revision: null, revisionNote: "no revision recorded" })] });
-    expect(describeProductState(none.unused, null)).toEqual(["Status: included", "Revision: no revision recorded"]);
-  });
-});
-
-describe("the notice for a product made from another revision", () => {
-  it("names both revisions", () => {
-    const text = revisionNotice({ status: "different-revision", reason: null, revision: "git:bbb", revisionNote: null, command: null, coverage: null }, "git:aaa");
-    expect(text).toContain("git:bbb");
-    expect(text).toContain("git:aaa");
-  });
-
-  it("says when a revision is not recorded and has no notice for other states", () => {
-    const text = revisionNotice({ status: "different-revision", reason: null, revision: null, revisionNote: null, command: null, coverage: null }, null);
-    expect(text).toContain("not recorded");
-    expect(revisionNotice({ status: "included", reason: null, revision: "git:aaa", revisionNote: null, command: null, coverage: null }, "git:aaa")).toBeNull();
+    const none = stateOf({ products: [entry("unused-code", { revision: null, revisionNote: "no revision recorded" })] }, "unused-code");
+    expect(describeProductState(none, null)).toEqual(["Status: included", "Revision: no revision recorded"]);
   });
 });
 
@@ -121,27 +108,26 @@ describe("loading products.json from the page", () => {
     scope.document = { getElementById: (id: string) => elements[id] ?? null };
   };
 
-  it("reads the states from a part that decodes", async () => {
+  it("reads the file from a part that decodes", async () => {
     pageWith(gzipSync(Buffer.from(JSON.stringify({ snapshotRevision: "git:aaa", products: [entry("unused-code")] }), "utf-8")).toString("base64"));
-    const loaded = await loadProductStates();
-    expect(loaded.snapshotRevision).toBe("git:aaa");
-    expect(loaded.states.unused).toMatchObject({ status: "included" });
+    const { value, failure } = await readJson("products.json");
+    expect(failure).toBeUndefined();
+    expect(snapshotRevisionOf(value)).toBe("git:aaa");
+    expect(stateOf(value, "unused-code")).toMatchObject({ status: "included" });
   });
 
-  it("carries the reader's own error into each product's reason when the part cannot be decoded", async () => {
+  it("carries the reader's own error when the part cannot be decoded", async () => {
     pageWith(Buffer.from("not gzip", "utf-8").toString("base64"));
-    const { states, snapshotRevision } = await loadProductStates();
-    expect(snapshotRevision).toBeNull();
-    for (const view of ["unused", "hotspots", "doc-map", "relations"] as const) {
-      expect(states[view].status).toBe("unreadable");
-      expect(states[view].reason).toMatch(/^products\.json could not be read: /);
-      expect(states[view].reason).not.toMatch(/not in the expected shape/);
-    }
+    const { value, failure } = await readJson("products.json");
+    expect(value).toBeUndefined();
+    expect(failure).toMatch(/^products\.json could not be read: /);
+    expect(productStateFromJson(value, "hotspots", failure).reason).toBe(failure);
   });
 
   it("says the file is not in the page when the index does not list it", async () => {
     scope.document = { getElementById: (id: string) => (id === "xv-explorer-index" ? { textContent: JSON.stringify({ version: 1, files: {} }) } : null) };
-    const { states } = await loadProductStates();
-    expect(states.unused).toMatchObject({ status: "unreadable", reason: "products.json is not included in this page" });
+    const { value, failure } = await readJson("products.json");
+    expect(value).toBeUndefined();
+    expect(failure).toBe("products.json is not included in this page");
   });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GraphEdge, GraphNode } from "../../core/types";
 import { validateGraph } from "../../core/schema";
-import { coverageRows, evidenceLabel, summaryRemoved, verdictOf } from "../ourData";
+import { evidenceLabel, summaryRemoved, verdictOf } from "../ourData";
 
 const node = (fields: Partial<GraphNode>): GraphNode => ({ id: "function:a.go:run", type: "function", name: "run", summary: "Runs.", tags: [], complexity: "simple", ...fields });
 const edge = (fields: Partial<GraphEdge>): GraphEdge => ({ source: "file:a.go", target: "file:b.go", type: "imports", direction: "forward", weight: 0.5, ...fields });
@@ -34,23 +34,6 @@ describe("evidenceLabel", () => {
   it("gives nothing for an edge without evidence", () => {
     expect(evidenceLabel(edge({}))).toBeNull();
     expect(evidenceLabel(edge({ evidence: [] }))).toBeNull();
-  });
-});
-
-describe("coverageRows", () => {
-  it("lists languages by files, then name, and leaves out reasons with no file", () => {
-    const rows = coverageRows({
-      files: 9,
-      byLanguage: {
-        css: { files: 3, parsed: 0, zeroSymbol: 0, skipped: { "no-extractor": 2, "filtered-by-defaults": 1, other: 0 } },
-        go: { files: 5, parsed: 5, zeroSymbol: 1, skipped: {} },
-        conf: { files: 1, parsed: 0, zeroSymbol: 0, skipped: { "no-extractor": 1 } },
-      },
-    });
-    expect(rows.map((row) => row.language)).toEqual(["go", "css", "conf"]);
-    expect(rows[1]).toEqual({ language: "css", files: 3, parsed: 0, zeroSymbol: 0, skipped: [["no-extractor", 2], ["filtered-by-defaults", 1]] });
-    expect(rows[0].zeroSymbol).toBe(1);
-    expect(coverageRows(undefined)).toEqual([]);
   });
 });
 
