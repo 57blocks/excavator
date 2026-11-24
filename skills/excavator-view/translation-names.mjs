@@ -8,7 +8,9 @@
  *   language   trimmed and lower-cased; `en`, `english`, `en-*` and `en_*` are English; any other name may hold only
  *              letters of any script, digits, `-` and `_`, because it is the table's file name
  *   names      every non-empty display name of the page's knowledge graph (after the semantic merge, so a
- *              contradicted or stale one is already empty) and every domain, flow and step name of the domain graph
+ *              contradicted or stale one is already empty), every domain, flow and step name of the domain graph, and
+ *              of the relations graph every unit name, every external system label (its id without `external:`) and
+ *              every relation reason of one line and at most 60 characters (a longer one stays in English)
  *   table      `<page dir>/view-translations/<language>.json`:
  *              { format, language, entries: { <sha256 of the English>: { en, text } } }
  *   taken      an entry is used only when its key is the SHA-256 of its own `en`, `en` is a displayed name and
@@ -68,6 +70,12 @@ export function codeTokens(english) {
 
 const nonEmptyName = (value) => (typeof value === 'string' && value.trim() !== '' ? value.trim() : null);
 
+/** A relation reason is a name to translate only when it is this short; a longer one stays in English. */
+export const MAX_REASON = 60;
+const EXTERNAL_PREFIX = 'external:';
+/** The label the page shows for an external system: its id without the `external:` prefix. */
+export const externalLabel = (id) => (id.startsWith(EXTERNAL_PREFIX) ? id.slice(EXTERNAL_PREFIX.length) : id);
+
 /** The names the page shows, once each and sorted, from the page data `buildExplorerData` returns. */
 export function displayedNames(data) {
   const names = new Set();
@@ -81,6 +89,19 @@ export function displayedNames(data) {
     if (!DOMAIN_NAME_TYPES.has(node?.type)) continue;
     const name = nonEmptyName(node.name);
     if (name !== null) names.add(name);
+  }
+  const relations = data['relations-graph.json'];
+  for (const unit of Array.isArray(relations?.units) ? relations.units : []) {
+    const name = nonEmptyName(unit?.name);
+    if (name !== null) names.add(name);
+  }
+  for (const external of Array.isArray(relations?.externals) ? relations.externals : []) {
+    const name = typeof external?.id === 'string' ? nonEmptyName(externalLabel(external.id)) : null;
+    if (name !== null) names.add(name);
+  }
+  for (const relation of Array.isArray(relations?.relations) ? relations.relations : []) {
+    const reason = nonEmptyName(relation?.reason);
+    if (reason !== null && [...reason].length <= MAX_REASON && !/[\r\n]/.test(reason)) names.add(reason);
   }
   return [...names].sort();
 }
