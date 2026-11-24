@@ -10,7 +10,7 @@
  *   - its `quote`, trimmed, is non-empty, at most MAX_QUOTE_CHARS long and a
  *     substring of that line;
  *   - its optional `skipReason` (why the entry point starts no business flow)
- *     is a string.
+ *     is a string or null (null reads as no reason).
  * An accepted entry keeps `skipReason`, trimmed, when it is not blank, and
  * counts as skipped; a blank one is dropped and counted in skipWithoutReason.
  * A rejected entry's reason has no effect.
@@ -61,7 +61,7 @@ export function checkModelEntryPoints({ entries, unrecognisedFiles, readLines })
   for (const entry of entries) {
     if (!isObject(entry) || typeof entry.file !== 'string' || !Number.isInteger(entry.line)
       || typeof entry.quote !== 'string' || !optionalText(entry.method) || !optionalText(entry.path)
-      || (entry.skipReason !== undefined && typeof entry.skipReason !== 'string')) {
+      || !optionalText(entry.skipReason)) {
       rejected.malformed += 1;
       continue;
     }

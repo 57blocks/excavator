@@ -1003,6 +1003,14 @@ describe('model entry points', () => {
       expect(blank.coverage.entryPoints.model.entries[0]).not.toHaveProperty('skipReason');
     });
 
+    it('reads a null skipReason as no reason, as it reads a null method or path', async () => {
+      const { coverage } = await runHealth([health({ skipReason: null })]);
+      expect(coverage.entryPoints.model).toMatchObject({ accepted: 1, skipped: 0, skipWithoutReason: 0 });
+      expect(coverage.entryPoints.model.rejected.malformed).toBe(0);
+      expect(coverage.entryPoints.model.entries[0]).not.toHaveProperty('skipReason');
+      expect(coverage.modules.find((m) => m.path === 'svc/health').status).toBe('silent-zero');
+    });
+
     it('rejects an entry whose skipReason is not a string as malformed', async () => {
       const { coverage } = await runHealth([health({ skipReason: 5 })]);
       expect(coverage.entryPoints.model).toMatchObject({ accepted: 0, skipped: 0 });

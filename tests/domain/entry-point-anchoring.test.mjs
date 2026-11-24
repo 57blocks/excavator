@@ -401,7 +401,24 @@ describe('one coverage bucket per fact entry point', () => {
       expect(checkWith([], [status({ skipReason: ' ' })])).toHaveLength(1);
       expect(checkWith([], [status({ skipReason: 'Status probe.' })])).toEqual([]);
       expect(checkWith([{ name: 'billing-status', files: ['svc/billing/status.go'] }], [status()])).toEqual([]);
+      writeFileSync(output, JSON.stringify(areaOutput([], {
+        ...skips, entryPoints: [status()], skippedModules: [{ module: 'svc/billing', reason: 'Read-only listing.' }],
+      })));
+      expect(runCheckCommand(context).stdout).not.toContain('uncovered-model-entry-point');
     });
+  });
+
+  it('keeps a module with a pattern entry point silent-zero though the entry point the analyzer added there is skipped', async () => {
+    // jobs/ holds a cron job found by pattern; pattern entry points have no per-item skip.
+    const { root, manifest, context, output } = prepare({ extraFiles: { 'jobs/server.js': "app.get('/jobs/health', h);\n" } });
+    expect(context.unrecognisedFiles.map((u) => u.file)).toEqual(['jobs/server.js']);
+    const { coverage } = await merge(root, output, areaOutput([], {
+      token: manifest.token,
+      entryPoints: [{ file: 'jobs/server.js', line: 1, method: 'GET', path: '/jobs/health', quote: "app.get('/jobs/health', h);", skipReason: 'Health check.' }],
+    }));
+    const jobs = coverage.modules.find((m) => m.path === 'jobs');
+    expect(jobs).toMatchObject({ status: 'silent-zero', entryPoints: { pattern: 1, model: 1 }, unrecognisedFiles: 1 });
+    expect(coverage.entryPoints.model.skipped).toBe(1);
   });
 
   it('counts a module as covered when a flow starts at one of its entry points but has no step in it', async () => {

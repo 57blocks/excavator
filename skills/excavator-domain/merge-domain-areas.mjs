@@ -293,7 +293,8 @@ export function uncoveredEntryPoints({ graph, entries = [], fileModule = new Map
 /**
  * The entry points one area output added for its unrecognised files (its
  * top-level `entryPoints`) that carry no non-blank skipReason and whose module
- * has no step of the area's flows (located as the merge locates steps). Not
+ * has no step of the area's flows (located as the merge locates steps) and is
+ * not in `skippedModules` with a reason. Not
  * checked against the source here; the merge does that. Used by --check to
  * show the analyzer what it left unexplained.
  */
@@ -305,11 +306,15 @@ export function uncoveredModelEntryPoints({ graph, fileModule = new Map(), nodeF
     const { file } = locateStep(areaNodes.get(edge.target), fileModule, nodeFiles);
     if (file !== null) modulesWithSteps.add(fileModule.get(file));
   }
+  const skippedModules = new Set((Array.isArray(graph.skippedModules) ? graph.skippedModules : [])
+    .filter((s) => isObject(s) && typeof s.module === 'string' && typeof s.reason === 'string' && s.reason.trim())
+    .map((s) => s.module));
   return (Array.isArray(graph.entryPoints) ? graph.entryPoints : []).filter((e) => {
     if (!isObject(e) || typeof e.file !== 'string') return false;
     if (typeof e.skipReason === 'string' && e.skipReason.trim()) return false;
     const file = relativeInsideRoot(e.file);
-    return !modulesWithSteps.has(file === null ? undefined : fileModule.get(file));
+    const module = file === null ? undefined : fileModule.get(file);
+    return !modulesWithSteps.has(module) && !skippedModules.has(module);
   });
 }
 
