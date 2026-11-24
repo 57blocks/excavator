@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardFreshnessReport } from "../../freshness";
 import type { NameTranslations } from "../nameTranslations";
-import { buildStatusLine, productAvailability, readPageManifest, type ManifestProduct, type PageManifest, type StatusLineInput } from "../statusLine";
+import { buildStatusLine, coverageLines, productAvailability, readPageManifest, type ManifestProduct, type PageManifest, type StatusLineInput } from "../statusLine";
 
 const mp = (name: string, status = "included", reason: string | null = null): ManifestProduct => ({ name, status, reason });
 const manifestOf = (...products: ManifestProduct[]): PageManifest => ({ products });
@@ -118,5 +118,37 @@ describe("productAvailability", () => {
   it("says so when the manifest does not list the product or cannot be read", () => {
     expect(productAvailability(manifest, products, "tour")).toEqual({ usable: false, line: "Tour: not listed in the page manifest" });
     expect(productAvailability({ reason: "the page has no manifest" }, undefined, "relations")).toEqual({ usable: false, line: "Relations: product states unreadable (the page has no manifest)" });
+  });
+});
+
+describe("coverage lines", () => {
+  const lang = (files: number, parsed: number, zeroSymbol: number, skipped: Record<string, number> = {}) => ({ files, parsed, zeroSymbol, skipped });
+
+  it("names the languages the knowledge graph did not analyse and those it analysed in part, with no numbers", () => {
+    const lines = coverageLines({
+      files: 30,
+      byLanguage: {
+        go: lang(10, 8, 1, { "too-large": 1 }),
+        yaml: lang(5, 0, 0, { "no-extractor": 5 }),
+        dockerfile: lang(2, 0, 0, { "no-extractor": 2 }),
+        typescript: lang(12, 11, 1),
+        css: lang(1, 0, 1),
+      },
+    });
+    expect(lines).toEqual(["Knowledge graph: not analysed: dockerfile, yaml", "Knowledge graph: partly analysed: go"]);
+    for (const line of lines) expect(line).not.toMatch(/\d/);
+  });
+
+  it("gives no line for a fully analysed record, a language with no files, or no record", () => {
+    expect(coverageLines({ files: 3, byLanguage: { go: lang(3, 3, 0), c: lang(0, 0, 0) } })).toEqual([]);
+    expect(coverageLines(undefined)).toEqual([]);
+  });
+
+  it("puts the lines in the status line details and raises attention", () => {
+    const coverage = { files: 5, byLanguage: { yaml: lang(5, 0, 0, { "no-extractor": 5 }) } };
+    const line = run({ coverage });
+    expect(line.details).toContain("Knowledge graph: not analysed: yaml");
+    expect(line.attention).toBe(true);
+    expect(run({ coverage: { files: 1, byLanguage: { go: lang(1, 1, 0) } } }).attention).toBe(false);
   });
 });

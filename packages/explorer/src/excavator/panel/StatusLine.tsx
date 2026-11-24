@@ -12,11 +12,12 @@ import { usePageStatus } from "./usePageStatus";
 export function StatusLine({ freshness, issues }: { freshness: DashboardFreshnessReport | null; issues: readonly GraphIssue[] }) {
   const { manifest, products } = usePageStatus();
   const gaps = useDashboardStore((s) => s.graph?.gaps);
+  const coverage = useDashboardStore((s) => s.graph?.coverage);
   const nameTable = useDashboardStore((s) => s.nameTranslations);
   const [open, setOpen] = useState(false);
   const line = useMemo(
-    () => buildStatusLine({ manifest, products, freshness, issues, gaps, nameTable }),
-    [manifest, products, freshness, issues, gaps, nameTable],
+    () => buildStatusLine({ manifest, products, freshness, issues, gaps, coverage, nameTable }),
+    [manifest, products, freshness, issues, gaps, coverage, nameTable],
   );
   return (
     <div className="shrink-0 border-t border-border-subtle bg-surface" data-excavator-status-line>

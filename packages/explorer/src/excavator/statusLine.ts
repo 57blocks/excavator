@@ -71,6 +71,32 @@ export function readPageManifest(doc: Document = document): PageManifest {
   return { products };
 }
 
+/** The knowledge graph's coverage record, as the extraction wrote it. */
+export interface CoverageRecord {
+  files: number;
+  byLanguage: Record<string, { files: number; parsed: number; zeroSymbol: number; skipped: Record<string, number> }>;
+}
+
+/**
+ * One line for the languages no file of which was analysed, one for those analysed in part (some file skipped), each
+ * naming the languages only. A language with no files, or with every file parsed, gets no line.
+ */
+export function coverageLines(coverage: CoverageRecord | undefined): string[] {
+  if (!coverage) return [];
+  const none: string[] = [];
+  const partly: string[] = [];
+  for (const [language, row] of Object.entries(coverage.byLanguage).sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (row.files <= 0) continue;
+    const skipped = Object.values(row.skipped).reduce((sum, count) => sum + count, 0);
+    if (skipped <= 0) continue;
+    (row.parsed + row.zeroSymbol === 0 ? none : partly).push(language);
+  }
+  return [
+    ...(none.length > 0 ? [`Knowledge graph: not analysed: ${none.join(", ")}`] : []),
+    ...(partly.length > 0 ? [`Knowledge graph: partly analysed: ${partly.join(", ")}`] : []),
+  ];
+}
+
 export interface StatusLineInput {
   manifest: PageManifest;
   /** The parsed `products.json`, or undefined/null when the page holds none. */
@@ -78,6 +104,8 @@ export interface StatusLineInput {
   freshness: DashboardFreshnessReport | null;
   issues: readonly GraphIssue[];
   gaps: readonly Gap[] | undefined;
+  /** The knowledge graph's coverage record (`graph.coverage`), when it has one. */
+  coverage?: CoverageRecord;
   nameTable: NameTranslations | null;
 }
 
@@ -180,9 +208,11 @@ export function buildStatusLine(input: StatusLineInput): StatusLine {
   const freshness = freshnessLines(input.freshness);
   details.push(...freshness);
   for (const issue of input.issues) details.push(`Graph issue (${issue.level}): ${issue.message}`);
+  const coverage = coverageLines(input.coverage);
+  details.push(...coverage);
   for (const gap of input.gaps ?? []) details.push(gapLine(gap));
   if (input.nameTable) details.push(overviewLine(input.nameTable));
-  if (freshness.length > 0 || input.issues.length > 0 || (input.gaps?.length ?? 0) > 0) attention = true;
+  if (freshness.length > 0 || coverage.length > 0 || input.issues.length > 0 || (input.gaps?.length ?? 0) > 0) attention = true;
 
   return { summary: groups.join(" \u00b7 "), details, attention };
 }
