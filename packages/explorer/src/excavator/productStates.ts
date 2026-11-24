@@ -44,7 +44,8 @@ function isTable(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function stateOf(name: string, item: unknown): ProductState {
+/** The state one `products.json`-shaped entry gives product `name`; an entry that is missing or has an unknown status reads as unreadable with the reason. */
+export function productStateOf(name: string, item: unknown): ProductState {
   if (!isTable(item)) return unreadable(`products.json has no entry for ${name}`);
   const status = item.status;
   if (typeof status !== "string" || !STATUSES.has(status)) {
@@ -72,7 +73,7 @@ export function readProductStates(products: unknown, failure?: string): ProductS
       states[def.view] = unreadable(failure ?? "products.json is not in this page or is not in the expected shape");
       continue;
     }
-    states[def.view] = stateOf(def.name, list.find((item) => isTable(item) && item.name === def.name));
+    states[def.view] = productStateOf(def.name, list.find((item) => isTable(item) && item.name === def.name));
   }
   return states;
 }
