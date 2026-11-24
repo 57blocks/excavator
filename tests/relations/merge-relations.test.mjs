@@ -58,6 +58,7 @@ function outputs() {
     { kind: 'http', address: httpAddr('GET', '/api/items/:id'), caller: null, receiver: end('server/app.js', 13, "app.get('/api/items/:id'") },
     { kind: 'message', address: { channel: 'orders.created', broker: 'redis' }, caller: end('server/app.js', 7, "pub.publish('orders.created', JSON.stringify(req.body));"), receiver: null },
     { kind: 'realtime', address: { event: 'order:created' }, caller: end('server/app.js', 8, "io.emit('order:created', req.body);"), receiver: null },
+    // A mail library with no host names no system: address-unresolved, counted, never an external id.
     {
       kind: 'external', address: { name: 'nodemailer' }, receiver: null,
       caller: end('server/app.js', 9, "mailer.sendMail({ to: 'a@b.c' });", { evidence: [end('server/app.js', 3, "const nodemailer = require('nodemailer');")] }),
@@ -112,7 +113,7 @@ describe('merge-relations end to end', () => {
 
     expect(coverage.rejections).toEqual(Object.fromEntries(REJECTIONS.map((r) => [r, 1])));
     expect(coverage.buckets).toEqual({
-      caller: { linked: 5, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 1, 'quote-failed': 7 },
+      caller: { linked: 4, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 2, 'quote-failed': 7 },
       receiver: { linked: 4, 'receiver-only': 3, 'address-unresolved': 0, 'quote-failed': 0 },
     });
     expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true });
@@ -123,13 +124,15 @@ describe('merge-relations end to end', () => {
 
     const linked = graph.relations.filter((r) => r.bucket === 'linked').map((r) => r.key).sort();
     expect(linked).toEqual([
-      'external|server/app.js|external:nodemailer|external:nodemailer',
       'http|web/src/users.js|GET /api/users/{}|server/app.js',
       'http|web/src/users.js|POST /api/orders|server/app.js',
       'message|server/app.js|orders.created|worker/main.go',
       'realtime|server/app.js|order:created|web/src/live.js',
     ]);
-    expect(graph.externals).toEqual([{ id: 'external:nodemailer' }]);
+    expect(graph.externals).toEqual([]);
+    const mail = graph.relations.find((r) => r.kind === 'external');
+    expect(mail).toMatchObject({ bucket: 'address-unresolved', address: { name: 'nodemailer' } });
+    expect(mail.unresolved).toMatch(/library or protocol \(nodemailer\)/);
     const ambiguous = graph.relations.find((r) => r.bucket === 'ambiguous');
     expect(ambiguous.candidates.map((c) => c.file).sort()).toEqual(['server/app.js', 'worker/main.go']);
 
