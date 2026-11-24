@@ -214,7 +214,7 @@ describe('the files of this skill are English only and give no advice', () => {
     'scripts/view-smoke.mjs',
     'scripts/explorer-smoke.mjs',
   ];
-  const adviceFree = ['skills/excavator-view/SKILL.md', ...walk('packages/explorer/src/excavator/views')];
+  const adviceFree = ['skills/excavator-view/SKILL.md', ...walk('packages/explorer/src/excavator/panel')];
 
   it('lists the files it checks', () => {
     expect(files).toContain('skills/excavator-view/pack.mjs');
@@ -223,7 +223,7 @@ describe('the files of this skill are English only and give no advice', () => {
     expect(files).toContain('scripts/explorer-smoke.mjs');
     expect(files).toContain('packages/explorer/scripts/licenses.mjs');
     expect(files).toContain('packages/explorer/test/single-file.test.mjs');
-    expect(adviceFree).toContain('packages/explorer/src/excavator/views/registry.ts');
+    expect(adviceFree).toContain('packages/explorer/src/excavator/panel/StructuralOverview.tsx');
   });
 
   it.each(files.map((path) => [path]))('%s has no CJK character', (path) => {
@@ -244,7 +244,7 @@ describe('the files of this skill are English only and give no advice', () => {
     expect(ADVICE.test('Functions no route reaches, as the product lists them.')).toBe(false);
   });
 
-  it('keeps the skill and the product views free of advice wording', () => {
+  it('keeps the skill and the panel free of advice wording', () => {
     for (const path of adviceFree) expect(ADVICE.test(read(path)), path).toBe(false);
   });
 });

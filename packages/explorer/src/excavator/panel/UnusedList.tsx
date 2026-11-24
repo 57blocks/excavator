@@ -17,7 +17,7 @@ export function UnusedList({ rows, onBack }: { rows: readonly UnusedRow[]; onBac
           {"\u2190 Back"}
         </button>
       </div>
-      <section className="px-5 pt-3 pb-2">
+      <section className="px-5 pt-3 pb-2" data-excavator-section="Unused code">
         <h3 className="mb-2 border-b border-border-subtle pb-1 text-[11px] font-semibold uppercase tracking-wider text-accent">Unused code</h3>
         {rows.length === 0 ? (
           <MutedLine>The unused-code product lists no candidates.</MutedLine>

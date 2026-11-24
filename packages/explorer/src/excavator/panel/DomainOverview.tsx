@@ -50,16 +50,17 @@ export function DomainOverview() {
                   type="button"
                   className={ROW_BUTTON_CLASS}
                   data-excavator-domain-row={row.id}
+                  data-excavator-domain-kind={row.kind ?? ""}
                   onClick={() => {
                     navigateToDomain(row.id);
                     selectNode(null);
                   }}
                 >
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className="min-w-0 truncate text-sm text-text-primary">{row.label}</span>
+                    <span className="min-w-0 truncate text-sm text-text-primary" data-excavator-domain-label>{row.label}</span>
                     {row.kind !== null && <span className="shrink-0 text-[10px] uppercase tracking-wider text-text-muted">{row.kind}</span>}
                   </span>
-                  {row.original !== null && <span className="block truncate text-[11px] text-text-muted">{row.original}</span>}
+                  {row.original !== null && <span className="block truncate text-[11px] text-text-muted" data-excavator-domain-original>{row.original}</span>}
                   {row.summary !== "" && (
                     <span className="block truncate text-[11px] text-text-secondary" title={(domainGraph?.nodes.find((n) => n.id === row.id)?.summary ?? "").trim()}>
                       {row.summary}

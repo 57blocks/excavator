@@ -77,7 +77,7 @@ export function StructuralOverview() {
           <ul className={LIST_CLASS}>
             {layers.map((layer) => (
               <li key={layer.id}>
-                <button type="button" className={ROW_BUTTON_CLASS} onClick={() => drillIntoLayer(layer.id)}>
+                <button type="button" className={ROW_BUTTON_CLASS} data-excavator-layer-row={layer.id} onClick={() => drillIntoLayer(layer.id)}>
                   <span className="block truncate text-sm text-text-primary">{layer.name}</span>
                   {layer.description && <span className="line-clamp-2 text-[11px] text-text-secondary">{layer.description}</span>}
                 </button>
