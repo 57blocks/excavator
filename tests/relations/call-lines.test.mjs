@@ -109,10 +109,11 @@ describe('scanSource call lines', () => {
       'mux.HandleFunc("GET /items/{id}", getItem)',
       'v1.POST("", createUser)',
       'v1.PUT("comment/:id", updateComment)',
+      'router.Handle("GET", "/api/items", listItems)',
       'db.Model(&x).Group("user_id").Find(&rows)',
       'log.Debug("body", zap.Any("payload", u))',
     ]);
-    expect(callLines.map((c) => [c.line, c.signal])).toEqual([[1, 'go-route'], [2, 'go-route'], [3, 'go-route'], [4, 'go-route'], [5, 'go-route']]);
+    expect(callLines.map((c) => [c.line, c.signal])).toEqual([[1, 'go-route'], [2, 'go-route'], [3, 'go-route'], [4, 'go-route'], [5, 'go-route'], [6, 'go-route']]);
   });
 });
 
@@ -175,7 +176,7 @@ describe('call lines through split, self-check and merge', () => {
     expect(stdout).toMatch(new RegExp(`^conservation ok ends=${oneLine.length} duplicates=0 call-lines=${CALLS}$`, 'm'));
     expect(graph.callLines.unaccounted.map((r) => r.line)).toEqual(others.map((c) => c.line));
     expect(coverage.callLines.rows).toHaveLength(CALLS);
-    expect(coverage.conservation).toMatchObject({ ok: true, callLines: CALLS, callLinesInBuckets: CALLS });
+    expect(coverage.conservation).toMatchObject({ ok: true, callLines: CALLS, callLinesInBuckets: CALLS, callLinesExpected: CALLS });
     // The call lines are never relations: only the ends the analyzer wrote are.
     expect(graph.relations).toHaveLength(oneLine.length);
   });
@@ -209,6 +210,35 @@ describe('call lines through split, self-check and merge', () => {
     expect(stdout).not.toContain(`silent-zero ${API_FILE}`);
     expect(coverage.callLines.rows.find((r) => r.line === second.line).status).toBe('unaccounted');
     expect(coverage.callLines.buckets).toMatchObject({ 'declared-skip': 1, 'file-skipped': 0, unaccounted: CALLS - 1 });
+  });
+
+  it('keeps a file whose ends were all rejected ends-rejected, and takes a line skip off every call line as no declaration', () => {
+    const [first, second] = big.calls;
+    write({
+      relations: [httpCall({ ...first, quote: 'this text is not on the line' })],
+      skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }],
+      skippedLines: [{ file: API_FILE, line: second.line, reason: 'a lookup in a local cache' }],
+    });
+    expect(merge().coverage.files.rows.find((r) => r.file === API_FILE).status).toBe('ends-rejected');
+    write({
+      relations: [],
+      skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }],
+      skippedLines: [{ file: API_FILE, line: 1, reason: 'the import of the client' }],
+    });
+    const { stdout, coverage } = merge();
+    expect(coverage.files.rows.find((r) => r.file === API_FILE).status).toBe('silent-zero');
+    expect(stdout).toContain(`silent-zero ${API_FILE}`);
+  });
+
+  it('fails conservation when the call lines the merge reads differ from the count the split made', () => {
+    const path = join(areasDir(), 'manifest.json');
+    const tampered = JSON.parse(readFileSync(path, 'utf-8'));
+    tampered.candidates.find((c) => c.file === API_FILE).callLines.pop();
+    writeFileSync(path, JSON.stringify(tampered));
+    write({ relations: oneLine.map(endOf), skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }] });
+    const result = run('merge-relations.mjs', [root]);
+    expect(result.status).toBe(4);
+    expect(result.stdout).toMatch(new RegExp(`^conservation FAILED .* call-lines=${CALLS - 1} call-lines-in-buckets=${CALLS - 1} call-lines-expected=${CALLS}$`, 'm'));
   });
 
   it('counts the call lines of a skipped file and of a missing area apart from the unaccounted ones', () => {

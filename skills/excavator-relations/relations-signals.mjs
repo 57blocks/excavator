@@ -72,8 +72,8 @@ export const SIGNALS = Object.freeze([
   { id: 'js-route', family: 'server', callLine: true, pattern: '\\b(?:app|router|server|route|routes|api|fastify)\\.(?:get|post|put|patch|delete|all|head|options|route)\\s*\\(' },
   // An upper-case HTTP verb method is a router's. `Any` and `Group` need a path that starts with `/` or is empty
   // (a group's root), since an ORM `.Group("col")` and a logger `.Any("key", v)` share the names; a mux pattern
-  // may lead with a method (`"GET /x"`).
-  { id: 'go-route', family: 'server', callLine: true, pattern: '\\.(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\s*\\(\\s*"|\\.(?:Any|Group)\\s*\\(\\s*"(?:/|")|\\.(?:Handle|HandleFunc)\\s*\\(\\s*"(?:[A-Z]+\\s+)?/' },
+  // may lead with a method (`"GET /x"`), and a router's `Handle` may take the method first (`Handle("GET", "/x", h)`).
+  { id: 'go-route', family: 'server', callLine: true, pattern: '\\.(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\\s*\\(\\s*"|\\.(?:Any|Group)\\s*\\(\\s*"(?:/|")|\\.(?:Handle|HandleFunc)\\s*\\(\\s*"(?:(?:[A-Z]+\\s+)?/|[A-Z]+"\\s*,)' },
   { id: 'go-net-http-route', family: 'server', callLine: true, pattern: 'http\\.(?:HandleFunc|Handle)\\s*\\(' },
   { id: 'jvm-route', family: 'server', callLine: true, pattern: '@(?:Get|Post|Put|Patch|Delete|Request)Mapping\\b|@Path\\s*\\(|@(?:GET|POST|PUT|DELETE|PATCH)\\b' },
   { id: 'jvm-controller', family: 'server', pattern: '@(?:Rest)?Controller\\b' },

@@ -60,8 +60,8 @@
  * relations-graph.json. Later kinds an analyzer noticed are counted by kind
  * (out-of-scope), never linked.
  * Candidate files: cited (an end or an evidence line of a checked end is in
- * it), declared-skip (its area listed it in skippedFiles, or some of its call
- * lines in skippedLines, with a reason),
+ * it), declared-skip (its area listed it in skippedFiles, or, with no end in
+ * it, some of its call lines in skippedLines, with a reason),
  * ends-rejected (an analyzer wrote ends in it and the check rejected every
  * one) or silent-zero (none of these). Units: has-candidates or no-candidates.
  * Call lines (the lines of candidate files where a call or a registration is
@@ -72,7 +72,8 @@
  * unaccounted (none of these) or area-missing (its area's output was not
  * accepted). A call line spans the lines from where its call starts to where
  * the match ends, so an end cited at the line of a call's path argument is on
- * it. The count of call lines must equal the sum of their buckets.
+ * it. The count of call lines must equal the sum of their buckets and the
+ * count the split wrote into the manifest (`counts.callLines`).
  *
  * Measurements per kind: ends, quote-failed and its rate, the share of checked
  * ends that are address-unresolved, linked relations, and, when the previous
@@ -599,24 +600,6 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
     cited.add(item.view.file);
     for (const e of item.view.evidence) cited.add(e.file);
   }
-  const fileRows = [];
-  const fileBuckets = Object.fromEntries(FILE_BUCKETS.map((b) => [b, 0]));
-  for (const candidate of manifest.candidates ?? []) {
-    // A file whose call lines its analyzer skipped one by one was read and declared, not silent.
-    const lineSkip = skippedLines.get(candidate.file)?.[0];
-    const status = cited.has(candidate.file) ? 'cited'
-      : declared.has(candidate.file) || lineSkip ? 'declared-skip'
-        : rejectedIn.has(candidate.file) ? 'ends-rejected' : 'silent-zero';
-    fileBuckets[status] += 1;
-    const reason = declared.get(candidate.file) ?? (lineSkip ? `call lines skipped: ${lineSkip.reason}` : null);
-    fileRows.push({ file: candidate.file, unit: candidate.unit, status, ...(status === 'declared-skip' ? { reason } : {}) });
-  }
-  const unitRows = units.map((u) => {
-    const n = (manifest.candidates ?? []).filter((c) => c.unit === u.id).length;
-    return { id: u.id, name: u.name, kind: u.kind, candidateFiles: n, status: n > 0 ? 'has-candidates' : 'no-candidates' };
-  });
-  const configCited = (manifest.configFiles ?? []).filter((f) => cited.has(f)).length;
-
   // Call lines: every one accounted for by an end, an evidence line or a skip, or counted.
   const endedAt = new Map();
   const evidenceAt = new Map();
@@ -638,7 +621,29 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
   });
   conservation.callLines = callLines.total;
   conservation.callLinesInBuckets = Object.values(callLines.buckets).reduce((a, b) => a + b, 0);
-  conservation.ok = conservation.ok && callLines.ok;
+  // The split counted the call lines it wrote into the manifest; the merge must read as many.
+  const expected = manifest.counts?.callLines;
+  if (Number.isInteger(expected)) conservation.callLinesExpected = expected;
+  conservation.ok = conservation.ok && callLines.ok && (!Number.isInteger(expected) || expected === callLines.total);
+
+  const fileRows = [];
+  const fileBuckets = Object.fromEntries(FILE_BUCKETS.map((b) => [b, 0]));
+  for (const candidate of manifest.candidates ?? []) {
+    // A file with no end, whose analyzer skipped some of its call lines one by one, was read and declared, not silent.
+    const lineSkip = callLines.rows.find((r) => r.file === candidate.file && r.status === 'declared-skip');
+    const status = cited.has(candidate.file) ? 'cited'
+      : declared.has(candidate.file) ? 'declared-skip'
+        : rejectedIn.has(candidate.file) ? 'ends-rejected'
+          : lineSkip ? 'declared-skip' : 'silent-zero';
+    fileBuckets[status] += 1;
+    const reason = declared.get(candidate.file) ?? (lineSkip ? `call lines skipped: ${lineSkip.reason}` : null);
+    fileRows.push({ file: candidate.file, unit: candidate.unit, status, ...(status === 'declared-skip' ? { reason } : {}) });
+  }
+  const unitRows = units.map((u) => {
+    const n = (manifest.candidates ?? []).filter((c) => c.unit === u.id).length;
+    return { id: u.id, name: u.name, kind: u.kind, candidateFiles: n, status: n > 0 ? 'has-candidates' : 'no-candidates' };
+  });
+  const configCited = (manifest.configFiles ?? []).filter((f) => cited.has(f)).length;
 
   // Measurements per kind.
   const measurements = {};
@@ -771,7 +776,7 @@ export function reportLines({ areaResults, merged, coveragePath, graphPath }) {
   const cons = merged.conservation;
   lines.push(cons.ok
     ? `conservation ok ends=${cons.endsIn} duplicates=${cons.duplicates} call-lines=${cons.callLines}`
-    : `conservation FAILED ends=${cons.endsIn} in-buckets=${cons.inBuckets} duplicates=${cons.duplicates} call-lines=${cons.callLines} call-lines-in-buckets=${cons.callLinesInBuckets}`);
+    : `conservation FAILED ends=${cons.endsIn} in-buckets=${cons.inBuckets} duplicates=${cons.duplicates} call-lines=${cons.callLines} call-lines-in-buckets=${cons.callLinesInBuckets}${cons.callLinesExpected !== undefined ? ` call-lines-expected=${cons.callLinesExpected}` : ''}`);
   if (graphPath) lines.push(`relations graph: ${graphPath}`);
   lines.push(`coverage report: ${coveragePath}`);
   return lines;

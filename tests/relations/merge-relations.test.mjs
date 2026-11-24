@@ -116,7 +116,7 @@ describe('merge-relations end to end', () => {
       caller: { linked: 4, ambiguous: 1, 'caller-only': 1, 'address-unresolved': 2, 'quote-failed': 7 },
       receiver: { linked: 4, 'receiver-only': 3, 'address-unresolved': 0, 'quote-failed': 0 },
     });
-    expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true, callLines: 14, callLinesInBuckets: 14 });
+    expect(coverage.conservation).toEqual({ endsIn: 23, inBuckets: 22, duplicates: 1, ok: true, callLines: 14, callLinesInBuckets: 14, callLinesExpected: 14 });
     // Call lines: every one has a bucket; the planted quote-mismatch is the only end on admin.js:2, and the skipped widget is file-skipped.
     expect(coverage.callLines.buckets).toEqual({ ended: 12, evidence: 0, 'ends-rejected': 1, 'declared-skip': 0, 'file-skipped': 1, unaccounted: 0, 'area-missing': 0 });
     expect(coverage.callLines.rows.find((r) => r.file === 'web/src/admin.js')).toMatchObject({ line: 2, status: 'ends-rejected' });
