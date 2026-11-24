@@ -62,4 +62,13 @@ describe('relations analyzer prompt', () => {
     expect(agent).toContain('Never drop a word from an address');
     expect(agent).toMatch(/after three runs, stop/);
   });
+
+  it('asks for the service or its host, never a library, as an external name, and explains the notices', () => {
+    expect(agent).toContain('never the library that carries the call');
+    expect(agent).toContain('your `name` is kept only as a label');
+    expect(agent).toContain('`transport-name`');
+    expect(agent).toContain('`host-not-quoted`');
+    expect(skill).toContain('`external-services.json`');
+    expect(skill).toMatch(/`key-mismatch`.*`previous-only`.*`current-only`/);
+  });
 });

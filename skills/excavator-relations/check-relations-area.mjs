@@ -11,10 +11,16 @@
  * Usage:
  *   node check-relations-area.mjs <area context file>
  *
- * Prints `check <areaId>: ends=N accepted=A rejected=R`, then one line per
- * rejected end: `rejected relations[i].<role> <file>:<line> <reason>: <detail>`.
- * Exit 0 when nothing is rejected, 1 when some end is, 2 when the output
- * cannot be checked at all (missing, not JSON, another run's token).
+ * Prints `check <areaId>: ends=N accepted=A rejected=R` (and ` notices=K`
+ * when K > 0), then one line per rejected end:
+ * `rejected relations[i].<role> <file>:<line> <reason>: <detail>`, then one
+ * line per accepted external end whose id the merge cannot rest on what the
+ * analyzer wrote: `notice relations[i].<role> <file>:<line> <reason>: <detail>`
+ * with reason `transport-name` (a library or protocol name and no host: the
+ * end will be address-unresolved) or `host-not-quoted` (no cited line holds
+ * the host, so the id comes from the name). A notice does not change the exit:
+ * 0 when nothing is rejected, 1 when some end is, 2 when the output cannot be
+ * checked at all (missing, not JSON, another run's token).
  */
 
 import { readFileSync, realpathSync } from 'node:fs';
@@ -24,35 +30,43 @@ import { acceptOutput, checkEnd, endsOf, insideRoot } from './merge-relations.mj
 
 /**
  * Check one area's output against its context. Pure apart from `readLines`.
- * Returns { status, reason?, ends, accepted, rejected: [{ index, role, file, line, rejection, detail }] }.
+ * Returns { status, reason?, ends, accepted, rejected: [{ index, role, file, line, rejection, detail }],
+ *   notices: [{ index, role, file, line, notice, detail }] }.
  */
 export function checkArea({ context, outputText, readLines }) {
   const { areaId, token } = context.areaRun ?? {};
   const accepted = acceptOutput({ token, areaId, text: outputText });
-  if (accepted.status !== 'accepted') return { status: accepted.status, reason: accepted.reason ?? null, ends: 0, accepted: 0, rejected: [] };
+  if (accepted.status !== 'accepted') return { status: accepted.status, reason: accepted.reason ?? null, ends: 0, accepted: 0, rejected: [], notices: [] };
   const areaFiles = new Set((context.files ?? []).map((f) => f.file));
   const entryPoints = new Map((context.files ?? []).filter((f) => Array.isArray(f.entryPoints) && f.entryPoints.length > 0)
     .map((f) => [f.file, f.entryPoints.map((e) => ({ ...e, file: f.file, routeKind: 'http' }))]));
   const { ends } = endsOf(areaId, accepted.output);
   const rejected = [];
+  const notices = [];
+  const where = (end) => ({
+    index: end.index, role: end.role,
+    file: typeof end.raw?.file === 'string' ? end.raw.file : null,
+    line: Number.isInteger(end.raw?.line) ? end.raw.line : null,
+  });
   for (const end of ends) {
     const result = checkEnd({ end, readLines, areaFiles, entryPoints });
-    if (result.ok) continue;
-    rejected.push({
-      index: end.index, role: end.role,
-      file: typeof end.raw?.file === 'string' ? end.raw.file : null,
-      line: Number.isInteger(end.raw?.line) ? end.raw.line : null,
-      rejection: result.rejection, detail: result.detail,
-    });
+    if (result.ok) {
+      if (end.kind !== 'external') continue;
+      if (result.end.hostNotQuoted) notices.push({ ...where(end), notice: 'host-not-quoted', detail: `no cited line holds ${result.normalized.address?.host ?? 'the host'}` });
+      if (!result.normalized.ok && result.normalized.transport) notices.push({ ...where(end), notice: 'transport-name', detail: result.normalized.reason });
+      continue;
+    }
+    rejected.push({ ...where(end), rejection: result.rejection, detail: result.detail });
   }
-  return { status: 'accepted', ends: ends.length, accepted: ends.length - rejected.length, rejected };
+  return { status: 'accepted', ends: ends.length, accepted: ends.length - rejected.length, rejected, notices };
 }
 
 export function reportLines(areaId, result) {
   if (result.status !== 'accepted') return [`check ${areaId}: ${result.status}${result.reason ? ` (${result.reason})` : ''}`];
   return [
-    `check ${areaId}: ends=${result.ends} accepted=${result.accepted} rejected=${result.rejected.length}`,
+    `check ${areaId}: ends=${result.ends} accepted=${result.accepted} rejected=${result.rejected.length}${result.notices.length > 0 ? ` notices=${result.notices.length}` : ''}`,
     ...result.rejected.map((r) => `rejected relations[${r.index}].${r.role} ${r.file ?? '?'}:${r.line ?? '?'} ${r.rejection}: ${r.detail}`),
+    ...result.notices.map((r) => `notice relations[${r.index}].${r.role} ${r.file ?? '?'}:${r.line ?? '?'} ${r.notice}: ${r.detail}`),
   ];
 }
 
