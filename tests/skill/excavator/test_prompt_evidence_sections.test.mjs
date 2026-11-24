@@ -232,8 +232,8 @@ describe('frameworks/README.md explains the hook', () => {
     expect(readme).toContain('skip it and continue');
   });
 
-  it('says the framework readers are tracked as OpenSpec changes, naming the targets', () => {
-    expect(readme).toContain('openspec/changes');
+  it('says the framework readers are not authored in this directory, naming the targets', () => {
+    expect(readme).toContain('not authored in this directory');
     expect(readme).toContain('angular');
     expect(readme).toContain('maui');
   });

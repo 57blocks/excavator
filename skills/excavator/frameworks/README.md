@@ -98,8 +98,8 @@ the addendum. A structural fact may still need determinism, for two reasons:
 - an absence claim needs the complete set (unused-code candidates);
 - a model would otherwise have to copy it out at volume (a route table).
 
-In that case, propose a catalog for the whole family as its own OpenSpec
-change, for example every annotation-based route framework together. Never do
+In that case, propose a catalog for the whole family as its own change, for
+example every annotation-based route framework together. Never do
 it for one framework alone. The route catalog is such a catalog: its engine
 knows no framework, one family ships with it, and the annotations of another
 framework are one more family of data.
@@ -130,10 +130,9 @@ What is where today:
 `spring.md`, `vue.md`.
 
 Deterministic readers for framework-specific file types — parser plugins that
-emit anchored structure rather than prose conventions — are tracked as OpenSpec
-changes under `openspec/changes/`, not authored in this directory. `maui` is the
-target that needs them: its markup (`.xaml`/`.csproj`/`.feature`) is read by the
-`mobile-maui-support` change. `angular` deliberately gets **no** such reader — its
+emit anchored structure rather than prose conventions — are code changes of
+their own, not authored in this directory. `maui` is the target that needs
+them: its markup (`.xaml`/`.csproj`/`.feature`) is read by deterministic
+parsers. `angular` deliberately gets **no** such reader — its
 separate `.html` templates are handled by the addendum above plus the analyzing
-AI, the same way other split-template front-end frameworks (`react`, `vue`) are;
-the `web-angular-support` change adds the addendum, not a parser.
+AI, the same way other split-template front-end frameworks (`react`, `vue`) are.
