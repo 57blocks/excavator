@@ -197,6 +197,20 @@ describe('call lines through split, self-check and merge', () => {
     expect(coverage.callLines.rows.find((r) => r.line === skipped.line)).toMatchObject({ status: 'declared-skip', reason: 'a test stub left in the module, never called' });
   });
 
+  it('counts a file whose call lines were skipped one by one as declared, not silent, and still counts a call line left out', () => {
+    const [first, second] = big.calls;
+    write({
+      relations: [],
+      skippedFiles: [{ file: 'web/src/http.ts', reason: 'only creates the client' }],
+      skippedLines: [{ file: API_FILE, line: first.line, reason: 'a lookup in a local cache' }],
+    });
+    const { stdout, coverage } = merge();
+    expect(coverage.files.rows.find((r) => r.file === API_FILE)).toMatchObject({ status: 'declared-skip', reason: 'call lines skipped: a lookup in a local cache' });
+    expect(stdout).not.toContain(`silent-zero ${API_FILE}`);
+    expect(coverage.callLines.rows.find((r) => r.line === second.line).status).toBe('unaccounted');
+    expect(coverage.callLines.buckets).toMatchObject({ 'declared-skip': 1, 'file-skipped': 0, unaccounted: CALLS - 1 });
+  });
+
   it('counts the call lines of a skipped file and of a missing area apart from the unaccounted ones', () => {
     write({ relations: [], skippedFiles: [{ file: API_FILE, reason: 'generated client, not used' }, { file: 'web/src/http.ts', reason: 'only creates the client' }] });
     expect(merge().stdout).toMatch(new RegExp(`^call lines total=${CALLS} .* file-skipped=${CALLS} unaccounted=0 area-missing=0$`, 'm'));

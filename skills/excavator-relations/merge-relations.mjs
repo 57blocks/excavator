@@ -60,7 +60,8 @@
  * relations-graph.json. Later kinds an analyzer noticed are counted by kind
  * (out-of-scope), never linked.
  * Candidate files: cited (an end or an evidence line of a checked end is in
- * it), declared-skip (its area listed it in skippedFiles with a reason),
+ * it), declared-skip (its area listed it in skippedFiles, or some of its call
+ * lines in skippedLines, with a reason),
  * ends-rejected (an analyzer wrote ends in it and the check rejected every
  * one) or silent-zero (none of these). Units: has-candidates or no-candidates.
  * Call lines (the lines of candidate files where a call or a registration is
@@ -601,11 +602,14 @@ export function mergeRelations({ accepted, manifest, units, facts = null, readLi
   const fileRows = [];
   const fileBuckets = Object.fromEntries(FILE_BUCKETS.map((b) => [b, 0]));
   for (const candidate of manifest.candidates ?? []) {
+    // A file whose call lines its analyzer skipped one by one was read and declared, not silent.
+    const lineSkip = skippedLines.get(candidate.file)?.[0];
     const status = cited.has(candidate.file) ? 'cited'
-      : declared.has(candidate.file) ? 'declared-skip'
+      : declared.has(candidate.file) || lineSkip ? 'declared-skip'
         : rejectedIn.has(candidate.file) ? 'ends-rejected' : 'silent-zero';
     fileBuckets[status] += 1;
-    fileRows.push({ file: candidate.file, unit: candidate.unit, status, ...(status === 'declared-skip' ? { reason: declared.get(candidate.file) } : {}) });
+    const reason = declared.get(candidate.file) ?? (lineSkip ? `call lines skipped: ${lineSkip.reason}` : null);
+    fileRows.push({ file: candidate.file, unit: candidate.unit, status, ...(status === 'declared-skip' ? { reason } : {}) });
   }
   const unitRows = units.map((u) => {
     const n = (manifest.candidates ?? []).filter((c) => c.unit === u.id).length;

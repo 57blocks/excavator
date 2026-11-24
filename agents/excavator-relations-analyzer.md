@@ -96,7 +96,7 @@ Write one JSON object, and only this, to `output`:
 }
 ```
 
-Every file in `files` either has an end or an evidence line citing it, or is listed in `skippedFiles` with a one-sentence reason (for example: the client wrapper's calls carry no address of their own; it only defines a socket connection; the matched line is a comment). A file you leave out of both is reported as silently skipped. Skip a whole file only when none of its call lines is a site: its call lines are then counted as skipped with the file, not one by one.
+Every file in `files` either has an end or an evidence line citing it, or is listed in `skippedFiles` with a one-sentence reason (for example: the client wrapper's calls carry no address of their own; it only defines a socket connection; the matched line is a comment). A file you leave out of both, with none of its call lines in `skippedLines`, is reported as silently skipped. Skip a whole file only when none of its call lines is a site: its call lines are then counted as skipped with the file, not one by one.
 
 ## Check before you finish
 
