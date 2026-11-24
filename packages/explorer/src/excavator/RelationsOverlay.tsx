@@ -177,7 +177,7 @@ export function useStandInClick(data: GraphRelationsData): (nodeId: string) => b
 const MODES: readonly RelationsMode[] = ["off", "selected", "all"];
 const MODE_LABELS: Record<RelationsMode, string> = { off: "Off", selected: "Selected node", all: "All" };
 
-/** The toggle and legend in the graph's corner: what is drawn, and how many relations are not drawn and why. */
+/** The toggle and legend at the bottom of the graph: what is drawn, and how many relations are not drawn and why. */
 export function RelationsPanel({ overlay, level }: { overlay: RelationsOverlay; level: "overview" | "layer-detail" }) {
   const setMode = useDashboardStore((s) => s.setRelationsMode);
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
