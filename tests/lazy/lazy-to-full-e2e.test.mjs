@@ -16,7 +16,7 @@
 //     patches -> semantic-graph write/check/merge-gaps):
 //     tests/full/full-cli-pipeline.test.mjs
 //   - fact-field byte-stability + factsDigest parity across Lazy/Full, and
-//     the factDigest reuse/rebuild gate: tests/full/full-semantic-isolation.test.mjs
+//     the structureDigest reuse/rebuild gate: tests/full/full-semantic-isolation.test.mjs
 //   - domain-graph.json freshness gate (every mismatch reason, CLI shape):
 //     tests/domain/domain-freshness.test.mjs
 //
@@ -200,7 +200,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     expect(fullPatch.committed).toBe(1);
 
     const { semanticGraph } = buildSemanticGraph({
-      factDigest: graph.project.factsDigest,
+      structureDigest: graph.project.structureDigest,
       factNodeIds,
       layers: [{ id: 'layer:app', name: 'App', description: 'application code', nodeIds: [runNode.id, helperNode.id] }],
       generatedAt: FIXED_NOW(),
@@ -209,7 +209,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
 
     expect(existsSync(join(dataDir, 'semantic-graph.json'))).toBe(true);
     const onDisk = readSemanticGraph(dataDir);
-    expect(onDisk.factDigest).toBe(graph.project.factsDigest);
+    expect(onDisk.structureDigest).toBe(graph.project.structureDigest);
     expect(onDisk.layers[0].nodeIds.slice().sort()).toEqual([runNode.id, helperNode.id].sort());
 
     const cacheAfterFull = readJson(join(dataDir, 'semantic-cache.json'));
@@ -233,9 +233,9 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     // than rebuild it. The gate's own reuse/rebuild correctness (including
     // the "source changed -> rebuild" branch) is deeply tested in
     // tests/full/full-semantic-isolation.test.mjs; this is the one call that
-    // proves it is wired to THIS run's actual factDigest.
+    // proves it is wired to THIS run's actual structureDigest.
     const rerun = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
-    const gate = resolveArchitectureAction({ currentFactDigest: rerun.factsDigest, existing: onDisk });
+    const gate = resolveArchitectureAction({ currentStructureDigest: rerun.structureDigest, existing: onDisk });
     expect(gate.action).toBe('reuse');
 
     // ── 5. Domain freshness ──────────────────────────────────────────────────

@@ -12,7 +12,7 @@
  *     so the text is not in the page at all;
  *   - `semanticSourceHash` and `languageAudit` are not copied.
  * The layers are inlined only when the semantic graph was made from the same
- * facts as the knowledge graph (`factDigest` equals the graph's `factsDigest`).
+ * nodes and edges as the knowledge graph (`structureDigest` equals the graph's `structureDigest`).
  *
  * Returns { state: 'absent' }, { state: 'unreadable', reason }, { state: 'no-graph' }
  * (a cache and a semantic graph that pass their own checks, with no readable
@@ -35,7 +35,7 @@ const unreadable = (reason) => ({ state: 'unreadable', reason });
 const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
-/** The facts digest and each node's file path, from the knowledge graph's bytes; lines that are not records are the graph product's to report. */
+/** The structure digest and each node's file path, from the knowledge graph's bytes; lines that are not records are the graph product's to report. */
 function readGraphFacts(graphBytes) {
   const nodeFiles = new Map();
   let digest = null;
@@ -51,7 +51,7 @@ function readGraphFacts(graphBytes) {
     if (first) {
       first = false;
       const project = record?.fields?.project;
-      if (isObject(project) && typeof project.factsDigest === 'string' && project.factsDigest !== '') digest = project.factsDigest;
+      if (isObject(project) && typeof project.structureDigest === 'string' && project.structureDigest !== '') digest = project.structureDigest;
     } else if (record?.record === 'node' && typeof record.node?.id === 'string' && typeof record.node.filePath === 'string') {
       if (!nodeFiles.has(record.node.id)) nodeFiles.set(record.node.id, record.node.filePath);
     }
@@ -72,19 +72,24 @@ function readSemanticGraph(dataDir) {
       reason: `${SEMANTIC_GRAPH_FILE} has version ${JSON.stringify(graph.version ?? null)} and contentLanguage ${JSON.stringify(graph.contentLanguage ?? null)}; the viewer reads version ${SEMANTIC_GRAPH_VERSION} and contentLanguage ${SEMANTIC_GRAPH_CONTENT_LANGUAGE}`,
     };
   }
-  if (!Array.isArray(graph.layers) || typeof graph.factDigest !== 'string') {
-    const missing = [!Array.isArray(graph.layers) && 'layers', typeof graph.factDigest !== 'string' && 'factDigest'].filter(Boolean);
+  if (!Array.isArray(graph.layers) || typeof graph.structureDigest !== 'string') {
+    if (Array.isArray(graph.layers) && typeof graph.factDigest === 'string') {
+      return {
+        reason: `${SEMANTIC_GRAPH_FILE} records no structureDigest: it was written before the semantic graph was bound to the nodes and edges alone; running /excavator re-binds it when they are unchanged`,
+      };
+    }
+    const missing = [!Array.isArray(graph.layers) && 'layers', typeof graph.structureDigest !== 'string' && 'structureDigest'].filter(Boolean);
     return { reason: `${SEMANTIC_GRAPH_FILE} is missing the top-level key(s): ${missing.join(', ')}` };
   }
   return { graph };
 }
 
-/** The semantic graph's layers, or the reason it cannot be used with the knowledge graph whose facts digest is given. */
+/** The semantic graph's layers, or the reason it cannot be used with the knowledge graph whose structure digest is given. */
 function layersFor(graph, graphDigest) {
   if (graph === null) return { layers: [] };
-  if (graph.factDigest !== graphDigest) {
+  if (graph.structureDigest !== graphDigest) {
     return {
-      reason: `${SEMANTIC_GRAPH_FILE} was made from other facts than knowledge-graph.jsonl: its factDigest is ${graph.factDigest} and the graph's factsDigest is ${graphDigest ?? 'not recorded'}`,
+      reason: `${SEMANTIC_GRAPH_FILE} was made from other nodes and edges than knowledge-graph.jsonl: its structureDigest is ${graph.structureDigest} and the graph's structureDigest is ${graphDigest ?? 'not recorded'}`,
     };
   }
   const layers = graph.layers.filter(isObject).map((layer) => ({

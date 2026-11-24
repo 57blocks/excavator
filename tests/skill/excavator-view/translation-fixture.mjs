@@ -48,7 +48,7 @@ const NODES = [
 /** The knowledge graph, the semantic product and a domain graph, written under the project's `.excavator/`. */
 export function writeTranslatableProducts(project, { domain = true, domainNodes = null } = {}) {
   const { root, revision } = project;
-  writeProduct(root, 'knowledge-graph.jsonl', factGraphJsonl({ factsDigest: DIGEST, nodes: NODES }));
+  writeProduct(root, 'knowledge-graph.jsonl', factGraphJsonl({ factsDigest: DIGEST, structureDigest: DIGEST, nodes: NODES }));
   writeProduct(root, 'source-manifest.json', sourceManifest(revision, [
     { path: 'src/a.js', contentHash: HASH.a },
     { path: 'src/b.js', contentHash: HASH.b },
@@ -62,7 +62,7 @@ export function writeTranslatableProducts(project, { domain = true, domainNodes 
     'function:src/c.js:x': { summary: 'Opens a socket and retries forever.', displayName: 'Secret contradicted name', semanticSourceHash: HASH.c, verification: 'contradicted' },
   };
   writeProduct(root, 'semantic-cache.json', semanticCache(Object.fromEntries(Object.entries(entries).map(([id, fields]) => [id, semanticEntry(fields)]))));
-  writeProduct(root, 'semantic-graph.json', semanticGraph({ factDigest: DIGEST, layers: [] }));
+  writeProduct(root, 'semantic-graph.json', semanticGraph({ structureDigest: DIGEST, layers: [] }));
   if (!domain) return;
   const graph = domainGraph({ sourceRevision: revision, factDigest: DIGEST });
   if (domainNodes === null) {

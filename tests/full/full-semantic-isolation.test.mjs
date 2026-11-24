@@ -5,10 +5,10 @@
 //      unchanged) and the semantics live in semantic-cache.json /
 //      semantic-graph.json;
 //   2. Full and Lazy over the same synthetic input produce the SAME
-//      factDigest (factsDigest, in the field's actual name);
+//      factsDigest and structureDigest;
 //   3. an unmappable layer nodeId / model output becomes a semantic gap, not
 //      a fact anchor;
-//   4. factDigest unchanged -> the semantic-graph write module reports
+//   4. structureDigest unchanged -> the semantic-graph write module reports
 //      reuse/skip architecture; changed -> rebuild;
 //   5. semantic-graph layers reference only real fact node ids.
 //
@@ -89,6 +89,7 @@ describe('full-semantic-isolation — Full and Lazy share the same deterministic
     const lazyGraph = readGraph(lazyRoot);
     const fullGraph = readGraph(fullRoot);
     expect(fullGraph.project.factsDigest).toBe(lazyGraph.project.factsDigest);
+    expect(fullGraph.project.structureDigest).toBe(lazyGraph.project.structureDigest);
     // Same node/edge shape, not just the same digest (belt and suspenders —
     // the digest already proves this, but a direct structural comparison
     // makes a false-positive digest collision visible too).
@@ -138,7 +139,7 @@ describe('full-semantic-isolation — physical isolation of a Full semantic writ
 
     // Injected fake "architecture-analyzer" layers — one bogus nodeId mixed in.
     const { semanticGraph, gaps: layerGaps } = buildSemanticGraph({
-      factDigest: graph.project.factsDigest,
+      structureDigest: graph.project.structureDigest,
       factNodeIds,
       layers: [{
         id: 'layer:app', name: 'App', description: 'application code',
@@ -169,7 +170,7 @@ describe('full-semantic-isolation — physical isolation of a Full semantic writ
     expect(cache.entries['function:src/a.ts:doesNotExist']).toBeUndefined();
 
     const semanticGraphOnDisk = readSemanticGraph(join(root, '.excavator'));
-    expect(semanticGraphOnDisk.factDigest).toBe(graph.project.factsDigest);
+    expect(semanticGraphOnDisk.structureDigest).toBe(graph.project.structureDigest);
     expect(semanticGraphOnDisk.layers).toHaveLength(1);
     // The bogus nodeId never made it into the written layer — every
     // remaining nodeId resolves to a real fact node.
@@ -187,9 +188,9 @@ describe('full-semantic-isolation — physical isolation of a Full semantic writ
     expect(semanticGraphOnDisk.gaps.some((g) => g.kind === 'semantic-patch-unmappable-node')).toBe(true);
   });
 
-  it('factDigest gate: unchanged factDigest -> reuse (skip architecture); changed source -> rebuild', async () => {
+  it('structureDigest gate: unchanged structureDigest -> reuse (skip architecture); changed source -> rebuild', async () => {
     const { semanticGraph: first } = buildSemanticGraph({
-      factDigest: graph.project.factsDigest,
+      structureDigest: graph.project.structureDigest,
       factNodeIds: collectFactNodeIds(graph),
       layers: [{ id: 'layer:app', name: 'App', description: 'd', nodeIds: [runNode.id] }],
     });
@@ -200,16 +201,16 @@ describe('full-semantic-isolation — physical isolation of a Full semantic writ
     // guarantee) — the gate must say "reuse".
     const rerun = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
     const existing = readSemanticGraph(join(root, '.excavator'));
-    const gateBefore = resolveArchitectureAction({ currentFactDigest: rerun.factsDigest, existing });
+    const gateBefore = resolveArchitectureAction({ currentStructureDigest: rerun.structureDigest, existing });
     expect(gateBefore.action).toBe('reuse');
 
     // Now change the source: add a new file, so build-fact-graph produces a
     // genuinely different projection and factsDigest must move.
     writeFileSync(join(root, 'src', 'c.ts'), 'export function extra(): void {}\n');
     const afterChange = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
-    expect(afterChange.factsDigest).not.toBe(rerun.factsDigest);
+    expect(afterChange.structureDigest).not.toBe(rerun.structureDigest);
 
-    const gateAfter = resolveArchitectureAction({ currentFactDigest: afterChange.factsDigest, existing });
+    const gateAfter = resolveArchitectureAction({ currentStructureDigest: afterChange.structureDigest, existing });
     expect(gateAfter.action).toBe('rebuild');
   });
 });

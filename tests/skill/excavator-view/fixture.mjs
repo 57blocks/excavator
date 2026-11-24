@@ -127,17 +127,18 @@ export function sourceManifest(revision, entries) {
 }
 
 /** A knowledge graph that records its facts digest and the file each node belongs to, as the Full-mode graph does. */
-export function factGraphJsonl({ factsDigest, nodes }) {
+export function factGraphJsonl({ factsDigest, structureDigest, nodes, entryPoints = [] }) {
   const lines = [{
     record: 'header',
     format: GRAPH_FORMAT,
-    keys: ['project', 'kind', 'nodes'],
-    fields: { project: { name: 'fixture', languages: ['javascript'], frameworks: [], ...(factsDigest === undefined ? {} : { factsDigest }) }, kind: 'knowledge' },
-    counts: { nodes: nodes.length },
+    keys: ['project', 'kind', 'nodes', ...(entryPoints.length > 0 ? ['entryPoints'] : [])],
+    fields: { project: { name: 'fixture', languages: ['javascript'], frameworks: [], ...(factsDigest === undefined ? {} : { factsDigest }), ...(structureDigest === undefined ? {} : { structureDigest }) }, kind: 'knowledge' },
+    counts: { nodes: nodes.length, ...(entryPoints.length > 0 ? { entryPoints: entryPoints.length } : {}) },
   }];
   for (const { id, filePath } of nodes) {
     lines.push({ record: 'node', node: { id, type: id.split(':')[0], name: id, filePath, summary: '', tags: [] } });
   }
+  for (const entry of entryPoints) lines.push({ record: 'entryPoint', entryPoint: entry });
   return `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`;
 }
 
@@ -151,8 +152,8 @@ export function semanticCache(entries, extra = {}) {
   return { version: '3.0.0', contentLanguage: 'en', entries, ...extra };
 }
 
-export function semanticGraph({ factDigest, layers = [], extra = {} }) {
-  return { version: '2.0.0', contentLanguage: 'en', factDigest, generatedAt: '2026-01-01T00:00:00.000Z', model: 'fixture', layers, relations: [], gaps: [], ...extra };
+export function semanticGraph({ structureDigest, layers = [], extra = {} }) {
+  return { version: '2.0.0', contentLanguage: 'en', structureDigest, generatedAt: '2026-01-01T00:00:00.000Z', model: 'fixture', layers, relations: [], gaps: [], ...extra };
 }
 
 /**

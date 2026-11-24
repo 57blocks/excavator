@@ -35,11 +35,12 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       nodeIds: [fileNodeId('src/b.ts'), fileNodeId('src/a.ts')],
     };
     const { semanticGraph, gaps } = buildSemanticGraph({
-      factDigest: 'abc123', factNodeIds, layers: [layer], generatedAt: '2024-01-01T00:00:00.000Z',
+      structureDigest: 'abc123', factNodeIds, layers: [layer], generatedAt: '2024-01-01T00:00:00.000Z',
     });
     expect(semanticGraph.version).toBe(SEMANTIC_GRAPH_VERSION);
     expect(semanticGraph.contentLanguage).toBe(SEMANTIC_GRAPH_CONTENT_LANGUAGE);
-    expect(semanticGraph.factDigest).toBe('abc123');
+    expect(semanticGraph.structureDigest).toBe('abc123');
+    expect(semanticGraph).not.toHaveProperty('factDigest');
     expect(semanticGraph.layers).toHaveLength(1);
     // sorted, but both entries are real ids that survive verbatim.
     expect(new Set(semanticGraph.layers[0].nodeIds)).toEqual(new Set(layer.nodeIds));
@@ -51,7 +52,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       id: 'layer:app', name: 'App', description: 'application code',
       nodeIds: [fileNodeId('src/a.ts'), 'file:src/does-not-exist.ts'],
     };
-    const { semanticGraph, gaps } = buildSemanticGraph({ factDigest: 'abc123', factNodeIds, layers: [layer] });
+    const { semanticGraph, gaps } = buildSemanticGraph({ structureDigest: 'abc123', factNodeIds, layers: [layer] });
 
     expect(semanticGraph.layers).toHaveLength(1);
     expect(semanticGraph.layers[0].nodeIds).toEqual([fileNodeId('src/a.ts')]);
@@ -65,7 +66,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
 
   it('drops a layer missing a required field entirely, as a gap', () => {
     const badLayer = { id: 'layer:x', nodeIds: [] }; // no name/description
-    const { semanticGraph, gaps } = buildSemanticGraph({ factDigest: 'd1', factNodeIds, layers: [badLayer] });
+    const { semanticGraph, gaps } = buildSemanticGraph({ structureDigest: 'd1', factNodeIds, layers: [badLayer] });
     expect(semanticGraph.layers).toEqual([]);
     expect(gaps.some((g) => g.kind === 'layer-invalid')).toBe(true);
   });
@@ -76,7 +77,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       source: fileNodeId('src/a.ts'), target: fileNodeId('src/b.ts'),
       description: 'a uses b', evidence: [{ file: 'src/a.ts', line: 1 }],
     };
-    const { semanticGraph, gaps } = buildSemanticGraph({ factDigest: 'd1', factNodeIds, relations: [relation] });
+    const { semanticGraph, gaps } = buildSemanticGraph({ structureDigest: 'd1', factNodeIds, relations: [relation] });
     expect(semanticGraph.relations).toHaveLength(1);
     expect(semanticGraph.relations[0].source).toBe(fileNodeId('src/a.ts'));
     expect(semanticGraph.relations[0].target).toBe(fileNodeId('src/b.ts'));
@@ -86,7 +87,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
 
   it('audits the final sorted relation positions so a valid graph remains writable', () => {
     const { semanticGraph, gaps } = buildSemanticGraph({
-      factDigest: 'd1',
+      structureDigest: 'd1',
       factNodeIds,
       relations: [
         {
@@ -114,7 +115,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
 
   it('records a dropped invalid relation as a structural gap without auditing its discarded prose', () => {
     const { semanticGraph, gaps, languageAudit } = buildSemanticGraph({
-      factDigest: 'd1',
+      structureDigest: 'd1',
       factNodeIds,
       relations: [{
         id: 'relation:invalid', type: 'calls',
@@ -134,7 +135,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       id: 'relation:1', type: 'depends_on',
       source: fileNodeId('src/a.ts'), target: 'file:src/ghost.ts',
     };
-    const { semanticGraph, gaps } = buildSemanticGraph({ factDigest: 'd1', factNodeIds, relations: [relation] });
+    const { semanticGraph, gaps } = buildSemanticGraph({ structureDigest: 'd1', factNodeIds, relations: [relation] });
     expect(semanticGraph.relations).toEqual([]);
     const gap = gaps.find((g) => g.kind === 'relation-endpoint-unmappable');
     expect(gap).toBeDefined();
@@ -143,17 +144,17 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
 
   it('merges caller-supplied extraGaps (e.g. from node-patch application) into the same gaps array', () => {
     const extraGaps = [{ kind: 'semantic-patch-unmappable-node', scope: 'src/x.ts', reason: 'x', count: 1, samples: ['function:src/x.ts:ghost'] }];
-    const { semanticGraph } = buildSemanticGraph({ factDigest: 'd1', factNodeIds, extraGaps });
+    const { semanticGraph } = buildSemanticGraph({ structureDigest: 'd1', factNodeIds, extraGaps });
     expect(semanticGraph.gaps.some((g) => g.kind === 'semantic-patch-unmappable-node')).toBe(true);
   });
 
-  it('throws without a factDigest — the overlay must always be keyed', () => {
-    expect(() => buildSemanticGraph({ factNodeIds })).toThrow(/factDigest/);
+  it('throws without a structureDigest — the overlay must always be keyed', () => {
+    expect(() => buildSemanticGraph({ factNodeIds })).toThrow(/structureDigest/);
   });
 
   it('rejects a Chinese model-owned field with visible conserved buckets', () => {
     const { semanticGraph, gaps, languageAudit } = buildSemanticGraph({
-      factDigest: 'd1',
+      structureDigest: 'd1',
       factNodeIds,
       layers: [{
         id: 'layer:app', name: 'Application', description: '\u5904\u7406\u8bf7\u5047\u8bf7\u6c42\u3002',
@@ -178,7 +179,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       description: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.', nodeIds: [nonEnglishId],
     };
     const { semanticGraph, languageAudit } = buildSemanticGraph({
-      factDigest: 'd1',
+      structureDigest: 'd1',
       factNodeIds: new Set([nonEnglishId]),
       factGraph: {
         project: { name: 'fixture', languages: ['typescript'], frameworks: [] },
@@ -197,7 +198,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
 
   it('ignores model-declared source spans and rejects the candidate', () => {
     const { semanticGraph, languageAudit } = buildSemanticGraph({
-      factDigest: 'd1',
+      structureDigest: 'd1',
       factNodeIds,
       layers: [{
         id: 'layer:leave', name: 'Leave',
@@ -214,23 +215,23 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
   });
 });
 
-describe('semantic-graph.mjs — resolveArchitectureAction (factDigest gate)', () => {
-  const current = (factDigest) => ({
+describe('semantic-graph.mjs — resolveArchitectureAction (structureDigest gate)', () => {
+  const current = (structureDigest) => ({
     version: SEMANTIC_GRAPH_VERSION,
     contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
     languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
-    factDigest,
+    structureDigest,
   });
 
   it('reports rebuild when there is no existing semantic-graph.json', () => {
-    const { action, status } = resolveArchitectureAction({ currentFactDigest: 'abc', existing: null });
+    const { action, status } = resolveArchitectureAction({ currentStructureDigest: 'abc', existing: null });
     expect(action).toBe('rebuild');
     expect(status).toBe('missing');
   });
 
-  it('reports reuse when factDigest is unchanged', () => {
+  it('reports reuse when structureDigest is unchanged', () => {
     const { action, status, reason } = resolveArchitectureAction({
-      currentFactDigest: 'abc', existing: current('abc'),
+      currentStructureDigest: 'abc', existing: current('abc'),
     });
     expect(action).toBe('reuse');
     expect(status).toBe('fresh');
@@ -239,7 +240,7 @@ describe('semantic-graph.mjs — resolveArchitectureAction (factDigest gate)', (
 
   it('rebuilds when prose changes after its accepted audit was created', () => {
     const { semanticGraph } = buildSemanticGraph({
-      factDigest: 'abc',
+      structureDigest: 'abc',
       factNodeIds: new Set(['file:a.ts']),
       layers: [{
         id: 'layer:app', name: 'Application', description: 'Handles requests.',
@@ -248,25 +249,34 @@ describe('semantic-graph.mjs — resolveArchitectureAction (factDigest gate)', (
     });
     semanticGraph.layers[0].description = '\u5904\u7406\u8bf7\u6c42\u3002';
 
-    expect(resolveArchitectureAction({ currentFactDigest: 'abc', existing: semanticGraph }))
+    expect(resolveArchitectureAction({ currentStructureDigest: 'abc', existing: semanticGraph }))
       .toMatchObject({ action: 'rebuild', status: 'noncanonical-language' });
   });
 
-  it('reports rebuild when factDigest changed', () => {
+  it('treats a file with only a legacy factDigest as missing its structureDigest', () => {
+    const legacy = { ...current('abc'), factDigest: 'abc' };
+    delete legacy.structureDigest;
+    const { action, status, reason } = resolveArchitectureAction({ currentStructureDigest: 'abc', existing: legacy });
+    expect(action).toBe('rebuild');
+    expect(status).toBe('missing');
+    expect(reason).toMatch(/no structureDigest/);
+  });
+
+  it('reports rebuild when structureDigest changed', () => {
     const { action, status } = resolveArchitectureAction({
-      currentFactDigest: 'def', existing: current('abc'),
+      currentStructureDigest: 'def', existing: current('abc'),
     });
     expect(action).toBe('rebuild');
     expect(status).toBe('stale');
   });
 
   it.each([
-    ['missing marker', { version: SEMANTIC_GRAPH_VERSION, factDigest: 'abc' }],
-    ['non-English marker', { version: SEMANTIC_GRAPH_VERSION, contentLanguage: 'zh', factDigest: 'abc' }],
-    ['old schema', { version: '1.0.0', contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE, factDigest: 'abc' }],
-    ['missing field audit', { version: SEMANTIC_GRAPH_VERSION, contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE, factDigest: 'abc' }],
+    ['missing marker', { version: SEMANTIC_GRAPH_VERSION, structureDigest: 'abc' }],
+    ['non-English marker', { version: SEMANTIC_GRAPH_VERSION, contentLanguage: 'zh', structureDigest: 'abc' }],
+    ['old schema', { version: '1.0.0', contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE, structureDigest: 'abc' }],
+    ['missing field audit', { version: SEMANTIC_GRAPH_VERSION, contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE, structureDigest: 'abc' }],
   ])('reports visible noncanonical-language for %s', (_label, existing) => {
-    const result = resolveArchitectureAction({ currentFactDigest: 'abc', existing });
+    const result = resolveArchitectureAction({ currentStructureDigest: 'abc', existing });
     expect(result).toMatchObject({ action: 'rebuild', status: 'noncanonical-language' });
     expect(result.reason).toContain('noncanonical-language');
   });
@@ -277,7 +287,7 @@ describe('semantic-graph.mjs — mergeExtraGapsIntoExisting (reuse branch does n
     const existing = {
       version: SEMANTIC_GRAPH_VERSION,
       contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
-      factDigest: 'abc',
+      structureDigest: 'abc',
       layers: [{ id: 'layer:app', name: 'App', description: 'd', nodeIds: ['file:a.ts'] }],
       relations: [],
       gaps: [
@@ -299,9 +309,9 @@ describe('semantic-graph.mjs — mergeExtraGapsIntoExisting (reuse branch does n
     expect(merged.gaps.some((g) => g.samples?.includes('function:a.ts:old-ghost'))).toBe(false);
     // The NEW patch-origin gap is present.
     expect(merged.gaps.some((g) => g.samples?.includes('function:b.ts:new-ghost'))).toBe(true);
-    // layers/relations/factDigest are untouched — this is a gaps-only refresh.
+    // layers/relations/structureDigest are untouched — this is a gaps-only refresh.
     expect(merged.layers).toEqual(existing.layers);
-    expect(merged.factDigest).toBe('abc');
+    expect(merged.structureDigest).toBe('abc');
   });
 });
 
@@ -324,23 +334,23 @@ describe('semantic-graph.mjs — collectFactNodeIds / read / write round trip', 
 
   it('write then read returns the same document; missing file reads as null', () => {
     expect(readSemanticGraph(root)).toBeNull();
-    const { semanticGraph } = buildSemanticGraph({ factDigest: 'zzz', factNodeIds: new Set(['file:a.ts']) });
+    const { semanticGraph } = buildSemanticGraph({ structureDigest: 'zzz', factNodeIds: new Set(['file:a.ts']) });
     const outPath = writeSemanticGraph(root, semanticGraph);
     expect(existsSync(outPath)).toBe(true);
     expect(readSemanticGraph(root)).toEqual(semanticGraph);
-    expect(JSON.parse(readFileSync(outPath, 'utf-8')).factDigest).toBe('zzz');
+    expect(JSON.parse(readFileSync(outPath, 'utf-8')).structureDigest).toBe('zzz');
     expect(JSON.parse(readFileSync(outPath, 'utf-8')).contentLanguage).toBe('en');
   });
 
   it('refuses an unaudited graph without overwriting the current product', () => {
-    const { semanticGraph } = buildSemanticGraph({ factDigest: 'old', factNodeIds: new Set() });
+    const { semanticGraph } = buildSemanticGraph({ structureDigest: 'old', factNodeIds: new Set() });
     const outPath = writeSemanticGraph(root, semanticGraph);
     const before = readFileSync(outPath, 'utf-8');
 
     expect(() => writeSemanticGraph(root, {
       version: SEMANTIC_GRAPH_VERSION,
       contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
-      factDigest: 'new', layers: [], relations: [], gaps: [],
+      structureDigest: 'new', layers: [], relations: [], gaps: [],
     })).toThrow(/refusing to write/);
     expect(readFileSync(outPath, 'utf-8')).toBe(before);
   });
