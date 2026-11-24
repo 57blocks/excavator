@@ -10,7 +10,7 @@
 //   "diff-overlay.json":    <the diff overlay>,
 //   "config.json":          <the config>,
 //   "staleness.json":       <the freshness report>,
-//   "unused-code.json", "hotspots.json", "doc-map.json", "doc-map-checks.json":
+//   "unused-code.json", "hotspots.json", "doc-map.json", "doc-map-checks.json", "relations-graph.json", "relations-coverage.json":
 //                           <the product files, when their products were packed>,
 //   "products.json":        <{ products: [{ name, status, reason, revision, revisionNote, command }] }>,
 //   "name-translations.json": <{ language, names: { "<English>": "<translation>" }, counts }>, only with `--language`,
@@ -51,6 +51,8 @@ export type InlineDataFile =
   | "hotspots.json"
   | "doc-map.json"
   | "doc-map-checks.json"
+  | "relations-graph.json"
+  | "relations-coverage.json"
   | "products.json"
   // Excavator: the name table of a page packed with `--language` (openspec: changes/view-name-translation).
   | "name-translations.json";

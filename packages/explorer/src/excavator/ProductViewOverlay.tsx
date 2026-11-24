@@ -4,7 +4,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { describeProductState, loadProductStates, revisionNotice, type LoadedProductStates } from "./productStates";
 import { productViewDef, type ProductView } from "./productViews";
 import InlineRowDetail from "./views/InlineRowDetail";
-import { useProductFile } from "./views/productFiles";
+import { useProductFile, type ProductFileName } from "./views/productFiles";
 import { VIEW_MODULES } from "./views/registry";
 import { ViewErrorBoundary } from "./views/shared/ErrorBoundary";
 import { Notice, Section } from "./views/shared/Section";
@@ -48,7 +48,7 @@ function ViewContent({ view, loaded }: { view: ProductView; loaded: LoadedProduc
   const state = loaded === null ? null : loaded.states[view];
   const hasContent = state !== null && (state.status === "included" || state.status === "different-revision");
   const primary = useProductFile(hasContent ? module.files[0] : null);
-  const secondary = useProductFile(hasContent && module.files.length > 1 ? (module.files[1] as "doc-map-checks.json") : null);
+  const secondary = useProductFile(hasContent && module.files.length > 1 ? (module.files[1] as ProductFileName) : null);
 
   let body = null;
   if (state === null) {
@@ -83,7 +83,7 @@ function ViewContent({ view, loaded }: { view: ProductView; loaded: LoadedProduc
           </Notice>
         )}
         <ViewErrorBoundary>
-          <module.Body primary={primary.value} secondary={secondary?.state === "ready" ? secondary.value : null} detail={isMobile ? <InlineRowDetail /> : null} />
+          <module.Body primary={primary.value} secondary={secondary?.state === "ready" ? secondary.value : null} state={state} detail={isMobile ? <InlineRowDetail /> : null} />
         </ViewErrorBoundary>
       </>
     );

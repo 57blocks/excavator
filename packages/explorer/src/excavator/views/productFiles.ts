@@ -8,7 +8,7 @@ import { readInlineFile, type InlineDataFile } from "../../offline/inlineData";
  * hold is a visible state with its reason, never an empty product.
  */
 
-export type ProductFileName = Extract<InlineDataFile, "unused-code.json" | "hotspots.json" | "doc-map.json" | "doc-map-checks.json">;
+export type ProductFileName = Extract<InlineDataFile, "unused-code.json" | "hotspots.json" | "doc-map.json" | "doc-map-checks.json" | "relations-graph.json" | "relations-coverage.json">;
 
 export type ProductFile = { state: "ready"; value: unknown } | { state: "missing"; reason: string };
 

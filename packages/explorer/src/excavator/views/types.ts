@@ -1,12 +1,15 @@
 import type { ComponentType, ReactNode } from "react";
+import type { ProductState } from "../productStates";
 import type { ProductFileName } from "./productFiles";
 
 /** What a view's body is given: the product file(s) it reads, and the row details to put above its table on a narrow screen. */
 export interface ViewBodyProps {
   /** The content of the product's main file. */
   primary: unknown;
-  /** The content of its second file (doc-map's checks), or null when the page holds none. */
+  /** The content of its second file (doc-map's checks, the relations coverage report), or null when the page holds none. */
   secondary: unknown | null;
+  /** The product's state as products.json gives it (the relations view says why its coverage report is absent). */
+  state: ProductState;
   /** On a narrow screen the details of the chosen row go in the view, above the table (the sidebar is not on screen); null otherwise. */
   detail: ReactNode;
 }
