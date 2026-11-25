@@ -25,6 +25,7 @@ const basis = z.strictObject({
   sourceRevision: text, factsDigest: digest, manifestDigest: digest, scope: sourcePath, previousDigest: digest.nullable(),
 });
 const gap = z.strictObject({ path: sourcePath, reason: text });
+const flowRemoval = z.strictObject({ id: text, reason: text });
 const candidateSchema = z.strictObject({
   basis,
   reviewedPaths: z.array(sourcePath),
@@ -39,13 +40,22 @@ const candidateSchema = z.strictObject({
     })).min(1),
   })),
   gaps: z.array(gap),
-  removed: z.array(z.strictObject({ id: text, reason: text })),
+  removed: z.array(flowRemoval),
 });
+const revision = z.discriminatedUnion('kind', [
+  flowRemoval.extend({ kind: z.literal('flow') }),
+  z.strictObject({ kind: z.literal('gap'), path: sourcePath, previousReason: text, reason: text }),
+]);
 const batchCandidateSchema = candidateSchema.extend({
   run: digest,
   batch: z.string().regex(/^[1-9]\d*$/),
   checkpointDigest: digest.nullable(),
   deferred: z.array(gap),
+  revisions: z.array(revision).optional(),
+});
+const relocationsSchema = z.strictObject({
+  run: digest,
+  moves: z.array(z.strictObject({ fromId: text, toId: text })),
 });
 
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -278,10 +288,11 @@ function getRun(root, selection) {
   const batches = planBatches(baseline.files);
   const planDigest = hash(JSON.stringify(batches));
   const run = hash(JSON.stringify({ basis: baseline.basis, planDigest }));
+  const refreshPath = assertDataFile(root, `flow-refresh-${run}.json`);
   const previousRun = baseline.previous?.batchRun;
   const merged = previousRun?.planDigest === planDigest && ['sourceRevision', 'factsDigest', 'manifestDigest']
-    .every((key) => baseline.previous.basis[key] === baseline.basis[key]);
-  return { root, snapshot, baseline, batches, run, planDigest, merged };
+    .every((key) => baseline.previous.basis[key] === baseline.basis[key]) && readOptional(refreshPath) === null;
+  return { root, snapshot, baseline, batches, run, planDigest, merged, refreshPath };
 }
 
 function getBatch(job, id) {
@@ -324,7 +335,26 @@ export function reconciliationStatus(projectRoot, selection = {}) {
     const batch = getBatch(job, id);
     return { id, module, ...coverage(batch, batch.checkpoint) };
   });
-  return { state: 'in-progress', run: job.run, batches };
+  const previousFlows = (job.baseline.previous?.flows ?? []).map(({ id, title, entry }) => ({ id, title, entry }));
+  return { state: 'in-progress', run: job.run, batches, previousFlows };
+}
+
+export function refreshReconciliation(projectRoot, selection = {}) {
+  const root = bindProjectRoot(projectRoot);
+  const before = getRun(root, selection);
+  const lock = claimPublication(before.baseline.path);
+  try {
+    const job = getRun(root, selection);
+    assertBasis(job.baseline.basis, before.baseline.basis);
+    if (job.merged) {
+      atomicWrite(job.refreshPath, { run: job.run }, () => {
+        assertBasis(readBaseline(root, '.', resolveSourceSnapshot(root, selection)).basis, job.baseline.basis);
+      });
+    }
+    return reconciliationStatus(root, selection);
+  } finally {
+    rmSync(lock, { force: true });
+  }
 }
 
 export function prepareBatch(projectRoot, id, selection = {}) {
@@ -356,6 +386,37 @@ function validateBatch(job, batch, candidate, verify) {
   return decided;
 }
 
+const flowRevisionKey = (id) => JSON.stringify(['flow', id]);
+const gapRevisionKey = (path, reason) => JSON.stringify(['gap', path, reason]);
+const revisionKey = (item) => item.kind === 'flow' ? flowRevisionKey(item.id) : gapRevisionKey(item.path, item.previousReason);
+
+function assertCheckpointProgress(previous, candidate, decided) {
+  for (const path of previous?.reviewedPaths ?? []) {
+    if (!candidate.reviewedPaths.includes(path)) throw new Error(`Checkpoint must keep previously reviewed path: ${path}`);
+  }
+  for (const { path } of previous?.deferred ?? []) {
+    if (!decided.has(path)) throw new Error(`Checkpoint must keep previously decided path: ${path}`);
+  }
+  const retainedFlows = new Set([...candidate.flows, ...candidate.removed].map(({ id }) => id));
+  const retainedGaps = new Set(candidate.gaps.map(({ path, reason }) => gapRevisionKey(path, reason)));
+  const lost = new Set([
+    ...(previous?.flows ?? []).filter(({ id }) => !retainedFlows.has(id)).map(({ id }) => flowRevisionKey(id)),
+    ...(previous?.gaps ?? []).map(({ path, reason }) => gapRevisionKey(path, reason)).filter((key) => !retainedGaps.has(key)),
+  ]);
+  const oldRevisions = new Map((previous?.revisions ?? []).map((item) => [revisionKey(item), item.reason]));
+  const revisions = candidate.revisions ?? [];
+  const keys = unique(revisions.map(revisionKey), 'checkpoint revisions');
+  for (const item of revisions) {
+    const key = revisionKey(item);
+    if (oldRevisions.has(key) ? oldRevisions.get(key) !== item.reason : !lost.has(key)) {
+      throw new Error(`Invalid checkpoint revision: ${key}`);
+    }
+  }
+  for (const key of [...oldRevisions.keys(), ...lost]) {
+    if (!keys.has(key)) throw new Error(`Missing disposition for saved finding: ${key}`);
+  }
+}
+
 export function saveBatch(projectRoot, id, input, selection = {}) {
   const root = bindProjectRoot(projectRoot);
   const candidate = batchCandidateSchema.parse(input);
@@ -370,12 +431,7 @@ export function saveBatch(projectRoot, id, input, selection = {}) {
     if (candidate.checkpointDigest !== batch.checkpointDigest) throw new Error('Checkpoint changed. Prepare the batch again.');
     if (coverage(batch, batch.checkpoint).pending === 0) throw new Error('This batch is already finished.');
     const decided = validateBatch(job, batch, candidate, verifyEvidence(root, job.snapshot, job.baseline.entries));
-    for (const path of batch.checkpoint?.reviewedPaths ?? []) {
-      if (!candidate.reviewedPaths.includes(path)) throw new Error(`Checkpoint must keep previously reviewed path: ${path}`);
-    }
-    for (const { path } of batch.checkpoint?.deferred ?? []) {
-      if (!decided.has(path)) throw new Error(`Checkpoint must keep previously decided path: ${path}`);
-    }
+    assertCheckpointProgress(batch.checkpoint, candidate, decided);
     atomicWrite(batch.path, candidate, () => {
       assertBasis(readBaseline(root, '.', resolveSourceSnapshot(root, selection)).basis, job.baseline.basis);
     });
@@ -385,13 +441,38 @@ export function saveBatch(projectRoot, id, input, selection = {}) {
   }
 }
 
-export function mergeBatches(projectRoot, selection = {}) {
+function applyRelocations(candidate, prior, moves) {
+  const oldIds = new Set(prior.map(({ id }) => id));
+  const removed = new Set(candidate.removed.map(({ id }) => id));
+  const flows = new Map(candidate.flows.map((flow) => [flow.id, flow]));
+  unique(moves.map(({ fromId }) => fromId), 'relocated prior flow ids');
+  unique(moves.map(({ toId }) => toId), 'relocation targets');
+  for (const { fromId, toId } of moves) {
+    if (!removed.has(fromId) || flows.has(fromId) || !flows.has(toId) || oldIds.has(toId)) {
+      throw new Error(`Relocation requires a removed prior flow and a new checkpoint flow: ${fromId} -> ${toId}`);
+    }
+    flows.get(toId).id = fromId;
+    removed.delete(fromId);
+  }
+  candidate.removed = candidate.removed.filter(({ id }) => removed.has(id));
+}
+
+export function mergeBatches(projectRoot, selection = {}, input) {
   const root = bindProjectRoot(projectRoot);
   const job = getRun(root, selection);
   const lock = claimPublication(job.baseline.path);
   try {
     assertBasis(readBaseline(root, '.', job.snapshot).basis, job.baseline.basis);
-    if (job.merged) return reconciliationStatus(root, selection);
+    const relocations = input === undefined ? null : relocationsSchema.parse(input);
+    if (job.merged) {
+      const published = job.baseline.previous.batchRun;
+      if (relocations && (relocations.run !== published.id
+        || JSON.stringify(relocations.moves) !== JSON.stringify(published.relocations ?? []))) {
+        throw new Error('Relocations differ from the already merged reconciliation.');
+      }
+      return reconciliationStatus(root, selection);
+    }
+    if (relocations && relocations.run !== job.run) throw new Error('Relocations belong to a different reconciliation.');
     const parts = job.batches.map(({ id }) => getBatch(job, id));
     const pending = parts.filter((batch) => coverage(batch, batch.checkpoint).pending > 0);
     if (pending.length) throw new Error(`Finish pending reconciliation batches before merging: ${pending.map(({ id }) => id).join(', ')}`);
@@ -416,7 +497,14 @@ export function mergeBatches(projectRoot, selection = {}) {
       gaps: completed.flatMap((batch) => [...batch.gaps, ...batch.deferred]),
       removed: [...completed.flatMap((batch) => batch.removed), ...retired],
     };
-    return publishInventory(root, job.snapshot, selection, job.baseline, candidate, { id: job.run, planDigest: job.planDigest });
+    if (relocations?.moves.length) applyRelocations(candidate, job.baseline.previous?.flows ?? [], relocations.moves);
+    const revisions = completed.flatMap((batch) => (batch.revisions ?? []).map((item) => ({ ...item, batch: batch.batch })));
+    const batchRun = {
+      id: job.run, planDigest: job.planDigest,
+      ...(revisions.length && { revisions }),
+      ...(relocations?.moves.length && { relocations: relocations.moves }),
+    };
+    return publishInventory(root, job.snapshot, selection, job.baseline, candidate, batchRun);
   } finally {
     rmSync(lock, { force: true });
   }
@@ -441,21 +529,26 @@ if (isCliEntry()) {
         args.splice(index, 2, `--exclude=${args[index + 1]}`);
       }
     }
-    const { positionals, values } = parseArgs({ args, allowPositionals: true, options: { exclude: { type: 'string' } } });
+    const { positionals, values } = parseArgs({
+      args, allowPositionals: true, options: { exclude: { type: 'string' }, relocations: { type: 'boolean' } },
+    });
     const [command, root, path, first, last] = positionals;
     const extraExcludePatterns = values.exclude?.split(',').map((pattern) => pattern.trim()).filter(Boolean) ?? [];
     const selection = { extraExcludePatterns };
-    if (!root || !['check-root', 'prepare', 'read', 'publish', 'status', 'prepare-batch', 'save-batch', 'merge'].includes(command)) {
-      throw new Error('Usage: reconcile.mjs <check-root|prepare|read|publish|status|prepare-batch|save-batch|merge> <root> [path|batch]. All commands accept --exclude <patterns>.');
+    if (!root || !['check-root', 'prepare', 'read', 'publish', 'status', 'refresh', 'prepare-batch', 'save-batch', 'merge'].includes(command)) {
+      throw new Error('Usage: reconcile.mjs <check-root|prepare|read|publish|status|refresh|prepare-batch|save-batch|merge> <root> [path|batch]. All commands accept --exclude <patterns>.');
     }
+    if (values.relocations && command !== 'merge') throw new Error('--relocations requires the merge command.');
     let result;
     if (command === 'check-root') result = { dataDir: assertDataTree(bindProjectRoot(root)) };
     else if (command === 'prepare') result = prepareReconciliation(root, path, selection);
     else if (command === 'read') result = readSource(root, path, first, last, selection);
     else if (command === 'status') result = reconciliationStatus(root, selection);
+    else if (command === 'refresh') result = refreshReconciliation(root, selection);
     else if (command === 'prepare-batch') result = prepareBatch(root, path, selection);
     else if (command === 'save-batch') result = saveBatch(root, path, JSON.parse(readFileSync(0, 'utf8')), selection);
-    else if (command === 'merge') result = mergeBatches(root, selection);
+    else if (command === 'merge') result = mergeBatches(root, selection,
+      values.relocations ? JSON.parse(readFileSync(0, 'utf8')) : undefined);
     else result = publishReconciliation(root, JSON.parse(readFileSync(0, 'utf8')), selection);
     console.log(JSON.stringify(result));
   } catch (error) {

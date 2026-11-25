@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostname, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +42,8 @@ describe('whole-project flow reconciliation', () => {
     const archive = { id: 'archive-legacy', title: 'Archive settings', entry, claims: [claim] };
     const create = { ...archive, title: 'Create settings', id: `entry:${encodeURIComponent(form)}#create`,
       entry: { ...entry, line: 2, quote: '<form id="create">' } };
+    const draftOnly = { ...create, id: `entry:${encodeURIComponent(form)}#reopen`, title: 'Reopen settings' };
+    const openGap = { path: form, reason: 'The purpose of the create action has not been checked.' };
     const draft = ({ run, batch, basis, checkpointDigest }) => ({
       run, batch, basis, checkpointDigest, flows: [], reviewedPaths: [], gaps: [], removed: [], deferred: [],
     });
@@ -66,7 +68,7 @@ describe('whole-project flow reconciliation', () => {
       const plan = reconciliationStatus(project);
       const apiBatch = plan.batches.find(({ module }) => module === 'api').id;
       const webBatch = plan.batches.find(({ module }) => module === 'web').id;
-      const first = { ...draft(prepareBatch(project, webBatch)), reviewedPaths: [form], flows: [archive, create] };
+      const first = { ...draft(prepareBatch(project, webBatch)), reviewedPaths: [form], flows: [archive, create, draftOnly], gaps: [openGap] };
       expect(() => saveBatch(project, webBatch, { ...first, flows: [{ ...archive, entry: { ...entry, quote: '<form id="forged">' } }] }))
         .toThrow(/Evidence quote does not match/);
       expect(() => saveBatch(project, webBatch, { ...first, reviewedPaths: [form, api] })).toThrow(/outside the scope/);
@@ -87,21 +89,58 @@ describe('whole-project flow reconciliation', () => {
       const deferred = { path: details, reason: 'A fixture provider needed to resolve the view is unavailable.' };
       expect(() => saveBatch(project, webBatch, { ...partial, reviewedPaths: [], flows: [], deferred: [deferred] }))
         .toThrow(/previously reviewed/);
-      expect(saveBatch(project, webBatch, { ...partial, deferred: [deferred] })).toMatchObject({ pending: 0, deferred: 1 });
+      expect(() => saveBatch(project, webBatch, { ...partial, flows: [archive, create], deferred: [deferred] }))
+        .toThrow(/Missing disposition for saved finding.*flow/);
+      expect(() => saveBatch(project, webBatch, { ...partial, gaps: [], deferred: [deferred] }))
+        .toThrow(/Missing disposition for saved finding.*gap/);
+      const revisions = [
+        { kind: 'flow', id: draftOnly.id, reason: 'This is the existing create action with a different label.' },
+        { kind: 'gap', path: form, previousReason: openGap.reason, reason: 'The create action is now identified.' },
+      ];
+      expect(saveBatch(project, webBatch, { ...partial, flows: [archive, create], gaps: [], revisions, deferred: [deferred] }))
+        .toMatchObject({ pending: 0, deferred: 1 });
       expect(saveBatch(project, apiBatch, { ...draft(prepareBatch(project, apiBatch)), reviewedPaths: [api] })).toMatchObject({ pending: 0 });
       expect(call('merge')).toMatchObject({ reviewed: 2, unchecked: 1, flows: 2, removed: 1, gaps: 1 });
       const result = JSON.parse(readFileSync(previous.path));
       expect(result).toMatchObject({ flows: [archive, create], reviewedPaths: [api, form], uncheckedPaths: [details],
-        gaps: [deferred], removed: [{ id: 'old', reason: 'The former entry path is no longer in the Lazy selection.' }] });
+        gaps: [deferred], removed: [{ id: 'old', reason: 'The former entry path is no longer in the Lazy selection.' }],
+        batchRun: { revisions: revisions.map((item) => ({ ...item, batch: webBatch })) } });
       expect(call('status')).toMatchObject({ state: 'merged', run: plan.run, reviewed: 2, deferred: 1 });
       expect(call('merge')).toMatchObject({ state: 'merged', run: plan.run });
       expect(readFileSync(facts)).toEqual(expectedFacts);
+      const refresh = call('refresh');
+      expect(refresh).toMatchObject({ state: 'in-progress' });
+      expect(refresh.run).not.toBe(plan.run);
+      expect(call('refresh').run).toBe(refresh.run);
+      expect(call('prepare-batch', webBatch)).toMatchObject({ checkpoint: null, previousFlows: [archive, create] });
+      expect(JSON.parse(readFileSync(previous.path))).toEqual(result);
 
       writeFileSync(join(project, details), '<div id="changed"></div>\n');
+      mkdirSync(join(project, 'frontend'));
+      const movedPath = 'frontend/archive.xhtml';
+      renameSync(join(project, form), join(project, movedPath));
       await runLazyAnalysis({ projectRoot: project, argv: [] });
-      expect(reconciliationStatus(project)).toMatchObject({ state: 'in-progress' });
-      expect(prepareBatch(project, webBatch)).toMatchObject({ checkpoint: null });
-      expect(() => saveBatch(project, webBatch, partial)).toThrow(/baseline changed/);
+      const relocated = reconciliationStatus(project);
+      expect(relocated).toMatchObject({ state: 'in-progress' });
+      expect(relocated.run).not.toBe(refresh.run);
+      const frontend = relocated.batches.find(({ module }) => module === 'frontend').id;
+      expect(prepareBatch(project, frontend)).toMatchObject({ checkpoint: null, previousFlows: [] });
+      expect(() => saveBatch(project, frontend, partial)).toThrow(/baseline changed/);
+      const newArchive = {
+        ...archive, id: `entry:${encodeURIComponent(movedPath)}#archive`, entry: { ...entry, path: movedPath },
+      };
+      for (const { id } of relocated.batches) {
+        const batch = prepareBatch(project, id);
+        saveBatch(project, id, { ...draft(batch), reviewedPaths: batch.files, flows: id === frontend ? [newArchive] : [] });
+      }
+      const moves = [{ fromId: archive.id, toId: newArchive.id }];
+      expect(() => mergeBatches(project, {}, { run: relocated.run, moves: [{ ...moves[0], toId: 'unknown' }] }))
+        .toThrow(/Relocation requires/);
+      expect(mergeBatches(project, {}, { run: relocated.run, moves })).toMatchObject({ flows: 1, reviewed: 3, removed: 1 });
+      expect(JSON.parse(readFileSync(previous.path))).toMatchObject({
+        flows: [{ ...newArchive, id: archive.id }], batchRun: { relocations: moves },
+      });
+      expect(mergeBatches(project, {}, { run: relocated.run, moves })).toMatchObject({ state: 'merged' });
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
