@@ -20,7 +20,7 @@ Analyze the current codebase and produce a `knowledge-graph.jsonl` file (one JSO
   - `--no-auto-update` — Disable automatic graph updates (writes `autoUpdate: false` to `$DATA_DIR/config.json`)
   - `--review` — Run full LLM graph-reviewer instead of inline deterministic validation
   - `--reconcile-flows` — After a successful Lazy build, run `/excavator-flow-reconcile` to find and directly correct missing or inaccurate flow documentation. Without this flag, Lazy ends after the deterministic build.
-  - `--flow-scope <path>` — With `--reconcile-flows`, start reconciliation from a project-relative file or directory. Default is the whole project.
+  - `--flow-scope <path>` — With `--reconcile-flows`, start reconciliation from a project-relative file or directory. Omit for a whole-project run with automatic module batches, resumable checkpoints, and a final merge.
   - `--exclude <patterns>` — Comma-separated glob patterns for additional files/directories to exclude from analysis (e.g., `--exclude "tests/*,docs/*"`). These patterns take highest priority over built-in defaults and `.excavatorignore` rules. Supports gitignore syntax including `!` negation.
   - A directory path (e.g. `/path/to/repo` or `../other-project`) — Analyze the given directory instead of the current working directory
 

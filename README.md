@@ -126,6 +126,8 @@ For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skil
 
 # Reconcile missing or incorrect frontend-to-backend flows with source evidence
 /excavator:excavator-flow-reconcile --scope src/web
+# Reconcile the whole project in resumable module batches
+/excavator:excavator-flow-reconcile
 # Run the same reconciliation after a Lazy fact build
 /excavator:excavator --mode=lazy --reconcile-flows --flow-scope src/web
 

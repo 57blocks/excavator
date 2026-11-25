@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostname, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
-import { prepareReconciliation, publishReconciliation } from '../../skills/excavator-flow-reconcile/reconcile.mjs';
+import { mergeBatches, prepareBatch, prepareReconciliation, publishReconciliation, reconciliationStatus, saveBatch } from '../../skills/excavator-flow-reconcile/reconcile.mjs';
+import { MAX_BATCH_FILES, planBatches } from '../../skills/excavator-flow-reconcile/batch-plan.mjs';
 
 const view = 'settings.xhtml';
 const handler = 'Settings.java';
@@ -16,6 +17,95 @@ const rule = (description) => ({
   kind: 'backend-rule',
   text: description,
   evidence: [{ path: handler, line: 2, quote: 'if (active) return false;' }],
+});
+
+describe('whole-project flow reconciliation', () => {
+  it('assigns each path to a single stable, bounded module batch', () => {
+    const files = ['README.md', 'api/routes/settings.js', 'workers/main.js',
+      ...Array.from({ length: MAX_BATCH_FILES * 2 + 1 }, (_, i) => `web/templates/view-${i}.xhtml`)];
+    const batches = planBatches(files);
+    expect(planBatches([...files].reverse())).toEqual(batches);
+    expect(batches.flatMap((batch) => batch.files).sort()).toEqual([...files].sort());
+    expect(batches.map((batch) => batch.module)).toEqual(['.', 'api', 'web/templates', 'web/templates', 'web/templates', 'workers']);
+    expect(batches.every(({ files }) => files.length <= MAX_BATCH_FILES)).toBe(true);
+  });
+
+  it('resumes local partial work, rejects stale, forged and foreign candidates, then merges once', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'flow-batch-'));
+    const api = 'api/Settings.java';
+    const form = 'web/archive.xhtml';
+    const details = 'web/details.xhtml';
+    const obsolete = 'web/old.xhtml';
+    const entry = { path: form, line: 1, quote: '<form id="archive">' };
+    const claim = { kind: 'backend-rule', text: 'Rejects archive while active.',
+      evidence: [{ path: api, line: 1, quote: 'if(active)return false;' }] };
+    const archive = { id: 'archive-legacy', title: 'Archive settings', entry, claims: [claim] };
+    const create = { ...archive, title: 'Create settings', id: `entry:${encodeURIComponent(form)}#create`,
+      entry: { ...entry, line: 2, quote: '<form id="create">' } };
+    const draft = ({ run, batch, basis, checkpointDigest }) => ({
+      run, batch, basis, checkpointDigest, flows: [], reviewedPaths: [], gaps: [], removed: [], deferred: [],
+    });
+    const call = (command, ...args) => JSON.parse(execFileSync(process.execPath, [cli, '--', command, project, ...args]));
+    try {
+      mkdirSync(join(project, 'api'));
+      mkdirSync(join(project, 'web'));
+      writeFileSync(join(project, api), 'class Settings { boolean archive(boolean active) {if(active)return false; return true;} }\n');
+      writeFileSync(join(project, form), '<form id="archive"></form>\n<form id="create"></form>\n');
+      writeFileSync(join(project, obsolete), '<form id="old"></form>\n');
+      writeFileSync(join(project, details), '<div id="details"></div>\n');
+      await runLazyAnalysis({ projectRoot: project, argv: [] });
+      const facts = join(project, '.excavator', 'knowledge-graph.jsonl');
+      const former = { ...archive, id: 'old', entry: { path: obsolete, line: 1, quote: 'id="old"' } };
+      const previous = publishReconciliation(project, {
+        basis: prepareReconciliation(project).basis, reviewedPaths: [form, obsolete],
+        flows: [{ ...archive, claims: [{ ...claim, text: 'Active settings can be archived.' }] }, former], gaps: [], removed: [],
+      });
+      const original = readFileSync(previous.path);
+      rmSync(join(project, obsolete));
+      await runLazyAnalysis({ projectRoot: project, argv: [] });
+      const plan = reconciliationStatus(project);
+      const apiBatch = plan.batches.find(({ module }) => module === 'api').id;
+      const webBatch = plan.batches.find(({ module }) => module === 'web').id;
+      const first = { ...draft(prepareBatch(project, webBatch)), reviewedPaths: [form], flows: [archive, create] };
+      expect(() => saveBatch(project, webBatch, { ...first, flows: [{ ...archive, entry: { ...entry, quote: '<form id="forged">' } }] }))
+        .toThrow(/Evidence quote does not match/);
+      expect(() => saveBatch(project, webBatch, { ...first, reviewedPaths: [form, api] })).toThrow(/outside the scope/);
+      expect(() => saveBatch(project, webBatch, { ...first, flows: [archive, { ...create, id: 'create' }] }))
+        .toThrow(/New batch flow ids/);
+      expect(call('status').batches.find(({ id }) => id === webBatch)).toMatchObject({ pending: 2, reviewed: 0 });
+      expect(saveBatch(project, webBatch, first)).toMatchObject({ pending: 1, reviewed: 1 });
+      expect(() => mergeBatches(project)).toThrow(/Finish pending/);
+      expect(readFileSync(previous.path)).toEqual(original);
+      expect(() => saveBatch(project, webBatch, first)).toThrow(/Checkpoint changed/);
+
+      await runLazyAnalysis({ projectRoot: project, argv: [] });
+      const expectedFacts = readFileSync(facts);
+      const resumed = call('prepare-batch', webBatch);
+      expect(resumed.run).toBe(plan.run);
+      expect(resumed.checkpoint).toEqual(first);
+      const partial = { ...first, checkpointDigest: resumed.checkpointDigest };
+      const deferred = { path: details, reason: 'A fixture provider needed to resolve the view is unavailable.' };
+      expect(() => saveBatch(project, webBatch, { ...partial, reviewedPaths: [], flows: [], deferred: [deferred] }))
+        .toThrow(/previously reviewed/);
+      expect(saveBatch(project, webBatch, { ...partial, deferred: [deferred] })).toMatchObject({ pending: 0, deferred: 1 });
+      expect(saveBatch(project, apiBatch, { ...draft(prepareBatch(project, apiBatch)), reviewedPaths: [api] })).toMatchObject({ pending: 0 });
+      expect(call('merge')).toMatchObject({ reviewed: 2, unchecked: 1, flows: 2, removed: 1, gaps: 1 });
+      const result = JSON.parse(readFileSync(previous.path));
+      expect(result).toMatchObject({ flows: [archive, create], reviewedPaths: [api, form], uncheckedPaths: [details],
+        gaps: [deferred], removed: [{ id: 'old', reason: 'The former entry path is no longer in the Lazy selection.' }] });
+      expect(call('status')).toMatchObject({ state: 'merged', run: plan.run, reviewed: 2, deferred: 1 });
+      expect(call('merge')).toMatchObject({ state: 'merged', run: plan.run });
+      expect(readFileSync(facts)).toEqual(expectedFacts);
+
+      writeFileSync(join(project, details), '<div id="changed"></div>\n');
+      await runLazyAnalysis({ projectRoot: project, argv: [] });
+      expect(reconciliationStatus(project)).toMatchObject({ state: 'in-progress' });
+      expect(prepareBatch(project, webBatch)).toMatchObject({ checkpoint: null });
+      expect(() => saveBatch(project, webBatch, partial)).toThrow(/baseline changed/);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  }, 20000);
 });
 
 describe('flow reconciliation publication', () => {
