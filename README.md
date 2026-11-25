@@ -124,6 +124,11 @@ For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skil
 # Extract business domain knowledge (domains, flows, steps)
 /excavator:excavator-domain
 
+# Reconcile missing or incorrect frontend-to-backend flows with source evidence
+/excavator:excavator-flow-reconcile --scope src/web
+# Run the same reconciliation after a Lazy fact build
+/excavator:excavator --mode=lazy --reconcile-flows --flow-scope src/web
+
 # Find how the project's runtime units talk to each other (HTTP, RPC, messages, realtime events, external systems),
 # every call site quoted and checked, paired by address, with visible gaps (no advice)
 /excavator:excavator-relations

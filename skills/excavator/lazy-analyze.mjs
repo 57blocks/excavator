@@ -931,6 +931,8 @@ export async function runLazyAnalysis({
         sourceDigest: scan.contentDigest,
         factsDigest: projection.factsDigest,
         structureDigest: projection.structureDigest,
+        sourceRevision: activeSnapshot.revision,
+        selectionDigest: activeSnapshot.selectionDigest,
         pipelineVersion: PIPELINE_VERSION,
       },
       nodes: merged.nodes,
@@ -1070,6 +1072,7 @@ export async function runLazyAnalysis({
         sourceRevision: activeSnapshot.revision,
         selectionDigest: activeSnapshot.selectionDigest,
         pipelineVersion: PIPELINE_VERSION,
+        factsDigest: product.projection.factsDigest,
         entries,
         selection: activeSnapshot.selection,
       };

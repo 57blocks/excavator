@@ -33,8 +33,18 @@ describe('SKILL.md options', () => {
     expect(options).toContain('`--scope` or `--estimate` without `--full`: tell the user it requires `--full` and **STOP**.');
   });
 
-  it('does not take the --scope value for the project path', () => {
-    expect(flat(skill)).toContain('is not the value of `--exclude` or `--scope`). If found, treat it as the target directory path.');
+  it('keeps option values separate from the project path', () => {
+    expect(flat(skill)).toContain('is not the value of `--exclude`, `--scope`, or `--flow-scope`). If found, treat it as the target directory path.');
+  });
+
+  it('routes optional reconciliation after a successful Lazy save', () => {
+    const lazy = flat(section('**If `$ANALYSIS_MODE` is `lazy`:**', '**If `$ANALYSIS_MODE` is `full`:**'));
+    expect(lazy).toContain('On a non-zero exit or a printed `SAVE FAILED`, **STOP**.');
+    expect(lazy).toContain('If `--reconcile-flows` was passed, load `skills/excavator-flow-reconcile/SKILL.md`');
+    expect(lazy).toContain('same `$PROJECT_ROOT` and optional `--flow-scope` as its `--scope`');
+    expect(lazy).toContain('Otherwise, **STOP** after the Lazy summary.');
+    expect(lazy.indexOf('SAVE FAILED')).toBeLessThan(lazy.indexOf('skills/excavator-flow-reconcile/SKILL.md'));
+    expect(flat(skill)).toContain('Reject `--reconcile-flows` if `$ANALYSIS_MODE` is Full.');
   });
 });
 

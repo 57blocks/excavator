@@ -1,7 +1,7 @@
 ---
 name: excavator
 description: Analyze a codebase into a knowledge graph for architecture understanding and terminal question answering
-argument-hint: ["[path] [--mode lazy|full|--full|--scope <dir>|--estimate|--auto-update|--no-auto-update|--review|--exclude <patterns>]"]
+argument-hint: ["[path] [--mode=lazy|full] [--full] [--scope <dir>] [--estimate] [--auto-update|--no-auto-update] [--review] [--reconcile-flows [--flow-scope <path>]] [--exclude <patterns>]"]
 ---
 
 # /excavator
@@ -19,6 +19,8 @@ Analyze the current codebase and produce a `knowledge-graph.jsonl` file (one JSO
   - `--auto-update` — Enable automatic graph updates on commit (writes `autoUpdate: true` to `$DATA_DIR/config.json`)
   - `--no-auto-update` — Disable automatic graph updates (writes `autoUpdate: false` to `$DATA_DIR/config.json`)
   - `--review` — Run full LLM graph-reviewer instead of inline deterministic validation
+  - `--reconcile-flows` — After a successful Lazy build, run `/excavator-flow-reconcile` to find and directly correct missing or inaccurate flow documentation. Without this flag, Lazy ends after the deterministic build.
+  - `--flow-scope <path>` — With `--reconcile-flows`, start reconciliation from a project-relative file or directory. Default is the whole project.
   - `--exclude <patterns>` — Comma-separated glob patterns for additional files/directories to exclude from analysis (e.g., `--exclude "tests/*,docs/*"`). These patterns take highest priority over built-in defaults and `.excavatorignore` rules. Supports gitignore syntax including `!` negation.
   - A directory path (e.g. `/path/to/repo` or `../other-project`) — Analyze the given directory instead of the current working directory
 
@@ -57,7 +59,7 @@ Determine whether to run a full analysis or incremental update.
    Then **STOP before creating or changing `.excavator/` files**. Do not treat the following token as a project path and do not continue to directory creation or config normalization.
 
 1. **Resolve `PROJECT_ROOT`:**
-   - Parse `$ARGUMENTS` for a non-flag token (any argument that does not start with `--` and is not the value of `--exclude` or `--scope`). If found, treat it as the target directory path.
+   - Parse `$ARGUMENTS` for a non-flag token (any argument that does not start with `--` and is not the value of `--exclude`, `--scope`, or `--flow-scope`). If found, treat it as the target directory path.
      - If the path is relative, resolve it against the current working directory.
      - Verify the resolved path exists and is a directory (run `test -d <path>`). If it does not exist or is not a directory, report an error to the user and **STOP**.
      - Set `PROJECT_ROOT` to the resolved absolute path.
@@ -120,6 +122,12 @@ Determine whether to run a full analysis or incremental update.
    DATA_DIR="$PROJECT_ROOT/.excavator"
    ```
    Because each phase may run in a fresh shell, treat `$DATA_DIR` — like `$PROJECT_ROOT` — as a value you carry forward and substitute; re-resolve it with the line above if a later command block needs it in a new shell.
+
+   With `--reconcile-flows`, check that the data directory is safe before any project writes. Stop if the check fails:
+
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-flow-reconcile/reconcile.mjs" check-root "$PROJECT_ROOT"
+   ```
 
 2. Get the current git commit hash:
    ```bash
@@ -205,6 +213,7 @@ Determine whether to run a full analysis or incremental update.
    - else (no flag, no stored value) → mode `lazy` (the default). Merge `{"analysisMode": "lazy"}` into `$DATA_DIR/config.json` now (preserving every other current key and removing the legacy `outputLanguage` key), so future runs read an explicit value instead of re-deriving it.
 
    Store the resolved value as `$ANALYSIS_MODE`.
+   Reject `--reconcile-flows` if `$ANALYSIS_MODE` is Full. Reject `--flow-scope` unless `--reconcile-flows` was passed and the flag has exactly one value. Use the mode override `--mode=lazy` if a stored Full mode is in effect and the caller wants this workflow.
 
    **If `$ANALYSIS_MODE` is `lazy`:** run the Lazy driver instead of the rest of Phase 0 and Phases 1–6:
    ```bash
@@ -212,7 +221,10 @@ Determine whether to run a full analysis or incremental update.
    ```
    The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
    Run it in the foreground with the shell tool's maximum timeout (600000 ms), never in the background: see **Running the scripts**.
-   This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten. Report its printed summary to the user and **STOP**.
+   This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten.
+   - Report its printed summary. On a non-zero exit or a printed `SAVE FAILED`, **STOP**.
+   - If `--reconcile-flows` was passed, load `skills/excavator-flow-reconcile/SKILL.md` and run it for the same `$PROJECT_ROOT` and optional `--flow-scope` as its `--scope`. Start from the successfully saved graph and pass the exact effective `--exclude` patterns used for the build, including any added by the ignore review. Report the reconciliation result, including publication failure if the flow phase fails, then **STOP**.
+   - Otherwise, **STOP** after the Lazy summary.
 
    **If `$ANALYSIS_MODE` is `full`:** continue with the existing pipeline unchanged, starting at step 7 below (a mode forced by `--full` behaves exactly like the existing `--full` row in the decision table).
 
