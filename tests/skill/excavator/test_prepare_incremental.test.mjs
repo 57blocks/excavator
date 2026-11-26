@@ -1,9 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -13,6 +15,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readKnowledgeGraph, writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
 
@@ -64,9 +67,19 @@ function commit(root, message, { forcePaths = [] } = {}) {
   return git(root, ['rev-parse', 'HEAD']);
 }
 
-function setupRepository(files) {
-  const root = mkdtempSync(join(tmpdir(), 'excavator-incremental-test-'));
-  roots.push(root);
+// Building a baseline (git + three node scripts) was ~40% of this file's time.
+// Each distinct `files` input is built once into an immutable template; every
+// setupRepository call hands out its own copy with the root path rewritten.
+const templateCache = new Map();
+const templateRoots = [];
+
+afterAll(() => {
+  for (const dir of templateRoots) rmSync(dir, { recursive: true, force: true });
+});
+
+function buildTemplate(files) {
+  const root = mkdtempSync(join(tmpdir(), 'excavator-incremental-template-'));
+  templateRoots.push(root);
   git(root, ['init', '-b', 'main']);
   git(root, ['config', 'user.email', 'test@example.com']);
   git(root, ['config', 'user.name', 'Test User']);
@@ -77,6 +90,42 @@ function setupRepository(files) {
   for (const [path, content] of Object.entries(files)) writeProjectFile(root, path, content);
   const baseCommit = commit(root, 'baseline');
   buildBaseline(root, baseCommit);
+  return { templateRoot: root, baseCommit };
+}
+
+function* walkFiles(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) yield* walkFiles(full);
+    else if (entry.isFile()) yield full;
+  }
+}
+
+function setupRepository(files) {
+  const key = createHash('sha256').update(JSON.stringify(files)).digest('hex');
+  let template = templateCache.get(key);
+  if (!template) {
+    template = buildTemplate(files);
+    templateCache.set(key, template);
+  }
+  const { templateRoot, baseCommit } = template;
+  const root = mkdtempSync(join(tmpdir(), 'excavator-incremental-test-'));
+  roots.push(root);
+  cpSync(templateRoot, root, { recursive: true });
+  const excavatorDir = join(root, '.excavator');
+  if (existsSync(excavatorDir)) {
+    for (const file of walkFiles(excavatorDir)) {
+      const content = readFileSync(file, 'utf-8');
+      if (content.includes(templateRoot)) {
+        writeFileSync(file, content.split(templateRoot).join(root), 'utf-8');
+      }
+    }
+  }
+  for (const file of walkFiles(root)) {
+    if (readFileSync(file).includes(templateRoot)) {
+      throw new Error(`template path leaked into copied fixture file: ${file}`);
+    }
+  }
   return { root, baseCommit };
 }
 
