@@ -1,0 +1,18 @@
+# Keeps the GitHub Actions the workflows use up to date. Every action is
+# pinned to a commit SHA with its version in a trailing comment; Dependabot
+# updates both. All updates come in one pull request a month, because each
+# changes `.github/` and is in the high risk tier, which the user merges.
+# npm dependencies are not listed here: vulnerability alerts for them are on
+# in the repository settings, and their updates go through normal changes.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: ci
