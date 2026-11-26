@@ -1,6 +1,6 @@
 # Build, self-test and push the Excavator runner image. The design record
 # (design D6, cited below) was removed from the tree with OpenSpec; read it
-# with `git show 0221adc9^:openspec/changes/archive/2026-10-09-runner-image/design.md`.
+# with `git show 59f287b5:openspec/changes/archive/2026-10-09-runner-image/design.md`.
 #
 # Only a tag push or a manual dispatch runs it, and each runs the whole flow
 # (test -> image -> push). It does not run on pull requests: its test job
