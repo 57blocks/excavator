@@ -1,10 +1,14 @@
 import type { ExternalRow, LinkRow, RelationRow } from "../../products/relations";
 
-/** The row chosen in the Relations view: a relation, a link between units, or an external system. */
+/**
+ * The row chosen in the Relations view: a relation, a link between units, or an external system. `reveal` marks a row
+ * chosen from outside the view (the graph or the node panel): the view then shows the row's table, even when it is
+ * already open on another one.
+ */
 export type RelationsRowRef =
-  | { table: "sites"; row: RelationRow }
-  | { table: "links"; row: LinkRow }
-  | { table: "externals"; row: ExternalRow };
+  | { table: "sites"; row: RelationRow; reveal?: boolean }
+  | { table: "links"; row: LinkRow; reveal?: boolean }
+  | { table: "externals"; row: ExternalRow; reveal?: boolean };
 
 const TABLES = new Set(["sites", "links", "externals"]);
 

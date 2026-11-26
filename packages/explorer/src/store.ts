@@ -11,6 +11,7 @@ import type { ReactFlowInstance } from "@xyflow/react";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
 import { parseNameTranslations, translatorOf, type NameTranslations } from "./excavator/nameTranslations";
 import type { ProductView } from "./excavator/productViews";
+import type { RelationsMode } from "./excavator/graphRelations";
 import { sourceNodeId, type SourceTarget } from "./excavator/views/sourceNode";
 
 export type Persona = "non-technical" | "junior" | "experienced";
@@ -230,6 +231,9 @@ interface DashboardStore {
   /** Excavator: a node chosen from outside the graph that the structural view is to open its container for and fit. */
   revealNodeId: string | null;
   clearRevealNode: () => void;
+  /** Excavator: which relations of the relations product the structural graph draws (excavator/graphRelations.ts). */
+  relationsMode: RelationsMode;
+  setRelationsMode: (mode: RelationsMode) => void;
   /** Opens the view; the open one stays open, with its row (openspec: changes/explorer-view-defaults, design D2). */
   openProductView: (view: ProductView) => void;
   closeProductView: () => void;
@@ -786,6 +790,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   productRow: null,
   revealNodeId: null,
   clearRevealNode: () => set({ revealNodeId: null }),
+  relationsMode: "selected",
+  setRelationsMode: (mode) => set({ relationsMode: mode }),
   openProductView: (view) => {
     if (get().productView !== view) set({ productView: view, productRow: null });
   },

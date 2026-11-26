@@ -27,6 +27,7 @@ import { diffContainerIds } from "../utils/diffContainers";
 import Breadcrumb from "./Breadcrumb";
 import { useDashboardStore } from "../store";
 import { drawnInLayer } from "../excavator/views/graphTarget";
+import { relationNodeTypes, RelationsPanel, useRelationsOverlay, useStandInClick } from "../excavator/RelationsOverlay";
 import type {
   GraphEdge,
   GraphNode,
@@ -62,6 +63,8 @@ const nodeTypes = {
   "layer-cluster": LayerClusterNode,
   portal: PortalNode,
   container: ContainerNode,
+  // Excavator: the external systems and other layers the relations product's edges reach.
+  ...relationNodeTypes,
 };
 
 import type { NodeCategory } from "../store";
@@ -1359,14 +1362,20 @@ function GraphViewInner() {
   const detailGraph = useLayerDetailGraph();
 
   const {
-    nodes: initialNodes,
-    edges: initialEdges,
+    nodes: baseNodes,
+    edges: baseEdges,
     nodeToContainer,
     containerIds,
     layoutStatus,
   } = navigationLevel === "overview"
     ? { ...overviewGraph, nodeToContainer: undefined, containerIds: undefined }
     : detailGraph;
+
+  // Excavator: the relations product's edges and stand-in nodes, added to the graph above (excavator/RelationsOverlay.tsx).
+  const relations = useRelationsOverlay(baseNodes, baseEdges, navigationLevel, nodeToContainer);
+  const standInClick = useStandInClick(relations.data);
+  const initialNodes = relations.nodes;
+  const initialEdges = relations.edges;
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -1555,6 +1564,7 @@ function GraphViewInner() {
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: { id: string }) => {
+      if (standInClick(node.id)) return;
       if (navigationLevel === "overview") {
         drillIntoLayer(node.id);
       } else if (node.id.startsWith("portal:")) {
@@ -1564,7 +1574,7 @@ function GraphViewInner() {
         selectNode(node.id);
       }
     },
-    [navigationLevel, drillIntoLayer, selectNode],
+    [navigationLevel, drillIntoLayer, selectNode, standInClick],
   );
 
   const onPaneClick = useCallback(() => {
@@ -1623,6 +1633,7 @@ function GraphViewInner() {
         />
         <TourFitView />
         <SelectedNodeFitView />
+        <RelationsPanel overlay={relations} level={navigationLevel} />
       </ReactFlow>
       {(layoutStatus === "computing" || tourFitPending) && (
         <div
