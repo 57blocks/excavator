@@ -277,6 +277,13 @@ export function withoutNode(data, id) {
   };
 }
 
+/** The fixture with main.js and main in no layer: main's call to helper has an end that no layer holds. */
+export function withMainInNoLayer(data) {
+  const graph = data['knowledge-graph.json'];
+  const out = new Set(['file:src/main.js', 'function:src/main.js:main']);
+  return { ...data, 'knowledge-graph.json': { ...graph, layers: graph.layers.map((l) => ({ ...l, nodeIds: l.nodeIds.filter((n) => !out.has(n)) })) } };
+}
+
 /** The fixture with its products not run or unreadable: no product file, and a state each. */
 export function withUnavailableProducts(data) {
   const rest = { ...data };
@@ -736,6 +743,18 @@ async function notRunBody(h) {
   return out;
 }
 
+/** The page whose main.js no layer holds: the structural overview's relation edges, by id. */
+async function noLayerRelationBody(h) {
+  const out = {};
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(300);
+  h.press(h.headerButton('Structural'));
+  await h.until(() => document.querySelector('.react-flow__node[data-id="layer:lib"]') && document.querySelector('[data-excavator-relation-node]'));
+  await h.sleep(400);
+  out.edges = [...document.querySelectorAll('.react-flow__edge')].map((e) => e.getAttribute('data-id')).filter((id) => id && id.startsWith('relation|')).sort();
+  return out;
+}
+
 /** The page whose graph has no layers: the structural view draws from derived groups. */
 async function groupsBody(h) {
   const out = {};
@@ -957,6 +976,20 @@ export function judgeNoLayers(result) {
   ];
 }
 
+/**
+ * The page whose main.js no layer holds: rel:1 (main calls helper) has an end in no layer and is drawn in no view;
+ * rel:2 (helper calls the mail system) is still drawn.
+ */
+export function judgeNoLayerRelation(result) {
+  const p = readEval(result);
+  return [
+    ...judgeClean(result),
+    verdict('relation with an end in no layer', [
+      ['the relation with an end in no layer is no edge, and the other relation still is', JSON.stringify(p.edges) === JSON.stringify(['relation|external|layer:lib|relations:external:mail'])],
+    ]),
+  ];
+}
+
 /** The page with stored groups. */
 export function judgeStored(result) {
   const p = readEval(result);
@@ -1029,6 +1062,7 @@ function main(argv) {
   ok = report('structural', judgeStruct(runChrome(assemble(template, data), { body: structBody }))) && ok;
   ok = report('not-run', judgeNotRun(runChrome(assemble(template, withUnavailableProducts(data)), { body: notRunBody }))) && ok;
   ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data)), { body: groupsBody }))) && ok;
+  ok = report('no-layer-relation', judgeNoLayerRelation(runChrome(assemble(template, withMainInNoLayer(data)), { body: noLayerRelationBody }))) && ok;
   ok = report('stored', judgeStored(runChrome(assemble(template, withStoredGroups(data)), { body: storedBody }))) && ok;
   for (const width of [768, 375]) {
     ok = report(`width-${width}`, judgeNarrow(runChrome(assemble(template, data), { width, height: width === 375 ? 812 : 1024, body: narrowBody }), width)) && ok;

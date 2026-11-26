@@ -73,8 +73,6 @@ export interface RelationsOverlay {
   data: GraphRelationsData;
   mode: RelationsMode;
   projection: Projection | null;
-  /** The relations the mode picks before placing: every drawable one, or the selected node's. */
-  picked: number;
   /** Drawable relations with an end that no layer holds, which no view draws; null until the product is read. */
   inNoLayer: number | null;
 }
@@ -91,17 +89,20 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
   const nameTranslations = useDashboardStore(activeTranslations);
 
   // Counted whatever the mode and view: the overview's placer gives null for an end that no layer holds.
-  const inNoLayer = useMemo(() => {
+  // They are left out of what a view picks, so "of M in this view" and this count do not hold the same relation.
+  const unplaced = useMemo(() => {
     if (data.status !== "ready") return null;
     const home = (id: string) => drawnHome(id, data.drawn, data.parentOf);
-    return unplacedRelations(data.index.drawable, overviewPlacer(home, nodeIdToLayerId)).length;
+    return new Set(unplacedRelations(data.index.drawable, overviewPlacer(home, nodeIdToLayerId)));
   }, [data, nodeIdToLayerId]);
+  const inNoLayer = unplaced === null ? null : unplaced.size;
 
   return useMemo(() => {
-    const none = { nodes: baseNodes, edges: baseEdges, data, mode, projection: null, picked: 0, inNoLayer };
+    const none = { nodes: baseNodes, edges: baseEdges, data, mode, projection: null, inNoLayer };
     if (data.status !== "ready" || mode === "off" || baseNodes.length === 0) return none;
     if (level === "layer-detail" && activeLayerId === null) return none;
-    const picked = level === "overview" || mode === "all" ? data.index.drawable : selectedNodeId === null ? [] : relationsOfNode(data.index, selectedNodeId);
+    const picked = (level === "overview" || mode === "all" ? data.index.drawable : selectedNodeId === null ? [] : relationsOfNode(data.index, selectedNodeId))
+      .filter((relation) => !(unplaced?.has(relation) ?? false));
     const homes = new Map<string, string | null>();
     const home = (id: string) => {
       if (!homes.has(id)) homes.set(id, drawnHome(id, data.drawn, data.parentOf));
@@ -154,8 +155,8 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
         zIndex: 1,
       };
     });
-    return { nodes: [...baseNodes, ...anchors.values(), ...standIns], edges: [...baseEdges, ...edges], data, mode, projection, picked: picked.length, inNoLayer };
-  }, [baseNodes, baseEdges, data, mode, level, selectedNodeId, activeLayerId, nodeIdToLayerId, nodeIdToLayerIds, boxOf, graph, nameTranslations, inNoLayer]);
+    return { nodes: [...baseNodes, ...anchors.values(), ...standIns], edges: [...baseEdges, ...edges], data, mode, projection, inNoLayer };
+  }, [baseNodes, baseEdges, data, mode, level, selectedNodeId, activeLayerId, nodeIdToLayerId, nodeIdToLayerIds, boxOf, graph, nameTranslations, unplaced, inNoLayer]);
 }
 
 /** A click on a stand-in: another layer opens that layer. True when it was a stand-in. */
