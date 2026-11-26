@@ -10,9 +10,13 @@ export default function Breadcrumb() {
   const { t } = useI18n();
 
   const activeLayer = graph?.layers.find((l) => l.id === activeLayerId);
+  const hasHistory = useDashboardStore((s) => s.history.length > 0);
+
+  // No bar on the overview of a first load: there is no parent level and nothing to go back to.
+  if (navigationLevel === "overview" && !hasHistory) return null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+    <div className="absolute top-4 left-4 z-10 flex items-center gap-2" data-excavator-bar>
       <BackButton />
       {navigationLevel === "overview" && (
         <div className="px-4 py-2 rounded-full bg-elevated border border-border-subtle text-xs font-semibold tracking-wider uppercase text-text-secondary shadow-lg">

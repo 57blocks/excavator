@@ -13,7 +13,7 @@ export interface Crumb {
 /** The trail of the Domain view, "All domains / domain / group", with a Back button that goes up one level. */
 export default function DomainBreadcrumb({ crumbs }: { crumbs: Crumb[] }) {
   return (
-    <div className="absolute top-3 left-3 z-10 flex items-center gap-2" data-excavator-domain-breadcrumb>
+    <div className="absolute top-3 left-3 z-10 flex items-center gap-2" data-excavator-domain-breadcrumb data-excavator-bar>
       <BackButton />
       <nav className="flex items-center gap-1.5 text-xs bg-surface/90 border border-border-subtle rounded-lg px-3 py-1.5 max-w-[60vw] overflow-hidden">
         {crumbs.map((crumb, index) => (

@@ -296,6 +296,20 @@ export function withUnavailableProducts(data) {
 }
 
 /** The fixture's graph without one node (and what refers to it). */
+/** A copy of the page data whose feature groups carry the names, descriptions and project texts /excavator-domain stores. */
+export function withStoredGroups(data) {
+  const flowRef = { id: 'flow:run', rule: 'route', scope: null, origin: null };
+  return {
+    ...data,
+    'feature-groups.json': {
+      format: 'excavator-view-feature-groups/3',
+      named: ['domain:run'],
+      project: { introduction: 'The stored introduction.', technicalOverview: 'The stored technical overview.' },
+      domains: { 'domain:run': [{ id: 'word:run', kind: 'feature', label: 'Stored name', description: 'Does the stored thing.', codeLabel: 'codelabel-run', file: null, flows: [flowRef] }] },
+    },
+  };
+}
+
 export function withoutLayers(data) {
   return { ...data, 'knowledge-graph.json': { ...data['knowledge-graph.json'], layers: [] } };
 }
@@ -482,8 +496,9 @@ async function mainBody(h) {
   out.french = { rows: h.domainRows(), lit: h.lit(h.headerButton('French')) };
   // Opening a domain shows its node; Escape returns to the list.
   out.overviewCentred = centred();
+  out.overviewNoBar = !document.querySelector('[data-excavator-bar]');
   const firstBack = document.querySelector('[data-excavator-back]');
-  out.backDisabledOnLoad = Boolean(firstBack) && firstBack.disabled === true && !document.querySelector('[data-excavator-panel-back]');
+  out.backDisabledOnLoad = (!firstBack || firstBack.disabled === true) && !document.querySelector('[data-excavator-panel-back]');
   const row = document.querySelector('aside [data-excavator-domain-row="domain:run"]');
   // A panel list selects and never navigates: the panel shows the domain with an Open button; Open enters it.
   h.press(row);
@@ -493,6 +508,15 @@ async function mainBody(h) {
   out.opened = await h.until(() => h.buttonIn(h.aside(), (t) => /All domains/.test(t)));
   out.openedTitle = h.asideText();
   // At domain level every flow is listed once: no "contains flow" connection rows beside the Flows list.
+  // The Back and breadcrumb bar must not cover a node after placement.
+  const barClear = () => {
+    const bar = document.querySelector('[data-excavator-bar]')?.getBoundingClientRect();
+    if (!bar) return false;
+    return ![...document.querySelectorAll('.react-flow__node')].some((n) => {
+      const r = n.getBoundingClientRect();
+      return r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top;
+    });
+  };
   const flowRows = () => h.section('Flows')?.querySelectorAll('button').length ?? 0;
   out.containsRows = /contains flow/i.test(h.asideText());
   out.domainFlowRows = flowRows();
@@ -513,6 +537,7 @@ async function mainBody(h) {
   };
   const viewportBefore = viewportOf();
   out.viewMoved = document.querySelector('.react-flow__viewport')?.style.transform !== transformBefore;
+  out.groupsBarClear = barClear();
   const beforeCrumb = crumb();
   out.beforeCrumbName = beforeCrumb.split('/').pop();
   if (flowButton) h.press(flowButton);
@@ -573,6 +598,7 @@ async function mainBody(h) {
   }
   await h.sleep(400);
   out.groupFlowRows = flowRows();
+  out.lanesBarClear = barClear();
   out.lanesCentred = centred();
   out.lanesUndimmed = opacities().length > 0 && opacities().every((o) => o === 1);
   out.groupContainsRows = /contains flow/i.test(h.asideText());
@@ -718,6 +744,26 @@ async function groupsBody(h) {
   return out;
 }
 
+/** The page with stored groups and project texts: the panels and a group card show the stored names and texts. */
+async function storedBody(h) {
+  const out = {};
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(400);
+  out.introduction = h.asideText().includes('The stored introduction.');
+  h.press(document.querySelector('aside [data-excavator-domain-row="domain:run"]'));
+  await h.until(() => Boolean(h.aside()?.querySelector('[data-excavator-open="node"]')));
+  h.press(h.aside()?.querySelector('[data-excavator-open="node"]'));
+  await h.until(() => document.querySelector('[data-excavator-group-card]'));
+  const card = document.querySelector('[data-excavator-group-card]');
+  out.cardText = card?.textContent ?? '';
+  out.cardDescription = card?.querySelector('[data-excavator-group-description]')?.getAttribute('title') ?? null;
+  out.codeLabelSeen = document.body.innerText.includes('codelabel-run');
+  h.press(h.headerButton('Structural'));
+  await h.until(() => h.section('Runtime units'));
+  out.technical = h.asideText().includes('The stored technical overview.');
+  return out;
+}
+
 /** At a narrow width: no sideways scroll; on a phone the drawer holds the two switches. */
 async function narrowBody(h) {
   const out = { width: window.innerWidth, mobile: window.innerWidth < 768 };
@@ -809,6 +855,7 @@ export function judgeMain(result) {
       ['the panel Back names the view it returns to and the canvas Back is enabled with it', typeof p.panelBackLabel === 'string' && p.panelBackLabel.startsWith('\u2190 ') && p.panelBackLabel.endsWith(p.beforeCrumbName) && p.canvasBackEnabled === true],
       ['a view switch to Structural and Back returns to the Domain level left', p.structuralBackEnabled === true && p.switchBack === true],
       ['Back is disabled on first load, and the panel has no Back', p.backDisabledOnLoad === true],
+      ['the overview has no bar on first load, and the bar clears the nodes on the group level and in the lanes', p.overviewNoBar === true && p.groupsBarClear === true && p.lanesBarClear === true],
       ['a panel item already on screen changes only the selection', p.goStable === true],
       ['a single click on a group card leaves the group level in place', p.groupLevelKept === true],
       ['the panel list selects: the domain shows with an Open button and the canvas stays on the overview', p.rowOpenButton === true && p.rowStayedOnOverview === true],
@@ -903,6 +950,19 @@ export function judgeNoLayers(result) {
   ];
 }
 
+/** The page with stored groups. */
+export function judgeStored(result) {
+  const p = readEval(result);
+  return [
+    ...judgeClean(result),
+    verdict('stored groups', [
+      ['the overview panel shows the stored introduction', p.introduction === true],
+      ['a group card shows the stored name and its description, and never the code label', p.cardText.includes('Stored name') && p.cardDescription === 'Does the stored thing.' && p.codeLabelSeen === false],
+      ['the structural overview shows the stored technical overview', p.technical === true],
+    ]),
+  ];
+}
+
 /** A narrow page. */
 export function judgeNarrow(result, width) {
   const p = readEval(result);
@@ -962,6 +1022,7 @@ function main(argv) {
   ok = report('structural', judgeStruct(runChrome(assemble(template, data), { body: structBody }))) && ok;
   ok = report('not-run', judgeNotRun(runChrome(assemble(template, withUnavailableProducts(data)), { body: notRunBody }))) && ok;
   ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data)), { body: groupsBody }))) && ok;
+  ok = report('stored', judgeStored(runChrome(assemble(template, withStoredGroups(data)), { body: storedBody }))) && ok;
   for (const width of [768, 375]) {
     ok = report(`width-${width}`, judgeNarrow(runChrome(assemble(template, data), { width, height: width === 375 ? 812 : 1024, body: narrowBody }), width)) && ok;
   }

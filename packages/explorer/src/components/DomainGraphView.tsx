@@ -130,6 +130,9 @@ function crossDomainEdges(graph: KnowledgeGraph, focusIds: ReadonlySet<string>):
     }));
 }
 
+/** The height the Back and breadcrumb bar covers at the canvas top (its offset, its buttons and a small gap). */
+const CANVAS_BAR_INSET = 56;
+
 const GROUP_NOTE = "This page has no feature groups; the domain's flows are shown as one group.";
 
 /** The group cards of an open domain on the aligned grid; a muted line above them when the page has no groups. */
@@ -324,6 +327,7 @@ function DomainGraphViewInner() {
   const navigateToDomain = useDashboardStore((s) => s.navigateToDomain);
   const clearActiveDomain = useDashboardStore((s) => s.clearActiveDomain);
   const setViewportState = useDashboardStore((s) => s.setViewportState);
+  const hasHistory = useDashboardStore((s) => s.history.length > 0);
   const selectNode = useDashboardStore((s) => s.selectNode);
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
   const selectedGroupId = useDashboardStore((s) => s.selectedGroupId);
@@ -452,6 +456,8 @@ function DomainGraphViewInner() {
         bounds: { x: left, y: top, width: right - left, height: bottom - top },
         pane: { width: pane.width, height: pane.height },
         padding: level === "overview" ? 32 : 56,
+        // The content's top stays below the bar when it is shown (always inside a domain; on the overview once there is history).
+        topInset: level !== "overview" || useDashboardStore.getState().history.length > 0 ? CANVAS_BAR_INSET : 0,
         minZoom: level === "lanes" ? 1 : 0.75,
         maxZoom: 1,
       });
@@ -524,13 +530,14 @@ function DomainGraphViewInner() {
 
   return (
     <div ref={paneRef} className="h-full w-full relative" style={{ opacity: placedKey === levelKey ? 1 : 0 }}>
+      {/* No bar on the overview of a first load: there is no parent level and nothing to go back to. */}
       {level !== "overview" ? (
         <DomainBreadcrumb crumbs={crumbs} />
-      ) : (
-        <div className="absolute top-3 left-3 z-10">
+      ) : hasHistory ? (
+        <div className="absolute top-3 left-3 z-10" data-excavator-bar>
           <BackButton />
         </div>
-      )}
+      ) : null}
       <ReactFlow
         key={`${activeDomainId ?? "overview"}|${activeGroupId ?? ""}`}
         nodes={shownNodes}

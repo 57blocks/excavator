@@ -42,4 +42,16 @@ describe("initialViewport", () => {
     expect(initialViewport({ ...base, pane: { width: 0, height: 0 }, bounds: { x: 0, y: 0, width: 400, height: 200 } }).zoom).toBeGreaterThan(0);
     expect(initialViewport({ ...base, bounds: { x: 0, y: 0, width: 0, height: 0 } })).toEqual({ x: 500, y: 300, zoom: 1 });
   });
+
+  it("keeps the content's top below a top inset, centring inside the space that is left", () => {
+    const small = initialViewport({ ...base, topInset: 100, bounds: { x: 0, y: 0, width: 400, height: 200 } });
+    expect(small).toEqual({ x: 300, y: 100 + (600 - 100 - 40 - 200) / 2, zoom: 1 });
+    const tall = initialViewport({ ...base, minZoom: 1, topInset: 100, bounds: { x: 0, y: 0, width: 400, height: 5000 } });
+    expect(tall.y).toBe(100);
+  });
+
+  it("uses the padding as the top margin when it is larger than the inset", () => {
+    const view = initialViewport({ ...base, minZoom: 1, topInset: 20, bounds: { x: 0, y: 0, width: 400, height: 5000 } });
+    expect(view.y).toBe(40);
+  });
 });
