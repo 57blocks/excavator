@@ -3,6 +3,8 @@ import { useDashboardStore, activeTranslations } from "../../store";
 import NodeInfo from "../../components/NodeInfo";
 import { translatorOf } from "../nameTranslations";
 import { domainList, projectIntroduction } from "../overview";
+import { projectText } from "../projectText";
+import { ProjectTextView } from "./ProjectText";
 import { LIST_CLASS, MutedLine, ROW_BUTTON_CLASS, Section } from "./Section";
 
 /** The overview of the domain view: the project introduction and the domains, business ones first. */
@@ -12,7 +14,11 @@ export function DomainOverview() {
   const table = useDashboardStore(activeTranslations);
   const activeDomainId = useDashboardStore((s) => s.activeDomainId);
   const goToNode = useDashboardStore((s) => s.goToNode);
-  const intro = useMemo(() => projectIntroduction(graph, domainGraph), [graph, domainGraph]);
+  const featureGroups = useDashboardStore((s) => s.featureGroups);
+  const intro = useMemo(
+    () => projectText(featureGroups.state === "ready" ? featureGroups.project : null, "introduction", projectIntroduction(graph, domainGraph).text),
+    [featureGroups, graph, domainGraph],
+  );
   const rows = useMemo(() => domainList(domainGraph, translatorOf(table)), [domainGraph, table]);
 
   if (activeDomainId !== null && domainGraph?.nodes.some((n) => n.id === activeDomainId)) {
@@ -26,11 +32,7 @@ export function DomainOverview() {
   return (
     <div>
       <Section title="Project">
-        {intro.text === null ? (
-          <MutedLine>The knowledge graph has no project description.</MutedLine>
-        ) : (
-          <p className="pb-2 text-sm leading-relaxed text-text-secondary">{intro.text}</p>
-        )}
+        <ProjectTextView shown={intro} translate={translatorOf(table) ?? undefined} empty="The knowledge graph has no project description." />
       </Section>
       <Section title="Domains">
         {rows.length === 0 ? (

@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { useDashboardStore, activeTranslations } from "../../store";
 import { domainTitle, translatorOf } from "../nameTranslations";
-import { externalSystemList, runtimeUnits, techStack, topHotspotFiles, unusedCandidates } from "../overview";
+import { externalSystemList, projectIntroduction, runtimeUnits, techStack, topHotspotFiles, unusedCandidates } from "../overview";
+import { projectText } from "../projectText";
+import { ProjectTextView } from "./ProjectText";
 import { useProductFile, type ProductFileName } from "../views/productFiles";
 import { LIST_CLASS, MutedLine, ROW_BUTTON_CLASS, Section } from "./Section";
 import { UnusedList } from "./UnusedList";
@@ -27,6 +29,7 @@ export function StructuralOverview() {
   const goToNode = useDashboardStore((s) => s.goToNode);
   const enterNode = useDashboardStore((s) => s.enterNode);
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
+  const featureGroups = useDashboardStore((s) => s.featureGroups);
   const [showUnused, setShowUnused] = useState(false);
   const relations = useProductValue("relations", "relations-graph.json");
   const hotspots = useProductValue("hotspots", "hotspots.json");
@@ -43,6 +46,7 @@ export function StructuralOverview() {
   const layers = graph?.layers ?? [];
   const stateLine = (state: { line: string | null }) => (state.line === null ? null : <MutedLine>{state.line}</MutedLine>);
 
+  const technical = projectText(featureGroups.state === "ready" ? featureGroups.project : null, "technicalOverview", projectIntroduction(graph, null).text);
   const selectedLayer = layers.find((layer) => layer.id === selectedNodeId) ?? null;
 
   return (
@@ -63,6 +67,11 @@ export function StructuralOverview() {
               Open
             </button>
           </div>
+        </Section>
+      )}
+      {technical.kind !== "none" && (
+        <Section title="Project">
+          <ProjectTextView shown={technical} translate={translate} />
         </Section>
       )}
       <Section title="Runtime units">
