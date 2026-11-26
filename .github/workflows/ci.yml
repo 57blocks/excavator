@@ -3,6 +3,11 @@
 # the change touches: a required check that a path filter skips counts as
 # passed, so filtering would let a change merge unchecked.
 #
+# The root test suite is split by file into three shards that run as
+# parallel jobs, so the gate takes about as long as its slowest shard
+# instead of the whole suite. The required check is the `CI gate` job,
+# which passes only when every other job succeeded.
+#
 # It does not run on pushes to main. Branch protection requires a pull
 # request's branch to be up to date with main before it merges, and this
 # gate runs on the pull request's merge commit, so a merge with `--merge`
@@ -25,10 +30,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  gate:
-    name: CI gate
+  checks:
+    name: Typecheck, references and core tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,5 +71,63 @@ jobs:
       - name: Core tests
         run: pnpm --filter @excavator/core test
 
+  # vitest assigns every test file to exactly one shard, so the three jobs
+  # together run the whole root suite (`pnpm test`).
+  tests:
+    name: Tests (shard ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Reads the pnpm version from package.json's "packageManager" field.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # Must run after pnpm/action-setup: the pnpm cache needs pnpm on PATH.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Tree-sitter grammars may fall back to a node-gyp build, which runs
+      # `python`; the tests also run the skills' Python scripts.
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.x'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
       - name: Tests
-        run: pnpm test
+        run: pnpm test --shard=${{ matrix.shard }}/3
+
+  # The one required check. It runs whatever happened to the jobs it needs
+  # (a skipped required check would count as passed) and fails unless each
+  # of them succeeded; a failed, cancelled or skipped job fails the gate.
+  gate:
+    name: CI gate
+    if: always()
+    needs: [checks, tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to succeed
+        env:
+          CHECKS: ${{ needs.checks.result }}
+          TESTS: ${{ needs.tests.result }}
+        run: |
+          echo "checks: $CHECKS"
+          echo "tests: $TESTS"
+          test "$CHECKS" = success
+          test "$TESTS" = success
