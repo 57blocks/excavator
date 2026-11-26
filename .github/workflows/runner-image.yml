@@ -1,13 +1,12 @@
-# Build, self-test and (on a release trigger) push the Excavator runner
-# image. See openspec/changes/archive/2026-10-09-runner-image/design.md D6 for the decisions
-# this workflow implements verbatim. The gate every pull request must pass
-# is ci.yml; this workflow's test job only guards the image.
+# Build, self-test and push the Excavator runner image. The design record
+# (design D6, cited below) was removed from the tree with OpenSpec; read it
+# with `git show 0221adc9^:openspec/changes/archive/2026-10-09-runner-image/design.md`.
 #
-# A tag push or a manual dispatch is a release candidate and runs the whole
-# flow (test -> image -> push). A PR touching deploy-relevant files runs only
-# the test gate; its image job shows as skipped (openspec change
-# runner-image-release-only). To build images on PRs again, delete the
-# image job's `if`.
+# Only a tag push or a manual dispatch runs it, and each runs the whole flow
+# (test -> image -> push). It does not run on pull requests: its test job
+# runs the same install, build and tests as the CI gate (ci.yml), which every
+# pull request already passes. Verify an image change before merge with the
+# build and self-test in docs/deploy.md section 5.
 name: Runner image
 
 on:
@@ -15,13 +14,6 @@ on:
     tags:
       - 'runner-v*'
   workflow_dispatch: {}
-  pull_request:
-    paths:
-      - 'deploy/**'
-      - '.dockerignore'
-      - '.github/workflows/runner-image.yml'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
 
 # Least privilege at the workflow level; only the push job escalates to
 # request an OIDC token (design D6: "pin every third-party action to a commit SHA").
