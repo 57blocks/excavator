@@ -1,7 +1,17 @@
 # Keeps the GitHub Actions the workflows use up to date. Every action is
 # pinned to a commit SHA with its version in a trailing comment; Dependabot
-# updates both. All updates come in one pull request a month, because each
-# changes `.github/` and is in the high risk tier, which the user merges.
+# updates both. Updates come once a month, grouped, because each changes
+# `.github/` and is in the high risk tier, which the user merges; AGENTS.md
+# says how these pull requests are handled.
+#
+# Two groups, because a group takes an action only if no earlier group did:
+# - release-actions: the docker/* and aws-actions/* actions that only the
+#   Runner image workflow uses. No pull-request check runs them, and a
+#   manual run of that workflow pushes an image, so their updates come in a
+#   pull request of their own and are verified by the next release.
+# - ci-actions: every other action. The CI gate runs all of them on the
+#   update's own pull request.
+#
 # npm dependencies are not listed here: vulnerability alerts for them are on
 # in the repository settings, and their updates go through normal changes.
 version: 2
@@ -11,7 +21,11 @@ updates:
     schedule:
       interval: monthly
     groups:
-      github-actions:
+      release-actions:
+        patterns:
+          - 'docker/*'
+          - 'aws-actions/*'
+      ci-actions:
         patterns:
           - '*'
     commit-message:

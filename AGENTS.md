@@ -47,3 +47,4 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
 ## 审查
 - 风险档、由谁审查、回应与收敛的规则写在 `REVIEW.md`。它是高档文件：改它的 PR 由用户合并，agent 不能自己放宽这些规则。开 PR 前按它定档，合并前按它做完。
 - PR 正文按 `.github/pull_request_template.md` 的四节写：Summary、Testing、Risk tier、How to revert。`gh pr create --body-file` 不会套用模板。
+- Dependabot 每月开的 action 升级 PR 正文由它生成，不套模板；它只改 `.github/`，按高档处理：reviewer 审、用户合并。`ci-actions` 组靠这个 PR 上的 `CI gate` 验证；`release-actions` 组（`docker/*`、`aws-actions/*`）只有 `Runner image` 用到，PR 检查跑不到；手动触发它也会推送镜像，不能当验证。下一次打 `runner-v*` tag 发布就是它的验证，发布失败先 revert 这次升级再重发。
