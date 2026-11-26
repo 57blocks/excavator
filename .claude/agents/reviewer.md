@@ -60,15 +60,7 @@ Each finding has:
 
 ## Report: pull request
 
-Your comments are public, and the privacy scan does not read them. Post only after the latest `Privacy scan` run on the head commit you reviewed has passed:
-
-```bash
-gh api repos/57blocks/excavator/commits/<head>/check-runs --jq '[.check_runs[] | select(.name == "Privacy scan")] | sort_by(.started_at) | last | "\(.status) \(.conclusion)"'
-```
-
-- **`completed success`**: post the review.
-- **Not completed yet**: run the command again every 30 seconds, for up to 10 minutes.
-- **Anything else, or still not completed after 10 minutes**: post nothing. Tell the caller the scan's state, then give the findings in your reply as you would for a range. Under Rounds in `REVIEW.md`, this round does not count until it is posted.
+Your comments are public, and no check scans them: the `Privacy scan` workflow is disabled. Quote no private name, corpus name, credential or account identifier in a comment; describe the defect without it.
 
 To post, send exactly one review with the event `COMMENT`:
 

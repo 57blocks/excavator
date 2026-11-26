@@ -39,10 +39,9 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
 
 ## 合并
 - 每个改动走 PR 进 `main`。`main` 受保护：不能直接推送或强推，管理员也一样。
-- 两个检查必过：
-  - `CI gate`（`.github/workflows/ci.yml`）：在 Linux 上跑上表全部检查的并集；
-  - `Privacy scan`（`.github/workflows/privacy.yml`）：用仓库 secret 里的名单扫 PR 带来的文字（新增行、提交信息、路径、标题与正文），只报计数。
-- PR 分支要与 `main` 同步才能合并：`main` 前进后先合入最新 `main`，等两个检查重新变绿。
+- 必过检查：`CI gate`（`.github/workflows/ci.yml`），在 Linux 上跑上表全部检查的并集。
+- `Privacy scan`（`.github/workflows/privacy.yml`）已在仓库的 Actions 设置里禁用，PR 带来的文字不再自动扫描；恢复用 `gh workflow enable "Privacy"`。
+- PR 分支要与 `main` 同步才能合并：`main` 前进后先合入最新 `main`，等 `CI gate` 重新变绿。
 - 本地仍按上表只跑与改动相关的检查。
 
 ## 审查
