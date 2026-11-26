@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { SearchEngine } from "@understand-anything/core/search";
 import type { SearchResult } from "@understand-anything/core/search";
 import type { GraphIssue } from "@understand-anything/core/schema";
-import type { GraphNode, KnowledgeGraph } from "@understand-anything/core/types";
+import type { GraphNode, KnowledgeGraph } from "./core/types";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
 import { parseNameTranslations, translatorOf, type NameTranslations } from "./excavator/nameTranslations";
 import { goToTarget } from "./excavator/canvasSelection";

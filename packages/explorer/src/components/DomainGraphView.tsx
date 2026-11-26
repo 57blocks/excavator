@@ -34,7 +34,7 @@ import { DIMMED_OPACITY, emphasis, laneBandId, laneStepId, type Emphasis } from 
 import { initialViewport } from "../excavator/initialViewport";
 import { flowTitle } from "../excavator/displayFlowName";
 import { domainTitle, translatedText, translatorOf, type Translate } from "../excavator/nameTranslations";
-import type { KnowledgeGraph } from "@understand-anything/core/types";
+import type { KnowledgeGraph } from "../core/types";
 
 const nodeTypes = {
   "band-heading": BandHeadingNode,
