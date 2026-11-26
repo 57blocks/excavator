@@ -1,10 +1,11 @@
 # Checks the text each pull request brings into the repository (added
 # lines, commit messages, authors, paths, title, branch name and body)
 # against two name lists that live only in this repository's secrets
-# (openspec change ci-merge-gate, design D2-D6). It fails when a list is
-# unavailable, so a pull request from a fork, which gets no secrets, fails
-# here and is reopened from a branch of this repository. Editing the title or
-# body scans again.
+# (design D2-D6 of
+# `git show 0221adc9^:openspec/changes/archive/2026-10-22-ci-merge-gate/design.md`).
+# It fails when a list is unavailable, so a pull request from a fork, which
+# gets no secrets, fails here and is reopened from a branch of this
+# repository. Editing the title or body scans again.
 name: Privacy
 
 on:
