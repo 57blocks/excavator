@@ -10,7 +10,7 @@ A pull request's tier is the highest tier that any of its changed paths gives, a
 |---|---|---|
 | High | `.github/`, `scripts/ci/`, `REVIEW.md`, `.claude/agents/reviewer.md` | Reviewed; every thread resolved; merged by the user |
 | Medium | Every path in neither the high nor the low tier | Reviewed; every thread resolved; the agent may merge |
-| Low | Markdown files under `docs/` and root Markdown files other than `AGENTS.md`, `CLAUDE.md` and `REVIEW.md` | The two required checks pass |
+| Low | Markdown files under `docs/` and root Markdown files other than `AGENTS.md`, `CLAUDE.md` and `REVIEW.md` | The `CI gate` check passes |
 
 ## What Important means here
 
@@ -44,7 +44,7 @@ Report at most five Nits per review.
 
 ## Do not report
 
-- What CI already enforces: types, build, reference checks, failing tests and the privacy scan.
+- What CI already enforces: types, build, reference checks and failing tests.
 - Anything in `pnpm-lock.yaml` or `dist/`.
 - A finding already raised on this pull request, whether it was fixed or answered.
 
@@ -79,7 +79,7 @@ Answer the findings in a review's summary in one pull request comment. Branch pr
 - **Round 1** reviews the whole change.
 - **Later rounds** review only the pull request's own commits after the last reviewed commit. That leaves out what a merge from `main` brought in: `git log -p --diff-merges=remerge <last>..<head> --not origin/main` shows a merge commit only as what the merge itself wrote. A later round never raises a finding already raised.
 - **When to run another round**: only when the previous round had an Important finding that the author fixed in code, or when the pull request's own new commits touch a medium- or high-tier path.
-- **A round counts once its review is posted.** If the reviewer returns its findings without posting them because the privacy scan has not passed, make the scan pass and run the same round again.
+- **A round counts once its review is posted.**
 - **At most three rounds.** If either reason calls for a fourth, stop. Do not merge; tell the user and reconsider the approach.
 
 ## Changing the review rules
