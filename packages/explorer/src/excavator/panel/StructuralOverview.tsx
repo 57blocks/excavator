@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useDashboardStore, activeTranslations } from "../../store";
-import { domainTitle, translatorOf } from "../nameTranslations";
+import { domainTitle, translatedText, translatorOf } from "../nameTranslations";
 import { externalSystemList, projectIntroduction, runtimeUnits, techStack, topHotspotFiles, unusedCandidates } from "../overview";
 import { projectText } from "../projectText";
 import { ProjectTextView } from "./ProjectText";
@@ -55,8 +55,8 @@ export function StructuralOverview() {
         <Section title="Layer">
           <div className="flex items-start justify-between gap-2 pb-2">
             <div className="min-w-0">
-              <div className="truncate text-sm text-text-primary" data-excavator-selected-layer>{selectedLayer.name}</div>
-              {selectedLayer.description && <div className="text-[11px] text-text-secondary">{selectedLayer.description}</div>}
+              <div className="truncate text-sm text-text-primary" data-excavator-selected-layer>{translatedText(selectedLayer.name, translate)}</div>
+              {selectedLayer.description && <div className="text-[11px] text-text-secondary">{translatedText(selectedLayer.description, translate)}</div>}
             </div>
             <button
               type="button"
@@ -108,8 +108,8 @@ export function StructuralOverview() {
             {layers.map((layer) => (
               <li key={layer.id}>
                 <button type="button" className={ROW_BUTTON_CLASS} data-excavator-layer-row={layer.id} onClick={() => goToNode(layer.id)}>
-                  <span className="block truncate text-sm text-text-primary">{layer.name}</span>
-                  {layer.description && <span className="line-clamp-2 text-[11px] text-text-secondary">{layer.description}</span>}
+                  <span className="block truncate text-sm text-text-primary">{translatedText(layer.name, translate)}</span>
+                  {layer.description && <span className="line-clamp-2 text-[11px] text-text-secondary">{translatedText(layer.description, translate)}</span>}
                 </button>
               </li>
             ))}

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useDashboardStore, activeTranslations } from "../../store";
 import { groupsOf } from "../domainLevels";
 import { historyLabel, type HistoryNames } from "../historyLabel";
-import { domainTitle, translatorOf } from "../nameTranslations";
+import { domainTitle, translatedText, translatorOf } from "../nameTranslations";
 
 /** The name of the view Back returns to (translated like other names), or null when the history is empty. */
 export function useHistoryLabel(): string | null {
@@ -27,7 +27,7 @@ export function useHistoryLabel(): string | null {
       },
       layer: (id) => {
         const layer = graph?.layers.find((item) => item.id === id);
-        return layer ? domainTitle(layer.name, translate).label : null;
+        return layer ? translatedText(layer.name, translate) : null;
       },
       folder: (id) => {
         const name = id.replace(/^container:/, "").split("/").pop() ?? id;

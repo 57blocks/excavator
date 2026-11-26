@@ -1,5 +1,6 @@
 import BackButton from "./BackButton";
-import { useDashboardStore } from "../store";
+import { useDashboardStore, activeTranslations } from "../store";
+import { translatedText, translatorOf } from "../excavator/nameTranslations";
 import { useI18n } from "../contexts/I18nContext";
 
 export default function Breadcrumb() {
@@ -10,6 +11,7 @@ export default function Breadcrumb() {
   const { t } = useI18n();
 
   const activeLayer = graph?.layers.find((l) => l.id === activeLayerId);
+  const nameTable = useDashboardStore(activeTranslations);
   const hasHistory = useDashboardStore((s) => s.history.length > 0);
 
   // No bar on the overview of a first load: there is no parent level and nothing to go back to.
@@ -34,7 +36,7 @@ export default function Breadcrumb() {
           </button>
           <span className="text-text-muted">›</span>
           <span className="text-text-primary">
-            {activeLayer?.name ?? t.layer.defaultName}
+            {activeLayer ? translatedText(activeLayer.name, translatorOf(nameTable)) : t.layer.defaultName}
           </span>
           <span className="text-text-muted ml-1 text-[10px] normal-case tracking-normal">
             ({t.breadcrumb.escBack})

@@ -22,7 +22,8 @@ import type { PortalFlowNode } from "./PortalNode";
 import ContainerNode from "./ContainerNode";
 import type { ContainerFlowNode, ContainerNodeData } from "./ContainerNode";
 import Breadcrumb from "./Breadcrumb";
-import { useDashboardStore } from "../store";
+import { useDashboardStore, activeTranslations } from "../store";
+import { translatedText, translatorOf } from "../excavator/nameTranslations";
 import { drawnInLayer } from "../excavator/views/graphTarget";
 import { runCanvasClick } from "../excavator/canvasActions";
 import type { CanvasNodeType } from "../excavator/canvasSelection";
@@ -129,6 +130,8 @@ function useOverviewGraph() {
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
   const searchResults = useDashboardStore((s) => s.searchResults);
   const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
+  const nameTable = useDashboardStore(activeTranslations);
+  const translateName = useMemo(() => translatorOf(nameTable), [nameTable]);
 
   // Build cluster nodes / flow edges / dims synchronously; only the layout
   // call itself is async, so we memo the structural pieces and run ELK in an
@@ -168,8 +171,8 @@ function useOverviewGraph() {
         position: { x: 0, y: 0 },
         data: {
           layerId: layer.id,
-          layerName: layer.name,
-          layerDescription: layer.description,
+          layerName: translatedText(layer.name, translateName),
+          layerDescription: translatedText(layer.description, translateName),
           aggregateComplexity,
           layerColorIndex: i,
           searchMatchCount: searchMatchByLayer.get(layer.id),
@@ -196,7 +199,7 @@ function useOverviewGraph() {
     }
 
     return { clusterNodes, flowEdges, dims };
-  }, [graph, nodesById, nodeIdToLayerId, searchResults, drillIntoLayer]);
+  }, [graph, nodesById, nodeIdToLayerId, searchResults, drillIntoLayer, translateName]);
 
   const [overview, setOverview] = useState<{ nodes: Node[]; edges: Edge[] }>({
     nodes: [],

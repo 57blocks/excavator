@@ -241,7 +241,7 @@ export function fixtureData() {
   return {
     'knowledge-graph.json': graph,
     'domain-graph.json': domain,
-    'name-translations.json': { language: 'French', names: { Running: 'Execution', Payments: 'Paiements', 'Main entry': 'Entree principale' }, counts: { names: 3, translated: 3, english: 0, identical: 0, mismatched: 0, unused: 0, refused: 0 } },
+    'name-translations.json': { language: 'French', names: { Running: 'Execution', Payments: 'Paiements', 'Main entry': 'Entree principale', 'Takes payments.\nSecond line.': 'Prend les paiements.\nDeuxieme ligne.', Library: 'Bibliotheque', 'Entry points.': 'Points d\'entree.' }, counts: { names: 6, translated: 6, english: 0, identical: 0, mismatched: 0, unused: 0, refused: 0 } },
     'meta.json': { lastAnalyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc123', version: '1.0.0', analyzedFiles: 2 },
     'staleness.json': { graphs: { knowledge: { status: 'revision', graphRevision: `git:${'b'.repeat(40)}`, currentRevision: `git:${'a'.repeat(40)}` } } },
     'unused-code.json': unused,
@@ -494,6 +494,10 @@ async function mainBody(h) {
   h.press(language);
   await h.sleep(300);
   out.french = { rows: h.domainRows(), lit: h.lit(h.headerButton('French')) };
+  // Descriptions come in their translation only, on the card and in the panel list (first line), with no English line.
+  const payCard = document.querySelector('.react-flow__node[data-id="domain:pay"]')?.textContent ?? '';
+  const payRow = document.querySelector('aside [data-excavator-domain-row="domain:pay"]');
+  out.descriptions = { card: payCard, row: payRow?.textContent ?? '', rowTitle: payRow?.querySelector('[title]')?.getAttribute('title') ?? '' };
   // Opening a domain shows its node; Escape returns to the list.
   out.overviewCentred = centred();
   out.overviewNoBar = !document.querySelector('[data-excavator-bar]');
@@ -662,6 +666,7 @@ async function structBody(h) {
   out.frameworks = (h.section('Runtime units')?.innerText.match(/Frameworks: (.*)/) ?? [])[1] ?? null;
   out.languages = (h.section('Runtime units')?.innerText.match(/Languages: (.*)/) ?? [])[1] ?? null;
   out.layers = [...document.querySelectorAll('aside [data-excavator-layer-row]')].map((b) => b.getAttribute('data-excavator-layer-row'));
+  out.layerRowTexts = [...document.querySelectorAll('aside [data-excavator-layer-row]')].map((b) => b.textContent);
   out.externals = text('External systems');
   out.changed = text('Most changed files');
   // The relations on the canvas: edge labels, stand-ins, the control's line.
@@ -868,6 +873,7 @@ export function judgeMain(result) {
     verdict('language switch', [
       ['the translations show first, the language button lit', p.language?.lit === true && p.language?.englishLit === false],
       ['English shows the English names', same(labels(p.english?.rows), ['Payments', 'Running', 'Other']) && originals(p.english?.rows).every((o) => o === null) && p.english?.lit === true],
+      ['a domain description shows in its translation only: card, panel list (first line) and its tooltip', has(p.descriptions?.card, 'Prend les paiements.') && !has(p.descriptions?.card, 'Takes payments.') && has(p.descriptions?.row, 'Prend les paiements.') && !has(p.descriptions?.row, 'Deuxieme') && !has(p.descriptions?.row, 'Takes payments.') && has(p.descriptions?.rowTitle, 'Deuxieme ligne.')],
       ['the language button brings the translations back', same(labels(p.french?.rows), ['Paiements', 'Execution', 'Other']) && p.french?.lit === true],
     ]),
     verdict('status line', [
@@ -899,6 +905,7 @@ export function judgeStruct(result) {
       ['runtime units are listed', has(p.units, 'Web') && has(p.units, 'Api')],
       ['the tech stack shows each name once', p.frameworks === 'Express' && p.languages === 'JavaScript'],
       ['both layers are listed', same(p.layers, ['layer:app', 'layer:lib'])],
+      ['a layer name shows in its translation only in the LAYERS list', (p.layerRowTexts ?? []).some((t) => t.includes('Bibliotheque') && !t.includes('Library'))],
       ['the external system is listed', has(p.externals, 'mail')],
       ['the most changed files are listed', has(p.changed, 'src/main.js') && has(p.changed, 'src/util.js')],
       ['the unused-code entry opens the list', p.unusedEntry === true && p.unusedList === true && (p.unusedRows ?? []).some((r) => /leaf/.test(r))],

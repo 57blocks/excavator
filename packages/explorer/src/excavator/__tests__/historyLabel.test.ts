@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { historyLabel, type HistoryNames } from "../historyLabel";
+import { translatedText } from "../nameTranslations";
 
 const names: HistoryNames = {
   domain: (id) => ({ "d:1": "Billing" })[id] ?? null,
@@ -30,6 +31,10 @@ describe("historyLabel", () => {
   });
   it("names a layer by its name", () => {
     expect(historyLabel({ ...base, viewMode: "structural", navigationLevel: "layer-detail", activeLayerId: "layer:api" }, names)).toBe("API");
+  });
+  it("names a layer by its translated name", () => {
+    const translated: HistoryNames = { ...names, layer: (id) => translatedText(id === "layer:api" ? "API" : null, (english) => (english === "API" ? "\u63a5\u53e3" : null)) };
+    expect(historyLabel({ ...base, viewMode: "structural", navigationLevel: "layer-detail", activeLayerId: "layer:api" }, translated)).toBe("\u63a5\u53e3");
   });
   it("names the folder an open layer shows when one is expanded", () => {
     const entry = { ...base, viewMode: "structural" as const, navigationLevel: "layer-detail" as const, activeLayerId: "layer:api", expandedContainers: new Set(["container:other", "container:auth"]) };
