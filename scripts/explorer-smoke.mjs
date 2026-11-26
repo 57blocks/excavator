@@ -665,9 +665,9 @@ async function structBody(h) {
   await h.until(() => h.cards().length > 0);
   await h.sleep(300);
   h.press(h.headerButton('Structural'));
-  await h.until(() => h.cards().some((n) => !/^domain:/.test(n.getAttribute('data-id') ?? '')) && h.section('Runtime units'));
+  await h.until(() => h.cards().some((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')) && h.section('Runtime units'));
   await h.sleep(500);
-  out.cards = h.cards().filter((n) => !/^domain:/.test(n.getAttribute('data-id') ?? '')).length;
+  out.cards = h.cards().filter((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')).length;
   const text = (name) => h.section(name)?.innerText ?? null;
   out.units = text('Runtime units');
   out.frameworks = (h.section('Runtime units')?.innerText.match(/Frameworks: (.*)/) ?? [])[1] ?? null;
@@ -761,9 +761,9 @@ async function groupsBody(h) {
   await h.until(() => h.cards().length > 0);
   await h.sleep(300);
   h.press(h.headerButton('Structural'));
-  await h.until(() => h.cards().some((n) => !/^domain:/.test(n.getAttribute('data-id') ?? '')));
+  await h.until(() => h.cards().some((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')));
   await h.sleep(400);
-  out.cards = h.cards().filter((n) => !/^domain:/.test(n.getAttribute('data-id') ?? '')).length;
+  out.cards = h.cards().filter((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')).length;
   out.layerRows = document.querySelectorAll('aside [data-excavator-layer-row]').length;
   return out;
 }
