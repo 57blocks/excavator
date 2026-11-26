@@ -1,22 +1,23 @@
-# The full gate every pull request must pass before it merges into main
-# (openspec change ci-merge-gate, design D1). It runs every check the
-# verification table in AGENTS.md lists, whatever the change touches: a
-# required check that a path filter skips counts as passed, so filtering
-# would let a change merge unchecked.
+# The full gate every pull request must pass before it merges into main.
+# It runs every check the verification table in AGENTS.md lists, whatever
+# the change touches: a required check that a path filter skips counts as
+# passed, so filtering would let a change merge unchecked.
+#
+# It does not run on pushes to main. Branch protection requires a pull
+# request's branch to be up to date with main before it merges, and this
+# gate runs on the pull request's merge commit, so a merge with `--merge`
+# lands the tree the gate already passed.
 name: CI
 
 on:
   pull_request: {}
-  push:
-    branches:
-      - main
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
-# A new push to a pull request supersedes its running gate; runs on main
-# are never cancelled.
+# A new push to a pull request supersedes its running gate; a manual run is
+# never cancelled.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
