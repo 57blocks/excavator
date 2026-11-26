@@ -6,7 +6,9 @@
 # It does not run on pushes to main. Branch protection requires a pull
 # request's branch to be up to date with main before it merges, and this
 # gate runs on the pull request's merge commit, so a merge with `--merge`
-# lands the tree the gate already passed.
+# lands the tree the gate already passed. pnpm-cache.yml runs on main instead,
+# to keep the dependency cache this gate restores saved where pull requests
+# can read it.
 name: CI
 
 on:
