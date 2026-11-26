@@ -172,7 +172,7 @@ function buildGroupCards(graph: KnowledgeGraph, groups: FeatureGroup[], missing:
       id: `group:${group.id}`,
       type: "group-card",
       position: positions[index],
-      data: { groupId: group.id, label: title.label, original: title.original, qualifier: group.qualifier, flowCount: group.flows.length, examples },
+      data: { groupId: group.id, label: title.label, original: title.original, qualifier: group.qualifier, description: group.description ? domainTitle(group.description, translate).label : null, flowCount: group.flows.length, examples },
       width: GROUP_CARD_WIDTH,
       height: GROUP_CARD_HEIGHT,
       draggable: false,

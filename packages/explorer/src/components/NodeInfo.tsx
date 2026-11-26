@@ -245,6 +245,11 @@ function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeG
               ) : undefined
             }
           >
+            {listed.group?.description && (
+              <p className="m-0 pb-2 text-[11px] text-text-secondary" data-excavator-group-description>
+                {domainTitle(listed.group.description, translate).label}
+              </p>
+            )}
             <ul className={LIST_CLASS}>
               {flows.map((f) => (
                 <li key={f.id}>

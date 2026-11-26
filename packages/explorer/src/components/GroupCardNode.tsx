@@ -10,6 +10,8 @@ export interface GroupCardData extends Record<string, unknown> {
   original?: string | null;
   /** The caller file suffix of a client group whose label another group shares. */
   qualifier?: string | null;
+  /** The stored one-line description (translated); absent for a computed group. */
+  description?: string | null;
   flowCount: number;
   /** Up to three example entries of the group's first flows, one line each. */
   examples: string[];
@@ -32,10 +34,17 @@ function GroupCardNode({ data }: NodeProps<GroupCardFlowNode>) {
       data-excavator-group-card={data.groupId}
     >
       <div className="h-full overflow-hidden">
-        <div className="font-heading text-sm text-accent font-semibold truncate">
+        <div
+          className="font-heading text-sm text-accent font-semibold truncate"
+          title={data.original ? `English: ${data.original}` : undefined}
+        >
           <GroupName label={data.label} qualifier={data.qualifier} />
         </div>
-        {data.original && <div className="text-[10px] text-text-muted truncate">{data.original}</div>}
+        {data.description && (
+          <div className="text-[11px] text-text-secondary truncate" title={data.description} data-excavator-group-description>
+            {data.description}
+          </div>
+        )}
         <div className="text-[11px] text-text-secondary mt-1">{data.flowCount} flows</div>
         <ul className="mt-1 space-y-0.5">
           {data.examples.slice(0, 3).map((example, index) => (

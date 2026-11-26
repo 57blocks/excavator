@@ -21,6 +21,10 @@ describe("historyLabel", () => {
     expect(historyLabel({ ...base, activeDomainId: "d:1", activeGroupId: "g:1" }, names)).toBe("invoices · billing-service");
     expect(historyLabel({ ...base, activeDomainId: "d:1", activeGroupId: "g:2" }, names)).toBe("reports");
   });
+  it("names a group by its stored name, with no qualifier", () => {
+    const stored: HistoryNames = { ...names, group: () => ({ label: "Invoice approvals", qualifier: null }) };
+    expect(historyLabel({ ...base, activeDomainId: "d:1", activeGroupId: "g:any" }, stored)).toBe("Invoice approvals");
+  });
   it("names the structural overview", () => {
     expect(historyLabel({ ...base, viewMode: "structural" }, names)).toBe("Project overview");
   });
