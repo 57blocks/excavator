@@ -14,10 +14,11 @@ export function StatusLine({ freshness, issues }: { freshness: DashboardFreshnes
   const gaps = useDashboardStore((s) => s.graph?.gaps);
   const coverage = useDashboardStore((s) => s.graph?.coverage);
   const nameTable = useDashboardStore((s) => s.nameTranslations);
+  const groupsNote = useDashboardStore((s) => (s.featureGroups.state === "ready" ? s.featureGroups.projectReason : null));
   const [open, setOpen] = useState(false);
   const line = useMemo(
-    () => buildStatusLine({ manifest, products, freshness, issues, gaps, coverage, nameTable }),
-    [manifest, products, freshness, issues, gaps, coverage, nameTable],
+    () => buildStatusLine({ manifest, products, freshness, issues, gaps, coverage, nameTable, groupsNote }),
+    [manifest, products, freshness, issues, gaps, coverage, nameTable, groupsNote],
   );
   return (
     <div className="shrink-0 border-t border-border-subtle bg-surface" data-excavator-status-line>

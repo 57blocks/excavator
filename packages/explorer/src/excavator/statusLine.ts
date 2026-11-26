@@ -107,6 +107,8 @@ export interface StatusLineInput {
   /** The knowledge graph's coverage record (`graph.coverage`), when it has one. */
   coverage?: CoverageRecord;
   nameTable: NameTranslations | null;
+  /** Why the stored project texts of feature-groups.json were not used, when they were not in the expected shape. */
+  groupsNote?: string | null;
 }
 
 const GROUPS: readonly (readonly [status: string, word: string])[] = [
@@ -212,6 +214,7 @@ export function buildStatusLine(input: StatusLineInput): StatusLine {
   details.push(...coverage);
   for (const gap of input.gaps ?? []) details.push(gapLine(gap));
   if (input.nameTable) details.push(overviewLine(input.nameTable));
+  if (input.groupsNote) details.push(`Feature groups: ${input.groupsNote}`);
   if (freshness.length > 0 || coverage.length > 0 || input.issues.length > 0 || (input.gaps?.length ?? 0) > 0) attention = true;
 
   return { summary: groups.join(" \u00b7 "), details, attention };

@@ -20,11 +20,24 @@ export interface FeatureGroup {
   label: string;
   /** The caller file suffix that tells a client group from others with the same label; null for the rest. */
   qualifier: string | null;
+  /** A one-line description /excavator-domain stored for the group; null for a computed group. */
+  description: string | null;
+  /** The computed code label of a named group. Never shown: `label` is the name to show. */
+  codeLabel: string | null;
   file: string | null;
   flows: GroupFlow[];
 }
 
-export type FeatureGroups = { state: "ready"; domains: Record<string, FeatureGroup[]> } | { state: "missing"; reason: string };
+/** The project texts /excavator-domain stored: both, or the reason there are none. */
+export interface StoredProject {
+  introduction: string | null;
+  technicalOverview: string | null;
+  unavailable?: string;
+}
+
+export type FeatureGroups =
+  | { state: "ready"; domains: Record<string, FeatureGroup[]>; named: string[]; project: StoredProject | null; projectReason: string | null }
+  | { state: "missing"; reason: string };
 
 export const ALL_FLOWS_GROUP_ID = "all";
 export const ALL_FLOWS_LABEL = "All flows";
@@ -37,11 +50,15 @@ function isGroupFlow(value: unknown): value is GroupFlow {
   return isRecord(value) && typeof value.id === "string" && typeof value.rule === "string" && stringOrNull(value.scope) && stringOrNull(value.origin);
 }
 
-/** A group as the packer wrote it; a missing qualifier is null. */
-function isGroup(value: unknown): value is Omit<FeatureGroup, "qualifier"> & { qualifier?: string | null } {
+type RawGroup = Omit<FeatureGroup, "qualifier" | "description" | "codeLabel"> & { qualifier?: string | null; description?: string | null; codeLabel?: string | null };
+
+/** A group as the packer wrote it; a missing qualifier, description or code label is null. */
+function isGroup(value: unknown): value is RawGroup {
   return (
     isRecord(value) &&
     (value.qualifier === undefined || stringOrNull(value.qualifier)) &&
+    (value.description === undefined || stringOrNull(value.description)) &&
+    (value.codeLabel === undefined || stringOrNull(value.codeLabel)) &&
     typeof value.id === "string" &&
     typeof value.kind === "string" &&
     typeof value.label === "string" &&
@@ -49,6 +66,22 @@ function isGroup(value: unknown): value is Omit<FeatureGroup, "qualifier"> & { q
     Array.isArray(value.flows) &&
     value.flows.every(isGroupFlow)
   );
+}
+
+const nonEmpty = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+
+/** The stored project: null when there is none; null with a reason when it is not in the expected shape (the groups stay usable). */
+function readProject(value: unknown): { project: StoredProject | null; projectReason: string | null } {
+  if (value === undefined || value === null) return { project: null, projectReason: null };
+  if (isRecord(value)) {
+    if (nonEmpty(value.introduction) && nonEmpty(value.technicalOverview)) {
+      return { project: { introduction: value.introduction, technicalOverview: value.technicalOverview }, projectReason: null };
+    }
+    if (value.introduction === null && value.technicalOverview === null && nonEmpty(value.unavailable)) {
+      return { project: { introduction: null, technicalOverview: null, unavailable: value.unavailable }, projectReason: null };
+    }
+  }
+  return { project: null, projectReason: "the stored project texts in feature-groups.json are not in the expected shape" };
 }
 
 /** The packed groups, or the reason they cannot be used (the page then shows each domain's flows as one group). */
@@ -64,9 +97,10 @@ export function readFeatureGroups(value: unknown): FeatureGroups {
   }
   const domains: Record<string, FeatureGroup[]> = {};
   for (const [id, groups] of Object.entries(value.domains)) {
-    domains[id] = (groups as (Omit<FeatureGroup, "qualifier"> & { qualifier?: string | null })[]).map((group) => ({ ...group, qualifier: group.qualifier ?? null }));
+    domains[id] = (groups as RawGroup[]).map((group) => ({ ...group, qualifier: group.qualifier ?? null, description: group.description ?? null, codeLabel: group.codeLabel ?? null }));
   }
-  return { state: "ready", domains };
+  const named = Array.isArray(value.named) ? value.named.filter((id): id is string => typeof id === "string") : [];
+  return { state: "ready", domains, named, ...readProject(value.project) };
 }
 
 /** The flows a domain contains, in graph order. */
@@ -83,6 +117,8 @@ export function groupsOf(groups: FeatureGroups, domainGraph: KnowledgeGraph, dom
       kind: "other",
       label: ALL_FLOWS_LABEL,
       qualifier: null,
+      description: null,
+      codeLabel: null,
       file: null,
       flows: flowIdsOf(domainGraph, domainId).map((id) => ({ id, rule: "none", scope: null, origin: null })),
     },

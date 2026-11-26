@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GraphEdge, GraphNode, KnowledgeGraph } from "../../core/types";
 import { groupHoldingFlow, groupsOf, laneRows, locateInDomain, panelFlows, readFeatureGroups, splitOrigin } from "../domainLevels";
+import { projectText } from "../projectText";
 
 const FORMAT = "excavator-view-feature-groups/3";
 
@@ -54,7 +55,7 @@ describe("groupsOf", () => {
   const g = graphOf([domain("d:1"), flow("f:a"), flow("f:b")], [edge("d:1", "f:a", "contains_flow"), edge("d:1", "f:b", "contains_flow")]);
   it("is one group with every contains_flow target, in graph order, when the groups are missing", () => {
     const groups = groupsOf(readFeatureGroups(undefined), g, "d:1");
-    expect(groups).toEqual([{ id: "all", kind: "other", label: "All flows", qualifier: null, file: null, flows: [
+    expect(groups).toEqual([{ id: "all", kind: "other", label: "All flows", qualifier: null, description: null, codeLabel: null, file: null, flows: [
       { id: "f:a", rule: "none", scope: null, origin: null },
       { id: "f:b", rule: "none", scope: null, origin: null },
     ] }]);
@@ -145,5 +146,71 @@ describe("panelFlows", () => {
   it("ignores an open group when the panel shows another domain, or the group is unknown", () => {
     expect(panelFlows(ready, g, "d:1", "d:2", "x").group).toBeNull();
     expect(panelFlows(ready, g, "d:1", "d:1", "nope").flowIds).toEqual(["f:a", "f:b", "f:c"]);
+  });
+});
+
+describe("readFeatureGroups with stored groups and project texts", () => {
+  const stored = {
+    format: FORMAT,
+    named: ["d:named"],
+    project: { introduction: "Intro text.", technicalOverview: "Tech text." },
+    domains: {
+      "d:named": [group("g1", ["f:1"], { label: "Stored name", description: "Does a thing.", codeLabel: "thing", qualifier: undefined })],
+      "d:plain": [group("g2", ["f:2"], { label: "word", qualifier: "svc" })],
+    },
+  };
+  it("reads the stored name, description and code label, the computed qualifier, and the project texts", () => {
+    const read = readFeatureGroups(stored);
+    expect(read.state).toBe("ready");
+    if (read.state !== "ready") return;
+    expect(read.project).toEqual({ introduction: "Intro text.", technicalOverview: "Tech text." });
+    expect(read.projectReason).toBeNull();
+    expect(read.named).toEqual(["d:named"]);
+    expect(read.domains["d:named"][0]).toMatchObject({ label: "Stored name", description: "Does a thing.", codeLabel: "thing", qualifier: null });
+    expect(read.domains["d:plain"][0]).toMatchObject({ label: "word", qualifier: "svc", description: null, codeLabel: null });
+  });
+  it("reads today's data, with no project and no descriptions", () => {
+    const read = readFeatureGroups({ format: FORMAT, domains: { d: [group("g", ["f"])] } });
+    expect(read.state === "ready" && [read.project, read.projectReason, read.named, read.domains.d[0].description]).toEqual([null, null, [], null]);
+  });
+  it("reads the unavailable shape", () => {
+    const read = readFeatureGroups({ ...stored, project: { introduction: null, technicalOverview: null, unavailable: "the texts failed the check" } });
+    expect(read.state === "ready" && read.project).toEqual({ introduction: null, technicalOverview: null, unavailable: "the texts failed the check" });
+  });
+  it.each([
+    ["one text empty", { introduction: "x", technicalOverview: "  " }],
+    ["a text that is not a string", { introduction: 3, technicalOverview: "y" }],
+    ["unavailable without a reason", { introduction: null, technicalOverview: null, unavailable: "" }],
+    ["not an object", "text"],
+  ])("gives project null and a reason for a bad project: %s", (_name, project) => {
+    const read = readFeatureGroups({ ...stored, project });
+    expect(read.state).toBe("ready");
+    if (read.state === "ready") {
+      expect(read.project).toBeNull();
+      expect(read.projectReason).not.toBeNull();
+      expect(read.domains["d:named"]).toHaveLength(1);
+    }
+  });
+  it("says missing for a description or code label that is not a string or null", () => {
+    expect(readFeatureGroups({ format: FORMAT, domains: { d: [group("a", [], { description: 3 })] } }).state).toBe("missing");
+    expect(readFeatureGroups({ format: FORMAT, domains: { d: [group("a", [], { codeLabel: {} })] } }).state).toBe("missing");
+  });
+});
+
+describe("projectText", () => {
+  const both = { introduction: "Stored intro.", technicalOverview: "Stored tech." };
+  it("is the stored text when present", () => {
+    expect(projectText(both, "introduction", "Graph text.")).toEqual({ kind: "text", text: "Stored intro." });
+    expect(projectText(both, "technicalOverview", null)).toEqual({ kind: "text", text: "Stored tech." });
+  });
+  it("is the unavailable reason when the stored project says so", () => {
+    expect(projectText({ introduction: null, technicalOverview: null, unavailable: "failed" }, "introduction", "Graph text.")).toEqual({ kind: "unavailable", reason: "failed" });
+  });
+  it("is the knowledge graph's description when there is no stored project", () => {
+    expect(projectText(null, "introduction", "  Graph text.  ")).toEqual({ kind: "text", text: "Graph text." });
+  });
+  it("is none when nothing is there", () => {
+    expect(projectText(null, "technicalOverview", "")).toEqual({ kind: "none" });
+    expect(projectText(null, "introduction", null)).toEqual({ kind: "none" });
   });
 });
