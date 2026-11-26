@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useDashboardStore, activeTranslations } from "../../store";
 import NodeInfo from "../../components/NodeInfo";
-import { translatorOf } from "../nameTranslations";
+import { translatedText, translatorOf } from "../nameTranslations";
 import { domainList, projectIntroduction } from "../overview";
 import { projectText } from "../projectText";
 import { ProjectTextView } from "./ProjectText";
@@ -54,7 +54,7 @@ export function DomainOverview() {
                   </span>
                   {row.original !== null && <span className="block truncate text-[11px] text-text-muted" data-excavator-domain-original>{row.original}</span>}
                   {row.summary !== "" && (
-                    <span className="block truncate text-[11px] text-text-secondary" title={(domainGraph?.nodes.find((n) => n.id === row.id)?.summary ?? "").trim()}>
+                    <span className="block truncate text-[11px] text-text-secondary" title={translatedText(domainGraph?.nodes.find((n) => n.id === row.id)?.summary, translatorOf(table) ?? undefined)}>
                       {row.summary}
                     </span>
                   )}

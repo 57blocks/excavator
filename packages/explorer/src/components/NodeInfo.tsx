@@ -5,7 +5,7 @@ import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-
 import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
 import { nodeTitles } from "../excavator/nodeTitle";
 import { displayFlowName, flowTitle } from "../excavator/displayFlowName";
-import { domainTitle, translatorOf, type Translate } from "../excavator/nameTranslations";
+import { domainTitle, translatedList, translatedText, translatorOf, type Translate } from "../excavator/nameTranslations";
 import { panelFlows } from "../excavator/domainLevels";
 import GroupName from "./GroupName";
 import { NodeProductFacts } from "../excavator/panel/NodeProductFacts";
@@ -208,7 +208,7 @@ function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeG
       <>
         {Array.isArray(meta?.entities) && meta.entities.length > 0 ? (
           <Section title={t.nodeInfo.entities}>
-            <p className="m-0 pb-2 text-[11px] text-text-secondary">{meta.entities.join(", ")}</p>
+            <p className="m-0 pb-2 text-[11px] text-text-secondary">{translatedList(meta.entities, translate).join(", ")}</p>
           </Section>
         ) : null}
         {Array.isArray(meta?.businessRules) && meta.businessRules.length > 0 ? (
@@ -223,7 +223,7 @@ function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeG
         {Array.isArray(meta?.crossDomainInteractions) && meta.crossDomainInteractions.length > 0 ? (
           <Section title={t.nodeInfo.crossDomain}>
             <ul className={`${LIST_CLASS} text-[11px] text-text-secondary`}>
-              {meta.crossDomainInteractions.map((c, i) => (
+              {translatedList(meta.crossDomainInteractions, translate).map((c, i) => (
                 <li key={i} className="py-1.5">{c}</li>
               ))}
             </ul>
@@ -456,7 +456,7 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
 
       <div className="px-5 pb-2">
         <p className="mb-3 text-sm leading-relaxed text-text-secondary">
-          {summaryRemoved(node) ? <span className="italic text-text-muted">{t.nodeInfo.summaryRemoved}</span> : node.summary}
+          {summaryRemoved(node) ? <span className="italic text-text-muted">{t.nodeInfo.summaryRemoved}</span> : node.type === "domain" ? translatedText(node.summary, translatorOf(nameTranslations)) : node.summary}
         </p>
 
         {verdict && (
@@ -500,7 +500,7 @@ export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
 
       {node.tags.length > 0 && (
         <Section title={t.common.tags}>
-          <p className="m-0 pb-2 text-[11px] text-text-secondary">{node.tags.join(", ")}</p>
+          <p className="m-0 pb-2 text-[11px] text-text-secondary">{(node.type === "domain" ? translatedList(node.tags, translatorOf(nameTranslations)) : node.tags).join(", ")}</p>
         </Section>
       )}
 

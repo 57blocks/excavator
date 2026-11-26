@@ -33,7 +33,7 @@ import { runCanvasClick } from "../excavator/canvasActions";
 import { DIMMED_OPACITY, emphasis, laneBandId, laneStepId, type Emphasis } from "../excavator/emphasis";
 import { initialViewport } from "../excavator/initialViewport";
 import { flowTitle } from "../excavator/displayFlowName";
-import { domainTitle, translatorOf, type Translate } from "../excavator/nameTranslations";
+import { domainTitle, translatedText, translatorOf, type Translate } from "../excavator/nameTranslations";
 import type { KnowledgeGraph } from "@understand-anything/core/types";
 
 const nodeTypes = {
@@ -89,7 +89,7 @@ function buildDomainOverview(graph: KnowledgeGraph, translate?: Translate): Node
         id,
         type: "domain-cluster",
         position: positions[index],
-        data: { label: title.label, original: title.original, summary: node.summary, domainId: id },
+        data: { label: title.label, original: title.original, summary: translatedText(node.summary, translate), domainId: id },
         width: DOMAIN_CARD_WIDTH,
         height: DOMAIN_CARD_HEIGHT,
         draggable: false,

@@ -1,6 +1,6 @@
 import type { KnowledgeGraph } from "../core/types";
 import { domainBands } from "./domainLayout";
-import { domainTitle, type Translate } from "./nameTranslations";
+import { domainTitle, translatedText, type Translate } from "./nameTranslations";
 import { externalLabel, unitsOf, type UnitInfo } from "./products/relations";
 import { topFiles } from "./products/hotspots-charts";
 import { normalizeRow, type UnusedRow } from "./products/unused";
@@ -67,7 +67,7 @@ export function domainList(domainGraph: KnowledgeGraph | null, translate?: Trans
     band.domainIds.map((id) => {
       const node = byId.get(id)!;
       const { label, original } = domainTitle(node.name, translate);
-      return { id, label, original, summary: (node.summary ?? "").split("\n")[0].trim(), kind: band.kind === "none" ? null : band.kind };
+      return { id, label, original, summary: translatedText(node.summary, translate).split("\n")[0].trim(), kind: band.kind === "none" ? null : band.kind };
     }),
   );
 }

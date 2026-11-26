@@ -78,6 +78,12 @@ describe("domainList", () => {
     expect(rows.find((r) => r.id === "d:odd")?.summary).toBe("");
   });
 
+  it("translates the whole summary, then shows its first line; an untranslated summary shows its English first line", () => {
+    const rows = domainList(dg, (english) => (english === "Leftovers.\nSecond line." ? "\u5176\u4ed6\u3002\n\u7b2c\u4e8c\u884c" : null));
+    expect(rows.find((r) => r.id === "d:misc")?.summary).toBe("\u5176\u4ed6\u3002");
+    expect(rows.find((r) => r.id === "d:billing")?.summary).toBe("Invoices and payments.");
+  });
+
   it("translates the label and keeps the English original only when translated", () => {
     const rows = domainList(dg, (english) => (english === "Billing" ? "Facturation" : null));
     expect(rows.find((r) => r.id === "d:billing")).toMatchObject({ label: "Facturation", original: "Billing" });
