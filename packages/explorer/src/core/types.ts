@@ -31,6 +31,8 @@ export interface KnowledgeMeta {
 
 // Optional domain metadata for domain/flow/step nodes
 export interface DomainMeta {
+  /** Excavator: a domain's band in the overview; domains without a kind sit in the last band. */
+  kind?: "business" | "support";
   entities?: string[];
   businessRules?: string[];
   crossDomainInteractions?: string[];

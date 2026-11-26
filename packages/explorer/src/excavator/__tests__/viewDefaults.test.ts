@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeGraph } from "../../core/types";
-import { shownViewMode, useDashboardStore } from "../../store";
+import { useDashboardStore } from "../../store";
 import { resolveInitialTheme } from "../../themes/ThemeContext";
 
 // openspec: changes/explorer-view-defaults, design D1, D3, D4 and D5.
@@ -12,10 +12,6 @@ beforeEach(() => {
 });
 
 describe("what the page opens on", () => {
-  it("opens on the Overview persona", () => {
-    expect(useDashboardStore.getState().persona).toBe("non-technical");
-  });
-
   it("opens the Domain mode when the first domain graph arrives", () => {
     expect(useDashboardStore.getState().viewMode).toBe("structural");
     useDashboardStore.getState().setDomainGraph(domainGraph);
@@ -48,23 +44,14 @@ describe("what the page opens on", () => {
   });
 });
 
-describe("the highlighted mode", () => {
-  it("is the current mode while the graph is shown, and none while a product view is open", () => {
-    expect(shownViewMode(useDashboardStore.getState())).toBe("structural");
-    useDashboardStore.getState().openProductView("unused");
-    expect(shownViewMode(useDashboardStore.getState())).toBeNull();
+describe("the view switch", () => {
+  it("changes the mode, and clears the selection and the open code viewer", () => {
+    useDashboardStore.setState({ selectedNodeId: "file:a.ts", codeViewerOpen: true, codeViewerNodeId: "file:a.ts" });
     useDashboardStore.getState().setViewMode("domain");
-    expect(shownViewMode(useDashboardStore.getState())).toBe("domain");
-  });
-});
-
-describe("the diff overlay", () => {
-  it("loads switched off and switches on from the toggle", () => {
-    useDashboardStore.getState().setDiffOverlay(["file:a.ts"], ["file:b.ts"], "last 30 days");
-    expect(useDashboardStore.getState().diffMode).toBe(false);
-    expect(useDashboardStore.getState().changedNodeIds.size).toBe(1);
-    useDashboardStore.getState().toggleDiffMode();
-    expect(useDashboardStore.getState().diffMode).toBe(true);
+    const s = useDashboardStore.getState();
+    expect(s.viewMode).toBe("domain");
+    expect(s.selectedNodeId).toBeNull();
+    expect(s.codeViewerOpen).toBe(false);
   });
 });
 

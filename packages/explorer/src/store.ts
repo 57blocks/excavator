@@ -2,60 +2,36 @@ import { create } from "zustand";
 import { SearchEngine } from "@understand-anything/core/search";
 import type { SearchResult } from "@understand-anything/core/search";
 import type { GraphIssue } from "@understand-anything/core/schema";
-import type {
-  GraphNode,
-  KnowledgeGraph,
-  TourStep,
-} from "@understand-anything/core/types";
-import type { ReactFlowInstance } from "@xyflow/react";
+import type { GraphNode, KnowledgeGraph } from "./core/types";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
 import { parseNameTranslations, translatorOf, type NameTranslations } from "./excavator/nameTranslations";
-import type { ProductView } from "./excavator/productViews";
+import { goToTarget } from "./excavator/canvasSelection";
+import { readFeatureGroups, type FeatureGroups } from "./excavator/domainLevels";
+import type { CanvasNodeType } from "./excavator/canvasSelection";
 import type { RelationsMode } from "./excavator/graphRelations";
 import { sourceNodeId, type SourceTarget } from "./excavator/views/sourceNode";
 
-export type Persona = "non-technical" | "junior" | "experienced";
-export type NavigationLevel = "overview" | "layer-detail";
-export type NodeType = "file" | "function" | "class" | "module" | "concept" | "config" | "document" | "service" | "table" | "endpoint" | "pipeline" | "schema" | "resource" | "domain" | "flow" | "step" | "article" | "entity" | "topic" | "claim" | "source" | "page" | "screen" | "component" | "componentSet" | "instance" | "token";
-export type Complexity = "simple" | "moderate" | "complex";
-export type EdgeCategory = "structural" | "behavioral" | "data-flow" | "dependencies" | "semantic" | "infrastructure" | "domain" | "knowledge" | "design";
-export type ViewMode = "structural" | "domain" | "knowledge";
-export type DetailLevel = "file" | "class";
-
-export interface FilterState {
-  nodeTypes: Set<NodeType>;
-  complexities: Set<Complexity>;
-  layerIds: Set<string>;
-  edgeCategories: Set<EdgeCategory>;
+/** One place the user has been: the level, the selection and where the canvas was. */
+export interface HistoryEntry {
+  viewMode: ViewMode;
+  activeDomainId: string | null;
+  activeGroupId: string | null;
+  navigationLevel: NavigationLevel;
+  activeLayerId: string | null;
+  expandedContainers: Set<string>;
+  selectedNodeId: string | null;
+  selectedGroupId: string | null;
+  viewport: ViewportState | null;
 }
+export interface ViewportState {
+  x: number;
+  y: number;
+  zoom: number;
+}
+export const MAX_HISTORY_ENTRIES = 100;
 
-export const ALL_NODE_TYPES: NodeType[] = ["file", "function", "class", "module", "concept", "config", "document", "service", "table", "endpoint", "pipeline", "schema", "resource", "domain", "flow", "step", "article", "entity", "topic", "claim", "source", "page", "screen", "component", "componentSet", "instance", "token"];
-export const ALL_COMPLEXITIES: Complexity[] = ["simple", "moderate", "complex"];
-export const ALL_EDGE_CATEGORIES: EdgeCategory[] = ["structural", "behavioral", "data-flow", "dependencies", "semantic", "infrastructure", "domain", "knowledge", "design"];
-
-export const EDGE_CATEGORY_MAP: Record<EdgeCategory, string[]> = {
-  structural: ["imports", "exports", "contains", "inherits", "implements"],
-  behavioral: ["calls", "subscribes", "publishes", "middleware"],
-  "data-flow": ["reads_from", "writes_to", "transforms", "validates"],
-  dependencies: ["depends_on", "tested_by", "configures", "mentions"],
-  semantic: ["related", "similar_to"],
-  infrastructure: ["deploys", "serves", "provisions", "triggers", "migrates", "documents", "routes", "defines_schema"],
-  domain: ["contains_flow", "flow_step", "cross_domain"],
-  knowledge: ["cites", "contradicts", "builds_on", "exemplifies", "categorized_under", "authored_by"],
-  design: ["instance_of", "variant_of", "uses_token"],
-};
-
-export const DOMAIN_EDGE_TYPES = EDGE_CATEGORY_MAP.domain;
-
-const DEFAULT_FILTERS: FilterState = {
-  nodeTypes: new Set<NodeType>(ALL_NODE_TYPES),
-  complexities: new Set<Complexity>(ALL_COMPLEXITIES),
-  layerIds: new Set<string>(),
-  edgeCategories: new Set<EdgeCategory>(ALL_EDGE_CATEGORIES),
-};
-
-/** Categories used for node type filter toggles. Single source of truth for NodeCategory. */
-export type NodeCategory = "code" | "config" | "docs" | "infra" | "data" | "domain" | "knowledge";
+export type NavigationLevel = "overview" | "layer-detail";
+export type ViewMode = "structural" | "domain" | "knowledge";
 
 /**
  * Build the (id → node) and (id → layerId) lookup maps that the rest of
@@ -67,8 +43,8 @@ export type NodeCategory = "code" | "config" | "docs" | "infra" | "data" | "doma
  * - `nodeIdToLayerId` preserves the prior `findNodeLayer` "first matching
  *   layer wins" semantics — if a node id appears in multiple layers
  *   (rare but legal in the schema), the first occurrence in `graph.layers`
- *   order is the one we map to. Drives navigation (drillIntoLayer, tour
- *   step → layer, sidebar history) where a single canonical layer is the
+ *   order is the one we map to. Drives navigation (drillIntoLayer,
+ *   sidebar history) where a single canonical layer is the
  *   right answer.
  *
  * - `nodeIdToLayerIds` records *every* layer a node belongs to. Drives
@@ -121,8 +97,9 @@ interface DashboardStore {
   nameTranslations: NameTranslations | null;
   /** Reads the page's `name-translations.json` data; data that is not that shape leaves the English names. */
   setNameTranslations: (raw: unknown) => void;
-  searchMode: "fuzzy" | "semantic";
-  setSearchMode: (mode: "fuzzy" | "semantic") => void;
+  /** Whether the page shows the translated names (the language switch); the English names show when false. */
+  showTranslations: boolean;
+  setShowTranslations: (show: boolean) => void;
 
   // Lens navigation
   navigationLevel: NavigationLevel;
@@ -134,41 +111,11 @@ interface DashboardStore {
   codeViewerSource: SourceTarget | null;
   codeViewerExpanded: boolean;
 
-  tourActive: boolean;
-  currentTourStep: number;
-  tourHighlightedNodeIds: string[];
-
-  persona: Persona;
-
-  diffMode: boolean;
-  changedNodeIds: Set<string>;
-  affectedNodeIds: Set<string>;
-  diffLabel: string | null;
-  diffDescription: string | null;
-
   // Focus mode: isolate a node's 1-hop neighborhood
   focusNodeId: string | null;
 
   // Sidebar navigation history (stack of visited node IDs)
   nodeHistory: string[];
-
-  // Filter & Export features
-  filters: FilterState;
-  filterPanelOpen: boolean;
-  exportMenuOpen: boolean;
-  pathFinderOpen: boolean;
-  reactFlowInstance: ReactFlowInstance | null;
-
-  // Node type category filters
-  nodeTypeFilters: Record<NodeCategory, boolean>;
-  toggleNodeTypeFilter: (category: NodeCategory) => void;
-
-  // Detail level: "file" shows only file nodes (architecture view),
-  // "class" shows files + class nodes (code structure view) with optional function expansion.
-  detailLevel: DetailLevel;
-  setDetailLevel: (level: DetailLevel) => void;
-  showFunctionsInClassView: boolean;
-  toggleShowFunctionsInClassView: () => void;
 
   setGraph: (graph: KnowledgeGraph) => void;
   selectNode: (nodeId: string | null) => void;
@@ -180,36 +127,12 @@ interface DashboardStore {
   navigateToOverview: () => void;
   setFocusNode: (nodeId: string | null) => void;
   setSearchQuery: (query: string) => void;
-  setPersona: (persona: Persona) => void;
   openCodeViewer: (nodeId: string) => void;
   /** Excavator: opens the code viewer on a file by path, for a product row whose file has no graph node. */
   openCodeViewerAt: (path: string, range: [number, number] | null) => void;
   closeCodeViewer: () => void;
   expandCodeViewer: () => void;
   collapseCodeViewer: () => void;
-
-  setDiffOverlay: (
-    changed: string[],
-    affected: string[],
-    label?: string,
-    description?: string,
-  ) => void;
-  toggleDiffMode: () => void;
-  clearDiffOverlay: () => void;
-
-  toggleFilterPanel: () => void;
-  toggleExportMenu: () => void;
-  togglePathFinder: () => void;
-  setReactFlowInstance: (instance: ReactFlowInstance | null) => void;
-  setFilters: (filters: Partial<FilterState>) => void;
-  resetFilters: () => void;
-  hasActiveFilters: () => boolean;
-
-  startTour: () => void;
-  stopTour: () => void;
-  setTourStep: (step: number) => void;
-  nextTourStep: () => void;
-  prevTourStep: () => void;
 
   // View mode
   viewMode: ViewMode;
@@ -222,22 +145,49 @@ interface DashboardStore {
   setIsKnowledgeGraph: (value: boolean) => void;
   navigateToDomain: (domainId: string) => void;
   clearActiveDomain: () => void;
+  /** Excavator: the feature groups the packer wrote, or why the page has none; the Domain view's first level inside a domain. */
+  featureGroups: FeatureGroups;
+  setFeatureGroups: (raw: unknown) => void;
+  /** Excavator: the open group of the open domain (null: the domain's group cards). */
+  activeGroupId: string | null;
+  openGroup: (groupId: string) => void;
+  /** Excavator: one level up in the Domain view: group, then domain, then all domains. */
+  goUp: () => void;
+  /** Excavator: the group card selected on the group level (its flows show in the panel). Null when none. */
+  selectedGroupId: string | null;
+  selectGroup: (groupId: string | null) => void;
+  /**
+   * Excavator: the one "go to" that search results and every panel list share. The node is selected on the level that
+   * holds it (opened first when it is not the current one) and the canvas pans to it, zoom unchanged.
+   */
+  goToNode: (nodeId: string) => void;
+  /**
+   * Excavator: Escape. Closes the code viewer, then clears the selection, and only when nothing is selected goes up
+   * one level. `typing` is true while a text field has focus: it keeps its own Escape and nothing goes up.
+   */
+  pressEscape: (typing: boolean) => void;
+  /** Excavator: the one history Back walks: every change of level pushes the state it leaves. Selection alone does not. */
+  history: HistoryEntry[];
+  /** Excavator: where the canvas is now (kept by onMoveEnd), so a push can record it. */
+  viewport: ViewportState | null;
+  setViewportState: (viewport: ViewportState) => void;
+  /** Excavator: the viewport Back restored; the view that shows the level applies it instead of its own placement, then clears it. */
+  pendingViewport: ViewportState | null;
+  clearPendingViewport: () => void;
+  goBack: () => void;
+  /** Excavator: enters the next level of a canvas node (a double click, or the panel's Open button). */
+  enterNode: (type: CanvasNodeType, id: string) => void;
+  /** Excavator: a node the domain view is to scroll into view (centred, zoom unchanged). */
+  domainRevealNodeId: string | null;
+  clearDomainReveal: () => void;
 
-  // Excavator (openspec: changes/explorer-products, design D2): the product view laid over the
-  // graph area, and the row of its table whose details the sidebar shows. The graph stays
-  // mounted and its selection untouched while a view is open.
-  productView: ProductView | null;
-  productRow: unknown | null;
+  // Excavator: the right panel and the graph read the page data; no product view is laid over the graph.
   /** Excavator: a node chosen from outside the graph that the structural view is to open its container for and fit. */
   revealNodeId: string | null;
   clearRevealNode: () => void;
   /** Excavator: which relations of the relations product the structural graph draws (excavator/graphRelations.ts). */
   relationsMode: RelationsMode;
   setRelationsMode: (mode: RelationsMode) => void;
-  /** Opens the view; the open one stays open, with its row (openspec: changes/explorer-view-defaults, design D2). */
-  openProductView: (view: ProductView) => void;
-  closeProductView: () => void;
-  setProductRow: (row: unknown | null) => void;
 
   // Container expand/collapse + lazy layout caches
   expandedContainers: Set<string>;
@@ -248,9 +198,6 @@ interface DashboardStore {
   /** Container the user just manually expanded; viewport should lock onto it. Cleared by GraphView once the lock is applied. */
   pendingFocusContainer: string | null;
   setPendingFocusContainer: (containerId: string | null) => void;
-  /** True while TourFitView is waiting for highlighted nodes to materialise (Stage 2 layout in progress). Drives the "Computing layout…" overlay. */
-  tourFitPending: boolean;
-  setTourFitPending: (pending: boolean) => void;
 
   containerLayoutCache: Map<
     string,
@@ -272,38 +219,17 @@ interface DashboardStore {
   bumpStage1Tick: () => void;
 
   // Layout-time issues (e.g. ELK input repair). Funneled into the
-  // WarningBanner alongside graph-validation issues.
+  // status line alongside graph-validation issues.
   layoutIssues: GraphIssue[];
   appendLayoutIssues: (issues: GraphIssue[]) => void;
   clearLayoutIssues: () => void;
-}
-
-function getSortedTour(graph: KnowledgeGraph): TourStep[] {
-  const tour = graph.tour ?? [];
-  return [...tour].sort((a, b) => a.order - b.order);
-}
-
-/** Navigate tour step to the correct layer for the first highlighted node. */
-function navigateTourToLayer(
-  nodeIdToLayerId: Map<string, string>,
-  nodeIds: string[],
-): Partial<DashboardStore> {
-  if (nodeIds.length === 0) return {};
-  const layerId = nodeIdToLayerId.get(nodeIds[0]);
-  if (layerId) {
-    return {
-      navigationLevel: "layer-detail" as const,
-      activeLayerId: layerId,
-    };
-  }
-  return {};
 }
 
 /**
  * Container ids derive from per-layer state — folder names in folder-strategy
  * layers, community indices (`container:cluster-N`) in community-strategy
  * layers — and collide across layers (e.g. API Contracts and Load Testing
- * both produce `container:cluster-0`). When a tour step crosses layers we
+ * both produce `container:cluster-0`). When navigation crosses layers we
  * must drop the previous layer's container caches so Stage 2 actually re-
  * runs for the new layer's children. Mirrors the reset block in
  * `drillIntoLayer`.
@@ -325,15 +251,68 @@ function layerResetIfChanged(
   };
 }
 
-/**
- * Excavator: the mode the middle of the page shows, or null while a product view
- * covers the graph; the Domain / Structural buttons highlight only this one
- * (openspec: changes/explorer-view-defaults, design D1).
- */
-export const shownViewMode = (s: Pick<DashboardStore, "productView" | "viewMode">): ViewMode | null =>
-  s.productView === null ? s.viewMode : null;
+/** The name table the page shows names through: null (English) while the language switch is on English. */
+/** The search engine over the domain graph's nodes, kept while the graph and the name table are the same objects. */
+let domainEngineCache: { graph: KnowledgeGraph; table: NameTranslations | null; engine: SearchEngine } | null = null;
 
-export const useDashboardStore = create<DashboardStore>()((set, get) => ({
+/** The engine a search runs on: the domain graph's nodes in the Domain view, the structural graph's otherwise. */
+function engineFor(state: Pick<DashboardStore, "viewMode" | "domainGraph" | "nameTranslations" | "searchEngine">): SearchEngine | null {
+  if (state.viewMode !== "domain" || !state.domainGraph) return state.searchEngine;
+  const cached = domainEngineCache;
+  if (cached && cached.graph === state.domainGraph && cached.table === state.nameTranslations) return cached.engine;
+  const engine = new SearchEngine(state.domainGraph.nodes, translatorOf(state.nameTranslations));
+  domainEngineCache = { graph: state.domainGraph, table: state.nameTranslations, engine };
+  return engine;
+}
+
+export const activeTranslations = (s: Pick<DashboardStore, "showTranslations" | "nameTranslations">): NameTranslations | null =>
+  s.showTranslations ? s.nameTranslations : null;
+
+const levelKeyOf = (s: Pick<DashboardStore, "viewMode" | "activeDomainId" | "activeGroupId" | "navigationLevel" | "activeLayerId" | "expandedContainers">): string =>
+  [s.viewMode, s.activeDomainId, s.activeGroupId, s.navigationLevel, s.activeLayerId, [...s.expandedContainers].sort().join(",")].join("|");
+
+const snapshotOf = (s: DashboardStore): HistoryEntry => ({
+  viewMode: s.viewMode,
+  activeDomainId: s.activeDomainId,
+  activeGroupId: s.activeGroupId,
+  navigationLevel: s.navigationLevel,
+  activeLayerId: s.activeLayerId,
+  expandedContainers: new Set(s.expandedContainers),
+  selectedNodeId: s.selectedNodeId,
+  selectedGroupId: s.selectedGroupId,
+  viewport: s.viewport,
+});
+
+/** Nested navigation actions (a go-to that drills in, Escape that goes up) record one entry, from the outermost call. */
+let recording = 0;
+
+/** Wraps a navigation action so that, when it changes the level, the state it left is pushed on the history. */
+function recorded<A extends unknown[]>(
+  get: () => DashboardStore,
+  set: (partial: Partial<DashboardStore>) => void,
+  run: (...args: A) => void,
+): (...args: A) => void {
+  return (...args: A) => {
+    if (recording > 0) {
+      run(...args);
+      return;
+    }
+    const before = snapshotOf(get());
+    const key = levelKeyOf(get());
+    recording += 1;
+    try {
+      run(...args);
+    } finally {
+      recording -= 1;
+    }
+    if (levelKeyOf(get()) !== key) set({ history: [...get().history, before].slice(-MAX_HISTORY_ENTRIES) });
+  };
+}
+
+const RECORDED_ACTIONS = ["navigateToDomain", "clearActiveDomain", "openGroup", "goUp", "goToNode", "setViewMode", "drillIntoLayer", "navigateToOverview", "toggleContainer"] as const;
+
+export const useDashboardStore = create<DashboardStore>()((set, get) => {
+  const state: DashboardStore = ({
   graph: null,
   layerSource: "graph",
   nodesById: new Map<string, GraphNode>(),
@@ -344,7 +323,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   searchResults: [],
   searchEngine: null,
   nameTranslations: null,
-  searchMode: "fuzzy",
+  showTranslations: true,
+  setShowTranslations: (show) => set({ showTranslations: show }),
 
   navigationLevel: "overview",
   activeLayerId: null,
@@ -353,67 +333,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   codeViewerSource: null,
   codeViewerExpanded: false,
 
-  tourActive: false,
-  currentTourStep: 0,
-  tourHighlightedNodeIds: [],
-
-  // Excavator: the page opens on Overview (openspec: changes/explorer-view-defaults, design D3).
-  persona: "non-technical",
-
-  diffMode: false,
-  changedNodeIds: new Set<string>(),
-  affectedNodeIds: new Set<string>(),
-  diffLabel: null,
-  diffDescription: null,
-
   focusNodeId: null,
   nodeHistory: [],
-
-  filters: { ...DEFAULT_FILTERS, nodeTypes: new Set(DEFAULT_FILTERS.nodeTypes), complexities: new Set(DEFAULT_FILTERS.complexities), layerIds: new Set(DEFAULT_FILTERS.layerIds), edgeCategories: new Set(DEFAULT_FILTERS.edgeCategories) },
-  filterPanelOpen: false,
-  exportMenuOpen: false,
-  pathFinderOpen: false,
-  reactFlowInstance: null,
-
-  nodeTypeFilters: { code: true, config: true, docs: true, infra: true, data: true, domain: true, knowledge: true },
-
-  toggleNodeTypeFilter: (category) =>
-    set((state) => ({
-      nodeTypeFilters: {
-        ...state.nodeTypeFilters,
-        [category]: !state.nodeTypeFilters[category],
-      },
-      // Filter changes shift container.nodeIds; cached child positions
-      // may reference filtered-out children. Drop the cache so Stage 2
-      // recomputes against the current set.
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-    })),
-
-  detailLevel: "file",
-  setDetailLevel: (level) =>
-    set({
-      detailLevel: level,
-      // Detail level changes which nodes are visible; cached positions stale.
-      // Reset fn toggle so it doesn't resurrect when re-entering class view.
-      showFunctionsInClassView: false,
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-    }),
-
-  showFunctionsInClassView: false,
-  toggleShowFunctionsInClassView: () =>
-    set((state) => ({
-      showFunctionsInClassView: !state.showFunctionsInClassView,
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-    })),
 
   setGraph: (loaded) => {
     const { graph, layerSource } = withDerivedGroups(loaded);
@@ -454,12 +375,13 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       // Push current node to history before navigating away
       set({
         selectedNodeId: nodeId,
+        selectedGroupId: null,
         nodeHistory: [...nodeHistory, selectedNodeId].slice(-MAX_HISTORY),
         // Excavator: a node chosen in the graph ends the reveal of one chosen from outside it.
         revealNodeId: null,
       });
     } else {
-      set({ selectedNodeId: nodeId, revealNodeId: null });
+      set({ selectedNodeId: nodeId, selectedGroupId: null, revealNodeId: null });
     }
   },
 
@@ -483,8 +405,6 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       set({
         ...layerNav,
         // Excavator: a node chosen from outside a product view (search, the file list, Show in graph) shows the graph.
-        productView: null,
-        productRow: null,
         revealNodeId: nodeId,
         selectedNodeId: nodeId,
         focusNodeId: null,
@@ -496,8 +416,6 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       });
     } else {
       set({
-        productView: null,
-        productRow: null,
         selectedNodeId: nodeId,
         nodeHistory: newHistory,
       });
@@ -588,7 +506,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     }
     // The search index holds the translated names, so a table that arrives after the graph rebuilds it and the query's results.
     const searchEngine = new SearchEngine(graph.nodes, translatorOf(nameTranslations));
-    set({ nameTranslations, searchEngine, searchResults: searchQuery.trim() ? searchEngine.search(searchQuery) : [] });
+    const next = { ...get(), nameTranslations, searchEngine };
+    set({ nameTranslations, searchEngine, searchResults: searchQuery.trim() ? (engineFor(next)?.search(searchQuery) ?? []) : [] });
   },
 
   setFocusNode: (nodeId) =>
@@ -603,32 +522,15 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       expandedContainers: new Set(),
       pendingFocusContainer: null,
     }),
-  setSearchMode: (mode) => set({ searchMode: mode }),
   setSearchQuery: (query) => {
-    const engine = get().searchEngine;
-    const mode = get().searchMode;
+    const engine = engineFor(get());
     if (!engine || !query.trim()) {
       set({ searchQuery: query, searchResults: [] });
       return;
     }
-    // Currently both modes use the same fuzzy engine
-    // When embeddings are available, "semantic" mode will use SemanticSearchEngine
-    void mode;
     const searchResults = engine.search(query);
     set({ searchQuery: query, searchResults });
   },
-
-  setPersona: (persona) =>
-    set({
-      persona,
-      // Persona changes filter node types, which shifts container.nodeIds.
-      containerLayoutCache: new Map(),
-      containerSizeMemory: new Map(),
-      expandedContainers: new Set(),
-      pendingFocusContainer: null,
-      // Excavator: a node revealed under the old persona is not moved to under the new one.
-      revealNodeId: null,
-    }),
 
   openCodeViewer: (nodeId) =>
     set({ codeViewerOpen: true, codeViewerNodeId: nodeId, codeViewerExpanded: false }),
@@ -644,137 +546,62 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   expandCodeViewer: () => set({ codeViewerExpanded: true }),
   collapseCodeViewer: () => set({ codeViewerExpanded: false }),
 
-  setDiffOverlay: (changed, affected, label, description) =>
-    set({
-      // Excavator: the overlay loads switched off (openspec: changes/explorer-view-defaults, design D5).
-      diffMode: false,
-      changedNodeIds: new Set(changed),
-      affectedNodeIds: new Set(affected),
-      diffLabel: label ?? null,
-      diffDescription: description ?? null,
-    }),
-
-  toggleDiffMode: () => set((state) => ({ diffMode: !state.diffMode })),
-
-  clearDiffOverlay: () =>
-    set({
-      diffMode: false,
-      changedNodeIds: new Set<string>(),
-      affectedNodeIds: new Set<string>(),
-      diffLabel: null,
-      diffDescription: null,
-    }),
-
-  toggleFilterPanel: () => set((state) => ({
-    filterPanelOpen: !state.filterPanelOpen,
-    exportMenuOpen: false,
-  })),
-
-  toggleExportMenu: () => set((state) => ({
-    exportMenuOpen: !state.exportMenuOpen,
-    filterPanelOpen: false,
-  })),
-
-  togglePathFinder: () => set((state) => ({
-    pathFinderOpen: !state.pathFinderOpen,
-  })),
-
-  setReactFlowInstance: (instance) => set({ reactFlowInstance: instance }),
-
-  setFilters: (newFilters) => set((state) => ({
-    filters: { ...state.filters, ...newFilters },
-  })),
-
-  resetFilters: () => set({
-    filters: {
-      nodeTypes: new Set<NodeType>(ALL_NODE_TYPES),
-      complexities: new Set<Complexity>(ALL_COMPLEXITIES),
-      layerIds: new Set<string>(),
-      edgeCategories: new Set<EdgeCategory>(ALL_EDGE_CATEGORIES),
-    },
-  }),
-
-  hasActiveFilters: () => {
-    const { filters } = get();
-    return filters.nodeTypes.size !== ALL_NODE_TYPES.length
-      || filters.complexities.size !== ALL_COMPLEXITIES.length
-      || filters.layerIds.size > 0
-      || filters.edgeCategories.size !== ALL_EDGE_CATEGORIES.length;
-  },
-
-  startTour: () => {
-    const { graph, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    const sorted = getSortedTour(graph);
-    const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[0].nodeIds);
-    set({
-      tourActive: true,
-      currentTourStep: 0,
-      tourHighlightedNodeIds: sorted[0].nodeIds,
-      selectedNodeId: null,
-      ...layerNav,
-      ...layerResetIfChanged(layerNav, activeLayerId),
-    });
-  },
-
-  stopTour: () =>
-    set({
-      tourActive: false,
-      currentTourStep: 0,
-      tourHighlightedNodeIds: [],
-    }),
-
-  setTourStep: (step) => {
-    const { graph, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    const sorted = getSortedTour(graph);
-    if (step < 0 || step >= sorted.length) return;
-    const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[step].nodeIds);
-    set({
-      currentTourStep: step,
-      tourHighlightedNodeIds: sorted[step].nodeIds,
-      ...layerNav,
-      ...layerResetIfChanged(layerNav, activeLayerId),
-    });
-  },
-
-  nextTourStep: () => {
-    const { graph, currentTourStep, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    const sorted = getSortedTour(graph);
-    if (currentTourStep < sorted.length - 1) {
-      const next = currentTourStep + 1;
-      const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[next].nodeIds);
-      set({
-        currentTourStep: next,
-        tourHighlightedNodeIds: sorted[next].nodeIds,
-        ...layerNav,
-        ...layerResetIfChanged(layerNav, activeLayerId),
-      });
-    }
-  },
-
-  prevTourStep: () => {
-    const { graph, currentTourStep, nodeIdToLayerId, activeLayerId } = get();
-    if (!graph || !graph.tour || graph.tour.length === 0) return;
-    if (currentTourStep > 0) {
-      const sorted = getSortedTour(graph);
-      const prev = currentTourStep - 1;
-      const layerNav = navigateTourToLayer(nodeIdToLayerId, sorted[prev].nodeIds);
-      set({
-        currentTourStep: prev,
-        tourHighlightedNodeIds: sorted[prev].nodeIds,
-        ...layerNav,
-        ...layerResetIfChanged(layerNav, activeLayerId),
-      });
-    }
-  },
-
   viewMode: "structural",
   isKnowledgeGraph: false,
   domainGraph: null,
   activeDomainId: null,
-
+  featureGroups: readFeatureGroups(undefined),
+  setFeatureGroups: (raw) => set({ featureGroups: readFeatureGroups(raw) }),
+  activeGroupId: null,
+  selectedGroupId: null,
+  selectGroup: (groupId) => set({ selectedGroupId: groupId, selectedNodeId: null, focusNodeId: null }),
+  goToNode: (nodeId) => {
+    const state = get();
+    const { viewMode, domainGraph, featureGroups } = state;
+    if (viewMode === "domain" && domainGraph) {
+      const target = goToTarget({ domainGraph, featureGroups }, nodeId);
+      if (target === null) return;
+      set({
+        activeDomainId: target.activeDomainId,
+        activeGroupId: target.activeGroupId,
+        selectedNodeId: nodeId,
+        selectedGroupId: null,
+        focusNodeId: null,
+        domainRevealNodeId: nodeId,
+      });
+      return;
+    }
+    // Structural: a layer lives on the overview; any other node opens its layer, as a search result always did.
+    if (state.graph?.layers.some((layer) => layer.id === nodeId)) {
+      if (state.navigationLevel !== "overview") state.navigateToOverview();
+      get().selectNode(nodeId);
+      return;
+    }
+    state.navigateToNodeInLayer(nodeId);
+  },
+  pressEscape: (typing) => {
+    const state = get();
+    if (state.codeViewerExpanded) state.collapseCodeViewer();
+    else if (state.codeViewerOpen) state.closeCodeViewer();
+    else if (state.selectedNodeId || state.selectedGroupId) state.selectNode(null);
+    else if (state.viewMode === "domain" && state.activeDomainId !== null) {
+      if (!typing) state.goUp();
+    } else if (state.navigationLevel === "layer-detail") state.navigateToOverview();
+  },
+  enterNode: (type, id) => {
+    if (type === "domain") get().navigateToDomain(id);
+    else if (type === "group") get().openGroup(id);
+    else if (type === "layer") get().drillIntoLayer(id);
+    else if (type === "container") get().toggleContainer(id);
+  },
+  openGroup: (groupId) => set({ activeGroupId: groupId, selectedNodeId: null, selectedGroupId: null, focusNodeId: null }),
+  goUp: () => {
+    const { activeGroupId, activeDomainId } = get();
+    if (activeGroupId !== null) set({ activeGroupId: null, selectedNodeId: null, selectedGroupId: null, focusNodeId: null });
+    else if (activeDomainId !== null) get().clearActiveDomain();
+  },
+  domainRevealNodeId: null,
+  clearDomainReveal: () => set({ domainRevealNodeId: null }),
   setDomainGraph: (graph) => {
     // Excavator: the first domain graph to arrive opens the Domain mode (openspec: changes/explorer-view-defaults, design D3).
     const { domainGraph, viewMode } = get();
@@ -786,30 +613,19 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     set({ isKnowledgeGraph: value });
   },
 
-  productView: null,
-  productRow: null,
   revealNodeId: null,
   clearRevealNode: () => set({ revealNodeId: null }),
   relationsMode: "selected",
   setRelationsMode: (mode) => set({ relationsMode: mode }),
-  openProductView: (view) => {
-    if (get().productView !== view) set({ productView: view, productRow: null });
-  },
-  closeProductView: () => set({ productView: null, productRow: null }),
-  setProductRow: (row) => set({ productRow: row }),
 
   setViewMode: (mode) => {
-    // Excavator: the mode already shown under a product view only closes the view, keeping the graph's selection.
-    if (get().productView !== null && get().viewMode === mode) {
-      set({ productView: null, productRow: null });
-      return;
-    }
+    const query = get().searchQuery;
+    const engine = engineFor({ ...get(), viewMode: mode });
     set({
-      // Excavator: the Domain / Structural switch always returns to the graph.
-      productView: null,
-      productRow: null,
+      searchResults: engine && query.trim() ? engine.search(query) : [],
       viewMode: mode,
       selectedNodeId: null,
+      selectedGroupId: null,
       focusNodeId: null,
       codeViewerOpen: false,
       codeViewerNodeId: null,
@@ -825,6 +641,10 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     set({
       viewMode: "domain" as const,
       activeDomainId: domainId,
+      activeGroupId: null,
+      // A drill-in leaves nothing selected on the next level.
+      selectedNodeId: null,
+      selectedGroupId: null,
       focusNodeId: null,
       nodeHistory: newHistory,
     });
@@ -833,7 +653,9 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   clearActiveDomain: () => {
     set({
       activeDomainId: null,
+      activeGroupId: null,
       selectedNodeId: null,
+      selectedGroupId: null,
       focusNodeId: null,
     });
   },
@@ -842,8 +664,6 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   pendingFocusContainer: null,
   setPendingFocusContainer: (containerId) =>
     set({ pendingFocusContainer: containerId }),
-  tourFitPending: false,
-  setTourFitPending: (pending) => set({ tourFitPending: pending }),
   toggleContainer: (containerId) =>
     set((state) => {
       const next = new Set(state.expandedContainers);
@@ -904,5 +724,42 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       return { layoutIssues: [...state.layoutIssues, ...fresh] };
     }),
   clearLayoutIssues: () => set({ layoutIssues: [] }),
-}));
+
+  history: [],
+  viewport: null,
+  setViewportState: (viewport) => set({ viewport }),
+  pendingViewport: null,
+  clearPendingViewport: () => set({ pendingViewport: null }),
+  goBack: () => {
+    const { history } = get();
+    const entry = history[history.length - 1];
+    if (entry === undefined) return;
+    const query = get().searchQuery;
+    const engine = engineFor({ ...get(), viewMode: entry.viewMode });
+    set({
+      history: history.slice(0, -1),
+      viewMode: entry.viewMode,
+      activeDomainId: entry.activeDomainId,
+      activeGroupId: entry.activeGroupId,
+      navigationLevel: entry.navigationLevel,
+      activeLayerId: entry.activeLayerId,
+      expandedContainers: new Set(entry.expandedContainers),
+      selectedNodeId: entry.selectedNodeId,
+      selectedGroupId: entry.selectedGroupId,
+      focusNodeId: null,
+      domainRevealNodeId: null,
+      revealNodeId: null,
+      pendingViewport: entry.viewport,
+      searchResults: engine && query.trim() ? engine.search(query) : [],
+      // Container ids derive from folder names and collide across layers: drop what the layer left behind.
+      containerLayoutCache: new Map(),
+      containerSizeMemory: new Map(),
+      pendingFocusContainer: null,
+    });
+  },
+  });
+  const actions = state as unknown as Record<string, (...args: unknown[]) => void>;
+  for (const name of RECORDED_ACTIONS) actions[name] = recorded(get, set, actions[name]);
+  return state;
+});
 

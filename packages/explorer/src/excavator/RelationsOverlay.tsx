@@ -1,14 +1,13 @@
 import { memo, useCallback, useMemo } from "react";
 import { Handle, Panel, Position } from "@xyflow/react";
 import type { Edge, Node, NodeProps } from "@xyflow/react";
-import { useDashboardStore } from "../store";
+import { useDashboardStore, activeTranslations } from "../store";
 import {
-  drawnHome, isStandInId, kindStyle, layerPlacer, overviewPlacer, projectRelations, relationsOfNode, STAND_IN_PREFIX, unplacedRelations,
+  drawnHome, edgeLabel, isStandInId, kindStyle, layerPlacer, overviewPlacer, projectRelations, relationsNotDrawnSentence, relationsOfNode, STAND_IN_PREFIX, standInNote, unplacedRelations,
   type Projection, type RelationsMode, type StandIn,
 } from "./graphRelations";
 import { domainTitle, translatorOf } from "./nameTranslations";
-import { externalLabel, externalSystems } from "./products/relations";
-import { formatNumber } from "./products/format";
+import { externalLabel } from "./products/relations";
 import { useGraphRelations, type GraphRelationsData } from "./useGraphRelations";
 
 /**
@@ -87,7 +86,7 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
   const nodeIdToLayerIds = useDashboardStore((s) => s.nodeIdToLayerIds);
   const graph = useDashboardStore((s) => s.graph);
-  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const nameTranslations = useDashboardStore(activeTranslations);
 
   // Counted whatever the mode and view: the overview's placer gives null for an end that no layer holds.
   // They are left out of what a view picks, so "of M in this view" and this count do not hold the same relation.
@@ -120,18 +119,15 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
     const minY = Math.min(...top.map((n) => n.position.y));
     const translate = translatorOf(nameTranslations);
     const layerName = new Map((graph?.layers ?? []).map((l) => [l.id, l.name]));
-    const counts = new Map<string, number>();
-    for (const edge of projection.edges) for (const end of [edge.source, edge.target]) if (isStandInId(end)) counts.set(end, (counts.get(end) ?? 0) + edge.relations.length);
     const standIns: StandInFlowNode[] = projection.standIns.map((standIn, i) => {
       const english = standIn.kind === "external" ? externalLabel(standIn.key) : layerName.get(standIn.key) ?? standIn.key;
       const { label, original } = standIn.kind === "external" ? domainTitle(english, translate) : { label: english, original: null };
-      const n = counts.get(standIn.id) ?? 0;
       return {
         id: standIn.id,
         type: "relation-stand-in",
         position: { x: right + STAND_IN_GAP_X, y: minY + i * STAND_IN_STEP_Y },
         width: STAND_IN_WIDTH,
-        data: { standIn, label, original, note: `${standIn.kind === "external" ? "External system" : "Another layer"}, ${formatNumber(n)} relation${n === 1 ? "" : "s"}` },
+        data: { standIn, label, original, note: standInNote(standIn.kind) },
       };
     });
     const boxes = new Map(baseNodes.filter((n) => n.type === "container").map((n) => [n.id, n]));
@@ -153,7 +149,7 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
         id: edge.id,
         source: end(edge.source),
         target: end(edge.target),
-        label: edge.relations.length === 1 ? edge.kind : `${edge.kind} ${formatNumber(edge.relations.length)}`,
+        label: edgeLabel(edge.kind),
         style: { stroke: style.stroke, strokeWidth: 1.75, strokeDasharray: style.dash },
         labelStyle: { fill: style.stroke, fontSize: 10, fontWeight: 600 },
         zIndex: 1,
@@ -163,11 +159,9 @@ export function useRelationsOverlay(baseNodes: Node[], baseEdges: Edge[], level:
   }, [baseNodes, baseEdges, data, mode, level, selectedNodeId, activeLayerId, nodeIdToLayerId, nodeIdToLayerIds, boxOf, graph, nameTranslations, unplaced, inNoLayer]);
 }
 
-/** A click on a stand-in: another layer opens that layer, an external system opens it in the Relations view. True when it was one. */
-export function useStandInClick(data: GraphRelationsData): (nodeId: string) => boolean {
+/** A click on a stand-in: another layer opens that layer. True when it was a stand-in. */
+export function useStandInClick(): (nodeId: string) => boolean {
   const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
-  const openProductView = useDashboardStore((s) => s.openProductView);
-  const setProductRow = useDashboardStore((s) => s.setProductRow);
   return useCallback((nodeId: string) => {
     if (!isStandInId(nodeId)) return false;
     const rest = nodeId.slice(STAND_IN_PREFIX.length);
@@ -175,13 +169,9 @@ export function useStandInClick(data: GraphRelationsData): (nodeId: string) => b
       drillIntoLayer(rest.slice("layer:".length));
       return true;
     }
-    openProductView("relations");
-    if (data.status === "ready") {
-      const row = externalSystems(data.product, data.rows).find((e) => e.id === rest);
-      if (row !== undefined) setProductRow({ table: "externals", row, reveal: true });
-    }
+    // An external system has no page of its own: the stand-in is the whole of what the graph shows for it.
     return true;
-  }, [data, drillIntoLayer, openProductView, setProductRow]);
+  }, [drillIntoLayer]);
 }
 
 const MODES: readonly RelationsMode[] = ["off", "selected", "all"];
@@ -202,27 +192,28 @@ export function RelationsPanel({ overlay, level }: { overlay: RelationsOverlay; 
     status = "Reading the relations product.";
     title = status;
   } else if (data.status === "unavailable") {
-    // The state's own lines, as the product views show them; the reason stays visible, not only on hover.
-    status = [`Not drawn: the relations product is ${data.word}.`, ...data.lines.filter((line) => !line.startsWith("Status:"))].join(" · ");
+    // The state's own lines; the reason stays visible, not only on hover.
+    status = [`Not drawn: the relations product is ${data.word}.`, ...data.lines.filter((line) => !line.startsWith("Status:"))].join(" \u00b7 ");
     title = data.lines.join("\n");
   } else {
     const { index } = data;
-    const parts = [];
-    if (mode === "off") parts.push("None drawn");
-    else if (level === "layer-detail" && mode === "selected" && selectedNodeId === null) parts.push("Select a node to draw its relations");
-    else parts.push(`${formatNumber(projection?.drawn ?? 0)} drawn${projection !== null && projection.inView > projection.drawn ? ` of ${formatNumber(projection.inView)} in this view` : ""}`);
-    parts.push(`${formatNumber(inNoLayer)} linked with an end in no layer`);
-    parts.push(`${formatNumber(index.notInGraph.length)} linked with an end not in the graph`);
-    parts.push(`${formatNumber(index.notLinked)} not linked`);
-    status = parts.join(" · ");
+    status =
+      relationsNotDrawnSentence({
+        mode,
+        level,
+        hasSelection: selectedNodeId !== null,
+        drawn: projection?.drawn ?? 0,
+        inView: projection?.inView ?? 0,
+        inNoLayer,
+        notInGraph: index.notInGraph.length,
+        notLinked: index.notLinked,
+      }) ?? "";
     title = [
-      `The relations product holds ${formatNumber(index.total)} relations: ${formatNumber(index.linked)} linked, ${formatNumber(index.notLinked)} in other buckets.`,
-      `${formatNumber(index.drawable.length)} linked relations have both ends in the knowledge graph (or call an external system).`,
-      `${formatNumber(inNoLayer)} of them have an end that no layer holds (no node a layer draws is the end's node or contains it); no view draws them, and no view counts them as in it.`,
-      `${formatNumber(index.notInGraph.length)} linked relations have an end whose node is not in the graph; they are not drawn.`,
-      "Relations in other buckets (caller-only, receiver-only, address-unresolved, ambiguous, quote-failed) are never drawn; the node panel and the Relations view list them.",
+      "Only linked relations with both ends in the knowledge graph (or a call to an external system) are drawn.",
+      "A relation whose end is in no layer, or whose end node is not in the graph, is not drawn.",
+      "Relations in other buckets (caller-only, receiver-only, address-unresolved, ambiguous, quote-failed) are never drawn; the node panel lists them.",
       "A relation whose two ends sit on one node or box, or whose end this view hides, is not drawn here.",
-      level === "overview" ? "The overview draws every other drawable relation between two layers, or between a layer and an external system, as one edge per layer pair and kind." : "A layer draws the selected node's relations, or all of the layer's.",
+      level === "overview" ? "The overview draws one edge per layer pair and kind." : "A layer draws the selected node's relations, or all of the layer's.",
     ].join("\n");
   }
 
@@ -256,7 +247,7 @@ export function RelationsPanel({ overlay, level }: { overlay: RelationsOverlay; 
             {kind}
           </span>
         ))}
-        <span className="text-text-muted" title={title} data-excavator-relations-status="">{status}</span>
+        {status !== "" && <span className="text-text-muted" title={title} data-excavator-relations-status="">{status}</span>}
       </div>
     </Panel>
   );

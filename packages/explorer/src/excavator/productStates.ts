@@ -1,5 +1,4 @@
 import { readInlineFile } from "../offline/inlineData";
-import { PRODUCT_VIEWS, type ProductView } from "./productViews";
 
 /**
  * Reads `products.json` (the packer's state for each product, openspec:
@@ -27,8 +26,6 @@ export interface ProductState {
   coverage: CoverageState | null;
 }
 
-export type ProductStates = Record<ProductView, ProductState>;
-
 const STATUSES: ReadonlySet<string> = new Set<ProductStatus>(["included", "not-run", "unreadable", "different-revision"]);
 
 const text = (value: unknown): string | null => (typeof value === "string" && value !== "" ? value : null);
@@ -44,7 +41,8 @@ function isTable(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function stateOf(name: string, item: unknown): ProductState {
+/** The state one `products.json`-shaped entry gives product `name`; an entry that is missing or has an unknown status reads as unreadable with the reason. */
+export function productStateOf(name: string, item: unknown): ProductState {
   if (!isTable(item)) return unreadable(`products.json has no entry for ${name}`);
   const status = item.status;
   if (typeof status !== "string" || !STATUSES.has(status)) {
@@ -61,20 +59,13 @@ function stateOf(name: string, item: unknown): ProductState {
 }
 
 /**
- * The state of each product in `products.json`; a product it does not hold, or a file that is not there, reads as unreadable with the reason.
- * `failure` is why the file could not be read at all (the reader's own error text), when there is one.
+ * The state `products.json` gives product `name`; a file that is not there, or an entry it does not hold, reads as
+ * unreadable with the reason. `failure` is why the file could not be read at all, when there is one.
  */
-export function readProductStates(products: unknown, failure?: string): ProductStates {
+export function productStateFromJson(products: unknown, name: string, failure?: string): ProductState {
   const list = isTable(products) && Array.isArray(products.products) ? products.products : null;
-  const states = {} as ProductStates;
-  for (const def of PRODUCT_VIEWS) {
-    if (list === null) {
-      states[def.view] = unreadable(failure ?? "products.json is not in this page or is not in the expected shape");
-      continue;
-    }
-    states[def.view] = stateOf(def.name, list.find((item) => isTable(item) && item.name === def.name));
-  }
-  return states;
+  if (list === null) return unreadable(failure ?? "products.json is not in this page or is not in the expected shape");
+  return productStateOf(name, list.find((item) => isTable(item) && item.name === name));
 }
 
 /** The revision of the source packed into the page, as `products.json` records it; null when it does not. */
@@ -104,24 +95,8 @@ export function describeProductState(state: ProductState, snapshotRevision: stri
   }
 }
 
-/**
- * The notice at the top of a view whose product was made from another revision than the source packed
- * into the page: both revisions, and that the content is shown as it is. Null for any other state.
- */
-export function revisionNotice(state: ProductState, snapshotRevision: string | null): string | null {
-  if (state.status !== "different-revision") return null;
-  const made = state.revision ?? "not recorded";
-  const packed = snapshotRevision ?? "not recorded in this page";
-  return `This product was made from revision ${made}. The source packed into this page is at revision ${packed}. The content below is shown as the product holds it.`;
-}
-
-export interface LoadedProductStates {
-  states: ProductStates;
-  snapshotRevision: string | null;
-}
-
 /** The file's content, or the reason the page gives for not having it (a part that cannot be decoded says so, as it does for the product views). */
-async function readJson(name: "products.json"): Promise<{ value?: unknown; failure?: string }> {
+export async function readJson(name: "products.json"): Promise<{ value?: unknown; failure?: string }> {
   try {
     const response = await readInlineFile(name);
     if (response.ok) return { value: await response.json() };
@@ -130,10 +105,4 @@ async function readJson(name: "products.json"): Promise<{ value?: unknown; failu
   } catch (error) {
     return { failure: `${name} could not be read: ${error instanceof Error ? error.message : String(error)}` };
   }
-}
-
-/** Reads `products.json` from the page data. */
-export async function loadProductStates(): Promise<LoadedProductStates> {
-  const { value, failure } = await readJson("products.json");
-  return { states: readProductStates(value, failure), snapshotRevision: snapshotRevisionOf(value) };
 }

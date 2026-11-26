@@ -5,7 +5,7 @@ import type { NodeType } from "@understand-anything/core/types";
 import { useI18n } from "../contexts/I18nContext";
 import { nodeTitles } from "../excavator/nodeTitle";
 import { translatorOf } from "../excavator/nameTranslations";
-import { useDashboardStore } from "../store";
+import { activeTranslations, useDashboardStore } from "../store";
 
 // Color maps keyed by NodeType — must be kept in sync with core NodeType union.
 const typeColors: Record<NodeType, string> = {
@@ -84,15 +84,9 @@ export interface CustomNodeData extends Record<string, unknown> {
   isHighlighted: boolean;
   searchScore?: number;
   isSelected: boolean;
-  isTourHighlighted: boolean;
-  isDiffChanged: boolean;
-  isDiffAffected: boolean;
-  isDiffFaded: boolean;
   isNeighbor: boolean;
   isSelectionFaded: boolean;
   onNodeClick?: (nodeId: string) => void;
-  incomingCount?: number;
-  outgoingCount?: number;
   tags?: string[];
 }
 
@@ -107,7 +101,7 @@ function CustomNodeComponent({
   const textColor = typeTextColors[knownType] ?? typeTextColors.file;
   const complexityColor = complexityColors[data.complexity] ?? complexityColors.simple;
   const { t } = useI18n();
-  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const nameTranslations = useDashboardStore(activeTranslations);
   const translate = useMemo(() => translatorOf(nameTranslations), [nameTranslations]);
 
   if (import.meta.env.DEV && !(knownType in typeColors)) {
@@ -117,8 +111,6 @@ function CustomNodeComponent({
   let extraClass = "";
   if (data.isSelected) {
     extraClass = "ring-2 ring-accent node-glow";
-  } else if (data.isTourHighlighted) {
-    extraClass = "ring-2 ring-accent-dim animate-accent-pulse";
   } else if (data.isHighlighted) {
     const score = data.searchScore ?? 1;
     if (score <= 0.1) {
@@ -130,18 +122,9 @@ function CustomNodeComponent({
     }
   }
 
-  // Diff overlay styling (composes with above)
-  if (data.isDiffChanged) {
-    extraClass += " ring-2 ring-[var(--color-diff-changed)] diff-changed-glow";
-  } else if (data.isDiffAffected) {
-    extraClass += " ring-1 ring-[var(--color-diff-affected)] diff-affected-glow";
-  } else if (data.isDiffFaded) {
-    extraClass += " diff-faded";
-  }
-
   // Selection-based dimming (when another node is selected, fade unrelated nodes)
   if (data.isSelectionFaded) {
-    extraClass += " opacity-20 pointer-events-auto";
+    extraClass += " opacity-30 pointer-events-auto";
   } else if (data.isNeighbor) {
     extraClass += " ring-1 ring-gold-dim/50";
   }
@@ -154,7 +137,6 @@ function CustomNodeComponent({
   return (
     <div
       className={`relative rounded-lg bg-elevated border border-border-subtle ${extraClass} min-w-[180px] max-w-[220px] overflow-hidden transition-[box-shadow,outline,opacity,filter] duration-200 cursor-pointer shadow-[0_2px_8px_rgba(0,0,0,0.3)]`}
-      onClick={() => data.onNodeClick?.(id)}
     >
       {/* Left color bar */}
       <div

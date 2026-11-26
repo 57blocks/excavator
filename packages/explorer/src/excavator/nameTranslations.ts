@@ -52,6 +52,21 @@ export function domainTitle(name: string, translate?: Translate): { label: strin
   return translated === null ? { label: name, original: null } : { label: translated, original: name };
 }
 
+/**
+ * A description, tag, entity or other text shown in its translation only: the table's entry for the trimmed text, else the
+ * trimmed English. Empty for an empty or missing text.
+ */
+export function translatedText(text: string | null | undefined, translate?: Translate): string {
+  const trimmed = (text ?? "").trim();
+  if (trimmed === "") return "";
+  return translate?.(trimmed) ?? trimmed;
+}
+
+/** Each element of a list translated on its own (tags, entities, cross-domain texts); empty elements are dropped. */
+export function translatedList(items: readonly string[] | null | undefined, translate?: Translate): string[] {
+  return (items ?? []).map((item) => translatedText(item, translate)).filter((item) => item !== "");
+}
+
 /** The one line of the project overview that says the names were machine-translated. */
 export function overviewLine(table: NameTranslations): string {
   const { translated, english, identical, refused } = table.counts;

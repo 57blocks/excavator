@@ -1,10 +1,15 @@
-import { useState } from "react";
-import { useDashboardStore } from "../store";
+import { useState, type ReactNode } from "react";
+import { useDashboardStore, activeTranslations } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
 import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
 import { nodeTitles } from "../excavator/nodeTitle";
-import { translatorOf } from "../excavator/nameTranslations";
+import { displayFlowName, flowTitle } from "../excavator/displayFlowName";
+import { domainTitle, translatedList, translatedText, translatorOf, type Translate } from "../excavator/nameTranslations";
+import { panelFlows } from "../excavator/domainLevels";
+import GroupName from "./GroupName";
+import { NodeProductFacts } from "../excavator/panel/NodeProductFacts";
+import { LIST_CLASS, Section } from "../excavator/panel/Section";
 import { NodeCommunication } from "../excavator/views/relations/NodeCommunication";
 
 // Badge color classes keyed by NodeType — must be kept in sync with core NodeType union.
@@ -63,18 +68,41 @@ function getDirectionalLabel(edgeType: string, isSource: boolean, t: ReturnType<
   return isSource ? labels.forward : labels.backward;
 }
 
+const OPEN_BUTTON = "ml-2 rounded border border-accent/40 px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-accent hover:bg-accent/10";
+
+const LINK_ROW = "block w-full py-1.5 text-left text-[11px] text-text-secondary transition-colors hover:text-accent";
+
 function FigmaThumbnail({ node }: { node: GraphNode }) {
   const url = node.figmaMeta?.thumbnailUrl;
   if (!url) return null;
   return (
-    <div className="mb-3 rounded-lg overflow-hidden border border-border-subtle bg-elevated">
-      <img src={url} alt={node.name} className="w-full h-auto block" loading="lazy" />
+    <div className="px-5 pb-3">
+      <img src={url} alt={node.name} className="block h-auto w-full" loading="lazy" />
     </div>
   );
 }
 
+function SubHeading({ children }: { children: string }) {
+  return <h4 className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">{children}</h4>;
+}
+
+/** A list of node links, rows separated by divider lines. */
+function LinkList({ nodes, onOpen }: { nodes: GraphNode[]; onOpen: (id: string) => void }) {
+  return (
+    <ul className={LIST_CLASS}>
+      {nodes.map((n) => (
+        <li key={n.id}>
+          <button type="button" onClick={() => onOpen(n.id)} className={`${LINK_ROW} truncate`}>
+            {n.name}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function KnowledgeNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeGraph }) {
-  const navigateToNode = useDashboardStore((s) => s.navigateToNode);
+  const navigateToNode = useDashboardStore((s) => s.goToNode);
   const { t } = useI18n();
   const meta = node.knowledgeMeta;
 
@@ -99,134 +127,141 @@ function KnowledgeNodeDetails({ node, graph }: { node: GraphNode; graph: Knowled
     : null;
 
   return (
-    <div className="space-y-3">
+    <>
       {categoryNode && (
-        <div>
-          <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.category}</h4>
-          <button
-            type="button"
-            onClick={() => navigateToNode(categoryNode.id)}
-            className="text-[11px] px-2 py-0.5 rounded bg-elevated text-accent hover:text-accent-bright transition-colors"
-          >
+        <Section title={t.nodeInfo.category}>
+          <button type="button" onClick={() => navigateToNode(categoryNode.id)} className="pb-2 text-xs text-accent hover:text-accent-bright">
             {categoryNode.name}
           </button>
-        </div>
+        </Section>
       )}
       {meta?.wikilinks && meta.wikilinks.length > 0 && (
-        <div>
-          <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
-            {t.nodeInfo.wikilinks} ({wikilinks.length})
-          </h4>
-          <div className="space-y-1 max-h-[200px] overflow-auto">
-            {wikilinks.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => navigateToNode(n.id)}
-                className="block w-full text-left px-2 py-1.5 rounded bg-elevated hover:bg-accent/10 text-[11px] text-text-secondary hover:text-accent transition-colors truncate"
-              >
-                {n.name}
-              </button>
-            ))}
+        <Section title={t.nodeInfo.wikilinks}>
+          <div className="max-h-[200px] overflow-auto">
+            <LinkList nodes={wikilinks} onOpen={navigateToNode} />
           </div>
-        </div>
+        </Section>
       )}
       {backlinks.length > 0 && (
-        <div>
-          <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">
-            {t.nodeInfo.backlinks} ({backlinks.length})
-          </h4>
-          <div className="space-y-1 max-h-[200px] overflow-auto">
-            {backlinks.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => navigateToNode(n.id)}
-                className="block w-full text-left px-2 py-1.5 rounded bg-elevated hover:bg-accent/10 text-[11px] text-text-secondary hover:text-accent transition-colors truncate"
-              >
-                {n.name}
-              </button>
-            ))}
+        <Section title={t.nodeInfo.backlinks}>
+          <div className="max-h-[200px] overflow-auto">
+            <LinkList nodes={backlinks} onOpen={navigateToNode} />
           </div>
-        </div>
+        </Section>
       )}
       {meta?.content && (
-        <div>
-          <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.common.preview}</h4>
-          <div className="text-[11px] text-text-secondary leading-relaxed bg-elevated rounded-lg p-3 max-h-[300px] overflow-auto whitespace-pre-wrap font-mono">
+        <Section title={t.common.preview}>
+          <div className="max-h-[300px] overflow-auto whitespace-pre-wrap pb-2 font-mono text-[11px] leading-relaxed text-text-secondary">
             {meta.content.slice(0, 1500)}
             {meta.content.length > 1500 && (
               <span className="text-text-muted">... {t.common.truncated}</span>
             )}
           </div>
-        </div>
+        </Section>
       )}
-    </div>
+    </>
+  );
+}
+
+/** The one place the Domain view shows code: a small muted line with a flow's entry point or a step's file. */
+function CodeLine({ children }: { children: ReactNode }) {
+  return (
+    <p className="m-0 px-5 pt-3 text-[10px] text-text-muted" data-excavator-code-line>
+      <span className="mr-2 uppercase tracking-wider">Code</span>
+      <span className="font-mono [overflow-wrap:anywhere]">{children}</span>
+    </p>
+  );
+}
+
+/** A flow or step name with the English original beside it when the name table translated it. */
+function NameWithOriginal({ name, translate }: { name: string; translate?: Translate }) {
+  const { label, original } = flowTitle(name, translate);
+  return (
+    <>
+      {label}
+      {original !== null && <span className="ml-1 text-text-muted">{original}</span>}
+    </>
   );
 }
 
 function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeGraph }) {
-  const navigateToDomain = useDashboardStore((s) => s.navigateToDomain);
-  const selectNode = useDashboardStore((s) => s.selectNode);
+  const goToNode = useDashboardStore((s) => s.goToNode);
+  const enterNode = useDashboardStore((s) => s.enterNode);
+  const selectedGroupId = useDashboardStore((s) => s.selectedGroupId);
+  const table = useDashboardStore(activeTranslations);
+  const translate = translatorOf(table);
+  const featureGroups = useDashboardStore((s) => s.featureGroups);
+  const activeDomainId = useDashboardStore((s) => s.activeDomainId);
+  const activeGroupId = useDashboardStore((s) => s.activeGroupId);
   const { t } = useI18n();
   const meta = node.domainMeta;
 
   if (node.type === "domain") {
-    const flows = graph.edges
-      .filter((e) => e.type === "contains_flow" && e.source === node.id)
-      .map((e) => graph.nodes.find((n) => n.id === e.target))
+    // The open group's flows, in group order, when a group of this domain is open; else every flow of the domain.
+    const listed = panelFlows(featureGroups, graph, node.id, activeDomainId, activeGroupId ?? selectedGroupId);
+    const flows = listed.flowIds
+      .map((id) => graph.nodes.find((n) => n.id === id))
       .filter((n): n is GraphNode => n !== undefined);
+    const groupName = listed.group ? domainTitle(listed.group.label, translate).label : null;
 
     return (
-      <div className="space-y-3">
+      <>
         {Array.isArray(meta?.entities) && meta.entities.length > 0 ? (
-          <div>
-            <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.entities}</h4>
-            <div className="flex flex-wrap gap-1">
-              {meta.entities.map((e) => (
-                <span key={e} className="text-[11px] px-2 py-0.5 rounded bg-elevated text-text-secondary">{e}</span>
-              ))}
-            </div>
-          </div>
+          <Section title={t.nodeInfo.entities}>
+            <p className="m-0 pb-2 text-[11px] text-text-secondary">{translatedList(meta.entities, translate).join(", ")}</p>
+          </Section>
         ) : null}
         {Array.isArray(meta?.businessRules) && meta.businessRules.length > 0 ? (
-          <div>
-            <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.businessRules}</h4>
-            <ul className="text-[11px] text-text-secondary space-y-1">
+          <Section title={t.nodeInfo.businessRules}>
+            <ul className={`${LIST_CLASS} text-[11px] text-text-secondary`}>
               {meta.businessRules.map((r, i) => (
-                <li key={i} className="flex gap-1.5"><span className="text-accent shrink-0">-</span>{r}</li>
+                <li key={i} className="py-1.5">{r}</li>
               ))}
             </ul>
-          </div>
+          </Section>
         ) : null}
         {Array.isArray(meta?.crossDomainInteractions) && meta.crossDomainInteractions.length > 0 ? (
-          <div>
-            <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.crossDomain}</h4>
-            <ul className="text-[11px] text-text-secondary space-y-1">
-              {meta.crossDomainInteractions.map((c, i) => (
-                <li key={i}>{c}</li>
+          <Section title={t.nodeInfo.crossDomain}>
+            <ul className={`${LIST_CLASS} text-[11px] text-text-secondary`}>
+              {translatedList(meta.crossDomainInteractions, translate).map((c, i) => (
+                <li key={i} className="py-1.5">{c}</li>
               ))}
             </ul>
-          </div>
+          </Section>
         ) : null}
         {flows.length > 0 && (
-          <div>
-            <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.flows}</h4>
-            <div className="space-y-1">
+          <Section
+            title={t.nodeInfo.flows}
+            note={
+              listed.group && groupName !== null ? (
+                <>
+                  <GroupName label={groupName} qualifier={listed.group.qualifier} />
+                  {activeGroupId === null && (
+                    <button type="button" data-excavator-open="group" onClick={() => enterNode("group", listed.group!.id)} className={OPEN_BUTTON}>
+                      Open
+                    </button>
+                  )}
+                </>
+              ) : undefined
+            }
+          >
+            {listed.group?.description && (
+              <p className="m-0 pb-2 text-[11px] text-text-secondary" data-excavator-group-description>
+                {domainTitle(listed.group.description, translate).label}
+              </p>
+            )}
+            <ul className={LIST_CLASS}>
               {flows.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => { navigateToDomain(node.id); selectNode(f.id); }}
-                  className="block w-full text-left px-2 py-1.5 rounded bg-elevated hover:bg-accent/10 text-[11px] text-text-secondary hover:text-accent transition-colors"
-                >
-                  {f.name}
-                </button>
+                <li key={f.id}>
+                  <button type="button" onClick={() => goToNode(f.id)} className={LINK_ROW}>
+                    <NameWithOriginal name={f.name} translate={translate} />
+                  </button>
+                </li>
               ))}
-            </div>
-          </div>
+            </ul>
+          </Section>
         )}
-      </div>
+      </>
     );
   }
 
@@ -238,70 +273,60 @@ function DomainNodeDetails({ node, graph }: { node: GraphNode; graph: KnowledgeG
       .filter((n): n is GraphNode => n !== undefined);
 
     return (
-      <div className="space-y-3">
-        {meta?.entryPoint ? (
-          <div>
-            <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.entryPoint}</h4>
-            <div className="text-[11px] font-mono text-accent">{meta.entryPoint}</div>
-          </div>
-        ) : null}
+      <>
+        {meta?.entryPoint ? <CodeLine>{meta.entryPoint}</CodeLine> : null}
         {steps.length > 0 && (
-          <div>
-            <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.steps}</h4>
-            <ol className="space-y-1">
+          <Section title={t.nodeInfo.steps}>
+            <ol className={LIST_CLASS}>
               {steps.map((s, i) => (
                 <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => selectNode(s.id)}
-                    className="block w-full text-left px-2 py-1.5 rounded bg-elevated hover:bg-accent/10 text-[11px] transition-colors"
-                  >
-                    <span className="text-accent/60 mr-1.5">{i + 1}.</span>
-                    <span className="text-text-secondary hover:text-accent">{s.name}</span>
+                  <button type="button" onClick={() => goToNode(s.id)} className={LINK_ROW}>
+                    <span className="mr-1.5 text-accent/60">{i + 1}.</span>
+                    <NameWithOriginal name={s.name} translate={translate} />
                   </button>
                 </li>
               ))}
             </ol>
-          </div>
+          </Section>
         )}
-      </div>
+      </>
     );
   }
 
   if (node.type === "step") {
     if (!node.filePath) return null;
     return (
-      <div className="space-y-3">
-        <div>
-          <h4 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">{t.nodeInfo.implementation}</h4>
-          <div className="text-[11px] font-mono text-text-secondary">
-            {node.filePath}
-            {node.lineRange && <span className="text-text-muted">:{node.lineRange[0]}-{node.lineRange[1]}</span>}
-          </div>
-        </div>
-      </div>
+      <CodeLine>
+        {node.filePath}
+        {node.lineRange ? `:${node.lineRange[0]}-${node.lineRange[1]}` : ""}
+      </CodeLine>
     );
   }
 
   return null;
 }
 
-export default function NodeInfo() {
+/** The panel of one node: `nodeId` shows that node instead of the selected one (the open domain). */
+export default function NodeInfo({ nodeId }: { nodeId?: string } = {}) {
   const graph = useDashboardStore((s) => s.graph);
-  const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
+  const storeSelectedId = useDashboardStore((s) => s.selectedNodeId);
+  const selectedNodeId = nodeId ?? storeSelectedId;
   const nodeHistory = useDashboardStore((s) => s.nodeHistory);
   const goBackNode = useDashboardStore((s) => s.goBackNode);
   const [languageExpanded, setLanguageExpanded] = useState(true);
   const { t } = useI18n();
 
-  const navigateToNode = useDashboardStore((s) => s.navigateToNode);
+  const navigateToNode = useDashboardStore((s) => s.goToNode);
   const navigateToHistoryIndex = useDashboardStore((s) => s.navigateToHistoryIndex);
   const setFocusNode = useDashboardStore((s) => s.setFocusNode);
   const openCodeViewer = useDashboardStore((s) => s.openCodeViewer);
   const focusNodeId = useDashboardStore((s) => s.focusNodeId);
   const viewMode = useDashboardStore((s) => s.viewMode);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
-  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const nameTranslations = useDashboardStore(activeTranslations);
+  const panelDomainId = useDashboardStore((s) => s.activeDomainId);
+  const panelGroupId = useDashboardStore((s) => s.activeGroupId);
+  const enterNodeAction = useDashboardStore((s) => s.enterNode);
 
   const activeGraph = viewMode === "domain" && domainGraph ? domainGraph : graph;
   const node = activeGraph?.nodes.find((n) => n.id === selectedNodeId) ?? null;
@@ -314,14 +339,16 @@ export default function NodeInfo() {
 
   if (!node) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-surface">
+      <div className="flex h-full w-full items-center justify-center bg-surface">
         <p className="text-text-muted text-sm">{t.common.selectNode}</p>
       </div>
     );
   }
 
   // Excavator: the title, with the English original when the name table translated it.
-  const titles = nodeTitles(node, translatorOf(nameTranslations));
+  const rawTitles = nodeTitles(node, translatorOf(nameTranslations));
+  // The Domain view shows names, not code: a flow's route in parentheses is left out of its title.
+  const titles = viewMode === "domain" ? { ...rawTitles, title: displayFlowName(rawTitles.title), original: rawTitles.original === null ? null : displayFlowName(rawTitles.original) } : rawTitles;
 
   const allEdges = activeGraph?.edges ?? [];
   const connections = allEdges.filter(
@@ -332,8 +359,9 @@ export default function NodeInfo() {
   const childEdges = connections.filter(
     (e) => e.type === "contains" && e.source === node.id,
   );
+  // A domain lists its flows under Flows; its contains_flow edges are not repeated as connections.
   const otherConnections = connections.filter(
-    (e) => !(e.type === "contains" && e.source === node.id),
+    (e) => !(e.type === "contains" && e.source === node.id) && !(node.type === "domain" && e.type === "contains_flow" && e.source === node.id),
   );
 
   // Resolve child nodes
@@ -347,166 +375,133 @@ export default function NodeInfo() {
     complexityBadgeColors[node.complexity] ?? complexityBadgeColors.simple;
   const verdict = verdictOf(node);
 
+  // Open enters a domain's groups (a double click on its card does the same); a list item never navigates by itself:
+  // it goes to the node's own level. No other node has a next level in this panel.
+  const canOpen = viewMode === "domain" && node.type === "domain" && node.id !== panelDomainId;
+
   if (import.meta.env.DEV && !(knownType in typeBadgeColors)) {
     console.warn(`[NodeInfo] Unknown node type "${node.type}" — using "file" badge colors`);
   }
 
   return (
-    <div className="h-full w-full overflow-auto p-5 animate-fade-slide-in">
-      {/* Navigation history trail */}
-      {historyNodes.length > 0 && (
-        <div className="mb-3 flex items-center gap-1 flex-wrap">
+    <div className="w-full animate-fade-slide-in pb-3">
+      <div className="px-5 pt-5">
+        {/* Navigation history trail */}
+        {historyNodes.length > 0 && viewMode !== "domain" && (
+          <div className="mb-3 flex flex-wrap items-center gap-1" data-excavator-panel-breadcrumb>
+            <button
+              onClick={goBackNode}
+              className="flex items-center gap-1 text-[10px] font-semibold text-gold transition-colors hover:text-gold-bright"
+            >
+              <span>{"\u2190"}</span>
+              <span>{t.common.back}</span>
+            </button>
+            <span className="text-[10px] text-text-muted">{"\u2502"}</span>
+            {historyNodes.slice(-3).map((h, i, arr) => (
+              <span key={`${h.id}-${i}`} className="flex items-center gap-1">
+                <button
+                  onClick={() => {
+                    const fullIdx = historyNodes.length - arr.length + i;
+                    navigateToHistoryIndex(fullIdx);
+                  }}
+                  className="max-w-[80px] truncate text-[10px] text-text-muted transition-colors hover:text-gold"
+                  title={h.name}
+                >
+                  {h.name}
+                </button>
+                {i < arr.length - 1 && <span className="text-[10px] text-text-muted">{"\u203a"}</span>}
+              </span>
+            ))}
+            <span className="text-[10px] text-text-muted">{"\u203a"}</span>
+            <span className="max-w-[80px] truncate text-[10px] font-medium text-text-primary">{node.name}</span>
+          </div>
+        )}
+
+        <div className="mb-3 flex items-center gap-2">
+          <span className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${typeBadge}`}>{node.type}</span>
+          <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${complexityBadge}`}>{node.complexity}</span>
+        </div>
+
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="font-heading text-lg text-text-primary">{titles.title}</h2>
+            {titles.original !== null && (
+              <div className="text-[11px] text-text-muted">English: {titles.original} {"\u00b7"} machine translation</div>
+            )}
+            {titles.subtitle !== null && (
+              <div className="truncate font-mono text-[11px] text-text-muted" title={node.name}>
+                {titles.subtitle}
+              </div>
+            )}
+          </div>
+          {canOpen && (
+            <button type="button" data-excavator-open="node" onClick={() => enterNodeAction("domain", node.id)} className={`shrink-0 ${OPEN_BUTTON}`}>
+              Open
+            </button>
+          )}
           <button
-            onClick={goBackNode}
-            className="text-[10px] font-semibold text-gold hover:text-gold-bright transition-colors flex items-center gap-1"
+            onClick={() => setFocusNode(focusNodeId === node.id ? null : node.id)}
+            className={`shrink-0 rounded px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+              focusNodeId === node.id
+                ? "border border-gold/40 bg-gold/20 text-gold"
+                : "border border-border-subtle text-text-muted hover:border-gold/30 hover:text-gold"
+            }`}
           >
-            <span>←</span>
-            <span>{t.common.back}</span>
+            {focusNodeId === node.id ? t.common.unfocus : t.common.focus}
           </button>
-          <span className="text-text-muted text-[10px]">│</span>
-          {historyNodes.slice(-3).map((h, i, arr) => (
-            <span key={`${h.id}-${i}`} className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  const fullIdx = historyNodes.length - arr.length + i;
-                  navigateToHistoryIndex(fullIdx);
-                }}
-                className="text-[10px] text-text-muted hover:text-gold transition-colors truncate max-w-[80px]"
-                title={h.name}
-              >
-                {h.name}
-              </button>
-              {i < arr.length - 1 && (
-                <span className="text-text-muted text-[10px]">›</span>
-              )}
-            </span>
-          ))}
-          <span className="text-text-muted text-[10px]">›</span>
-          <span className="text-[10px] text-text-primary font-medium truncate max-w-[80px]">
-            {node.name}
-          </span>
         </div>
-      )}
-
-      <div className="flex items-center gap-2 mb-3">
-        <span
-          className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${typeBadge}`}
-        >
-          {node.type}
-        </span>
-        <span
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded ${complexityBadge}`}
-        >
-          {node.complexity}
-        </span>
-      </div>
-
-      <div className="flex items-center justify-between mb-2">
-        <div className="min-w-0">
-          <h2 className="text-lg font-heading text-text-primary">{titles.title}</h2>
-          {titles.original !== null && (
-            <div className="text-[11px] text-text-muted">English: {titles.original} · machine translation</div>
-          )}
-          {titles.subtitle !== null && (
-            <div className="text-[11px] font-mono text-text-muted truncate" title={node.name}>
-              {titles.subtitle}
-            </div>
-          )}
-        </div>
-        <button
-          onClick={() => setFocusNode(focusNodeId === node.id ? null : node.id)}
-          className={`text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded transition-colors ${
-            focusNodeId === node.id
-              ? "bg-gold/20 text-gold border border-gold/40"
-              : "text-text-muted border border-border-subtle hover:text-gold hover:border-gold/30"
-          }`}
-        >
-          {focusNodeId === node.id ? t.common.unfocus : t.common.focus}
-        </button>
       </div>
 
       <FigmaThumbnail node={node} />
 
-      <p className="text-sm text-text-secondary mb-4 leading-relaxed">
-        {summaryRemoved(node) ? <span className="italic text-text-muted">{t.nodeInfo.summaryRemoved}</span> : node.summary}
-      </p>
+      <div className="px-5 pb-2">
+        <p className="mb-3 text-sm leading-relaxed text-text-secondary">
+          {summaryRemoved(node) ? <span className="italic text-text-muted">{t.nodeInfo.summaryRemoved}</span> : node.type === "domain" ? translatedText(node.summary, translatorOf(nameTranslations)) : node.summary}
+        </p>
 
-      {verdict && (
-        <div className="flex items-center gap-2 mb-4 -mt-2">
-          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${verdictBadgeColors[verdict]}`}>
-            {t.nodeInfo[verdict]}
-          </span>
-          <span className="text-[10px] text-text-muted">{t.nodeInfo.verdictTitle}</span>
-        </div>
-      )}
+        {verdict && (
+          <div className="flex items-center gap-2">
+            <span className={`rounded px-2 py-0.5 text-[10px] font-semibold ${verdictBadgeColors[verdict]}`}>{t.nodeInfo[verdict]}</span>
+            <span className="text-[10px] text-text-muted">{t.nodeInfo.verdictTitle}</span>
+          </div>
+        )}
+      </div>
 
-      {node.filePath && (
-        <div className="text-xs text-text-secondary mb-4 rounded-lg border border-border-subtle bg-elevated/60 p-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="font-medium text-text-muted mb-1">{t.common.file}</div>
-              <div className="font-mono truncate" title={node.filePath}>
-                {node.filePath}
-                {node.lineRange && (
-                  <span className="ml-2 text-text-muted">
-                    L{node.lineRange[0]}-{node.lineRange[1]}
-                  </span>
-                )}
-              </div>
+      {node.filePath && viewMode !== "domain" && (
+        <Section title={t.common.file}>
+          <div className="flex items-start justify-between gap-3 pb-2 text-xs text-text-secondary">
+            <div className="min-w-0 truncate font-mono" title={node.filePath}>
+              {node.filePath}
+              {node.lineRange && <span className="ml-2 text-text-muted">L{node.lineRange[0]}-{node.lineRange[1]}</span>}
             </div>
             <button
               type="button"
               onClick={() => openCodeViewer(node.id)}
-              className="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded border border-accent/30 text-accent hover:text-accent-bright hover:border-accent/60 transition-colors"
+              className="shrink-0 rounded border border-accent/30 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent transition-colors hover:border-accent/60 hover:text-accent-bright"
             >
               {t.common.openCode}
             </button>
           </div>
-        </div>
+        </Section>
       )}
 
       {node.languageNotes && (
-        <div className="mb-4">
+        <Section title={t.nodeInfo.languageConcepts}>
           <button
             onClick={() => setLanguageExpanded(!languageExpanded)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-accent uppercase tracking-wider mb-2 hover:text-accent-bright transition-colors"
+            className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted hover:text-accent"
+            aria-expanded={languageExpanded}
           >
-            <svg
-              className={`w-3 h-3 transition-transform ${languageExpanded ? "rotate-90" : ""}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            {t.nodeInfo.languageConcepts}
+            {languageExpanded ? "Hide" : "Show"}
           </button>
-          {languageExpanded && (
-            <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
-              <p className="text-sm text-text-secondary leading-relaxed">
-                {node.languageNotes}
-              </p>
-            </div>
-          )}
-        </div>
+          {languageExpanded && <p className="m-0 pb-2 text-sm leading-relaxed text-text-secondary">{node.languageNotes}</p>}
+        </Section>
       )}
 
       {node.tags.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-[11px] font-semibold text-accent uppercase tracking-wider mb-2">
-            {t.common.tags}
-          </h3>
-          <div className="flex flex-wrap gap-1.5">
-            {node.tags.map((tag) => (
-              <span
-                key={tag}
-                className="text-[11px] glass text-text-secondary px-2.5 py-1 rounded-full"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
+        <Section title={t.common.tags}>
+          <p className="m-0 pb-2 text-[11px] text-text-secondary">{(node.type === "domain" ? translatedList(node.tags, translatorOf(nameTranslations)) : node.tags).join(", ")}</p>
+        </Section>
       )}
 
       {/* Knowledge-specific details */}
@@ -522,81 +517,66 @@ export default function NodeInfo() {
       {/* Excavator: the relations product's calls this node makes and receives (excavator/views/relations/NodeCommunication.tsx). */}
       {viewMode !== "domain" && <NodeCommunication nodeId={node.id} />}
 
+      {/* Excavator: the node's file history, unused-code and document facts, for products the page holds. */}
+      {viewMode !== "domain" && <NodeProductFacts node={{ id: node.id, type: node.type, filePath: node.filePath }} />}
+
       {/* Child classes/functions within this file */}
       {childNodes.length > 0 && (
-        <div className="mb-4">
-          <h3 className="text-[11px] font-semibold text-gold uppercase tracking-wider mb-2">
-            {t.nodeInfo.definedInThisFile} ({childNodes.length})
-          </h3>
-          <div className="space-y-1">
+        <Section title={t.nodeInfo.definedInThisFile}>
+          <ul className={LIST_CLASS}>
             {childNodes.map((child) => {
-              if (!child) return null;
               const childTypeBadge = typeBadgeColors[child.type as NodeType] ?? typeBadgeColors.file;
-              const childComplexity = complexityBadgeColors[child.complexity] ?? complexityBadgeColors.simple;
               return (
-                <div
-                  key={child.id}
-                  className="text-xs bg-elevated rounded-lg px-3 py-2 border border-border-subtle cursor-pointer hover:border-gold/40 hover:bg-gold/5 transition-colors"
-                  onClick={() => navigateToNode(child.id)}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded ${childTypeBadge}`}>
-                      {child.type}
+                <li key={child.id}>
+                  <button type="button" className="block w-full py-2 text-left text-xs transition-colors hover:text-accent" onClick={() => navigateToNode(child.id)}>
+                    <span className="flex items-center gap-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${childTypeBadge}`}>{child.type}</span>
+                      <span className="truncate text-text-primary">{child.name}</span>
                     </span>
-                    <span className="text-text-primary truncate">{child.name}</span>
-                    <span className={`text-[9px] ml-auto ${childComplexity} px-1 py-0.5 rounded`}>
-                      {child.complexity}
-                    </span>
-                  </div>
-                  {child.summary && (
-                    <p className="text-[11px] text-text-muted mt-1 line-clamp-1 pl-1">
-                      {child.summary}
-                    </p>
-                  )}
-                </div>
+                    {child.summary && <span className="mt-1 line-clamp-1 block text-[11px] text-text-muted">{child.summary}</span>}
+                  </button>
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ul>
+        </Section>
       )}
 
       {/* Other connections (excluding "contains" children) */}
       {otherConnections.length > 0 && (
-        <div>
-          <h3 className="text-[11px] font-semibold text-gold uppercase tracking-wider mb-2">
-            {t.common.connections} ({otherConnections.length})
-          </h3>
-          <div className="space-y-1.5">
+        <Section title={t.common.connections}>
+          <ul className={LIST_CLASS}>
             {otherConnections.map((edge, i) => {
               const isSource = edge.source === node.id;
               const otherId = isSource ? edge.target : edge.source;
               const otherNode = activeGraph?.nodes.find((n) => n.id === otherId);
               const dirLabel = getDirectionalLabel(edge.type, isSource, t);
               const arrow = isSource ? "\u2192" : "\u2190";
+              const evidence = evidenceLabel(edge);
 
               return (
-                <div
-                  key={i}
-                  className="text-xs bg-elevated rounded-lg px-3 py-2 border border-border-subtle flex flex-wrap items-center gap-x-2 gap-y-0.5 cursor-pointer hover:border-gold/40 hover:bg-gold/5 transition-colors"
-                  onClick={() => {
-                    navigateToNode(otherId);
-                  }}
-                >
-                  <span className="text-gold font-mono">{arrow}</span>
-                  <span className="text-text-muted">{dirLabel}</span>
-                  <span className="text-text-primary truncate">
-                    {otherNode?.name ?? otherId}
-                  </span>
-                  {evidenceLabel(edge) && (
-                    <span className="basis-full pl-5 truncate font-mono text-[10px] text-text-muted" title={evidenceLabel(edge)!}>
-                      {evidenceLabel(edge)}
+                <li key={i}>
+                  <button
+                    type="button"
+                    className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 py-2 text-left text-xs transition-colors hover:text-accent"
+                    onClick={() => navigateToNode(otherId)}
+                  >
+                    <span className="font-mono text-gold">{arrow}</span>
+                    <span className="text-text-muted">{dirLabel}</span>
+                    <span className="truncate text-text-primary">
+                      {otherNode ? (viewMode === "domain" ? flowTitle(otherNode.name, translatorOf(nameTranslations)).label : otherNode.name) : otherId}
                     </span>
-                  )}
-                </div>
+                    {evidence && viewMode !== "domain" && (
+                      <span className="basis-full truncate pl-5 font-mono text-[10px] text-text-muted" title={evidence}>
+                        {evidence}
+                      </span>
+                    )}
+                  </button>
+                </li>
               );
             })}
-          </div>
-        </div>
+          </ul>
+        </Section>
       )}
     </div>
   );

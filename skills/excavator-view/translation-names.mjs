@@ -8,7 +8,8 @@
  *   language   trimmed and lower-cased; `en`, `english`, `en-*` and `en_*` are English; any other name may hold only
  *              letters of any script, digits, `-` and `_`, because it is the table's file name
  *   names      every non-empty display name of the page's knowledge graph (after the semantic merge, so a
- *              contradicted or stale one is already empty), every domain, flow and step name of the domain graph, and
+ *              contradicted or stale one is already empty), every domain, flow and step name of the domain graph, the
+ *              feature group labels and scope tags (`feature-groups.mjs`), and
  *              of the relations graph every unit name, every external system label (its id without `external:`) and
  *              every relation reason of one line and at most 60 characters (a longer one stays in English)
  *   table      `<page dir>/view-translations/<language>.json`:
@@ -23,6 +24,7 @@
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
+import { FEATURE_GROUPS_KEY, shownNames } from './feature-groups.mjs';
 import { parseJsonObject, readRegularFile } from './product-files.mjs';
 
 export const TABLE_FORMAT = 'excavator-view-translations/1';
@@ -90,6 +92,7 @@ export function displayedNames(data) {
     const name = nonEmptyName(node.name);
     if (name !== null) names.add(name);
   }
+  for (const name of shownNames(data[FEATURE_GROUPS_KEY])) names.add(name);
   const relations = data['relations-graph.json'];
   for (const unit of Array.isArray(relations?.units) ? relations.units : []) {
     const name = nonEmptyName(unit?.name);

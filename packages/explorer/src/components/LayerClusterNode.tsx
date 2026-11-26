@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Handle, Position } from "@xyflow/react";
 import type { NodeProps, Node } from "@xyflow/react";
-import { getLayerColor } from "./LayerLegend";
+import { getLayerColor } from "../utils/layerColor";
 
 const complexityColors: Record<string, string> = {
   simple: "text-node-function",
@@ -13,13 +13,9 @@ export interface LayerClusterData extends Record<string, unknown> {
   layerId: string;
   layerName: string;
   layerDescription: string;
-  fileCount: number;
   aggregateComplexity: string;
   layerColorIndex: number;
   searchMatchCount?: number;
-  /** Present only in diff mode: number of changed / affected nodes in this layer. */
-  diffChangedCount?: number;
-  diffAffectedCount?: number;
   onDrillIn: (layerId: string) => void;
 }
 
@@ -32,20 +28,13 @@ function LayerClusterNode({
   const complexityColor =
     complexityColors[data.aggregateComplexity] ?? complexityColors.simple;
 
-  const inDiff = data.diffChangedCount != null || data.diffAffectedCount != null;
-  const changedCount = data.diffChangedCount ?? 0;
-  const affectedCount = data.diffAffectedCount ?? 0;
-  const dimmed = inDiff && changedCount === 0 && affectedCount === 0;
-
   return (
     <div
       className="relative rounded-xl bg-elevated border border-border-subtle overflow-hidden cursor-pointer transition-all duration-200 hover:border-gold/40 hover:shadow-lg group"
       style={{
         width: 300,
         boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
-        opacity: dimmed ? 0.45 : 1,
       }}
-      onClick={() => data.onDrillIn(data.layerId)}
     >
       {/* Left color bar */}
       <div
@@ -69,31 +58,9 @@ function LayerClusterNode({
             Layer
           </span>
           <div className="flex items-center gap-2">
-            {changedCount > 0 && (
-              <span
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                style={{
-                  color: "var(--color-diff-changed)",
-                  backgroundColor: "var(--color-diff-changed-dim)",
-                }}
-              >
-                {changedCount} changed
-              </span>
-            )}
-            {affectedCount > 0 && (
-              <span
-                className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                style={{
-                  color: "var(--color-diff-affected)",
-                  backgroundColor: "var(--color-diff-affected-dim)",
-                }}
-              >
-                {affectedCount} affected
-              </span>
-            )}
             {data.searchMatchCount != null && data.searchMatchCount > 0 && (
               <span className="text-[10px] font-mono bg-gold/20 text-gold px-1.5 py-0.5 rounded">
-                {data.searchMatchCount} match{data.searchMatchCount !== 1 ? "es" : ""}
+                match
               </span>
             )}
             <span className={`text-[10px] font-mono ${complexityColor}`}>
@@ -114,9 +81,7 @@ function LayerClusterNode({
 
         {/* Footer */}
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-text-muted">
-            {data.fileCount} file{data.fileCount !== 1 ? "s" : ""}
-          </span>
+          <span />
           <span className="text-[10px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
             Click to explore →
           </span>

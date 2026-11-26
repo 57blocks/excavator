@@ -46,10 +46,6 @@
   --color-node-source: #8a8a8a;
 
   /* Diff */
-  --color-diff-changed: #e05252;
-  --color-diff-affected: #d4a030;
-  --color-diff-changed-dim: rgba(224, 82, 82, 0.25);
-  --color-diff-affected-dim: rgba(212, 160, 48, 0.25);
 
   /* Glass */
   --glass-bg: rgba(255, 255, 255, 0.8);
@@ -195,22 +191,6 @@ body {
   box-shadow: 0 0 20px var(--glow-accent);
 }
 
-/* Diff overlay glow effects */
-.diff-changed-glow {
-  box-shadow: 0 0 16px rgba(224, 82, 82, 0.25);
-}
-
-.diff-affected-glow {
-  box-shadow: 0 0 12px rgba(212, 160, 48, 0.2);
-}
-
-/* Diff fade for unrelated nodes */
-.diff-faded {
-  opacity: 0.25;
-  filter: saturate(0.3);
-  transition: opacity 0.3s ease, filter 0.3s ease;
-}
-
 /* Hide scrollbar but keep scroll functionality */
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -244,10 +224,6 @@ body {
 /* Light theme overrides */
 [data-theme="light"] {
   color-scheme: light;
-}
-
-[data-theme="light"] .diff-faded {
-  opacity: 0.35;
 }
 
 [data-theme="light"] ::-webkit-scrollbar-track {

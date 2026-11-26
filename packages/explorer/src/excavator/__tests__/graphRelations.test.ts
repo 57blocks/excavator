@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  communicationEntries, drawnHome, externalStandInId, layerPlacer, layerStandInId, overviewPlacer, projectRelations, relationIndex, relationsOfNode, unplacedRelations,
+  communicationEntries, drawnHome, edgeLabel, externalStandInId, layerPlacer, layerStandInId, overviewPlacer, projectRelations, relationIndex, relationsNotDrawnSentence, relationsOfNode, standInNote, unplacedRelations,
 } from '../graphRelations';
 import { relationRows } from '../products/relations';
 
@@ -178,5 +178,34 @@ describe('communicationEntries', () => {
       'rel:7:caller caller-only http null function:web/a.js:load | missing No receiving site (caller-only).',
     ]);
     expect(communicationEntries(INDEX, 'file:none', inGraph)).toEqual([]);
+  });
+});
+
+describe('what the graph says about relations, without numbers', () => {
+  const all = { mode: 'all' as const, level: 'overview' as const, hasSelection: false, drawn: 5, inView: 5, inNoLayer: 0, notInGraph: 0, notLinked: 0 };
+
+  it('labels an edge with its kind only, however many relations it holds', () => {
+    expect(edgeLabel('http')).toBe('http');
+    expect(edgeLabel('external')).toBe('external');
+  });
+
+  it('writes the stand-in note as the kind of node it is, with no relation count', () => {
+    expect(standInNote('external')).toBe('External system');
+    expect(standInNote('layer')).toBe('Another layer');
+  });
+
+  it('says nothing when every relation of the view is drawn', () => {
+    expect(relationsNotDrawnSentence(all)).toBeNull();
+  });
+
+  it('names what is not drawn in one sentence with no digits', () => {
+    const text = relationsNotDrawnSentence({ ...all, drawn: 491, inView: 492, inNoLayer: 3, notInGraph: 2, notLinked: 158 });
+    expect(text).toBe('Some relations are not drawn: an end is hidden in this view, an end is in no layer, an end is not in the graph, some are not linked.');
+    expect(text).not.toMatch(/\d/);
+  });
+
+  it('says when no relation is drawn because the control is off or no node is selected', () => {
+    expect(relationsNotDrawnSentence({ ...all, mode: 'off' })).toBe('No relations are drawn.');
+    expect(relationsNotDrawnSentence({ ...all, mode: 'selected', level: 'layer-detail', hasSelection: false })).toBe('Select a node to draw its relations.');
   });
 });

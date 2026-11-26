@@ -1,4 +1,6 @@
-import { useDashboardStore } from "../store";
+import BackButton from "./BackButton";
+import { useDashboardStore, activeTranslations } from "../store";
+import { translatedText, translatorOf } from "../excavator/nameTranslations";
 import { useI18n } from "../contexts/I18nContext";
 
 export default function Breadcrumb() {
@@ -9,9 +11,15 @@ export default function Breadcrumb() {
   const { t } = useI18n();
 
   const activeLayer = graph?.layers.find((l) => l.id === activeLayerId);
+  const nameTable = useDashboardStore(activeTranslations);
+  const hasHistory = useDashboardStore((s) => s.history.length > 0);
+
+  // No bar on the overview of a first load: there is no parent level and nothing to go back to.
+  if (navigationLevel === "overview" && !hasHistory) return null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+    <div className="absolute top-4 left-4 z-10 flex items-center gap-2" data-excavator-bar>
+      <BackButton />
       {navigationLevel === "overview" && (
         <div className="px-4 py-2 rounded-full bg-elevated border border-border-subtle text-xs font-semibold tracking-wider uppercase text-text-secondary shadow-lg">
           {t.breadcrumb.projectOverview}
@@ -28,7 +36,7 @@ export default function Breadcrumb() {
           </button>
           <span className="text-text-muted">›</span>
           <span className="text-text-primary">
-            {activeLayer?.name ?? t.layer.defaultName}
+            {activeLayer ? translatedText(activeLayer.name, translatorOf(nameTable)) : t.layer.defaultName}
           </span>
           <span className="text-text-muted ml-1 text-[10px] normal-case tracking-normal">
             ({t.breadcrumb.escBack})

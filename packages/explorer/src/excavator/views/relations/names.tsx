@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { hasInlineSource } from "../../../offline/inlineData";
-import { useDashboardStore } from "../../../store";
+import { useDashboardStore, activeTranslations } from "../../../store";
 import { domainTitle, translatorOf, type Translate } from "../../nameTranslations";
 import { externalLabel, siteText, type RelationSite, type UnitInfo } from "../../products/relations";
 import { LinkButton } from "../shared/Controls";
@@ -15,7 +15,7 @@ export const ARROW = String.fromCharCode(0x2192);
 
 /** The name table's lookup, or undefined when the page holds none. */
 export function useTranslate(): Translate | undefined {
-  const table = useDashboardStore((s) => s.nameTranslations);
+  const table = useDashboardStore(activeTranslations);
   return useMemo(() => translatorOf(table), [table]);
 }
 
@@ -39,13 +39,6 @@ export function targetEnglish(id: string, units: ReadonlyMap<string, UnitInfo>):
 export function Target({ id, units, translate }: { id: string | null; units: ReadonlyMap<string, UnitInfo>; translate?: Translate }) {
   if (id === null) return null;
   return <Translated english={targetEnglish(id, units)} translate={translate} />;
-}
-
-/** The text a search box looks in for a target: its English words and their translation. */
-export function targetWords(id: string | null, units: ReadonlyMap<string, UnitInfo>, translate?: Translate): string {
-  if (id === null) return "";
-  const english = targetEnglish(id, units);
-  return `${english} ${translate?.(english) ?? ""}`;
 }
 
 /** `file:line` of a site as a link that opens the code viewer there, or as text when the page does not hold that file's source. */

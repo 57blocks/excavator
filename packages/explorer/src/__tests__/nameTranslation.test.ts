@@ -9,7 +9,7 @@ import {
   translatorOf,
   type NameTranslations,
 } from "../excavator/nameTranslations";
-import { useDashboardStore } from "../store";
+import { activeTranslations, useDashboardStore } from "../store";
 
 // openspec: changes/view-name-translation, design D5 (what the page shows) and spec report-viewer, "names in the selected language".
 
@@ -235,5 +235,27 @@ describe("the store's name table and search", () => {
   it("keeps no translation for a table that is not the page's shape", () => {
     useDashboardStore.getState().setNameTranslations({ language: "fr" });
     expect(useDashboardStore.getState().nameTranslations).toBeNull();
+  });
+
+  it("shows the translations by default and the English names after the language switch", () => {
+    useDashboardStore.getState().setNameTranslations(raw);
+    expect(useDashboardStore.getState().showTranslations).toBe(true);
+    expect(activeTranslations(useDashboardStore.getState())).not.toBeNull();
+    useDashboardStore.getState().setShowTranslations(false);
+    expect(activeTranslations(useDashboardStore.getState())).toBeNull();
+    useDashboardStore.getState().setShowTranslations(true);
+    expect(activeTranslations(useDashboardStore.getState())?.language).toBe("fr");
+  });
+
+  it("keeps the translated names in the search index while the page shows English", () => {
+    useDashboardStore.getState().setGraph(graph);
+    useDashboardStore.getState().setNameTranslations(raw);
+    useDashboardStore.getState().setShowTranslations(false);
+    useDashboardStore.getState().setSearchQuery("remboursement");
+    expect(useDashboardStore.getState().searchResults.map((r) => r.nodeId)).toEqual(["function:a.ts:approveRefund"]);
+  });
+
+  it("has no active translation on a page without a name table", () => {
+    expect(activeTranslations(useDashboardStore.getState())).toBeNull();
   });
 });

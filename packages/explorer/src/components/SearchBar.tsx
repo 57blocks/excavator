@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDashboardStore } from "../store";
+import { activeTranslations, useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
+import { displayFlowName } from "../excavator/displayFlowName";
 import { nodeTitles } from "../excavator/nodeTitle";
 import { translatorOf } from "../excavator/nameTranslations";
 
@@ -26,12 +27,15 @@ const typeBadgeColors: Record<string, string> = {
 export default function SearchBar() {
   const searchQuery = useDashboardStore((s) => s.searchQuery);
   const searchResults = useDashboardStore((s) => s.searchResults);
-  const graph = useDashboardStore((s) => s.graph);
+  const structuralGraph = useDashboardStore((s) => s.graph);
+  const domainGraph = useDashboardStore((s) => s.domainGraph);
+  const viewMode = useDashboardStore((s) => s.viewMode);
+  // In the Domain view a search runs over the domain graph's nodes (the store picks the engine by mode).
+  const inDomain = viewMode === "domain" && domainGraph !== null;
+  const graph = inDomain ? domainGraph : structuralGraph;
   const setSearchQuery = useDashboardStore((s) => s.setSearchQuery);
-  const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
-  const searchMode = useDashboardStore((s) => s.searchMode);
-  const setSearchMode = useDashboardStore((s) => s.setSearchMode);
-  const nameTranslations = useDashboardStore((s) => s.nameTranslations);
+  const goToNode = useDashboardStore((s) => s.goToNode);
+  const nameTranslations = useDashboardStore(activeTranslations);
   const translate = useMemo(() => translatorOf(nameTranslations), [nameTranslations]);
   const { t } = useI18n();
 
@@ -57,10 +61,10 @@ export default function SearchBar() {
 
   const handleResultClick = useCallback(
     (nodeId: string) => {
-      navigateToNodeInLayer(nodeId);
+      goToNode(nodeId);
       setDropdownOpen(false);
     },
-    [navigateToNodeInLayer],
+    [goToNode],
   );
 
   // Close dropdown on Escape
@@ -89,8 +93,8 @@ export default function SearchBar() {
   const showDropdown = dropdownOpen && searchQuery.trim() && topResults.length > 0;
 
   return (
-    <div ref={containerRef} className="relative z-30">
-      <div className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-surface border-b border-border-subtle">
+    <div ref={containerRef} className="relative z-30 min-w-0 flex-1 basis-48 max-w-md">
+      <div className="flex items-center gap-2">
         <svg
           className="w-4 h-4 text-text-muted shrink-0"
           fill="none"
@@ -114,39 +118,11 @@ export default function SearchBar() {
           data-testid="search-input"
           className="flex-1 min-w-0 bg-elevated text-text-primary text-sm rounded-lg px-3 py-1.5 border border-border-subtle focus:outline-none focus:border-accent/50 placeholder-text-muted"
         />
-        <div className="flex items-center gap-1 bg-elevated rounded-lg p-0.5 shrink-0">
-          <button
-            onClick={() => setSearchMode("fuzzy")}
-            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-              searchMode === "fuzzy"
-                ? "bg-accent/20 text-accent"
-                : "text-text-muted hover:text-text-secondary"
-            }`}
-          >
-            {t.search.fuzzy}
-          </button>
-          <button
-            onClick={() => setSearchMode("semantic")}
-            className={`text-[10px] px-1.5 py-0.5 rounded transition-colors ${
-              searchMode === "semantic"
-                ? "bg-accent/20 text-accent"
-                : "text-text-muted hover:text-text-secondary"
-            }`}
-          >
-            {t.search.semantic}
-          </button>
-        </div>
-        {searchQuery.trim() && (
-          <span className="hidden sm:inline text-xs text-text-muted shrink-0">
-            {searchResults.length} {t.search.result}{searchResults.length !== 1 ? "s" : ""}{" "}
-            <span className="text-text-muted">({searchMode})</span>
-          </span>
-        )}
       </div>
 
       {/* Dropdown results */}
       {showDropdown && (
-        <div className="absolute left-4 right-4 top-full mt-0.5 glass rounded-lg shadow-xl overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-0.5 glass rounded-lg shadow-xl overflow-hidden">
           {topResults.map((result) => {
             const node = nodeMap.get(result.nodeId);
             if (!node) return null;
@@ -170,7 +146,7 @@ export default function SearchBar() {
 
                 {/* Node name */}
                 <span className="text-sm text-text-primary truncate flex-1">
-                  {nodeTitles(node, translate).title}
+                  {inDomain ? displayFlowName(nodeTitles(node, translate).title) : nodeTitles(node, translate).title}
                   {nodeTitles(node, translate).subtitle !== null && (
                     <span className="ml-2 text-[11px] font-mono text-text-muted">
                       {nodeTitles(node, translate).subtitle}

@@ -2,57 +2,42 @@
 /**
  * explorer-smoke.mjs
  *
- * The offline smoke of the dashboard copy (openspec: changes/viewer-explorer,
- * design O3; changes/explorer-chunked-data): builds a small synthetic data object (a
- * hand-written knowledge graph in the dashboard's format, a domain graph, a tour and
- * two sources), puts it and the content security policy into the built template
- * `packages/explorer/dist/explorer.html` with the packer's own `assembleExplorerPage`
- * (the data as an index block and gzip parts, cut at a tiny part limit so the graph, a
- * product and the sources each span several parts), opens the result from file:// in
- * headless Chrome with view-smoke.mjs and asserts:
- *   - network: no request, no failed load and no policy violation;
- *   - console: no console error, exception or log error;
- *   - defaults (openspec: changes/explorer-view-defaults): the page opens on Overview and, with a
- *     domain graph, on Domain with the domain graph drawn; only those two are highlighted, no product
- *     view is open and Diff is off. The checks after it switch to Structural first;
- *   - cards: the graph's cards render (one per layer at the top level);
- *   - our data: the overview lists the coverage record and the gaps, a node shows its
- *     verdict, a summary the verifier blanked says so, and the connections show their
- *     evidence and the mentions edge (design D4b); the freshness report says the graph
- *     was made from another revision, and the banner names both (design D2);
- *   - content: the page title says Excavator, no visible text names the upstream
- *     product, a layer drills in, and a file's code opens from the inlined sources;
- *   - products (openspec: changes/explorer-products): the header has no Files / Classes
- *     buttons and no type chips, three product buttons stand there, no onboarding overlay
- *     appears, Unused covers the graph area only (the graph stays mounted) and says its
- *     state, a second click on the open product's button keeps the view open, only the open
- *     view's button is highlighted, and the Structural button then closes it with the selected
- *     node still selected;
- *   - unused view, hotspots view, doc map view: each view's stat numbers equal its product's
- *     counts, Unused with only "high" lists counts.byConfidence.high rows, a clicked row shows
- *     its details in the sidebar, Show in graph closes the view and selects the node (the
- *     sidebar shows its node info), Escape clears the row and then closes the view, Open code
- *     shows the inlined source at the row's line, a row that is not in the graph or whose
- *     source is not inlined says so, a not-found unit shows its quote and searched record and
- *     no code location, an unchecked place says so, and product text is shown as text;
- *   - states: a page whose products are not run or unreadable shows only each state (with the
- *     command for a product that was not run), no table and no number;
- *   - layout: at 768 and 375 wide no view makes the page scroll sideways, and at 375 the row
- *     details sit above the table.
- * It then opens the same data with the graph's layers removed and asserts the
- * structural view still draws, now from the groups the copy derives, which the
- * legend calls groups (the page with layers must call them layers).
+ * The offline smoke of the dashboard copy: builds a small synthetic data object (a hand-written knowledge graph in
+ * the dashboard's format, a domain graph, a name table, the four products and two sources), puts it and the content
+ * security policy into the built template `packages/explorer/dist/explorer.html` with the packer's own
+ * `assembleExplorerPage` (the data as an index block and gzip parts, cut at a tiny part limit so the graph, a product
+ * and the sources each span several parts), opens the result from file:// in headless Chrome with view-smoke.mjs and
+ * asserts, in one probe over the page as it opens and one over the structural view:
+ *   - network and console: no request, no failed load, no policy violation, no console error or exception;
+ *   - defaults: with a domain graph the page opens on Domain with the domain graph drawn;
+ *   - header: its controls are exactly the Domain | Structural switch, the search box and the language switch;
+ *   - no counts: no "N nodes / edges / files / flows / steps / relations" text and no "N drawn of M" in the right
+ *     panel or on the canvas (cards, edge labels, the Relations control);
+ *   - domain overview: the domains with their kind word, business before support, a click opens one;
+ *   - language switch: English shows the English names, the language button brings the translations back;
+ *   - structural overview: runtime units, a tech stack with one spelling per name, layers, external systems, the
+ *     most changed files, and the unused-code entry that opens the list and selects a row's node;
+ *   - node panel: a file listed in hotspots shows the Hotspot section, an unused function the Unused code section,
+ *     a file a doc-map unit cites the Documents section;
+ *   - status line: one line naming each product's state, the details behind it (revision, coverage), no banner;
+ *   - uncovered languages: the knowledge graph's coverage names the languages it did not analyse, with no numbers;
+ *   - relations on the canvas: edge labels are kind words, stand-ins say what they are, the control says what is
+ *     not drawn without a number;
+ *   - content: the title says Excavator, no visible text names the upstream product, a layer drills in and a file's
+ *     code opens from the inlined sources;
+ *   - states: a page whose products were not run shows each state, with no table and no number;
+ *   - layout: at 768 and 375 wide the page does not scroll sideways, and at 375 the drawer holds the two switches.
+ * It then opens the same data with the graph's layers removed and asserts the structural view still draws, now from
+ * the groups the copy derives.
  *
  *   node scripts/explorer-smoke.mjs [--screenshot <png>] [--self-check]
  *
- * `--self-check` is the instrument check: it also runs pages with a planted fault
- * (an external stylesheet, a thrown error, a graph the page cannot read, the removed header
- * buttons and onboarding put back, the product files left out, product counts that no longer
- * match, a graph without the unused node, a page packed without source, a page without a domain graph, a product view that closes on a second click) and requires that each
- * assertion it was written to catch goes red.
+ * `--self-check` is the instrument check: it also runs pages with a planted fault and requires that each assertion
+ * it was written to catch goes red (an external stylesheet, a thrown error, a graph the page cannot read, a Diff
+ * button back in the header, a count on the canvas or in the panel, domains out of order, a duplicated framework
+ * name, products' files left out, a status line that drops a state, a full coverage record, no name table, ...).
  *
- * Needs `pnpm -r build` (the template) and a local Chrome. Prints one line per
- * check and exits 1 when any fails.
+ * Needs `pnpm -r build` (the template) and a local Chrome. Prints one line per check and exits 1 when any fails.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -94,7 +79,7 @@ export function fixtureData() {
   const node = (id, type, name, extra = {}) => ({ id, type, name, summary: `${name} summary`, tags: ['fixture'], complexity: 'simple', ...extra });
   const edge = (source, target, type, evidence) => ({ source, target, type, direction: 'forward', weight: 0.5, ...(evidence ? { evidence: [evidence], provenance: 'extracted' } : {}) });
   const nodes = [
-    node('file:src/main.js', 'file', 'main.js', { filePath: 'src/main.js' }),
+    node('file:src/main.js', 'file', 'main.js', { filePath: 'src/main.js', displayName: 'Main entry' }),
     node('file:src/util.js', 'file', 'util.js', { filePath: 'src/util.js' }),
     node('function:src/main.js:main', 'function', 'main', { filePath: 'src/main.js', lineRange: [3, 5] }),
     node('function:src/util.js:helper', 'function', 'helper', { filePath: 'src/util.js', lineRange: [1, 3], verification: 'verified' }),
@@ -110,7 +95,7 @@ export function fixtureData() {
   ];
   const graph = {
     version: '1.0.0',
-    project: { name: 'fixture', languages: ['javascript'], frameworks: [], description: 'A synthetic project.', analyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc123' },
+    project: { name: 'fixture', languages: ['javascript', 'JavaScript'], frameworks: ['express', 'Express'], description: 'A synthetic project.', analyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc123' },
     nodes,
     edges,
     layers: [
@@ -243,7 +228,9 @@ export function fixtureData() {
     version: '1.0.0',
     project: graph.project,
     nodes: [
-      node('domain:run', 'domain', 'Running', { domainMeta: { entities: [], businessRules: [], crossDomainInteractions: [] } }),
+      node('domain:run', 'domain', 'Running', { summary: 'Runs the program.', domainMeta: { kind: 'support', entities: [], businessRules: [], crossDomainInteractions: [] } }),
+      node('domain:pay', 'domain', 'Payments', { summary: 'Takes payments.\nSecond line.', domainMeta: { kind: 'business', entities: [], businessRules: [], crossDomainInteractions: [] } }),
+      node('domain:misc', 'domain', 'Other', { summary: '', domainMeta: { entities: [], businessRules: [], crossDomainInteractions: [] } }),
       node('flow:run', 'flow', 'Run once', { domainMeta: { entryPoint: 'src/main.js', entryType: 'cli' } }),
       node('step:run:1', 'step', 'Call helper', { filePath: 'src/main.js', lineRange: [3, 5] }),
     ],
@@ -254,6 +241,7 @@ export function fixtureData() {
   return {
     'knowledge-graph.json': graph,
     'domain-graph.json': domain,
+    'name-translations.json': { language: 'French', names: { Running: 'Execution', Payments: 'Paiements', 'Main entry': 'Entree principale', 'Takes payments.\nSecond line.': 'Prend les paiements.\nDeuxieme ligne.', Library: 'Bibliotheque', 'Entry points.': 'Points d\'entree.' }, counts: { names: 6, translated: 6, english: 0, identical: 0, mismatched: 0, unused: 0, refused: 0 } },
     'meta.json': { lastAnalyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc123', version: '1.0.0', analyzedFiles: 2 },
     'staleness.json': { graphs: { knowledge: { status: 'revision', graphRevision: `git:${'b'.repeat(40)}`, currentRevision: `git:${'a'.repeat(40)}` } } },
     'unused-code.json': unused,
@@ -275,16 +263,6 @@ export function fixtureData() {
   };
 }
 
-/** The fixture with every product's counts changed, as a product whose numbers no longer match what the page was checked against. */
-export function withWrongCounts(data) {
-  return {
-    ...data,
-    'unused-code.json': { ...data['unused-code.json'], counts: { ...data['unused-code.json'].counts, unused: 9, byConfidence: { high: 5, medium: 1, low: 0 } } },
-    'hotspots.json': { ...data['hotspots.json'], counts: { ...data['hotspots.json'].counts, filesWithHistory: 9 } },
-    'doc-map.json': { ...data['doc-map.json'], counts: { ...data['doc-map.json'].counts, units: 9 } },
-  };
-}
-
 /** The fixture's graph without one node (and what refers to it): a row whose node the graph does not have. */
 export function withoutNode(data, id) {
   const graph = data['knowledge-graph.json'];
@@ -297,13 +275,6 @@ export function withoutNode(data, id) {
       layers: graph.layers.map((l) => ({ ...l, nodeIds: l.nodeIds.filter((n) => n !== id) })),
     },
   };
-}
-
-/** The fixture with one relation's receiving end recorded at another node: helper's node panel loses an entry. */
-export function withMovedRelationEnd(data) {
-  const product = data['relations-graph.json'];
-  const moved = (r) => (r.id === 'rel:4' ? { ...r, receiver: { ...r.receiver, nodeId: 'function:src/main.js:main' } } : r);
-  return { ...data, 'relations-graph.json': { ...product, relations: product.relations.map(moved) } };
 }
 
 /** The fixture with main.js and main in no layer: main's call to helper has an end that no layer holds. */
@@ -331,14 +302,71 @@ export function withUnavailableProducts(data) {
   };
 }
 
+/** The fixture's graph without one node (and what refers to it). */
+/** A copy of the page data whose feature groups carry the names, descriptions and project texts /excavator-domain stores. */
+export function withStoredGroups(data) {
+  const flowRef = { id: 'flow:run', rule: 'route', scope: null, origin: null };
+  return {
+    ...data,
+    'feature-groups.json': {
+      format: 'excavator-view-feature-groups/3',
+      named: ['domain:run'],
+      project: { introduction: 'The stored introduction.', technicalOverview: 'The stored technical overview.' },
+      domains: { 'domain:run': [{ id: 'word:run', kind: 'feature', label: 'Stored name', description: 'Does the stored thing.', codeLabel: 'codelabel-run', file: null, flows: [flowRef] }] },
+    },
+  };
+}
+
+export function withoutLayers(data) {
+  return { ...data, 'knowledge-graph.json': { ...data['knowledge-graph.json'], layers: [] } };
+}
+
+/** The pack's manifest for a page of `data`: the state of each of the eight products, as the packer writes it. */
+export function manifestFor(data) {
+  const fromFile = new Map((data['products.json']?.products ?? []).map((p) => [p.name, p]));
+  const state = (name, present) => ({ name, status: present ? 'included' : 'not-run' });
+  return {
+    products: [
+      state('knowledge-graph', data['knowledge-graph.json'] !== undefined),
+      { name: 'semantics', status: 'not-run' },
+      state('domain-graph', data['domain-graph.json'] !== undefined),
+      ...['unused-code', 'doc-map', 'hotspots'].map((name) => ({ name, status: fromFile.get(name)?.status ?? 'not-run' })),
+      state('tour', (data['knowledge-graph.json']?.tour ?? []).length > 0),
+      { name: 'relations', status: fromFile.get('relations')?.status ?? 'not-run' },
+    ],
+  };
+}
+
 /** The wait signal view-smoke.mjs needs: the dashboard has no ready attribute of its own, so the page's own markup says when it has drawn. */
 const READY_SCRIPT = `(function(){var r=document.documentElement;var t=setInterval(function(){if(document.querySelector('.react-flow__node')||/Failed to load|Invalid knowledge graph/.test(document.body.innerText)){clearInterval(t);r.setAttribute('data-xv-ready','1');}},50);})();`;
 
-/** The fault 'second-click-closes': a click on a product button while a product view is open closes the view again (the old behaviour). */
-const SECOND_CLICK_CLOSES_SCRIPT = `<script>document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-excavator-product-button]');if(b&&document.querySelector('[data-excavator-product-view]')){setTimeout(function(){document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));},50);}},true);</script>`;
-
-/** The fault 'legacy-chrome': puts back a Files button, a type chip and the onboarding text once the page has drawn. */
-const LEGACY_CHROME_SCRIPT = `<script>setTimeout(function(){var h=document.querySelector('header');var f=document.createElement('button');f.textContent='Files';h.appendChild(f);var c=document.createElement('button');c.innerHTML='<span class="rounded-full"></span>Code';h.appendChild(c);var o=document.createElement('div');o.textContent='EXCAVATOR GET STARTED Welcome to the knowledge graph';document.body.appendChild(o);},100);</script>`;
+/**
+ * The planted faults that are page scripts: each keeps its defect in place (a timer puts it back after the page
+ * redraws), so the probe sees it whenever it looks.
+ */
+const keep = (body) => `<script>setInterval(function(){try{${body}}catch(e){}},40);</script>`;
+const SCRIPT_FAULTS = {
+  'thrown-error': '<script>setTimeout(function(){throw new Error("planted fault");},200);</script>',
+  // A Diff button back in the header.
+  'header-diff': keep(`var h=document.querySelector('header');if(h&&!h.querySelector('[data-planted]')){var b=document.createElement('button');b.setAttribute('data-planted','1');b.textContent='Diff';h.appendChild(b);}`),
+  // A count on the canvas, in the panel, and the Relations control's old sentence.
+  'count-canvas': keep(`var f=document.querySelector('.react-flow');if(f&&!f.querySelector('[data-planted]')){var s=document.createElement('span');s.setAttribute('data-planted','1');s.textContent='12 nodes';f.appendChild(s);}`),
+  'count-aside': keep(`var a=document.querySelector('aside');if(a&&!a.querySelector('[data-planted]')){var s=document.createElement('span');s.setAttribute('data-planted','1');s.textContent='3 files';a.insertBefore(s,a.firstChild);}`),
+  'drawn-of': keep(`var f=document.querySelector('.react-flow');if(f&&!f.querySelector('[data-planted]')){var s=document.createElement('span');s.setAttribute('data-planted','1');s.textContent='491 drawn of 492 in this view';f.appendChild(s);}`),
+  'edge-count': keep(`document.querySelectorAll('.react-flow__edge-text').forEach(function(t){if(!/ 376$/.test(t.textContent))t.textContent=t.textContent+' 376';});`),
+  // Support domains before business ones.
+  'domain-order': keep(`var rows=[].slice.call(document.querySelectorAll('aside [data-excavator-domain-row]'));if(rows.length>1){var li=function(r){return r.parentNode};var support=rows.filter(function(r){return r.getAttribute('data-excavator-domain-kind')==='support'})[0];var biz=rows.filter(function(r){return r.getAttribute('data-excavator-domain-kind')==='business'})[0];if(support&&biz&&li(support).compareDocumentPosition(li(biz))&2){li(support).parentNode.insertBefore(li(support),li(rows[0]));}}`),
+  // The framework name twice, in both spellings.
+  'stack-dup': keep(`document.querySelectorAll('aside p').forEach(function(p){if(/^Frameworks:/.test(p.textContent)&&p.textContent!=='Frameworks: Express, express')p.textContent='Frameworks: Express, express';});`),
+  // A status line that leaves out the product that was not run.
+  'status-missing': keep(`var s=document.querySelector('[data-excavator-status-summary]');if(s&&/Semantics not run/.test(s.textContent))s.textContent=s.textContent.replace(/ [\\u00b7] Semantics not run/,'');`),
+  'wrong-title': keep(`document.title='Planted'`),
+  'upstream-name': keep(`if(!document.querySelector('[data-planted]')){var d=document.createElement('div');d.setAttribute('data-planted','1');d.textContent='Understand Anything';document.body.appendChild(d);}`),
+  // A banner above the graph.
+  banner: keep(`var h=document.querySelector('header');if(h&&!document.querySelector('[data-planted]')){var d=document.createElement('div');d.setAttribute('data-planted','1');d.className='bg-amber-950/30 border-b';d.style.width='100%';d.textContent='The graph may be stale';h.parentNode.insertBefore(d,h.nextSibling);}`),
+  // Layer rows that no longer drill in.
+  'no-drill': `<script>document.addEventListener('click',function(e){if(e.target.closest&&e.target.closest('[data-excavator-layer-row]')){e.stopImmediatePropagation();e.preventDefault();}},true);</script>`,
+};
 
 /** The number of distinct parts the index gives a data file (its fields' parts) or the sources table (its paths' parts). */
 function partsOf(index, name) {
@@ -349,27 +377,31 @@ function partsOf(index, name) {
   return new Set(entry.fields.flatMap((field) => field.parts ?? [field.part])).size;
 }
 
+/** The fixture with a data change a fault stands for. */
+function faultData(data, fault) {
+  if (fault === 'no-graph') return { ...data, 'knowledge-graph.json': undefined };
+  if (fault === 'no-domain') return { ...data, 'domain-graph.json': undefined };
+  if (fault === 'no-sources') return { ...data, sources: undefined };
+  if (fault === 'no-name-table') return { ...data, 'name-translations.json': undefined };
+  // The products' files are left out while the manifest still says they are included.
+  if (fault === 'no-product-files') return { ...data, 'unused-code.json': undefined, 'hotspots.json': undefined, 'doc-map.json': undefined, 'doc-map-checks.json': undefined };
+  // A coverage record in which every language was analysed.
+  if (fault === 'full-coverage') {
+    const graph = data['knowledge-graph.json'];
+    return { ...data, 'knowledge-graph.json': { ...graph, coverage: { files: 3, byLanguage: { javascript: { files: 3, parsed: 3, zeroSymbol: 0, skipped: {} } } } } };
+  }
+  return data;
+}
+
 /**
- * The template filled by the packer's own `assembleExplorerPage`: the policy and the data
- * (index and gzip parts) at their markers; `fault` plants one defect the smoke must catch.
- * The wait signal and a planted script go into a temporary copy of the template, next to its markers.
+ * The template filled by the packer's own `assembleExplorerPage`: the policy, the data (index and gzip parts) and the
+ * manifest; `fault` plants one defect the smoke must catch. The wait signal and a planted script go into a temporary
+ * copy of the template, next to its markers.
  */
 export function assemble(template, data, fault = null) {
-  let payload = data;
-  let extraHead = '';
-  let extraBody = '';
-  if (fault === 'external-url') extraHead = '<link rel="stylesheet" href="https://example.invalid/planted.css">';
-  else if (fault === 'thrown-error') extraBody = '<script>setTimeout(function(){throw new Error("planted fault");},200);</script>';
-  else if (fault === 'no-graph') payload = { ...data, 'knowledge-graph.json': undefined };
-  else if (fault === 'no-products') payload = { ...data, 'unused-code.json': undefined, 'products.json': undefined };
-  else if (fault === 'legacy-chrome') extraBody = LEGACY_CHROME_SCRIPT;
-  else if (fault === 'second-click-closes') extraBody = SECOND_CLICK_CLOSES_SCRIPT;
-  else if (fault === 'wrong-counts') payload = withWrongCounts(data);
-  else if (fault === 'node-missing') payload = withoutNode(data, 'function:src/util.js:leaf');
-  else if (fault === 'no-sources') payload = { ...data, sources: undefined };
-  else if (fault === 'no-domain') payload = { ...data, 'domain-graph.json': undefined };
-  else if (fault === 'relations-end-moved') payload = withMovedRelationEnd(data);
-  else if (fault === 'relations-row-missing') payload = { ...data, 'relations-graph.json': { ...data['relations-graph.json'], relations: data['relations-graph.json'].relations.slice(1) } };
+  const payload = faultData(data, fault);
+  const extraHead = fault === 'external-url' ? '<link rel="stylesheet" href="https://example.invalid/planted.css">' : '';
+  const extraBody = SCRIPT_FAULTS[fault] ?? '';
 
   // The pages that have the data must really be cut: a smoke over single-part files would not run the part reader's joins.
   if (fault === null) {
@@ -386,515 +418,402 @@ export function assemble(template, data, fault = null) {
       .replace(CSP_MARKER, () => `${CSP_MARKER}${extraHead}`)
       .replace(DATA_MARKER, () => `${DATA_MARKER}<script>${READY_SCRIPT}</script>${extraBody}`);
     writeFileSync(templatePath, text);
-    return assembleExplorerPage({ templatePath, data: payload, manifest: {}, partChars: SMOKE_PART_CHARS }).toString('utf-8');
+    return assembleExplorerPage({ templatePath, data: payload, manifest: manifestFor(data), partChars: SMOKE_PART_CHARS }).toString('utf-8');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-/** Runs in the page once it has drawn: what the checks read. */
-const PROBE = `(async () => {
+/** What every probe reads the page through (stringified into the page). */
+function makeHelpers() {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // Once any wait has run out, later waits are not waited out: a broken page must finish well inside the script's time.
   let broken = false;
-  const until = async (test, tries = 60) => { for (let i = 0; i < (broken ? 1 : tries); i++) { if (test()) return true; await sleep(50); } broken = true; return false; };
-  const cards = () => [...document.body.querySelectorAll('.react-flow__node')];
-  const started = Date.now();
-  const out = { title: document.title, cards: 0, drilled: false, codeShown: false };
+  const until = async (test, tries = 60) => {
+    for (let i = 0; i < (broken ? 1 : tries); i++) {
+      try { if (test()) return true; } catch { /* not there yet */ }
+      await sleep(50);
+    }
+    broken = true;
+    return false;
+  };
   const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  // A header button is highlighted when it carries the accent fill (the persona, mode and Diff buttons) or is aria-pressed (the product buttons).
-  const lit = (el) => Boolean(el) && (/(^| )bg-accent[/]20( |$)/.test(el.className) || el.getAttribute('aria-pressed') === 'true');
-  const headerButton = (title) => document.querySelector('header button[title="' + title + '"]');
-  const productsLit = () => [...document.querySelectorAll('header [data-excavator-product-button]')].filter(lit).map((b) => b.getAttribute('data-excavator-product-button'));
-  await until(() => cards().length > 0 || /Failed to load|Invalid knowledge graph/.test(document.body.innerText));
-  await sleep(400);
-  // The defaults (spec: the dashboard): Overview is the persona and, with a domain graph, Domain is the mode; nothing else is highlighted, no product view is open, Diff is off.
-  out.defaults = {
-    overview: lit([...document.querySelectorAll('header button')].find((b) => b.textContent.trim() === 'Overview')),
-    otherPersonas: [...document.querySelectorAll('header button')].filter((b) => ['Learn', 'Deep Dive'].includes(b.textContent.trim()) && lit(b)).length,
-    domain: lit(headerButton('Domain')),
-    structural: lit(headerButton('Structural')),
-    products: productsLit(),
-    productView: document.querySelector('[data-excavator-product-view]') !== null,
-    diffOff: /^Diff OFF$/.test([...document.querySelectorAll('header button')].map((b) => b.textContent.trim()).find((t) => /^Diff/.test(t)) ?? ''),
-    domainCard: cards().some((n) => /^domain:/.test(n.getAttribute('data-id') ?? '')),
-  };
-  // Every check below is about the structural graph: switch to it (a page without a domain graph is already there).
-  if (!out.defaults.structural) {
-    press(headerButton('Structural'));
-    await until(() => cards().some((n) => !/^domain:/.test(n.getAttribute('data-id') ?? '')));
-    await sleep(300);
-  }
-  out.cards = cards().length;
-  // No onboarding overlay and no Files / Classes or type-chip buttons in the header; the four product buttons stand there.
-  out.onboardingShown = /GET STARTED|Welcome to the knowledge graph/.test(document.body.innerText);
-  const headerButtons = [...document.querySelectorAll('header button')];
-  out.headerFilesClasses = headerButtons.some((b) => /^(files|classes)$/i.test(b.textContent.trim()));
-  out.headerTypeChips = headerButtons.some((b) => b.querySelector('span.rounded-full'));
-  out.productButtons = [...document.querySelectorAll('header [data-excavator-product-button]')].map((b) => b.textContent.trim());
-  // The visible text names no upstream product (a slash command in an empty state is not the product name).
-  out.upstreamName = /understand/i.test(document.body.innerText.replace(/[/]understand[-a-z]*/g, ''));
-  // The legend counts what the top level draws: "<n> layers", or "<n> groups" when the graph had no layers.
-  const legend = [...document.querySelectorAll('header span')].map((e) => /^\\d+ (layers|groups)$/.exec(e.textContent.trim())).find(Boolean);
-  out.legend = legend ? legend[1] : null;
-  // The pack's freshness report reaches the banner (it loads after the graph draws).
-  const bannerText = /Knowledge graph may not match the current source[\\s\\S]*was made from git:bbbbbbbb; this page was packed at git:aaaaaaaa[.]/;
-  out.revisionBanner = await until(() => bannerText.test(document.body.innerText));
-  if (out.cards === 0) return out;
-  await sleep(300);
-  const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
+  const cards = () => [...document.body.querySelectorAll('.react-flow__node')];
   const card = (id) => document.querySelector('.react-flow__node[data-id="' + id + '"]');
-  // What the product views are read through. innerText follows text-transform, so labels are matched ignoring case or read from data attributes.
-  const pv = {
-    button: (name) => document.querySelector('header [data-excavator-product-button="' + name + '"]'),
-    overlay: () => document.querySelector('[data-excavator-product-view]'),
-    side: () => document.querySelector('aside')?.innerText ?? '',
-    stat: (label) => document.querySelector('[data-excavator-product-view] [data-excavator-stat="' + label + '"] [data-excavator-stat-value]')?.getAttribute('data-excavator-stat-value') ?? null,
-    rows: (name) => [...document.querySelectorAll('[data-excavator-table="' + name + '"] tbody tr')],
-    row: (name, key) => document.querySelector('[data-excavator-table="' + name + '"] tr[data-excavator-row="' + key + '"]'),
-    detail: () => document.querySelector('aside [data-excavator-row-detail]'),
-    action: (name) => document.querySelector('aside [data-excavator-row-actions] [data-excavator-action="' + name + '"]'),
-    note: (name) => document.querySelector('aside [data-excavator-row-actions] [data-excavator-note="' + name + '"]')?.innerText ?? null,
-    chip: (name) => document.querySelector('[data-excavator-product-view] [data-excavator-chip="' + name + '"]'),
-    tab: (name) => document.querySelector('[data-excavator-product-view] [data-excavator-tab="' + name + '"]'),
-    esc: () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
-    open: async (name) => { press(pv.button(name)); await until(() => pv.overlay()?.getAttribute('data-excavator-product-view') === name, 20); await sleep(150); },
-    pick: async (table, key) => { press(pv.row(table, key)); await until(() => pv.detail(), 20); await sleep(80); },
+  const aside = () => document.querySelector('aside');
+  const asideText = () => aside()?.innerText ?? '';
+  const flowText = () => document.querySelector('.react-flow')?.innerText ?? '';
+  const edgeTexts = () => [...document.querySelectorAll('.react-flow__edge-text')].map((e) => e.textContent.trim());
+  const section = (name) => aside()?.querySelector('[data-excavator-section="' + name + '"]') ?? null;
+  const buttonIn = (root, test) => [...(root?.querySelectorAll('button') ?? [])].find((b) => test(b.textContent.trim()));
+  const headerButton = (text) => buttonIn(document.querySelector('header'), (t) => t === text);
+  const lit = (el) => Boolean(el) && el.getAttribute('aria-pressed') === 'true';
+  const esc = () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  const COUNT = /\b\d+\s+(relations?|nodes?|edges?|files?|flows?|steps?|connections?)\b|\b\d+ drawn of \d+/i;
+  // The text where counts must not be: the right panel, the canvas (cards, controls) and the edge labels.
+  // An edge label is a kind word: a digit in one is a count.
+  const countsSeen = () => [...[asideText(), flowText()].join('\n').split('\n').filter((line) => COUNT.test(line)), ...edgeTexts().filter((t) => /\d/.test(t))];
+  const domainRows = () => [...document.querySelectorAll('aside [data-excavator-domain-row]')].map((r) => ({
+    id: r.getAttribute('data-excavator-domain-row'),
+    kind: r.getAttribute('data-excavator-domain-kind'),
+    label: r.querySelector('[data-excavator-domain-label]')?.textContent ?? null,
+    original: r.querySelector('[data-excavator-domain-original]')?.textContent ?? null,
+    kindWord: [...r.querySelectorAll('span')].map((s) => s.textContent).find((t) => t === 'business' || t === 'support') ?? null,
+  }));
+  const statusSummary = () => document.querySelector('[data-excavator-status-summary]')?.textContent ?? '';
+  return { sleep, until, press, cards, card, aside, asideText, flowText, edgeTexts, section, buttonIn, headerButton, lit, esc, countsSeen, domainRows, statusSummary };
+}
+
+const probe = (body) => `(async () => { const h = (${makeHelpers})(); return await (${body})(h); })()`;
+
+/** The page as it opens: defaults, header, domain overview, language switch, status line. */
+async function mainBody(h) {
+  const opacities = () => [...document.querySelectorAll('.react-flow__node:not(.react-flow__node-band-heading)')].map((n) => Number(getComputedStyle(n).opacity));
+  // The cards' bounding box (not headings or lane separators) is centred in the canvas when the content is narrower than the pane.
+  const centred = () => {
+    const rects = [...document.querySelectorAll('.react-flow__node:not(.react-flow__node-band-heading):not(.react-flow__node-lane-band)')].map((n) => n.getBoundingClientRect());
+    const pane = document.querySelector('.react-flow')?.getBoundingClientRect();
+    if (rects.length === 0 || !pane) return false;
+    const left = Math.min(...rects.map((r) => r.left));
+    const right = Math.max(...rects.map((r) => r.right));
+    return right - left >= pane.width - 80 || Math.abs((left + right) / 2 - (pane.left + pane.right) / 2) <= 40;
   };
-  // Our data (design D4b): the overview of Deep Dive shows coverage and gaps; a node shows its verdict, a blanked summary says why, a connection shows its evidence.
-  if (card('layer:lib')) {
-    button('Deep Dive').click();
-    await sleep(300);
-    out.coverage = document.querySelector('[data-excavator=coverage]')?.innerText ?? null;
-    out.gaps = document.querySelector('[data-excavator=gaps]')?.innerText ?? null;
-    card('layer:lib').click();
-    await until(() => document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
-    press(document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
-    await until(() => card('function:src/util.js:leaf'));
-    const panel = async (id) => { press(card(id)?.firstElementChild); await sleep(300); return document.body.innerText; };
-    const leafText = await panel('function:src/util.js:leaf');
-    out.leafRemoved = leafText.includes('The summary was removed: the source contradicts it.') && /Contradicted/.test(leafText);
-    out.helperVerified = /Verified/.test(await panel('function:src/util.js:helper'));
-    const utilText = await panel('file:src/util.js');
-    // The connections' evidence, without the sites of the Communication section (the graph-relations probe checks those).
-    const communication = document.querySelector('[data-excavator-communication]')?.innerText ?? '';
-    const sites = (text) => (text.match(/src[/](main|util)[.]js:[0-9]+/g) || []);
-    const less = sites(communication);
-    out.evidence = sites(utilText).filter((site) => { const i = less.indexOf(site); if (i < 0) return true; less.splice(i, 1); return false; }).sort();
-    // util.js is the source of the mentions edge: its label is the locale's forward one.
-    out.mentions = /(^|[\\n])mentions([\\n]|$)/.test(utilText);
-    // Product views (explorer-products): with util.js selected, Unused covers the graph area, leaves the graph mounted and is a column no wider than 1100px.
-    const selectedBefore = pv.side();
-    const cardsBefore = cards().length;
-    press(pv.button('unused'));
-    await until(() => pv.overlay());
-    const shown = pv.overlay();
-    const box = shown ? shown.getBoundingClientRect() : null;
-    const column = shown ? shown.firstElementChild.getBoundingClientRect() : null;
-    const headerBox = document.querySelector('header').getBoundingClientRect();
-    const sideBox = document.querySelector('aside').getBoundingClientRect();
-    out.unusedView = Boolean(shown) && shown.getAttribute('data-excavator-product-view') === 'unused' && /Unused code/i.test(shown.innerText);
-    out.unusedStatus = await until(() => { const h = pv.overlay()?.querySelector('[data-excavator-view-header]')?.innerText ?? ''; return /included/i.test(h) && /Revision git:aaaaaaaa/.test(h); });
-    out.graphMounted = cards().length === cardsBefore && cardsBefore > 0;
-    out.overlayArea = Boolean(box) && box.top >= headerBox.bottom - 1 && box.right <= sideBox.left + 1 && getComputedStyle(shown).position === 'absolute' && getComputedStyle(shown).backgroundColor !== 'rgba(0, 0, 0, 0)';
-    out.columnCentred = Boolean(column) && column.width <= 1100.5 && Math.abs((column.left - box.left) - (box.right - column.right)) < 24;
-    // While the view is open only its button is highlighted: Domain and Structural are not.
-    out.onlyUnusedLit = JSON.stringify(productsLit()) === JSON.stringify(['unused']) && !lit(headerButton('Domain')) && !lit(headerButton('Structural'));
-    // A second click on the open product's button keeps the view open, with the selection and the sidebar as they were.
-    press(pv.button('unused'));
-    await sleep(200);
-    out.viewKeptOpen = pv.overlay() !== null && pv.overlay().getAttribute('data-excavator-product-view') === 'unused' && JSON.stringify(productsLit()) === JSON.stringify(['unused']);
-    out.selectionKept = selectedBefore.includes('util.js') && pv.side() === selectedBefore;
-    // The rows used only by tests open nothing; Structural, the mode the graph was in before the view, then returns to the graph.
-    const inert = pv.rows('test-only');
-    press(inert[0]);
-    await sleep(150);
-    out.testOnlyInert = inert.length === 1 && inert.every((r) => !r.hasAttribute('tabindex')) && pv.detail() === null;
-    press(document.querySelector('header button[title="Structural"]'));
-    await sleep(200);
-    out.structuralKept = pv.overlay() === null && pv.side() === selectedBefore;
-    // Back on the graph the mode is highlighted again and no product button is.
-    out.backOnGraph = lit(headerButton('Structural')) && !lit(headerButton('Domain')) && productsLit().length === 0 && cards().length === cardsBefore;
-    button('Project').click();
-    await until(() => card('layer:app'));
-    button('Learn').click();
-    await sleep(300);
+  const started = Date.now();
+  const out = { title: document.title };
+  await h.until(() => h.cards().length > 0 || /Failed to load|Invalid knowledge graph/.test(document.body.innerText));
+  await h.sleep(500);
+  out.cards = h.cards().length;
+  out.defaults = { domain: h.lit(h.headerButton('Domain')), structural: h.lit(h.headerButton('Structural')), domainCard: h.cards().some((n) => /^domain:/.test(n.getAttribute('data-id') ?? '')) };
+  out.header = [...document.querySelectorAll('header button, header input')].map((e) => (e.tagName === 'INPUT' ? 'input:' + e.type : e.textContent.trim()));
+  out.upstreamName = /understand/i.test(document.body.innerText.replace(/[/]understand[-a-z]*/g, ''));
+  out.banner = Boolean(document.querySelector('[data-excavator-banner]')) || [...document.querySelectorAll('body *:not(aside):not(aside *)')].some((e) => /bg-(amber|red)-/.test(e.getAttribute('class') ?? '') && e.getBoundingClientRect().width > window.innerWidth / 2);
+  if (out.cards === 0) return out;
+  await h.until(() => h.domainRows().length > 0);
+  out.domainRows = h.domainRows();
+  out.counts = h.countsSeen();
+  // The language switch: English shows the English names, the language button brings the translations back.
+  const language = h.headerButton('French');
+  const english = h.headerButton('English');
+  out.language = { lit: h.lit(language), englishLit: h.lit(english) };
+  h.press(english);
+  await h.sleep(300);
+  out.english = { rows: h.domainRows(), lit: h.lit(h.headerButton('English')) };
+  h.press(language);
+  await h.sleep(300);
+  out.french = { rows: h.domainRows(), lit: h.lit(h.headerButton('French')) };
+  // Descriptions come in their translation only, on the card and in the panel list (first line), with no English line.
+  const payCard = document.querySelector('.react-flow__node[data-id="domain:pay"]')?.textContent ?? '';
+  const payRow = document.querySelector('aside [data-excavator-domain-row="domain:pay"]');
+  out.descriptions = { card: payCard, row: payRow?.textContent ?? '', rowTitle: payRow?.querySelector('[title]')?.getAttribute('title') ?? '' };
+  // Opening a domain shows its node; Escape returns to the list.
+  out.overviewCentred = centred();
+  out.overviewNoBar = !document.querySelector('[data-excavator-bar]');
+  const firstBack = document.querySelector('[data-excavator-back]');
+  out.backDisabledOnLoad = (!firstBack || firstBack.disabled === true) && !document.querySelector('[data-excavator-panel-back]');
+  const row = document.querySelector('aside [data-excavator-domain-row="domain:run"]');
+  // A panel list selects and never navigates: the panel shows the domain with an Open button; Open enters it.
+  h.press(row);
+  out.rowOpenButton = await h.until(() => Boolean(h.aside()?.querySelector('[data-excavator-open="node"]')));
+  out.rowStayedOnOverview = !h.buttonIn(h.aside(), (t) => /All domains/.test(t));
+  h.press(h.aside()?.querySelector('[data-excavator-open="node"]'));
+  out.opened = await h.until(() => h.buttonIn(h.aside(), (t) => /All domains/.test(t)));
+  out.openedTitle = h.asideText();
+  // At domain level every flow is listed once: no "contains flow" connection rows beside the Flows list.
+  // The Back and breadcrumb bar must not cover a node after placement.
+  const barClear = () => {
+    const bar = document.querySelector('[data-excavator-bar]')?.getBoundingClientRect();
+    if (!bar) return false;
+    return ![...document.querySelectorAll('.react-flow__node')].some((n) => {
+      const r = n.getBoundingClientRect();
+      return r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top;
+    });
+  };
+  const flowRows = () => h.section('Flows')?.querySelectorAll('button').length ?? 0;
+  out.containsRows = /contains flow/i.test(h.asideText());
+  out.domainFlowRows = flowRows();
+  // A click on a panel list item goes to that node: from the group level a flow row opens the lanes of its group,
+  // selects the flow and pans it into the canvas; a row already on screen changes nothing but the selection.
+  const crumb = () => document.querySelector('[data-excavator-domain-breadcrumb]')?.textContent ?? '';
+  const flowButton = h.section('Flows')?.querySelector('button');
+  const flowName = flowButton?.textContent ?? '';
+  // Move the view a little, as a user would, so a restored viewport differs from a fresh placement.
+  await h.sleep(300);
+  const transformBefore = document.querySelector('.react-flow__viewport')?.style.transform;
+  const pane = document.querySelector('.react-flow__pane');
+  pane?.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, ctrlKey: true, clientX: 300, clientY: 300 }));
+  await h.sleep(400);
+  const viewportOf = () => {
+    const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)\s*scale\(([-\d.]+)\)/.exec(document.querySelector('.react-flow__viewport')?.style.transform ?? '');
+    return m ? { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) } : null;
+  };
+  const viewportBefore = viewportOf();
+  out.viewMoved = document.querySelector('.react-flow__viewport')?.style.transform !== transformBefore;
+  out.groupsBarClear = barClear();
+  const beforeCrumb = crumb();
+  out.beforeCrumbName = beforeCrumb.split('/').pop();
+  if (flowButton) h.press(flowButton);
+  await h.sleep(900);
+  const goCard = [...document.querySelectorAll('.react-flow__node-flow-node')].find((n) => n.textContent.includes(flowName.trim().split(' ')[0]));
+  const frame = document.querySelector('.react-flow')?.getBoundingClientRect();
+  const box = goCard?.getBoundingClientRect();
+  out.goLanes = Boolean(document.querySelector('.react-flow__node-lane-band')) && crumb() !== beforeCrumb;
+  out.goSelected = Boolean(goCard) && Number(getComputedStyle(goCard).opacity) === 1 && h.asideText().includes(flowName.trim()) && !h.buttonIn(h.aside(), (t) => /go to/i.test(t));
+  out.goInside = Boolean(box && frame) && box.left >= frame.left && box.right <= frame.right && box.top >= frame.top && box.bottom <= frame.bottom;
+  // The Domain view shows names, not code: no route or path on the cards; one muted Code line in the panel.
+  out.noCodeOnCards = ![...document.querySelectorAll('.react-flow__node-flow-node, .react-flow__node-step-node, [data-excavator-group-card]')].some((n) => /src\/main\.js/.test(n.textContent));
+  out.codeLines = [...(h.aside()?.querySelectorAll('[data-excavator-code-line]') ?? [])].map((n) => n.textContent);
+  out.codeNowhereElse = (h.asideText().match(/src\/main\.js/g) ?? []).length === 1;
+  const crumbOnLanes = crumb();
+  const nodeCount = document.querySelectorAll('.react-flow__node').length;
+  const stepButton = h.section('Steps')?.querySelector('button');
+  if (stepButton) h.press(stepButton);
+  await h.sleep(500);
+  out.goStable = Boolean(stepButton) && crumb() === crumbOnLanes && document.querySelectorAll('.react-flow__node').length === nodeCount;
+  // Back is a history back: it returns to the group level just left, with the viewport it had and nothing selected.
+  // The panel's Back is the same history Back, named after the view it returns to.
+  const panelBack = document.querySelector('[data-excavator-panel-back]');
+  out.panelBackLabel = panelBack?.textContent ?? null;
+  out.canvasBackEnabled = document.querySelector('[data-excavator-back]')?.disabled === false;
+  if (panelBack) panelBack.click();
+  await h.sleep(800);
+  const viewportAfter = viewportOf();
+  out.backRestored =
+    crumb() === beforeCrumb &&
+    Boolean(document.querySelector('[data-excavator-group-card]')) &&
+    Boolean(viewportBefore && viewportAfter) &&
+    Math.abs(viewportBefore.x - viewportAfter.x) <= 1 &&
+    Math.abs(viewportBefore.y - viewportAfter.y) <= 1 &&
+    Math.abs(viewportBefore.zoom - viewportAfter.zoom) <= 0.01 &&
+    !h.aside()?.querySelector('[data-excavator-code-line]');
+  // Inside a group the panel lists that group's flows only; the canvas breadcrumb is the only trail.
+  // A view switch is a navigation: Back from Structural returns to the Domain level that was left.
+  const levelCrumb = crumb();
+  h.press(h.headerButton('Structural'));
+  await h.until(() => h.section('Runtime units'));
+  const structuralBack = document.querySelector('[data-excavator-back]');
+  out.structuralBackEnabled = Boolean(structuralBack) && structuralBack.disabled === false;
+  if (structuralBack && !structuralBack.disabled) structuralBack.click();
+  await h.sleep(900);
+  out.switchBack = h.lit(h.headerButton('Domain')) && crumb() === levelCrumb && Boolean(document.querySelector('[data-excavator-group-card]'));
+  const groupCard = document.querySelector('[data-excavator-group-card]');
+  out.groupCardFlows = Number(/(\d+) flows/.exec(groupCard?.textContent ?? '')?.[1] ?? -1);
+  // One rule on every level: a single click selects and never enters; click, click (detail 2) and dblclick enters.
+  const mouse = (el, type, detail) => el.dispatchEvent(new MouseEvent(type, { bubbles: true, detail }));
+  if (groupCard) mouse(groupCard, 'click', 1);
+  await h.sleep(300);
+  out.groupLevelKept = Boolean(document.querySelector('[data-excavator-group-card]')) && !document.querySelector('.react-flow__node-flow-node');
+  if (groupCard) {
+    mouse(groupCard, 'click', 1);
+    mouse(groupCard, 'click', 2);
+    mouse(groupCard, 'dblclick', 2);
   }
-  // A layer card drills into the layer: the level's own cards replace the layers. A page without the fixture's layers has no such card.
-  const app = cards().find((n) => /App/.test(n.textContent));
-  if (!app) return out;
-  app.click();
-  out.drilled = await until(() => cards().some((n) => /Cluster/.test(n.textContent)));
-  // A file's code opens from the file list by double-click and is read from the inlined sources.
-  const tab = [...document.querySelectorAll('button')].filter((b) => /^files$/i.test(b.textContent.trim())).pop();
-  tab.click();
-  await sleep(200);
-  const leaf = (text) => [...document.body.querySelectorAll('div,span,button')].find((e) => e.children.length === 0 && e.textContent.trim() === text);
-  leaf('src').click();
-  await sleep(200);
-  leaf('main.js').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-  out.codeShown = await until(() => /return helper[(]1[)]/.test(document.body.innerText));
-  pv.esc();
-  await sleep(300);
-  // The three views with their rows (explorer-products); each starts from the graph.
-  const ADVICE = /safe to delete|should (be )?(removed|deleted)|can be (removed|deleted)|recommend/i;
-  const LEAF = 'function:src/util.js:leaf';
-  const ORPHAN = 'function:src/gone.js:orphan';
-  const MAIN = 'function:src/main.js:main';
-
-  // Unused: counts, the high filter, the row details in the sidebar, rows that are not in the graph or have no source, Escape, Open code, Show in graph.
-  await pv.open('unused');
-  const unused = { advice: ADVICE.test(pv.overlay()?.innerText ?? ''), stats: { unused: pv.stat('Unused'), unreferenced: pv.stat('Unreferenced'), onlyReachable: pv.stat('Only reachable from unused'), testOnly: pv.stat('Test only') }, rowsAll: pv.rows('unused').length };
-  press(pv.chip('Confidence:high'));
-  await sleep(150);
-  unused.high = { text: document.querySelector('[data-excavator-shown=unused]')?.innerText ?? null, rows: pv.rows('unused').length };
-  press(pv.chip('Confidence:high'));
-  await sleep(100);
-  await pv.pick('unused', LEAF);
-  const detailText = (pv.detail()?.innerText ?? null);
-  unused.detail = {
-    text: detailText,
-    marked: Boolean(pv.row('unused', LEAF)?.hasAttribute('data-excavator-row-selected')),
-    show: Boolean(pv.action('show-in-graph')),
-    code: Boolean(pv.action('open-code')),
-    groupOthers: document.querySelector('aside [data-excavator-group-others]')?.getAttribute('data-excavator-group-others') ?? null,
-    referrers: document.querySelector('aside [data-excavator-referrers]')?.getAttribute('data-excavator-referrers') ?? null,
-  };
-  await pv.pick('unused', ORPHAN);
-  unused.orphan = { graphNote: pv.note('graph'), codeNote: pv.note('code'), show: Boolean(pv.action('show-in-graph')), code: Boolean(pv.action('open-code')) };
-  pv.esc();
-  await sleep(150);
-  unused.escapeRow = pv.detail() === null && pv.overlay() !== null;
-  pv.esc();
-  await sleep(150);
-  unused.escapeView = pv.overlay() === null;
-  await pv.open('unused');
-  await pv.pick('unused', MAIN);
-  press(pv.action('open-code'));
-  unused.openCode = await until(() => /return helper[(]1[)]/.test(document.body.innerText) && document.querySelector('[data-excavator-line-marked]'));
-  unused.markedLines = document.querySelectorAll('[data-excavator-line-marked]').length;
-  pv.esc();
-  await sleep(250);
-  unused.escapeCodeFirst = document.querySelector('[data-excavator-line-marked]') === null && pv.detail() !== null && pv.overlay() !== null;
-  await pv.pick('unused', LEAF);
-  press(pv.action('show-in-graph'));
-  await sleep(500);
-  unused.show = { closed: pv.overlay() === null, rowGone: pv.detail() === null, side: pv.side(), drawn: Boolean(card(LEAF)) };
-  // In Overview the layer view draws no function, so the row is shown through its file.
-  button('Overview').click();
-  await sleep(300);
-  await pv.open('unused');
-  await pv.pick('unused', LEAF);
-  unused.overview = { note: pv.note('container'), show: Boolean(pv.action('show-in-graph')) };
-  press(pv.action('show-in-graph'));
-  await until(() => card('file:src/util.js'));
-  await sleep(300);
-  unused.overview.drawn = Boolean(card('file:src/util.js'));
-  unused.overview.side = pv.side();
-  button('Learn').click();
-  await sleep(300);
-  out.unusedViewRows = unused;
-
-  // Hotspots (made from another revision): the notice, counts, a file row, a directory row, Show in graph.
-  await pv.open('hotspots');
-  const hotspots = {
-    notice: document.querySelector('[data-excavator-notice=revision]')?.innerText ?? null,
-    stats: { withHistory: pv.stat('Files with history'), withoutHistory: pv.stat('Files without history'), binary: pv.stat('Binary files'), conflicts: pv.stat('Lineage conflicts') },
-    rows: pv.rows('files').length,
-    years: document.querySelector('[data-excavator-years]')?.getAttribute('data-excavator-years') ?? null,
-    advice: ADVICE.test(pv.overlay()?.innerText ?? ''),
-  };
-  await pv.pick('files', 'src/main.js');
-  hotspots.file = {
-    text: (pv.detail()?.innerText ?? null),
-    years: pv.detail()?.querySelector('[data-excavator-row-years]')?.getAttribute('data-excavator-row-years') ?? null,
-    together: pv.detail()?.querySelector('[data-excavator-co-change]')?.getAttribute('data-excavator-co-change') ?? null,
-    show: Boolean(pv.action('show-in-graph')),
-    code: Boolean(pv.action('open-code')),
-  };
-  press(pv.tab('directories'));
-  await sleep(150);
-  hotspots.tabClearedRow = pv.detail() === null;
-  await pv.pick('directories', 'src');
-  hotspots.dir = { text: (pv.detail()?.innerText ?? null), show: Boolean(pv.action('show-in-graph')), code: Boolean(pv.action('open-code')), note: pv.note('graph') };
-  press(pv.tab('files'));
-  await sleep(150);
-  await pv.pick('files', 'src/main.js');
-  press(pv.action('show-in-graph'));
-  await sleep(500);
-  hotspots.show = { closed: pv.overlay() === null, side: pv.side(), drawn: Boolean(card('file:src/main.js')) };
-  out.hotspotsViewRows = hotspots;
-
-  // Doc map: counts, the not-found unit (quote and searched record, no code location), an unchecked place, a checked one, text shown as text.
-  await pv.open('doc-map');
-  const docmap = {
-    stats: { documents: pv.stat('Documents'), units: pv.stat('Units'), found: pv.stat('Code found'), notFound: pv.stat('No code found') },
-    rows: pv.rows('units').length,
-    asText: Boolean(pv.overlay()) && pv.overlay().innerText.includes('Run <b>once</b>') && pv.overlay().querySelector('b') === null,
-    advice: ADVICE.test(pv.overlay()?.innerText ?? ''),
-  };
-  await pv.pick('units', '2');
-  docmap.notFound = { text: (pv.detail()?.innerText ?? null), evidence: (pv.detail()?.querySelectorAll('[data-excavator-evidence]').length ?? -1), searched: pv.detail()?.querySelector('[data-excavator-searched]')?.getAttribute('data-excavator-searched') ?? null, code: Boolean(pv.action('open-code')), show: Boolean(pv.action('show-in-graph')) };
-  await pv.pick('units', '3');
-  docmap.unchecked = { text: (pv.detail()?.innerText ?? null), check: pv.detail()?.querySelector('[data-excavator-check]')?.getAttribute('data-excavator-check') ?? null };
-  await pv.pick('units', '1');
-  docmap.checked = { text: (pv.detail()?.innerText ?? null), check: pv.detail()?.querySelector('[data-excavator-check]')?.getAttribute('data-excavator-check') ?? null, show: Boolean(pv.action('show-in-graph')), code: Boolean(pv.action('open-code')) };
-  out.docmapViewRows = docmap;
-  press(pv.button('doc-map'));
-  await sleep(200);
+  await h.sleep(400);
+  out.groupFlowRows = flowRows();
+  out.lanesBarClear = barClear();
+  out.lanesCentred = centred();
+  out.lanesUndimmed = opacities().length > 0 && opacities().every((o) => o === 1);
+  out.groupContainsRows = /contains flow/i.test(h.asideText());
+  const flowCard = document.querySelector('.react-flow__node-flow-node > div');
+  const stepCard = document.querySelector('.react-flow__node-step-node > div');
+  if (flowCard) flowCard.click();
+  await h.sleep(200);
+  if (stepCard) stepCard.click();
+  await h.sleep(300);
+  out.panelTrail = Boolean(h.aside()?.querySelector('[data-excavator-panel-breadcrumb]'));
+  for (let i = 0; i < 4; i += 1) {
+    h.esc();
+    await h.sleep(250);
+  }
+  out.listBack = await h.until(() => h.domainRows().length > 0);
+  // A double click on a domain card opens the domain too (the zoom pane must not swallow it).
+  const card = document.querySelector('.react-flow__node[data-id="domain:run"] > div');
+  if (card) {
+    // The first click selects the card; entering must leave nothing selected, so one Escape returns to the list.
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+    card.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+  }
+  out.dblOpened = await h.until(() => h.buttonIn(h.aside(), (t) => /All domains/.test(t)));
+  h.esc();
+  out.dblBack = await h.until(() => h.domainRows().length > 0);
+  // Selecting a domain card dims the others to 0.3; the same click again restores them; entering shows nothing dimmed.
+  const domainCard = document.querySelector('.react-flow__node[data-id="domain:run"] > div');
+  const clickOf = (el, detail) => el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail }));
+  clickOf(domainCard, 1);
+  await h.sleep(250);
+  out.dimmedOnSelect = opacities().some((o) => o < 0.5) && Number(getComputedStyle(document.querySelector('.react-flow__node[data-id="domain:run"]')).opacity) === 1;
+  clickOf(domainCard, 1);
+  await h.sleep(250);
+  out.undimmedOnToggle = opacities().every((o) => o === 1);
+  // React Flow's own selection must follow the store: after the second click nothing keeps the selected class.
+  out.noSelectedClass = document.querySelectorAll('.react-flow__node.selected').length === 0;
+  // The status line: the summary, then the details behind it.
+  out.summary = h.statusSummary();
+  const details = h.buttonIn(document.querySelector('[data-excavator-status-line]'), (t) => t === 'Details');
+  h.press(details);
+  await h.sleep(150);
+  out.details = [...document.querySelectorAll('[data-excavator-status-line] li')].map((li) => li.textContent.trim());
+  h.press(h.buttonIn(document.querySelector('[data-excavator-status-line]'), (t) => t === 'Details'));
   out.elapsedMs = Date.now() - started;
   return out;
-})()`;
+}
 
-/** Runs in the page of the unavailable-products fixture: opens each view and reads only its state. */
-const PROBE_STATES = `(async () => {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const until = async (test) => { for (let i = 0; i < 60; i++) { if (test()) return true; await sleep(50); } return false; };
-  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  const out = { views: {} };
-  await until(() => document.querySelector('.react-flow__node'));
-  await sleep(500);
-  for (const name of ['unused', 'hotspots', 'doc-map', 'relations']) {
-    const button = document.querySelector('header [data-excavator-product-button="' + name + '"]');
-    press(button);
-    await until(() => document.querySelector('[data-excavator-product-view="' + name + '"]'));
-    await sleep(250);
-    const view = document.querySelector('[data-excavator-product-view]');
-    out.views[name] = {
-      state: view.querySelector('[data-excavator-state]')?.innerText ?? null,
-      tables: view.querySelectorAll('[data-excavator-table]').length,
-      stats: view.querySelectorAll('[data-excavator-stat]').length,
-      sections: view.querySelectorAll('[data-excavator-section]').length,
-    };
-    press(button);
-    await sleep(150);
-  }
+/** The structural view: overview, canvas relations, unused list, node facts, layer drill and code. */
+async function structBody(h) {
+  const started = Date.now();
+  const out = {};
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(300);
+  h.press(h.headerButton('Structural'));
+  await h.until(() => h.cards().some((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')) && h.section('Runtime units'));
+  await h.sleep(500);
+  out.cards = h.cards().filter((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')).length;
+  const text = (name) => h.section(name)?.innerText ?? null;
+  out.units = text('Runtime units');
+  out.frameworks = (h.section('Runtime units')?.innerText.match(/Frameworks: (.*)/) ?? [])[1] ?? null;
+  out.languages = (h.section('Runtime units')?.innerText.match(/Languages: (.*)/) ?? [])[1] ?? null;
+  out.layers = [...document.querySelectorAll('aside [data-excavator-layer-row]')].map((b) => b.getAttribute('data-excavator-layer-row'));
+  out.layerRowTexts = [...document.querySelectorAll('aside [data-excavator-layer-row]')].map((b) => b.textContent);
+  out.externals = text('External systems');
+  out.changed = text('Most changed files');
+  // The relations on the canvas: edge labels, stand-ins, the control's line.
+  await h.until(() => h.edgeTexts().length > 0 && document.querySelector('[data-excavator-relation-node]'), 80);
+  out.edgeLabels = h.edgeTexts();
+  out.standIns = [...document.querySelectorAll('[data-excavator-relation-node]')].map((e) => e.innerText);
+  out.relationsPanel = document.querySelector('[data-excavator-relations-panel]')?.innerText ?? null;
+  out.counts = h.countsSeen();
+  // The unused-code entry opens the list; a row selects its node, and the node panel shows the Unused code section.
+  const entry = h.buttonIn(h.section('Unused code'), (t) => /unused-code candidates/.test(t));
+  out.unusedEntry = Boolean(entry);
+  h.press(entry);
+  out.unusedList = await h.until(() => document.querySelector('aside [data-excavator-unused-list]'));
+  const items = [...document.querySelectorAll('aside [data-excavator-unused-list] li')];
+  out.unusedRows = items.map((li) => li.innerText.replace(/\s+/g, ' ').trim());
+  h.press(items.find((li) => /leaf/.test(li.innerText))?.querySelector('button'));
+  out.unusedFacts = await h.until(() => document.querySelector('aside [data-excavator-node-unused]'));
+  out.unusedFactsText = document.querySelector('aside [data-excavator-node-unused]')?.innerText ?? null;
+  h.esc();
+  await h.sleep(300);
+  // A file in the hotspots and cited by a doc-map unit shows both sections.
+  const fileRow = h.buttonIn(h.section('Most changed files'), (t) => /src\/main\.js/.test(t));
+  h.press(fileRow);
+  out.hotspotFacts = await h.until(() => document.querySelector('aside [data-excavator-hotspot]'));
+  out.documentsFacts = await h.until(() => document.querySelector('aside [data-excavator-node-documents]'), 20);
+  out.hotspotText = h.section('Hotspot')?.innerText ?? null;
+  out.documentsText = document.querySelector('aside [data-excavator-node-documents]')?.innerText ?? null;
+  out.communicationHeading = h.section('Communication')?.querySelector('h3')?.textContent ?? null;
+  out.nodeCounts = h.countsSeen();
+  h.esc();
+  await h.sleep(300);
+  // A layer row selects the layer (the panel shows it with Open); Open drills in.
+  h.press(document.querySelector('aside [data-excavator-layer-row="layer:lib"]'));
+  await h.until(() => Boolean(h.aside()?.querySelector('[data-excavator-open="layer"]')));
+  h.press(h.aside()?.querySelector('[data-excavator-open="layer"]'));
+  const container = () => document.querySelector('.react-flow__node [aria-expanded="false"]');
+  out.drilled = await h.until(() => container());
+  // A folder box opens on a double click; a single click would only select it.
+  container()?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }));
+  await h.until(() => h.card('file:src/util.js'));
+  h.press(h.card('file:src/util.js')?.firstElementChild);
+  await h.until(() => h.buttonIn(h.aside(), (t) => /open code/i.test(t)));
+  out.connectionsHeading = h.section('Connections')?.querySelector('h3')?.textContent ?? null;
+  out.drillCounts = h.countsSeen();
+  h.press(h.buttonIn(h.aside(), (t) => /open code/i.test(t)));
+  out.codeShown = await h.until(() => /return n [+] 1/.test(document.body.innerText));
+  out.elapsedMs = Date.now() - started;
   return out;
-})()`;
+}
 
-/** Runs at 768 and 375 wide: opens each view, chooses its first row, and measures whether the page scrolls sideways and where the row details are. */
-const PROBE_NARROW = `(async () => {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const until = async (test) => { for (let i = 0; i < 60; i++) { if (test()) return true; await sleep(50); } return false; };
-  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  const out = { width: window.innerWidth, mobile: window.innerWidth < 768, views: {} };
-  await until(() => document.querySelector('.react-flow__node'));
-  await sleep(600);
+/** The page whose products were not run: each section says why it is empty. */
+async function notRunBody(h) {
+  const out = {};
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(300);
+  h.press(h.headerButton('Structural'));
+  await h.until(() => h.section('Runtime units'));
+  await h.sleep(600);
+  out.relations = h.section('Runtime units')?.innerText ?? null;
+  out.hotspots = h.section('Most changed files')?.innerText ?? null;
+  out.unused = h.section('Unused code')?.innerText ?? null;
+  out.unusedButton = Boolean(h.buttonIn(h.section('Unused code'), (t) => /unused-code candidates/.test(t)));
+  out.summary = h.statusSummary();
+  out.control = document.querySelector('[data-excavator-relations-panel]')?.innerText ?? null;
+  out.relationEdges = h.edgeTexts().length;
+  out.counts = h.countsSeen();
+  return out;
+}
+
+/** The page whose main.js no layer holds: the structural overview's relation edges, by id. */
+async function noLayerRelationBody(h) {
+  const out = {};
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(300);
+  h.press(h.headerButton('Structural'));
+  await h.until(() => document.querySelector('.react-flow__node[data-id="layer:lib"]') && document.querySelector('[data-excavator-relation-node]'));
+  await h.sleep(400);
+  out.edges = [...document.querySelectorAll('.react-flow__edge')].map((e) => e.getAttribute('data-id')).filter((id) => id && id.startsWith('relation|')).sort();
+  return out;
+}
+
+/** The page whose graph has no layers: the structural view draws from derived groups. */
+async function groupsBody(h) {
+  const out = {};
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(300);
+  h.press(h.headerButton('Structural'));
+  await h.until(() => h.cards().some((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')));
+  await h.sleep(400);
+  out.cards = h.cards().filter((n) => !/^(domain|band):/.test(n.getAttribute('data-id') ?? '')).length;
+  out.layerRows = document.querySelectorAll('aside [data-excavator-layer-row]').length;
+  return out;
+}
+
+/** The page with stored groups and project texts: the panels and a group card show the stored names and texts. */
+async function storedBody(h) {
+  const out = {};
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(400);
+  out.introduction = h.asideText().includes('The stored introduction.');
+  h.press(document.querySelector('aside [data-excavator-domain-row="domain:run"]'));
+  await h.until(() => Boolean(h.aside()?.querySelector('[data-excavator-open="node"]')));
+  h.press(h.aside()?.querySelector('[data-excavator-open="node"]'));
+  await h.until(() => document.querySelector('[data-excavator-group-card]'));
+  const card = document.querySelector('[data-excavator-group-card]');
+  out.cardText = card?.textContent ?? '';
+  out.cardDescription = card?.querySelector('[data-excavator-group-description]')?.getAttribute('title') ?? null;
+  out.codeLabelSeen = document.body.innerText.includes('codelabel-run');
+  h.press(h.headerButton('Structural'));
+  await h.until(() => h.section('Runtime units'));
+  out.technical = h.asideText().includes('The stored technical overview.');
+  return out;
+}
+
+/** At a narrow width: no sideways scroll; on a phone the drawer holds the two switches. */
+async function narrowBody(h) {
+  const out = { width: window.innerWidth, mobile: window.innerWidth < 768 };
+  await h.until(() => h.cards().length > 0);
+  await h.sleep(600);
   const doc = document.documentElement;
   const sideways = () => Math.max(doc.scrollWidth, document.body.scrollWidth) > window.innerWidth + 1;
-  const buttonFor = (name) => document.querySelector((out.mobile ? '' : 'header ') + '[data-excavator-product-button="' + name + '"]');
-  const toggle = async (name) => {
-    if (out.mobile) { press(document.querySelector('[aria-label="Open menu"]')); await sleep(400); }
-    press(buttonFor(name));
-    await sleep(300);
-  };
-  const MAIN_TABLE = { unused: 'unused', hotspots: 'files', 'doc-map': 'units', relations: 'sites' };
-  // The Relations view opens on its unit list; its site table is one tab away.
-  const TAB = { relations: 'sites' };
-  for (const name of ['unused', 'hotspots', 'doc-map', 'relations']) {
-    await toggle(name);
-    if (TAB[name]) { await until(() => document.querySelector('[data-excavator-product-view="' + name + '"] [data-excavator-tab="' + TAB[name] + '"]')); press(document.querySelector('[data-excavator-product-view] [data-excavator-tab="' + TAB[name] + '"]')); await sleep(200); }
-    await until(() => document.querySelector('[data-excavator-product-view="' + name + '"] [data-excavator-table="' + MAIN_TABLE[name] + '"]'));
-    const view = document.querySelector('[data-excavator-product-view]');
-    const rec = { sideways: sideways(), overlaySideways: view.scrollWidth > view.clientWidth + 1, tables: [...view.querySelectorAll('[data-excavator-table]')].length, tablesScrollInside: [...view.querySelectorAll('[data-excavator-table] > div')].filter((d) => d.scrollWidth > d.clientWidth + 1).length };
-    const row = document.querySelector('[data-excavator-table="' + MAIN_TABLE[name] + '"] tbody tr');
-    press(row);
-    await sleep(400);
-    const inline = view.querySelector('[data-excavator-row-inline]');
-    const table = view.querySelector('[data-excavator-table="' + MAIN_TABLE[name] + '"]');
-    rec.afterRow = {
-      sideways: sideways(),
-      overlaySideways: view.scrollWidth > view.clientWidth + 1,
-      inline: Boolean(inline),
-      inlineAboveTable: Boolean(inline) && inline.getBoundingClientRect().top < table.getBoundingClientRect().top,
-      sidebarDetail: Boolean(document.querySelector('aside [data-excavator-row-detail]')),
-    };
-    await toggle(name);
-    out.views[name] = rec;
+  out.sideways = sideways();
+  if (out.mobile) {
+    h.press(document.querySelector('[aria-label="Open menu"]'));
+    await h.sleep(500);
+    const drawer = document.querySelector('[role="dialog"]');
+    out.drawer = [...(drawer?.querySelectorAll('button') ?? [])].map((b) => b.textContent.trim()).filter((t) => ['Domain', 'Structural', 'French', 'English'].includes(t));
+    out.sidewaysOpen = sideways();
+  } else {
+    out.header = [...document.querySelectorAll('header button, header input')].map((e) => (e.tagName === 'INPUT' ? 'input:' + e.type : e.textContent.trim()));
   }
   return out;
-})()`;
+}
 
-/**
- * Runs in the clean page, apart from PROBE so each has its own time: the Relations view's counts, its unit list, its
- * links and external systems, every site with its bucket, a site that opens its file at its line, a site whose
- * source is not in the page, the bucket filter and the measurements.
- */
-const PROBE_RELATIONS = `(async () => {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  let broken = false;
-  const until = async (test, tries = 60) => { for (let i = 0; i < (broken ? 1 : tries); i++) { if (test()) return true; await sleep(50); } broken = true; return false; };
-  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  const view = () => document.querySelector('[data-excavator-product-view="relations"]');
-  const stat = (label) => view()?.querySelector('[data-excavator-stat="' + label + '"] [data-excavator-stat-value]')?.getAttribute('data-excavator-stat-value') ?? null;
-  const rows = (name) => [...document.querySelectorAll('[data-excavator-table="' + name + '"] tbody tr')];
-  const row = (name, key) => document.querySelector('[data-excavator-table="' + name + '"] tr[data-excavator-row="' + key + '"]');
-  const detail = () => document.querySelector('aside [data-excavator-row-detail]');
-  const action = (name) => document.querySelector('aside [data-excavator-row-actions] [data-excavator-action="' + name + '"]');
-  const tab = async (name) => { press(view()?.querySelector('[data-excavator-tab="' + name + '"]')); await sleep(200); };
-  const pick = async (table, key) => { press(row(table, key)); await until(() => detail(), 20); await sleep(80); };
-  const ADVICE = /safe to delete|should (be )?(removed|deleted)|can be (removed|deleted)|recommend|consider|you (may|might) want/i;
-  const started = Date.now();
-  const out = {};
-  await until(() => document.querySelector('.react-flow__node'));
-  await sleep(400);
-  press(document.querySelector('header [data-excavator-product-button="relations"]'));
-  out.opened = await until(() => view() && view().querySelector('[data-excavator-stat]'));
-  out.state = view()?.querySelector('[data-excavator-view-header]')?.innerText ?? null;
-  out.stats = { units: stat('Units'), links: stat('Links between units'), externals: stat('External systems'), relations: stat('Relations') };
-  out.buckets = view()?.querySelector('[data-excavator-section="Ends by bucket"]')?.innerText ?? null;
-  out.units = [...(view()?.querySelectorAll('[data-excavator-unit]') ?? [])].map((u) => u.getAttribute('data-excavator-unit'));
-  out.unitsText = view()?.querySelector('[data-excavator-units]')?.innerText ?? null;
-  out.unitless = view()?.querySelector('[data-excavator-unitless]')?.getAttribute('data-excavator-unitless') ?? null;
-  out.advice = ADVICE.test(view()?.innerText ?? '');
-  await tab('links');
-  out.links = rows('links').length;
-  press(rows('links')[0]);
-  await until(() => detail(), 20);
-  out.linkDetail = detail()?.innerText ?? null;
-  await tab('externals');
-  out.linkCleared = detail() === null;
-  out.externals = rows('externals').length;
-  await pick('externals', 'external:mail');
-  out.externalDetail = detail()?.innerText ?? null;
-  await tab('sites');
-  out.sites = rows('sites').length;
-  out.siteBuckets = rows('sites').map((r) => r.getAttribute('data-excavator-row') + '=' + r.firstElementChild?.innerText.trim()).sort();
-  out.goneNotLinked = Boolean(row('sites', 'rel:3')?.querySelector('[title="The source of this file is not in this page."]')) && !row('sites', 'rel:3')?.querySelector('[data-excavator-site] button');
-  press(view()?.querySelector('[data-excavator-tab="caller-only"]'));
-  await sleep(150);
-  out.callerOnly = rows('sites').map((r) => r.getAttribute('data-excavator-row'));
-  press(view()?.querySelector('[data-excavator-tab="all"]'));
-  await sleep(150);
-  await pick('sites', 'rel:5');
-  out.unpairedDetail = detail()?.innerText ?? null;
-  await pick('sites', 'rel:1');
-  out.siteDetail = { text: detail()?.innerText ?? null, show: Boolean(action('show-in-graph')), code: Boolean(action('open-code')) };
-  // A site in the table opens its file at its line.
-  press(row('sites', 'rel:1')?.querySelector('[data-excavator-site="src/main.js:4"] button'));
-  out.siteOpensCode = await until(() => /return helper[(]1[)]/.test(document.body.innerText) && document.querySelector('[data-excavator-line-marked]'));
-  out.markedLine = [...document.querySelectorAll('[data-excavator-line-marked]')].map((e) => e.innerText).join('|');
-  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  await sleep(250);
-  await tab('measurements');
-  out.escalation = view()?.querySelector('[data-excavator-section="Escalation candidates"]')?.innerText ?? null;
-  out.candidateFiles = view()?.querySelector('[data-excavator-uncited]')?.innerText ?? null;
-  out.measurementsAdvice = ADVICE.test(view()?.innerText ?? '');
-  out.elapsedMs = Date.now() - started;
-  return out;
-})()`;
-
-/**
- * The relations product on the structural graph and in the node panel: the overview's edges, stand-ins and counts, the
- * Off toggle, a layer with a node selected, the node's Communication entries and what each opens. The same steps run on
- * the page whose products were not run, where nothing is drawn and the control says why.
- */
-const PROBE_GRAPH_RELATIONS = `(async () => {
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  let broken = false;
-  const until = async (test, tries = 40) => { for (let i = 0; i < (broken ? 1 : tries); i++) { if (test()) return true; await sleep(50); } broken = true; return false; };
-  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-  const cards = () => [...document.querySelectorAll('.react-flow__node')];
-  const card = (id) => document.querySelector('.react-flow__node[data-id="' + id + '"]');
-  const edges = () => [...document.querySelectorAll('.react-flow__edge')].map((e) => e.getAttribute('data-id')).filter((id) => id && id.startsWith('relation|')).sort();
-  const labels = () => [...document.querySelectorAll('.react-flow__edge')].filter((e) => (e.getAttribute('data-id') || '').startsWith('relation|')).map((e) => e.getAttribute('data-id') + '=' + (e.querySelector('.react-flow__edge-textwrapper, text')?.textContent ?? '')).sort();
-  const standIns = () => [...document.querySelectorAll('[data-excavator-relation-node]')].map((n) => n.getAttribute('data-excavator-relation-node')).sort();
-  const status = () => document.querySelector('[data-excavator-relations-status]')?.textContent ?? null;
-  const panel = () => document.querySelector('[data-excavator-relations-panel]')?.getAttribute('data-excavator-relations-panel') ?? null;
-  const mode = (m) => document.querySelector('[data-excavator-relations-mode="' + m + '"]');
-  const section = () => document.querySelector('[data-excavator-communication]');
-  const entry = (key) => document.querySelector('[data-excavator-communication-entry="' + key + '"]');
-  // Escape first clears a chosen row, then closes the view: press it until the view is gone.
-  const closeView = async () => {
-    for (let i = 0; i < 4 && document.querySelector('[data-excavator-product-view]'); i++) {
-      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      await sleep(200);
-    }
-  };
-  const started = Date.now();
-  const out = {};
-  await until(() => cards().length > 0);
-  const structural = document.querySelector('header button[title="Structural"]');
-  if (structural && !/bg-accent[/]20/.test(structural.className)) press(structural);
-  await until(() => card('layer:lib') && panel() !== null && panel() !== 'loading');
-  await sleep(300);
-  out.overview = { panel: panel(), edges: edges(), labels: labels(), standIns: standIns(), status: status(), kinds: [...document.querySelectorAll('[data-excavator-relations-kind]')].map((k) => k.getAttribute('data-excavator-relations-kind')), disabled: Boolean(mode('off')?.disabled) };
-  if (!mode('off')?.disabled) {
-    press(mode('off'));
-    await sleep(250);
-    out.off = { edges: edges(), standIns: standIns(), status: status() };
-    press(mode('selected'));
-    await sleep(250);
-    // The external system's node opens it in the Relations view.
-    press(card('relations:external:mail')?.firstElementChild);
-    await until(() => document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="externals"][aria-pressed="true"]') && document.querySelector('aside [data-excavator-row-detail]'), 30);
-    out.external = {
-      tab: document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="externals"]')?.getAttribute('aria-pressed') ?? null,
-      detail: document.querySelector('aside [data-excavator-row-detail]')?.innerText ?? null,
-    };
-    await closeView();
-  }
-  // Into the Library layer, its folder box opened, then util.js selected (the Overview persona draws files, not functions).
-  card('layer:lib')?.click();
-  await until(() => document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
-  press(document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
-  await until(() => card('file:src/util.js'));
-  await sleep(300);
-  out.layerNone = { edges: edges(), status: status() };
-  press(card('file:src/util.js')?.firstElementChild);
-  await sleep(500);
-  out.layer = { edges: edges(), labels: labels(), standIns: standIns(), status: status() };
-  const s = section();
-  out.panel = s === null ? null : {
-    node: s.getAttribute('data-excavator-communication'),
-    heading: s.querySelector('h3')?.textContent ?? null,
-    entries: [...s.querySelectorAll('[data-excavator-communication-entry]')].map((e) => {
-      const other = e.querySelector('[data-excavator-communication-other]');
-      return [e.getAttribute('data-excavator-communication-entry'), e.querySelector('[data-excavator-communication-bucket]')?.getAttribute('data-excavator-communication-bucket'), other === null ? '-' : other.getAttribute('data-excavator-communication-other') || 'not-in-graph'].join(' ');
-    }),
-    text: s.innerText,
-  };
-  if (s !== null) {
-    // This end's site opens the file at its line.
-    press(entry('rel:1:receiver')?.querySelector('[data-excavator-site="src/util.js:1"] button'));
-    await until(() => document.querySelector('[data-excavator-line-marked]'), 20);
-    out.marked = [...document.querySelectorAll('[data-excavator-line-marked]')].map((e) => e.innerText).join('|');
-    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await sleep(250);
-    // The entry opens its relation in the Relations view's site table, also when the view is open on another table.
-    press(document.querySelector('header [data-excavator-product-button="relations"]'));
-    await until(() => document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab][aria-pressed="true"]'), 30);
-    await sleep(150);
-    out.openBefore = { tabs: [...document.querySelectorAll('[data-excavator-product-view="relations"] [data-excavator-tab][aria-pressed="true"]')].map((t) => t.getAttribute('data-excavator-tab')), entry: Boolean(entry('rel:6:receiver')) };
-    press(entry('rel:6:receiver')?.querySelector('[data-excavator-communication-open]'));
-    await until(() => document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="sites"][aria-pressed="true"]') && document.querySelector('aside [data-excavator-row-detail]'), 30);
-    out.opened = {
-      tab: document.querySelector('[data-excavator-product-view="relations"] [data-excavator-tab="sites"]')?.getAttribute('aria-pressed') ?? null,
-      row: document.querySelector('[data-excavator-table="sites"] tr[aria-selected="true"], [data-excavator-table="sites"] tr[data-selected="true"]')?.getAttribute('data-excavator-row') ?? null,
-      detail: document.querySelector('aside [data-excavator-row-detail]')?.innerText ?? null,
-    };
-    await closeView();
-    // The other end's node button moves to that node, in its layer.
-    press(entry('rel:1:receiver')?.querySelector('[data-excavator-communication-other] button'));
-    await until(() => section()?.getAttribute('data-excavator-communication') === 'file:src/main.js', 30);
-    await sleep(200);
-    out.moved = { node: section()?.getAttribute('data-excavator-communication') ?? null, entries: [...document.querySelectorAll('[data-excavator-communication-entry]')].map((e) => e.getAttribute('data-excavator-communication-entry')), edges: edges() };
-    // The other layer's node opens that layer.
-    press(card('relations:layer:layer:lib')?.firstElementChild);
-    // The breadcrumb names the layer; its folder box is closed again, so util.js itself is not a card.
-    const crumb = () => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Project')?.parentElement?.innerText ?? '';
-    out.drilled = await until(() => /library/i.test(crumb()) && !card('file:src/main.js'), 30);
-  }
-  out.elapsedMs = Date.now() - started;
-  return out;
-})()`;
-
-function runChrome(html, { screenshot = null, width = 1440, height = 900, probe = PROBE } = {}) {
+function runChrome(html, { screenshot = null, width = 1440, height = 900, body = mainBody } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'explorer-smoke-'));
   try {
     const page = join(dir, 'explorer.html');
     writeFileSync(page, html);
-    const args = [join(here, 'view-smoke.mjs'), page, '--width', String(width), '--height', String(height), '--eval', probe];
+    const args = [join(here, 'view-smoke.mjs'), page, '--width', String(width), '--height', String(height), '--eval', probe(body)];
     if (screenshot) args.push('--screenshot', resolve(screenshot));
     const run = spawnSync(process.execPath, args, { encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
     if (run.stdout.trim() === '') throw new Error(`view-smoke gave no result: ${run.stderr.trim()}`);
@@ -904,46 +823,7 @@ function runChrome(html, { screenshot = null, width = 1440, height = 900, probe 
   }
 }
 
-/** The three assertions, as `{ name, ok, detail }`, over one view-smoke result. */
-export function judge(result) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { cards: 0, title: null };
-  const network = [...result.extraRequests, ...result.loadFailures, ...result.cspViolations.map((v) => `${v.directive} ${v.blocked}`)];
-  const consoleProblems = [...result.consoleErrors, ...result.exceptions, ...result.logErrors];
-  return [
-    { name: 'network', ok: network.length === 0, detail: network.length === 0 ? 'no request, no failed load, no policy violation' : network.join('; ') },
-    { name: 'console', ok: consoleProblems.length === 0, detail: consoleProblems.length === 0 ? 'no console error or exception' : consoleProblems.join('; ').slice(0, 300) },
-    {
-      name: 'defaults',
-      ok: probe.defaults?.overview === true && probe.defaults?.otherPersonas === 0 && probe.defaults?.domain === true && probe.defaults?.structural === false
-        && (probe.defaults?.products ?? ['?']).length === 0 && probe.defaults?.productView === false && probe.defaults?.diffOff === true && probe.defaults?.domainCard === true,
-      detail: `Overview lit=${probe.defaults?.overview} other personas lit=${probe.defaults?.otherPersonas} Domain lit=${probe.defaults?.domain} Structural lit=${probe.defaults?.structural} product buttons lit=${(probe.defaults?.products ?? []).join('|')} product view open=${probe.defaults?.productView} Diff off=${probe.defaults?.diffOff} domain graph drawn=${probe.defaults?.domainCard}`,
-    },
-    { name: 'cards', ok: probe.cards >= 2 && result.ready === '1', detail: `${probe.cards} cards at the top level (the fixture has 2 layers), ready=${result.ready}` },
-    {
-      name: 'our data',
-      ok: /COVERAGE [(]3 FILES[)]/i.test(probe.coverage ?? '') && /no-extractor 1/.test(probe.coverage ?? '') && /calls-unresolved/.test(probe.gaps ?? '') && /src[/]main[.]js:4 -> external/.test(probe.gaps ?? '')
-        && probe.leafRemoved === true && probe.helperVerified === true && JSON.stringify(probe.evidence) === JSON.stringify(['src/main.js:1', 'src/util.js:2']) && probe.mentions === true
-        && probe.revisionBanner === true,
-      detail: `coverage=${probe.coverage ? 'shown' : 'missing'} gaps=${probe.gaps ? 'shown' : 'missing'} blanked summary explained=${probe.leafRemoved} verdict=${probe.helperVerified} evidence=${(probe.evidence ?? []).join(',')} mentions=${probe.mentions} revision banner=${probe.revisionBanner}`,
-    },
-    {
-      name: 'content',
-      ok: probe.title === 'Excavator' && probe.upstreamName === false && probe.drilled === true && probe.codeShown === true && probe.legend === 'layers',
-      detail: `title=${probe.title} upstreamName=${probe.upstreamName} layer drilled=${probe.drilled} code from inlined sources=${probe.codeShown} legend=${probe.legend}`,
-    },
-    {
-      name: 'products',
-      ok: probe.onboardingShown === false && probe.headerFilesClasses === false && probe.headerTypeChips === false
-        && JSON.stringify(probe.productButtons) === JSON.stringify(['Unused', 'Hotspots', 'Doc map', 'Relations'])
-        && probe.unusedView === true && probe.unusedStatus === true && probe.graphMounted === true && probe.overlayArea === true && probe.columnCentred === true
-        && probe.onlyUnusedLit === true && probe.viewKeptOpen === true && probe.selectionKept === true && probe.structuralKept === true && probe.backOnGraph === true && probe.testOnlyInert === true,
-      detail: `onboarding=${probe.onboardingShown} Files/Classes=${probe.headerFilesClasses} type chips=${probe.headerTypeChips} buttons=${(probe.productButtons ?? []).join('|')} unused view=${probe.unusedView} state and revision=${probe.unusedStatus} graph mounted=${probe.graphMounted} covers graph area only=${probe.overlayArea} centred column<=1100=${probe.columnCentred} only its button lit=${probe.onlyUnusedLit} kept open by a second click=${probe.viewKeptOpen} selection kept=${probe.selectionKept} graph back on Structural=${probe.structuralKept} mode lit again=${probe.backOnGraph} test-only rows inert=${probe.testOnlyInert}`,
-    },
-    ...judgeViews(probe),
-    // view-smoke gives the page's script 15 s; a probe near that limit would fail by timing, not by a defect.
-    { name: 'probe time', ok: typeof probe.elapsedMs === 'number' && probe.elapsedMs < 12000, detail: `${probe.elapsedMs} ms of the 15000 ms the page's script is given` },
-  ];
-}
+const readEval = (result) => (result.evalResult && !result.evalResult.error ? result.evalResult : {});
 
 /** One check made of named conditions: ok when all hold; the detail names those that do not. */
 function verdict(name, conditions) {
@@ -952,220 +832,188 @@ function verdict(name, conditions) {
 }
 
 const has = (text, part) => typeof text === 'string' && text.includes(part);
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-/** The three product views, against the counts of the unchanged fixture (so product data that was altered cannot agree with itself). */
-function judgeViews(probe) {
-  const expected = fixtureData();
-  const unusedCounts = expected['unused-code.json'].counts;
-  const hotspotsCounts = expected['hotspots.json'].counts;
-  const docCounts = expected['doc-map.json'].counts;
-  const u = probe.unusedViewRows ?? {};
-  const h = probe.hotspotsViewRows ?? {};
-  const d = probe.docmapViewRows ?? {};
-  const revisionA = `git:${'a'.repeat(40)}`;
-  const revisionC = `git:${'c'.repeat(40)}`;
-  const string = (n) => String(n);
+/** The network and console checks, shared by every page. */
+function judgeClean(result) {
+  const network = [...result.extraRequests, ...result.loadFailures, ...result.cspViolations.map((v) => `${v.directive} ${v.blocked}`)];
+  const consoleProblems = [...result.consoleErrors, ...result.exceptions, ...result.logErrors];
   return [
-    verdict('unused view', [
-      ['stat Unused equals counts.unused', u.stats?.unused === string(unusedCounts.unused)],
-      ['stat Unreferenced equals counts.unreferenced', u.stats?.unreferenced === string(unusedCounts.unreferenced)],
-      ['stat Only reachable equals counts.onlyReachableFromUnused', u.stats?.onlyReachable === string(unusedCounts.onlyReachableFromUnused)],
-      ['stat Test only equals counts.testOnly', u.stats?.testOnly === string(unusedCounts.testOnly)],
-      [`the table lists ${unusedCounts.unused} rows`, u.rowsAll === unusedCounts.unused],
-      [`only high lists counts.byConfidence.high (${unusedCounts.byConfidence.high}) rows`, u.high?.rows === unusedCounts.byConfidence.high && has(u.high?.text, `Showing ${unusedCounts.byConfidence.high} of ${unusedCounts.unused}`)],
-      ['a row shows name, id, signal, location', has(u.detail?.text, 'leaf') && has(u.detail?.text, 'function:src/util.js:leaf') && has(u.detail?.text, 'capped') && has(u.detail?.text, 'src/util.js:1-3')],
-      ['the row details replace the sidebar and the row is marked', u.detail?.marked === true && u.detail?.text !== undefined],
-      ['group members and referrers are listed', u.detail?.groupOthers === '1' && u.detail?.referrers === '1'],
-      ['Show in graph and Open code are offered for a node in the graph with its source', u.detail?.show === true && u.detail?.code === true],
-      ['a row not in the graph says so and has no Show in graph', u.orphan?.graphNote === 'Not in the graph.' && u.orphan?.show === false],
-      ['a row whose source is not inlined says so and has no Open code', u.orphan?.codeNote === 'The source of this file is not in this page.' && u.orphan?.code === false],
-      ['Escape clears the row first, then closes the view', u.escapeRow === true && u.escapeView === true],
-      ['Open code shows the inlined source with its line marked', u.openCode === true && u.markedLines >= 1],
-      ['Escape closes the code viewer before the row', u.escapeCodeFirst === true],
-      ['in Overview, which draws no function, Show in graph names and selects the file that holds it, drawn', u.overview?.show === true && has(u.overview?.note, 'file:src/util.js') && u.overview?.drawn === true && has(u.overview?.side, 'util.js') && !/summary was removed/i.test(u.overview?.side ?? '')],
-      ['Show in graph closes the view, draws the node and the sidebar shows the node info', u.show?.closed === true && u.show?.drawn === true && u.show?.rowGone === true && has(u.show?.side, 'leaf') && /summary was removed/i.test(u.show?.side ?? '')],
-      ['no advisory wording', u.advice === false],
-    ]),
-    verdict('hotspots view', [
-      ['a notice names both revisions', has(h.notice, revisionC) && has(h.notice, revisionA)],
-      ['stat Files with history equals counts', h.stats?.withHistory === string(hotspotsCounts.filesWithHistory)],
-      ['stat Files without history equals counts', h.stats?.withoutHistory === string(hotspotsCounts.filesWithoutHistory)],
-      ['stat Binary files equals counts', h.stats?.binary === string(hotspotsCounts.binaryFiles)],
-      ['stat Lineage conflicts equals counts', h.stats?.conflicts === string(hotspotsCounts.filesWithLineageConflicts)],
-      ['the files table lists every file', h.rows === expected['hotspots.json'].files.length],
-      ['the project commits per year come from the root row', h.years === '2024:3,2025:5'],
-      ['a file row shows its commits per year and the files changed with it', has(h.file?.text, 'src/main.js') && h.file?.years === '2024:2,2025:3' && h.file?.together === 'src/util.js:3'],
-      ['a file row offers Show in graph and Open code', h.file?.show === true && h.file?.code === true],
-      ['changing the table clears the row', h.tabClearedRow === true],
-      ['a directory row shows its fields, has no Show in graph and says why', has(h.dir?.text, 'src') && h.dir?.show === false && h.dir?.code === false && h.dir?.note === 'No single node of the graph stands for this directory.'],
-      ['Show in graph closes the view, draws the node and the sidebar shows the node info', h.show?.closed === true && h.show?.drawn === true && has(h.show?.side, 'main.js')],
-      ['no advisory wording', h.advice === false],
-    ]),
-    verdict('doc map view', [
-      ['stat Documents equals counts.files', d.stats?.documents === string(docCounts.files)],
-      ['stat Units equals counts.units', d.stats?.units === string(docCounts.units)],
-      ['stat Code found equals counts.found', d.stats?.found === string(docCounts.found)],
-      ['stat No code found equals counts.notFound', d.stats?.notFound === string(docCounts.notFound)],
-      ['the units table lists every unit', d.rows === docCounts.units],
-      ['product text is shown as text', d.asText === true],
-      ['a not-found unit shows its quote and searched record', has(d.notFound?.text, 'The program leaves quietly.') && has(d.notFound?.text, 'Pattern: leave') && d.notFound?.searched === '1'],
-      ['a not-found unit shows no code location and no code buttons', d.notFound?.evidence === 0 && d.notFound?.code === false && d.notFound?.show === false],
-      ['a place with no check says not checked', d.unchecked?.check === 'not-checked' && /Not checked/.test(d.unchecked?.text ?? '')],
-      ['a checked place shows its verdict and reason verbatim', d.checked?.check === 'does' && has(d.checked?.text, 'It calls the helper once.')],
-      ['an evidence place offers Show in graph and Open code', d.checked?.show === true && d.checked?.code === true],
-      ['no advisory wording', d.advice === false],
-    ]),
+    { name: 'network', ok: network.length === 0, detail: network.length === 0 ? 'no request, no failed load, no policy violation' : network.join('; ') },
+    { name: 'console', ok: consoleProblems.length === 0, detail: consoleProblems.length === 0 ? 'no console error or exception' : consoleProblems.join('; ').slice(0, 300) },
   ];
 }
 
-/** The Relations view against the unchanged fixture: its numbers are counted from the fixture's own lists. */
-export function judgeRelations(result) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
-  const [network, consoleCheck] = judge({ ...result, evalResult: null });
-  const product = fixtureData()['relations-graph.json'];
-  const string = (n) => String(n);
+const noCounts = (lines) => verdict('no counts', [['no node, edge, file, flow, step or relation count and no "N drawn of M"', Array.isArray(lines) && lines.length === 0]]);
+
+/** The page as it opens. */
+export function judgeMain(result) {
+  const p = readEval(result);
+  const rows = p.domainRows ?? [];
+  const kinds = rows.map((r) => r.kind);
+  const labels = (list) => (list ?? []).map((r) => r.label);
+  const originals = (list) => (list ?? []).map((r) => r.original);
+  const summary = p.summary ?? '';
+  const details = p.details ?? [];
   return [
-    network,
-    consoleCheck,
-    verdict('relations view', [
-      ['the view opens and says included at the packed revision', probe.opened === true && /included/i.test(probe.state ?? '') && has(probe.state, 'git:aaaaaaaa')],
-      ['stat Units equals the units', probe.stats?.units === string(product.units.length)],
-      ['stat Relations equals the relations', probe.stats?.relations === string(product.relations.length)],
-      ['stat External systems equals the externals', probe.stats?.externals === string(product.externals.length)],
-      ['stat Links between units counts the one unit pair', probe.stats?.links === '1'],
-      ['the bucket table shows every bucket', ['linked', 'caller-only', 'receiver-only'].every((b) => has(probe.buckets, b))],
-      ['the unit list says how many ends name no unit', probe.unitless === '1'],
-      ['an unpaired receiving end says it was not paired, not that no caller reaches it', has(probe.unpairedDetail, 'this receiving site is quote-failed') && !has(probe.unpairedDetail, 'no caller on another unit reaches')],
-      ['the unit list has each unit with what it reaches', JSON.stringify(probe.units) === JSON.stringify(['unit:web', 'unit:api']) && has(probe.unitsText, 'Reaches:') && has(probe.unitsText, 'mail')],
-      ['the links table lists the unit link and the external link', probe.links === 2 && has(probe.linkDetail, 'Relations')],
-      ['changing the table clears the row', probe.linkCleared === true],
-      ['the external system lists its caller', probe.externals === 1 && has(probe.externalDetail, 'Api') && has(probe.externalDetail, 'external:mail')],
-      ['the site table lists every relation with its bucket', probe.sites === product.relations.length && JSON.stringify(probe.siteBuckets) === JSON.stringify(product.relations.map((r) => `${r.id}=${r.bucket}`).sort())],
-      ['the bucket filter keeps that bucket only', JSON.stringify(probe.callerOnly) === JSON.stringify(['rel:3'])],
-      ['a site whose source is not in the page says so and opens nothing', probe.goneNotLinked === true],
-      ['a site row shows both quotes, the evidence and Show in graph and Open code', has(probe.siteDetail?.text, 'return helper(1);') && has(probe.siteDetail?.text, 'export function helper(n) {') && has(probe.siteDetail?.text, 'src/main.js:1') && probe.siteDetail?.show === true && probe.siteDetail?.code === true],
-      ['a site opens its file with its line marked', probe.siteOpensCode === true && has(probe.markedLine, 'return helper(1);')],
-      ['the escalation candidates are listed as the coverage report states them', has(probe.escalation, 'http: quote failure rate 0.25, above the threshold 0.2')],
-      ['candidate files that are not cited are listed', has(probe.candidateFiles, 'src/gone.js') && has(probe.candidateFiles, 'silent-zero')],
-      ['no advisory wording', probe.advice === false && probe.measurementsAdvice === false],
-      ['the probe ends in time', typeof probe.elapsedMs === 'number' && probe.elapsedMs < 12000],
+    ...judgeClean(result),
+    { name: 'cards', ok: p.cards >= 1 && result.ready === '1', detail: `${p.cards} cards, ready=${result.ready}` },
+    verdict('defaults', [
+      ['Domain is lit', p.defaults?.domain === true],
+      ['Structural is not lit', p.defaults?.structural === false],
+      ['the domain graph is drawn', p.defaults?.domainCard === true],
     ]),
+    verdict('header', [['the controls are exactly Domain, Structural, the search box, French, English', same(p.header, ['Domain', 'Structural', 'input:text', 'French', 'English'])]]),
+    noCounts(p.counts),
+    verdict('domain overview', [
+      ['three domains listed', rows.length === 3],
+      ['business first, then support, then no kind', same(kinds, ['business', 'support', ''])],
+      ['each shows its kind word', same(rows.map((r) => r.kindWord), ['business', 'support', null])],
+      ['a translated name has its English original under it', rows[0]?.label === 'Paiements' && rows[0]?.original === 'Payments'],
+      ['a click opens the domain, Escape returns to the list', p.opened === true && has(p.openedTitle, 'All domains') && p.listBack === true],
+      ['the panel lists each flow once: no contains-flow rows, and inside a group only that group\'s flows', p.containsRows === false && p.groupContainsRows === false && p.groupCardFlows > 0 && p.groupFlowRows === p.groupCardFlows && p.domainFlowRows === p.groupCardFlows],
+      ['the panel shows no navigation trail of its own in the domain view', p.panelTrail === false],
+      ['a panel list item goes to its node: the lanes of its group open, the flow is selected and inside the canvas', p.goLanes === true && p.goSelected === true && p.goInside === true],
+      ['the cards show names, not routes or paths; the panel has one Code line', p.noCodeOnCards === true && p.codeLines.length === 1 && /src\/main\.js/.test(p.codeLines[0]) && p.codeNowhereElse === true],
+      ['Back is a history back: same level, selection and viewport', p.viewMoved === true && p.backRestored === true],
+      ['the panel Back names the view it returns to and the canvas Back is enabled with it', typeof p.panelBackLabel === 'string' && p.panelBackLabel.startsWith('\u2190 ') && p.panelBackLabel.endsWith(p.beforeCrumbName) && p.canvasBackEnabled === true],
+      ['a view switch to Structural and Back returns to the Domain level left', p.structuralBackEnabled === true && p.switchBack === true],
+      ['Back is disabled on first load, and the panel has no Back', p.backDisabledOnLoad === true],
+      ['the overview has no bar on first load, and the bar clears the nodes on the group level and in the lanes', p.overviewNoBar === true && p.groupsBarClear === true && p.lanesBarClear === true],
+      ['a panel item already on screen changes only the selection', p.goStable === true],
+      ['a single click on a group card leaves the group level in place', p.groupLevelKept === true],
+      ['the panel list selects: the domain shows with an Open button and the canvas stays on the overview', p.rowOpenButton === true && p.rowStayedOnOverview === true],
+      ['a click on a domain card dims the others, and the same click again restores them', p.dimmedOnSelect === true && p.undimmedOnToggle === true],
+      ['after the second click no node keeps the selected class', p.noSelectedClass === true],
+      ['entering a group by double click shows the lanes with nothing selected or dimmed', p.lanesUndimmed === true],
+      ['the overview and the lanes are centred in the canvas', p.overviewCentred === true && p.lanesCentred === true],
+      ['a double click on a domain card opens it too', p.dblOpened === true && p.dblBack === true],
+    ]),
+    verdict('language switch', [
+      ['the translations show first, the language button lit', p.language?.lit === true && p.language?.englishLit === false],
+      ['English shows the English names', same(labels(p.english?.rows), ['Payments', 'Running', 'Other']) && originals(p.english?.rows).every((o) => o === null) && p.english?.lit === true],
+      ['a domain description shows in its translation only: card, panel list (first line) and its tooltip', has(p.descriptions?.card, 'Prend les paiements.') && !has(p.descriptions?.card, 'Takes payments.') && has(p.descriptions?.row, 'Prend les paiements.') && !has(p.descriptions?.row, 'Deuxieme') && !has(p.descriptions?.row, 'Takes payments.') && has(p.descriptions?.rowTitle, 'Deuxieme ligne.')],
+      ['the language button brings the translations back', same(labels(p.french?.rows), ['Paiements', 'Execution', 'Other']) && p.french?.lit === true],
+    ]),
+    verdict('status line', [
+      ['the summary names each product state', has(summary, 'included') && has(summary, 'Hotspots different revision') && has(summary, 'Semantics not run')],
+      ['the details say the graph was made from another revision', details.some((d) => /was made from git:bbbbbbbb; this page was packed at git:aaaaaaaa/.test(d))],
+      ['the details name the semantics product that was not run', details.some((d) => /^Semantics: not run/.test(d))],
+      ['no banner above the graph', p.banner === false],
+    ]),
+    verdict('uncovered languages', [
+      ['the details name the language that was not analysed', details.includes('Knowledge graph: not analysed: css')],
+      ['the line has no digit', details.filter((d) => /not analysed|partly analysed/.test(d)).every((d) => !/\d/.test(d))],
+    ]),
+    verdict('content', [
+      ['the title says Excavator', p.title === 'Excavator'],
+      ['no visible text names the upstream product', p.upstreamName === false],
+    ]),
+    { name: 'probe time', ok: typeof p.elapsedMs === 'number' && p.elapsedMs < 12000, detail: `${p.elapsedMs} ms of the 15000 ms the page's script is given` },
   ];
 }
 
-/**
- * The relations product on the graph against the unchanged fixture. rel:1 (main calls helper over http) and rel:2
- * (helper calls the mail system) are drawable; rel:6 is linked but its caller's node is not in the graph; rel:3, rel:4
- * and rel:5 are not linked. helper, in util.js, is the caller or receiving end of rel:1, rel:2, rel:4 and rel:6; the
- * layer view of the Overview persona draws files, so util.js holds them.
- */
-export function judgeGraphRelations(result) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
-  const [network, consoleCheck] = judge({ ...result, evalResult: null });
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  const counts = '0 linked with an end in no layer · 1 linked with an end not in the graph · 3 not linked';
-  const utilEdges = ['relation|external|file:src/util.js|relations:external:mail', 'relation|http|relations:layer:layer:app|file:src/util.js'];
+/** The structural view. */
+export function judgeStruct(result) {
+  const p = readEval(result);
+  const labels = p.edgeLabels ?? [];
   return [
-    network,
-    consoleCheck,
-    verdict('graph relations', [
-      ['the overview draws one edge per layer pair and kind, labelled by kind', same(probe.overview?.labels, ['relation|external|layer:lib|relations:external:mail=external', 'relation|http|layer:app|layer:lib=http'])],
-      ['the external system is one node; the legend lists the kinds drawn', same(probe.overview?.standIns, ['relations:external:mail']) && same(probe.overview?.kinds, ['external', 'http'])],
-      ['the control says Selected node and counts what is drawn and what is not', probe.overview?.panel === 'selected' && probe.overview?.status === `2 drawn · ${counts}`],
-      ['the external system\'s node opens it in the Relations view', probe.external?.tab === 'true' && has(probe.external?.detail, 'external:mail')],
-      ['Off draws no relation edge and no stand-in', same(probe.off?.edges, []) && same(probe.off?.standIns, []) && probe.off?.status === `None drawn · ${counts}`],
-      ['a layer draws nothing until a node is selected', same(probe.layerNone?.edges, []) && probe.layerNone?.status === `Select a node to draw its relations · ${counts}`],
-      ['the selected node draws its relations, the other layer as one node', same(probe.layer?.edges, utilEdges) && same(probe.layer?.standIns, ['relations:external:mail', 'relations:layer:layer:app']) && probe.layer?.status === `2 drawn · ${counts}`],
-      ['the node panel lists every relation of the node with its bucket and other end', probe.panel?.node === 'file:src/util.js' && probe.panel?.heading === 'Communication (4)' && same(probe.panel?.entries, [
-        'rel:2:caller linked -', 'rel:1:receiver linked function:src/main.js:main', 'rel:6:receiver linked not-in-graph', 'rel:4:receiver receiver-only -',
-      ])],
-      ['an entry names the address, the external system, the other end and the missing end', has(probe.panel?.text, 'GET /helper') && has(probe.panel?.text, 'mail') && has(probe.panel?.text, 'node not in the graph') && has(probe.panel?.text, 'src/main.js:3') && has(probe.panel?.text, 'No caller site') && has(probe.panel?.text, 'in helper')],
-      ['this end opens its code at its line', has(probe.marked, 'export function helper(n) {')],
-      ['an entry opens its relation in the Relations view, also when it is open on another table', probe.openBefore?.entry === true && (probe.openBefore?.tabs ?? ['sites']).length > 0 && !(probe.openBefore?.tabs ?? ['sites']).includes('sites') && probe.opened?.tab === 'true' && has(probe.opened?.detail, 'Asks for the helper again')],
-      ['the other end moves the graph to its node and lists its relations', probe.moved?.node === 'file:src/main.js' && same(probe.moved?.entries, ['rel:1:caller']) && same(probe.moved?.edges, ['relation|http|file:src/main.js|relations:layer:layer:lib'])],
-      ['the other layer\'s node opens that layer', probe.drilled === true],
-      ['the probe ends in time', typeof probe.elapsedMs === 'number' && probe.elapsedMs < 12000],
+    ...judgeClean(result),
+    { name: 'cards', ok: p.cards >= 2 && result.ready === '1', detail: `${p.cards} cards at the top level` },
+    verdict('structural overview', [
+      ['runtime units are listed', has(p.units, 'Web') && has(p.units, 'Api')],
+      ['the tech stack shows each name once', p.frameworks === 'Express' && p.languages === 'JavaScript'],
+      ['both layers are listed', same(p.layers, ['layer:app', 'layer:lib'])],
+      ['a layer name shows in its translation only in the LAYERS list', (p.layerRowTexts ?? []).some((t) => t.includes('Bibliotheque') && !t.includes('Library'))],
+      ['the external system is listed', has(p.externals, 'mail')],
+      ['the most changed files are listed', has(p.changed, 'src/main.js') && has(p.changed, 'src/util.js')],
+      ['the unused-code entry opens the list', p.unusedEntry === true && p.unusedList === true && (p.unusedRows ?? []).some((r) => /leaf/.test(r))],
     ]),
+    noCounts([...(p.counts ?? []), ...(p.nodeCounts ?? []), ...(p.drillCounts ?? [])]),
+    verdict('relations on the canvas', [
+      ['edge labels are kind words', labels.length > 0 && labels.every((t) => /^[a-z]+$/.test(t))],
+      ['a stand-in says what it is', (p.standIns ?? []).some((t) => /External system/.test(t)) && (p.standIns ?? []).every((t) => !/\d/.test(t))],
+      ['the control says what is not drawn, with no digit', has(p.relationsPanel, 'Some relations are not drawn') && !/\d/.test((p.relationsPanel ?? '').replace('Relations', ''))],
+    ]),
+    verdict('node panel', [
+      ['a function listed in unused shows the Unused code section', has(p.unusedFactsText, 'leaf')],
+      ['a file listed in hotspots shows the Hotspot section with its rank and co-changed file', p.hotspotFacts === true && has(p.hotspotText, 'rank 1') && has(p.hotspotText, 'src/util.js')],
+      ['a file cited by a doc-map unit shows the Documents section', p.documentsFacts === true && has(p.documentsText, 'Run <b>once</b>')],
+      ['headings carry no count', p.communicationHeading === 'Communication' && (p.connectionsHeading === null || p.connectionsHeading === 'Connections')],
+    ]),
+    verdict('content', [
+      ['a layer row selects the layer and its Open button drills in', p.drilled === true],
+      ['a file\'s code opens from the inlined sources', p.codeShown === true],
+    ]),
+    { name: 'probe time', ok: typeof p.elapsedMs === 'number' && p.elapsedMs < 12000, detail: `${p.elapsedMs} ms of the 15000 ms the page's script is given` },
   ];
 }
 
-/**
- * The page whose main.js no layer holds: rel:1 (main calls helper) is drawn in no view and counted once, as an end in
- * no layer, not also as a relation in the overview; rel:2 (helper calls the mail system) is still drawn.
- */
-export function judgeGraphRelationsNoLayer(result) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
+/** The page whose products were not run. */
+export function judgeNotRun(result) {
+  const p = readEval(result);
   return [
-    verdict('graph relations in no layer', [
-      ['the relation with an end in no layer is no edge', JSON.stringify(probe.overview?.edges) === JSON.stringify(['relation|external|layer:lib|relations:external:mail'])],
-      ['it is counted once, as an end in no layer', probe.overview?.status === '1 drawn · 1 linked with an end in no layer · 1 linked with an end not in the graph · 3 not linked'],
-    ]),
-  ];
-}
-
-/** The page whose relations product was not run: no relation edge, no Communication section, and the control says why. */
-export function judgeGraphRelationsUnavailable(result) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : {};
-  return [
-    verdict('graph relations unavailable', [
-      ['nothing is drawn and the toggle is off', probe.overview?.panel === 'unavailable' && probe.overview?.disabled === true && probe.overview?.edges?.length === 0 && probe.overview?.standIns?.length === 0],
-      ['the control says the product was not run and why', has(probe.overview?.status, 'Not drawn: the relations product is not run.') && has(probe.overview?.status, 'relations-graph.json was not found')],
-      ['a selected node has no Communication section and no relation edge', probe.panel === null && probe.layer?.edges?.length === 0],
-    ]),
-  ];
-}
-
-/** The assertions for the page whose products were not run or are unreadable: each view says its state and shows no data. */
-export function judgeStates(result) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { views: {} };
-  const [network, consoleCheck] = judge({ ...result, evalResult: null });
-  const view = (name) => probe.views?.[name] ?? {};
-  const none = (v) => v.tables === 0 && v.stats === 0 && v.sections === 1;
-  return [
-    network,
-    consoleCheck,
+    ...judgeClean(result),
     verdict('states', [
-      ['unreadable unused-code says so with the reason', has(view('unused').state, 'Status: unreadable') && has(view('unused').state, 'unused-code.json is not valid JSON')],
-      ['not-run hotspots gives its command', has(view('hotspots').state, 'Status: not run') && has(view('hotspots').state, 'Command: /excavator-hotspots')],
-      ['not-run doc-map gives its command', has(view('doc-map').state, 'Status: not run') && has(view('doc-map').state, 'Command: /excavator-doc-map')],
-      ['not-run relations gives its command', has(view('relations').state, 'Status: not run') && has(view('relations').state, 'Command: /excavator-relations')],
-      ['no view shows a table, a number or any other card', none(view('unused')) && none(view('hotspots')) && none(view('doc-map')) && none(view('relations'))],
+      ['the units section says why it is empty', has(p.relations, 'Relations: not run (/excavator-relations)')],
+      ['the most changed files say why', has(p.hotspots, 'Hotspots: not run')],
+      ['the unused-code section says why, with no list entry', has(p.unused, 'Unused code: unreadable (unused-code.json is not valid JSON)') && p.unusedButton === false],
+      ['the status line names the states', has(p.summary, 'not run')],
+      ['the Relations control says why nothing is drawn', has(p.control, 'Not drawn: the relations product is not run')],
+      ['no relation edge', p.relationEdges === 0],
+    ]),
+    noCounts(p.counts),
+  ];
+}
+
+/** The page whose graph has no layers. */
+export function judgeNoLayers(result) {
+  const p = readEval(result);
+  return [
+    ...judgeClean(result),
+    { name: 'cards', ok: p.cards >= 1 && result.ready === '1', detail: `${p.cards} cards at the top level, ready=${result.ready}` },
+    { name: 'groups', ok: p.layerRows >= 1, detail: `${p.layerRows} derived groups listed in the panel` },
+  ];
+}
+
+/**
+ * The page whose main.js no layer holds: rel:1 (main calls helper) has an end in no layer and is drawn in no view;
+ * rel:2 (helper calls the mail system) is still drawn.
+ */
+export function judgeNoLayerRelation(result) {
+  const p = readEval(result);
+  return [
+    ...judgeClean(result),
+    verdict('relation with an end in no layer', [
+      ['the relation with an end in no layer is no edge, and the other relation still is', JSON.stringify(p.edges) === JSON.stringify(['relation|external|layer:lib|relations:external:mail'])],
     ]),
   ];
 }
 
-/** The assertions for a narrow page: no view scrolls the page sideways, and the row details are where the width puts them. */
-export function judgeLayout(result, width) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { views: {}, mobile: null };
-  const [network, consoleCheck] = judge({ ...result, evalResult: null });
-  const names = ['unused', 'hotspots', 'doc-map', 'relations'];
-  const views = probe.views ?? {};
-  const conditions = [[`the page is ${width} wide`, probe.width === width]];
-  for (const name of names) {
-    const v = views[name];
-    conditions.push([`${name}: no sideways scroll of the page or the view`, Boolean(v) && v.sideways === false && v.overlaySideways === false && v.afterRow?.sideways === false && v.afterRow?.overlaySideways === false]);
-    conditions.push([
-      probe.mobile ? `${name}: the row details are above the table, not in the sidebar` : `${name}: the row details are in the sidebar`,
-      Boolean(v) && (probe.mobile ? v.afterRow?.inline === true && v.afterRow?.inlineAboveTable === true && v.afterRow?.sidebarDetail === false : v.afterRow?.sidebarDetail === true && v.afterRow?.inline === false),
-    ]);
-  }
-  return [network, consoleCheck, verdict(`layout ${width}`, conditions)];
-}
-
-/** The fixture with no layers in its graph, as an analysis that writes none gives it. */
-export function withoutLayers(data) {
-  return { ...data, 'knowledge-graph.json': { ...data['knowledge-graph.json'], layers: [] } };
-}
-
-/** The assertions for the page whose graph has no layers: it is still clean, draws cards, and calls them groups. */
-export function judgeNoLayers(result) {
-  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { cards: 0, legend: null };
-  const [network, consoleCheck] = judge(result);
+/** The page with stored groups. */
+export function judgeStored(result) {
+  const p = readEval(result);
   return [
-    network,
-    consoleCheck,
-    { name: 'cards', ok: probe.cards >= 1 && result.ready === '1', detail: `${probe.cards} cards at the top level, ready=${result.ready}` },
-    { name: 'groups', ok: probe.legend === 'groups', detail: `legend=${probe.legend}` },
+    ...judgeClean(result),
+    verdict('stored groups', [
+      ['the overview panel shows the stored introduction', p.introduction === true],
+      ['a group card shows the stored name and its description, and never the code label', p.cardText.includes('Stored name') && p.cardDescription === 'Does the stored thing.' && p.codeLabelSeen === false],
+      ['the structural overview shows the stored technical overview', p.technical === true],
+    ]),
+  ];
+}
+
+/** A narrow page. */
+export function judgeNarrow(result, width) {
+  const p = readEval(result);
+  return [
+    ...judgeClean(result),
+    verdict('layout', [
+      ['no sideways scroll', p.sideways === false],
+      width < 768
+        ? ['the drawer holds the Domain | Structural and the language switch', same(p.drawer, ['Domain', 'Structural', 'French', 'English']) && p.sidewaysOpen === false]
+        : ['the header holds the switches and the search box', same(p.header, ['Domain', 'Structural', 'input:text', 'French', 'English'])],
+    ]),
   ];
 }
 
@@ -1174,64 +1022,78 @@ function report(label, checks) {
   return checks.every((check) => check.ok);
 }
 
+const PAGES = {
+  main: { body: mainBody, judge: judgeMain },
+  struct: { body: structBody, judge: judgeStruct },
+};
+
+/** Each planted fault: the page it runs on and the checks that must go red. */
+const PLANTED = [
+  { fault: 'external-url', page: 'main', red: ['network'] },
+  { fault: 'thrown-error', page: 'main', red: ['console'] },
+  { fault: 'no-domain', page: 'main', red: ['defaults'] },
+  { fault: 'header-diff', page: 'main', red: ['header'] },
+  { fault: 'no-name-table', page: 'main', red: ['header', 'language switch'] },
+  { fault: 'count-canvas', page: 'main', red: ['no counts'] },
+  { fault: 'count-aside', page: 'main', red: ['no counts'] },
+  { fault: 'domain-order', page: 'main', red: ['domain overview'] },
+  { fault: 'status-missing', page: 'main', red: ['status line'] },
+  { fault: 'banner', page: 'main', red: ['status line'] },
+  { fault: 'full-coverage', page: 'main', red: ['uncovered languages'] },
+  { fault: 'wrong-title', page: 'main', red: ['content'] },
+  { fault: 'upstream-name', page: 'main', red: ['content'] },
+  { fault: 'count-canvas', page: 'struct', red: ['no counts'] },
+  { fault: 'drawn-of', page: 'struct', red: ['no counts'] },
+  { fault: 'edge-count', page: 'struct', red: ['no counts', 'relations on the canvas'] },
+  { fault: 'stack-dup', page: 'struct', red: ['structural overview'] },
+  { fault: 'no-product-files', page: 'struct', red: ['node panel', 'structural overview'] },
+  { fault: 'no-graph', page: 'struct', red: ['cards'] },
+  { fault: 'no-sources', page: 'struct', red: ['content'] },
+  { fault: 'no-drill', page: 'struct', red: ['content'] },
+];
+
 function main(argv) {
   if (!existsSync(TEMPLATE)) throw new Error(`${TEMPLATE} does not exist: run \`pnpm -r build\` first`);
   const template = readFileSync(TEMPLATE, 'utf-8');
   const data = fixtureData();
   const shot = argv.includes('--screenshot') ? argv[argv.indexOf('--screenshot') + 1] : null;
 
-  const clean = runChrome(assemble(template, data), { screenshot: shot });
-  let ok = report('clean', judge(clean));
-  ok = report('relations', judgeRelations(runChrome(assemble(template, data), { probe: PROBE_RELATIONS }))) && ok;
-  ok = report('graph-relations', judgeGraphRelations(runChrome(assemble(template, data), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
-  ok = report('graph-relations-no-layer', judgeGraphRelationsNoLayer(runChrome(assemble(template, withMainInNoLayer(data)), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
-  ok = report('graph-relations-not-run', judgeGraphRelationsUnavailable(runChrome(assemble(template, withUnavailableProducts(data)), { probe: PROBE_GRAPH_RELATIONS }))) && ok;
-  ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data))))) && ok;
-  ok = report('unavailable-products', judgeStates(runChrome(assemble(template, withUnavailableProducts(data)), { probe: PROBE_STATES }))) && ok;
+  let ok = report('main', judgeMain(runChrome(assemble(template, data), { screenshot: shot })));
+  ok = report('structural', judgeStruct(runChrome(assemble(template, data), { body: structBody }))) && ok;
+  ok = report('not-run', judgeNotRun(runChrome(assemble(template, withUnavailableProducts(data)), { body: notRunBody }))) && ok;
+  ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data)), { body: groupsBody }))) && ok;
+  ok = report('no-layer-relation', judgeNoLayerRelation(runChrome(assemble(template, withMainInNoLayer(data)), { body: noLayerRelationBody }))) && ok;
+  ok = report('stored', judgeStored(runChrome(assemble(template, withStoredGroups(data)), { body: storedBody }))) && ok;
   for (const width of [768, 375]) {
-    ok = report(`width-${width}`, judgeLayout(runChrome(assemble(template, data), { width, height: width === 375 ? 812 : 1024, probe: PROBE_NARROW }), width)) && ok;
+    ok = report(`width-${width}`, judgeNarrow(runChrome(assemble(template, data), { width, height: width === 375 ? 812 : 1024, body: narrowBody }), width)) && ok;
   }
   if (argv.includes('--self-check')) {
-    // Each planted fault must turn the assertions it targets red.
-    const planted = [
-      { fault: 'external-url', red: ['network'] },
-      { fault: 'thrown-error', red: ['console'] },
-      { fault: 'no-graph', red: ['cards'] },
-      { fault: 'no-domain', red: ['defaults'] },
-      { fault: 'legacy-chrome', red: ['products'] },
-      { fault: 'second-click-closes', red: ['products'] },
-      { fault: 'no-products', red: ['products'] },
-      { fault: 'wrong-counts', red: ['unused view', 'hotspots view', 'doc map view'] },
-      { fault: 'node-missing', red: ['unused view'] },
-      { fault: 'no-sources', red: ['unused view'] },
-    ];
-    // A relation left out of the product must turn the relations view red.
-    {
-      const target = judgeRelations(runChrome(assemble(template, data, 'relations-row-missing'), { probe: PROBE_RELATIONS })).find((check) => check.name === 'relations view');
-      process.stdout.write(`${target.ok ? 'FAIL' : 'ok  '} planted relations-row-missing: relations view is ${target.ok ? 'green (not caught)' : 'red'} (${target.detail.slice(0, 120)})\n`);
-      ok = ok && !target.ok;
-    }
-    // The graph's relations: a relation left out removes its edge, an end recorded at another node removes a panel
-    // entry, and the not-run assertions are red on the page whose product is included.
-    {
-      const graphRed = (fault) => !judgeGraphRelations(runChrome(assemble(template, data, fault), { probe: PROBE_GRAPH_RELATIONS })).find((check) => check.name === 'graph relations').ok;
-      for (const fault of ['relations-row-missing', 'relations-end-moved']) {
-        const seen = graphRed(fault);
-        process.stdout.write(`${seen ? 'ok  ' : 'FAIL'} planted ${fault}: graph relations is ${seen ? 'red' : 'green (not caught)'}\n`);
-        ok = ok && seen;
-      }
-      const included = judgeGraphRelationsUnavailable(runChrome(assemble(template, data), { probe: PROBE_GRAPH_RELATIONS }))[0];
-      process.stdout.write(`${included.ok ? 'FAIL' : 'ok  '} the not-run assertions on the included page are ${included.ok ? 'green (not caught)' : 'red'}\n`);
-      ok = ok && !included.ok;
-    }
-    for (const { fault, red } of planted) {
-      const checks = judge(runChrome(assemble(template, data, fault)));
+    // Each planted fault must turn the checks it targets red.
+    const seenRed = (checks, name) => !checks.find((check) => check.name === name).ok;
+    for (const { fault, page, red } of PLANTED) {
+      const { body, judge } = PAGES[page];
+      const checks = judge(runChrome(assemble(template, data, fault), { body }));
       for (const name of red) {
         const target = checks.find((check) => check.name === name);
         const seen = !target.ok;
-        process.stdout.write(`${seen ? 'ok  ' : 'FAIL'} planted ${fault}: ${name} is ${target.ok ? 'green (not caught)' : 'red'} (${target.detail.slice(0, 120)})\n`);
+        process.stdout.write(`${seen ? 'ok  ' : 'FAIL'} planted ${fault} (${page}): ${name} is ${target.ok ? 'green (not caught)' : 'red'} (${target.detail.slice(0, 140)})\n`);
         ok = ok && seen;
       }
+    }
+    // The not-run page: the states assertion is red on the page whose products are included, and a graph with no data makes the derived groups red.
+    {
+      const included = judgeNotRun(runChrome(assemble(template, data), { body: notRunBody }));
+      const seen = seenRed(included, 'states');
+      process.stdout.write(`${seen ? 'ok  ' : 'FAIL'} planted included-products (not-run page): states is ${seen ? 'red' : 'green (not caught)'}\n`);
+      ok = ok && seen;
+      const groups = judgeNoLayers(runChrome(assemble(template, withoutLayers(data), 'no-graph'), { body: groupsBody }));
+      const groupsSeen = seenRed(groups, 'cards');
+      process.stdout.write(`${groupsSeen ? 'ok  ' : 'FAIL'} planted no-graph (no-layers page): cards is ${groupsSeen ? 'red' : 'green (not caught)'}\n`);
+      ok = ok && groupsSeen;
+      const wide = judgeNarrow(runChrome(assemble(template, data, 'no-name-table'), { width: 375, height: 812, body: narrowBody }), 375);
+      const wideSeen = seenRed(wide, 'layout');
+      process.stdout.write(`${wideSeen ? 'ok  ' : 'FAIL'} planted no-name-table (width-375): layout is ${wideSeen ? 'red' : 'green (not caught)'}\n`);
+      ok = ok && wideSeen;
     }
   }
   return ok;
